@@ -1,0 +1,3855 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Versioned documentation for the Godot Gaussian Splatting module.">
+      
+      
+      
+      
+        <link rel="prev" href="../compatibility-matrix/">
+      
+      
+        <link rel="next" href="../../reports/documentation-coverage/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Project Settings Reference - Godot Gaussian Splatting Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#project-settings-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Godot Gaussian Splatting Docs" class="md-header__button md-logo" aria-label="Godot Gaussian Splatting Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Godot Gaussian Splatting Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Project Settings Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/klausi3D/godotGS" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Godot Gaussian Splatting Docs" class="md-nav__button md-logo" aria-label="Godot Gaussian Splatting Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Godot Gaussian Splatting Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/klausi3D/godotGS" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../BUILDING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timing_metrics_reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPU Timestamp Profiling and Monitor Semantics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Api
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Api
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/gaussian_splat_node3d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GaussianSplatNode3D API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/gdscript_reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GDScript API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/shader_reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shader Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/lighting-system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lighting System Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/render-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Render Pipeline Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributor
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributor
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributor/onboarding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributor Onboarding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/docs-site/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioned Docs Site
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/artist_pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gaussian Splat Artist Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/color-grading-quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start: Color Grading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/media/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Version-Controlled Media
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/ply-loader/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PLY Loader
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Governance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Governance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../governance/contribution-standards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contribution Standards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-test-ci/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build / Test / CI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../color-grading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Color Grading Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compatibility-matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compatibility Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project Settings Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project Settings Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#purpose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Purpose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#registered-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registered keys
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Registered keys">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#core" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Import
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quality
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#streaming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Streaming
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#culling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Culling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cull" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cull
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lod
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sorting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sorting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debug" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debug
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logging
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnostics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-only-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime-only keys
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#registered-keys-without-additional-literal-lookup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registered keys without additional literal lookup
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reports
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reports
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/documentation-coverage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation Coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/documentation-gaps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation Gaps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Style
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Style
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../style/documentation-style-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation Style Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_14" >
+        
+          
+          <label class="md-nav__link" for="__nav_14" id="__nav_14_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_14_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_14">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/benchmark-suite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Suite Runner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/setup-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing Setup Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/unified-benchmark/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Unified Benchmark Scene
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" >
+        
+          
+          <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_15">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Troubleshooting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../troubleshooting/build-troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../troubleshooting/quick-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../troubleshooting/recurring-issues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recurring Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_16" >
+        
+          
+          <label class="md-nav__link" for="__nav_16" id="__nav_16_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_16_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_16">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Quickstart (Artists / Non-Programmers)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_16_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_16_2" id="__nav_16_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manual
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_16_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_16_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Manual
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/manual/concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Manual: Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/manual/faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Manual: FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/manual/lighting-behavior/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Manual: Lighting Behavior
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/manual/performance-presets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Manual: Performance Presets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/manual/runtime-behavior/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Manual: Runtime Behavior
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/manual/workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Manual: Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_17" >
+        
+          
+          <label class="md-nav__link" for="__nav_17" id="__nav_17_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_17_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_17">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Workflows
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/GSPLATWORLD_BAKE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gaussian Splat World Bake Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workflows/importing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gaussian Splat Asset Import Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#purpose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Purpose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#registered-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registered keys
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Registered keys">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#core" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Import
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quality
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#streaming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Streaming
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#culling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Culling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cull" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cull
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lod
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sorting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sorting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debug" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debug
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logging
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnostics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-only-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime-only keys
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#registered-keys-without-additional-literal-lookup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registered keys without additional literal lookup
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="project-settings-reference">Project Settings Reference<a class="headerlink" href="#project-settings-reference" title="Permanent link">&para;</a></h1>
+<p>Last generated: 2026-03-19</p>
+<h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">&para;</a></h2>
+<p>Use this reference to map Gaussian Splatting project setting keys to source definitions and runtime lookup paths.</p>
+<h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Regenerate this reference</td>
+<td>Run <code>python3 scripts/generate_project_settings_reference.py</code>.</td>
+</tr>
+<tr>
+<td>Audit key usage in module code</td>
+<td>Run <code>rg -n "rendering/gaussian_splatting/" modules/gaussian_splatting --glob '*.{h,cpp}'</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="api">API<a class="headerlink" href="#api" title="Permanent link">&para;</a></h2>
+<h3 id="registered-keys">Registered keys<a class="headerlink" href="#registered-keys" title="Permanent link">&para;</a></h3>
+<p>These settings are registered with <code>GLOBAL_DEF(...)</code> and grouped by key prefix.</p>
+<table>
+<thead>
+<tr>
+<th>Coverage</th>
+<th style="text-align: right;">Count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Registered keys</td>
+<td style="text-align: right;">110</td>
+</tr>
+<tr>
+<td>Runtime-only keys</td>
+<td style="text-align: right;">41</td>
+</tr>
+<tr>
+<td>Registered keys without additional literal lookup</td>
+<td style="text-align: right;">9</td>
+</tr>
+</tbody>
+</table>
+<h4 id="core">Core<a class="headerlink" href="#core" title="Permanent link">&para;</a></h4>
+<table>
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Default</th>
+      <th>Defined In</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/gpu_sorting_enabled</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:929</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/max_gpu_buffer_count</code></pre></td>
+      <td><pre><code>128</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:944</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/shared_submission_device_enabled</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:930</code></pre></td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="import">Import<a class="headerlink" href="#import" title="Permanent link">&para;</a></h4>
+<table>
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Default</th>
+      <th>Defined In</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/import/gsplatworld_compression_enabled</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:948</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/import/use_gsplatworld_cache</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:946</code></pre></td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="quality">Quality<a class="headerlink" href="#quality" title="Permanent link">&para;</a></h4>
+<table>
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Default</th>
+      <th>Defined In</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/quality/tier_apply_pipeline_toggles</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1024</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/quality/tier_apply_streaming_budgets</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1025</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/quality/tier_preset</code></pre></td>
+      <td><pre><code>"custom"</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1023</code></pre></td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="streaming">Streaming<a class="headerlink" href="#streaming" title="Permanent link">&para;</a></h4>
+<table>
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Default</th>
+      <th>Defined In</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/async_io_enabled</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1064</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/async_pack_enabled</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1035</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/auto_regulate_enabled</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1070</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/chunk_frustum_culling_enabled</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:936</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/chunk_frustum_padding</code></pre></td>
+      <td><pre><code>1.5f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:937</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/enabled</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:933</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/eviction_hysteresis_frames</code></pre></td>
+      <td><pre><code>5</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1060</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/io_source_path</code></pre></td>
+      <td><pre><code>String()</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1065</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/max_chunk_loads_per_frame</code></pre></td>
+      <td><pre><code>16</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1041</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/max_chunks_in_vram</code></pre></td>
+      <td><pre><code>128</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1073</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/max_evictions_per_frame</code></pre></td>
+      <td><pre><code>4</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1062</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/max_pack_jobs_in_flight</code></pre></td>
+      <td><pre><code>4</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1039</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/max_prefetch_chunk_scan_per_frame</code></pre></td>
+      <td><pre><code>4096</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1047</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/max_prefetch_loads_per_frame</code></pre></td>
+      <td><pre><code>6</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1043</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/max_upload_mb_per_frame</code></pre></td>
+      <td><pre><code>128</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1054</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/max_upload_mb_per_second</code></pre></td>
+      <td><pre><code>0</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1058</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/max_upload_mb_per_slice</code></pre></td>
+      <td><pre><code>16</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1056</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/max_visible_chunk_scan_per_frame</code></pre></td>
+      <td><pre><code>4096</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1045</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/min_chunks_in_vram</code></pre></td>
+      <td><pre><code>4</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1072</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/pack_worker_threads</code></pre></td>
+      <td><pre><code>2</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1037</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/predictive_prefetch_enabled</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1031</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/prefetch_lookahead_distance</code></pre></td>
+      <td><pre><code>10.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1033</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/queue_pressure_candidate_scan_throttle_enabled</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1049</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/queue_pressure_candidate_scan_throttle_min_queue_depth</code></pre></td>
+      <td><pre><code>1</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1050</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/queue_pressure_prefetch_scan_cap</code></pre></td>
+      <td><pre><code>1024</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1052</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/queue_pressure_visible_scan_cap</code></pre></td>
+      <td><pre><code>1024</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1051</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/regulation_step_percent</code></pre></td>
+      <td><pre><code>1.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1075</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/vram_budget_mb</code></pre></td>
+      <td><pre><code>12288</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1069</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/vram_warning_threshold_percent</code></pre></td>
+      <td><pre><code>85</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1071</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/zero_visible_recovery_cooldown_frames</code></pre></td>
+      <td><pre><code>30</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:942</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/zero_visible_recovery_log_interval_frames</code></pre></td>
+      <td><pre><code>120</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:943</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/zero_visible_recovery_mode</code></pre></td>
+      <td><pre><code>1</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:940</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/streaming/zero_visible_recovery_trigger_frames</code></pre></td>
+      <td><pre><code>16</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:941</code></pre></td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="culling">Culling<a class="headerlink" href="#culling" title="Permanent link">&para;</a></h4>
+<table>
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Default</th>
+      <th>Defined In</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/culling/cluster_culling_enabled</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:973</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/culling/cluster_frustum_slack</code></pre></td>
+      <td><pre><code>2.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:975</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/culling/cluster_target_size</code></pre></td>
+      <td><pre><code>128</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:974</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/culling/min_gaussians_per_leaf</code></pre></td>
+      <td><pre><code>32</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:970</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/culling/octree_max_depth</code></pre></td>
+      <td><pre><code>8</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:969</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/culling/opacity_aware_bounds</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:982</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/culling/visibility_threshold</code></pre></td>
+      <td><pre><code>0.01f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:983</code></pre></td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="cull">Cull<a class="headerlink" href="#cull" title="Permanent link">&para;</a></h4>
+<table>
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Default</th>
+      <th>Defined In</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/cull/overflow_autotune_enabled</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:987</code></pre></td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="lod">Lod<a class="headerlink" href="#lod" title="Permanent link">&para;</a></h4>
+<table>
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Default</th>
+      <th>Defined In</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/lod/blend_distance</code></pre></td>
+      <td><pre><code>5.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/lod/lod_config.cpp:331</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/lod/blend_enabled</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/lod/lod_config.cpp:330</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/lod/hysteresis_zone</code></pre></td>
+      <td><pre><code>0.5f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/lod/lod_config.cpp:332</code></pre></td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="sorting">Sorting<a class="headerlink" href="#sorting" title="Permanent link">&para;</a></h4>
+<table>
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Default</th>
+      <th>Defined In</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/sorting/bitonic_max_elements</code></pre></td>
+      <td><pre><code>(int)sorting_bitonic_max</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1078</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/sorting/force_algorithm</code></pre></td>
+      <td><pre><code>0</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1087</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/sorting/force_cpu_sort</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1088</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/sorting/history_size</code></pre></td>
+      <td><pre><code>(int)sorting_history_size</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1083</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/sorting/hybrid_batch_size</code></pre></td>
+      <td><pre><code>(int)sorting_hybrid_batch</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1082</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/sorting/hybrid_trigger_elements</code></pre></td>
+      <td><pre><code>(int)sorting_hybrid_trigger</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1081</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/sorting/log_interval_frames</code></pre></td>
+      <td><pre><code>(int)sorting_log_interval</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1084</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/sorting/log_metrics</code></pre></td>
+      <td><pre><code>sorting_log_metrics</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1086</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/sorting/onesweep_max_elements</code></pre></td>
+      <td><pre><code>(int)sorting_onesweep_max</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1080</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/sorting/radix_max_elements</code></pre></td>
+      <td><pre><code>(int)sorting_radix_max</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1079</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/sorting/target_sort_time_ms</code></pre></td>
+      <td><pre><code>sorting_target_ms</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1085</code></pre></td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="debug">Debug<a class="headerlink" href="#debug" title="Permanent link">&para;</a></h4>
+<table>
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Default</th>
+      <th>Defined In</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/cull_guardrail_drop_ratio</code></pre></td>
+      <td><pre><code>0.75f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1005</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/cull_guardrail_min_visible</code></pre></td>
+      <td><pre><code>256</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1006</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/cull_guardrail_position_epsilon</code></pre></td>
+      <td><pre><code>0.05f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1003</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/cull_guardrail_rotation_epsilon</code></pre></td>
+      <td><pre><code>0.01f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1004</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_all_debug</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:994</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_autotune_logs</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1007</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_binning_counters</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1000</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_cull_counters</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1001</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_cull_guardrails</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1002</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_data_logging</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1008</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_frame_logging</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:990</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_frame_logging_verbose</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:991</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_gpu_counter_logs</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:999</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_mainloop_probes</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:993</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_sort_path_logs</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:995</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_tile_dispatch_logs</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:998</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_tile_logs</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:996</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/enable_tile_pipeline_logs</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:997</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/debug/frame_log_frequency</code></pre></td>
+      <td><pre><code>300</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:992</code></pre></td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="logging">Logging<a class="headerlink" href="#logging" title="Permanent link">&para;</a></h4>
+<table>
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Default</th>
+      <th>Defined In</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/logging/rate_limit_ms</code></pre></td>
+      <td><pre><code>1000</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1012</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/logging/verbosity</code></pre></td>
+      <td><pre><code>"silent"</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1011</code></pre></td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="diagnostics">Diagnostics<a class="headerlink" href="#diagnostics" title="Permanent link">&para;</a></h4>
+<table>
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Default</th>
+      <th>Defined In</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/diagnostics/perf_gate_budget_ms</code></pre></td>
+      <td><pre><code>16.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1020</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/diagnostics/perf_gate_enabled</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1018</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/diagnostics/perf_gate_splat_threshold</code></pre></td>
+      <td><pre><code>100000</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1019</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/diagnostics/summary_history_size</code></pre></td>
+      <td><pre><code>60</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1017</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/diagnostics/summary_interval_frames</code></pre></td>
+      <td><pre><code>600</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1016</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/diagnostics/validate_production_metrics</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1015</code></pre></td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="other">Other<a class="headerlink" href="#other" title="Permanent link">&para;</a></h4>
+<table>
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Default</th>
+      <th>Defined In</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/animation/wind_direction_x</code></pre></td>
+      <td><pre><code>1.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:952</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/animation/wind_direction_y</code></pre></td>
+      <td><pre><code>0.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:953</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/animation/wind_direction_z</code></pre></td>
+      <td><pre><code>0.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:954</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/animation/wind_enabled</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:951</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/animation/wind_frequency</code></pre></td>
+      <td><pre><code>1.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:956</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/animation/wind_spatial_frequency</code></pre></td>
+      <td><pre><code>0.1f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:957</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/animation/wind_strength</code></pre></td>
+      <td><pre><code>0.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:955</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/animation/wind_time_scale</code></pre></td>
+      <td><pre><code>1.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:958</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/composite/scene_depth_policy</code></pre></td>
+      <td><pre><code>0</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:932</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/editor/hot_reload_enabled</code></pre></td>
+      <td><pre><code>true</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:949</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/editor/hot_reload_poll_interval_sec</code></pre></td>
+      <td><pre><code>1.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:950</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/effects/max_effectors</code></pre></td>
+      <td><pre><code>1</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:959</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_center_x</code></pre></td>
+      <td><pre><code>0.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:961</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_center_y</code></pre></td>
+      <td><pre><code>0.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:962</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_center_z</code></pre></td>
+      <td><pre><code>0.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:963</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_enabled</code></pre></td>
+      <td><pre><code>false</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:960</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_falloff</code></pre></td>
+      <td><pre><code>2.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:966</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_radius</code></pre></td>
+      <td><pre><code>0.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:964</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_strength</code></pre></td>
+      <td><pre><code>0.0f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:965</code></pre></td>
+    </tr>
+    <tr>
+      <td><pre><code>rendering/gaussian_splatting/rasterization/low_pass_filter</code></pre></td>
+      <td><pre><code>0.35f</code></pre></td>
+      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:978</code></pre></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 id="runtime-only-keys">Runtime-only keys<a class="headerlink" href="#runtime-only-keys" title="Permanent link">&para;</a></h3>
+<p>These keys are used by module code but are not registered with <code>GLOBAL_DEF(...)</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>First reference</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rendering/gaussian_splatting/composite/depth_test</code></td>
+<td><code>modules/gaussian_splatting/interfaces/output_compositor.cpp:21</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/cull/frustum_plane_slack</code></td>
+<td><code>modules/gaussian_splatting/interfaces/gpu_culler.cpp:220</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/debug/enable_pipeline_trace</code></td>
+<td><code>modules/gaussian_splatting/logger/gs_debug_trace.cpp:139</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/debug/enable_splat_audit</code></td>
+<td><code>modules/gaussian_splatting/renderer/render_debug_state_orchestrator.cpp:322</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/debug/enable_state_guardrails</code></td>
+<td><code>modules/gaussian_splatting/renderer/render_debug_state_orchestrator.cpp:320</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/debug/force_unclustered_lights</code></td>
+<td><code>modules/gaussian_splatting/renderer/gpu_debug_utils.h:74</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/debug/layout_hint_validation_strict</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_streaming.cpp:227</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/debug/show_density_heatmap</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_settings_manager.cpp:10</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/debug/show_performance_hud</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_settings_manager.cpp:11</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/debug/show_residency_hud</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_settings_manager.cpp:12</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/debug/show_tile_grid</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_settings_manager.cpp:9</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/debug/splat_audit_sample_count</code></td>
+<td><code>modules/gaussian_splatting/renderer/render_debug_state_orchestrator.cpp:363</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/effects/sphere_effector_frequency</code></td>
+<td><code>modules/gaussian_splatting/interfaces/gpu_sorting_pipeline.cpp:2272</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/import/ply_ascii_strict_parse</code></td>
+<td><code>modules/gaussian_splatting/io/ply_loader.cpp:53</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/lighting/dc_logit</code></td>
+<td><code>modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp:115</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/lighting/direct_light_scale</code></td>
+<td><code>modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp:112</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/lighting/indirect_sh_scale</code></td>
+<td><code>modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp:113</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/lighting/shadow_receiver_bias_max</code></td>
+<td><code>modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp:118</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/lighting/shadow_receiver_bias_min</code></td>
+<td><code>modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp:117</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/lighting/shadow_receiver_bias_scale</code></td>
+<td><code>modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp:116</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/lighting/shadow_strength</code></td>
+<td><code>modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp:114</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/lod/bias</code></td>
+<td><code>modules/gaussian_splatting/interfaces/gpu_culler.cpp:218</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/lod/enabled</code></td>
+<td><code>modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp:675</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/lod/importance_threshold</code></td>
+<td><code>modules/gaussian_splatting/interfaces/gpu_culler.cpp:219</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/lod/max_distance</code></td>
+<td><code>modules/gaussian_splatting/interfaces/gpu_culler.cpp:217</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/lod/min_screen_size_pixels</code></td>
+<td><code>modules/gaussian_splatting/interfaces/gpu_culler.cpp:216</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/logging/command_buffer</code></td>
+<td><code>modules/gaussian_splatting/logger/gs_logger.cpp:77</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/logging/compositor</code></td>
+<td><code>modules/gaussian_splatting/logger/gs_logger.cpp:75</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/logging/general</code></td>
+<td><code>modules/gaussian_splatting/logger/gs_logger.cpp:65</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/logging/gpu_memory</code></td>
+<td><code>modules/gaussian_splatting/logger/gs_logger.cpp:73</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/logging/gpu_sort</code></td>
+<td><code>modules/gaussian_splatting/logger/gs_logger.cpp:71</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/logging/renderer</code></td>
+<td><code>modules/gaussian_splatting/logger/gs_logger.cpp:67</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/logging/streaming</code></td>
+<td><code>modules/gaussian_splatting/logger/gs_logger.cpp:69</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/logging/tests</code></td>
+<td><code>modules/gaussian_splatting/logger/gs_logger.cpp:79</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/renderdoc_compatibility</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:236</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/sorting/strict_global_sort</code></td>
+<td><code>modules/gaussian_splatting/renderer/gpu_sorting_config.cpp:51</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/sorting/validate_sorted_output</code></td>
+<td><code>modules/gaussian_splatting/renderer/gpu_sorting_config.cpp:52</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/streaming/layout_hint_validation_strict</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_streaming.cpp:224</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/streaming/max_sync_fallback_loads_per_frame</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_streaming.cpp:4540</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/streaming/max_sync_fallback_queue_size</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_streaming.cpp:4544</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/streaming/sh_progressive_load</code></td>
+<td><code>modules/gaussian_splatting/renderer/sh_config.h:27</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="registered-keys-without-additional-literal-lookup">Registered keys without additional literal lookup<a class="headerlink" href="#registered-keys-without-additional-literal-lookup" title="Permanent link">&para;</a></h3>
+<p>These registered keys have no additional string-literal references beyond their registration line.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Registered in</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rendering/gaussian_splatting/cull/overflow_autotune_enabled</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:987</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/culling/cluster_frustum_slack</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:975</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/culling/opacity_aware_bounds</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:982</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/culling/visibility_threshold</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:983</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/debug/enable_mainloop_probes</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:993</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/max_gpu_buffer_count</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:944</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/streaming/async_io_enabled</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1064</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/streaming/enabled</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:933</code></td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/streaming/io_source_path</code></td>
+<td><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1065</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>scripts/generate_project_settings_reference.py
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>rg<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;rendering/gaussian_splatting/&quot;</span><span class="w"> </span>modules/gaussian_splatting<span class="w"> </span>--glob<span class="w"> </span><span class="s1">&#39;*.{h,cpp}&#39;</span>
+</code></pre></div>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Cause</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A key exists in code but not under registered sections</td>
+<td>The key is read at runtime without <code>GLOBAL_DEF(...)</code>.</td>
+<td>Check the <code>Runtime-only keys</code> section and decide whether to register it.</td>
+</tr>
+<tr>
+<td>A registered key appears unconsumed</td>
+<td>No extra string-literal lookup path is present in module runtime code.</td>
+<td>Verify lookup paths or remove stale registration.</td>
+</tr>
+<tr>
+<td>Line references are stale</td>
+<td>Source moved after docs were generated.</td>
+<td>Regenerate this file after code changes.</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
