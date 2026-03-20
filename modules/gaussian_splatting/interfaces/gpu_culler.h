@@ -12,6 +12,7 @@
 #include "../lod/hierarchical_splat_structure.h"
 #include "cluster_culler.h"
 #include "../renderer/batched_async_readback.h"
+#include <atomic>
 #include <cstdint>
 #include <memory>
 
@@ -348,8 +349,10 @@ private:
             uint64_t p_start_time_usec, CullingSummary &r_summary);
     void _track_cluster_source_data(const Ref<GaussianData> &p_data);
     void _on_cluster_source_data_changed();
+    void _mark_cluster_source_data_dirty_on_render_thread();
 
-    Ref<GaussianData> cluster_source_data;
+    ObjectID cluster_source_data_object_id = ObjectID();
+    std::atomic<bool> cluster_source_change_dispatch_pending{ false };
 };
 
 #endif // GS_GPU_CULLER_H

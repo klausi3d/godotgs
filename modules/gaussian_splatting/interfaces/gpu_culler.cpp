@@ -3,11 +3,13 @@
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
 #include "core/math/math_funcs.h"
+#include "core/object/object.h"
 #include "core/os/mutex.h"
 #include "core/os/os.h"
 #include "core/templates/hash_set.h"
 #include "core/variant/variant.h"
 #include "servers/rendering/renderer_scene_cull.h"
+#include "servers/rendering_server.h"
 #include "../core/gaussian_data.h"
 #include "../core/gaussian_splat_manager.h"
 #include "../renderer/gaussian_gpu_layout.h"
@@ -86,19 +88,25 @@ GPUCuller::GPUCuller() {
 }
 
 void GPUCuller::_track_cluster_source_data(const Ref<GaussianData> &p_data) {
-    if (cluster_source_data == p_data) {
+    const ObjectID new_data_id = p_data.is_valid() ? p_data->get_instance_id() : ObjectID();
+    if (cluster_source_data_object_id == new_data_id) {
         return;
     }
 
     const Callable changed_callable = callable_mp(this, &GPUCuller::_on_cluster_source_data_changed);
-    if (cluster_source_data.is_valid()) {
-        cluster_source_data->disconnect_changed(changed_callable);
+    if (cluster_source_data_object_id.is_valid()) {
+        if (Object *tracked_object = ObjectDB::get_instance(cluster_source_data_object_id)) {
+            if (GaussianData *tracked_data = Object::cast_to<GaussianData>(tracked_object)) {
+                tracked_data->disconnect_changed(changed_callable);
+            }
+        }
     }
 
-    cluster_source_data = p_data;
-    if (cluster_source_data.is_valid()) {
-        cluster_source_data->connect_changed(changed_callable);
-        cluster_source_data_instance_id = uint64_t(reinterpret_cast<uintptr_t>(cluster_source_data.ptr()));
+    cluster_source_data_object_id = new_data_id;
+    cluster_source_change_dispatch_pending.store(false, std::memory_order_release);
+    if (p_data.is_valid()) {
+        p_data->connect_changed(changed_callable, Object::CONNECT_REFERENCE_COUNTED);
+        cluster_source_data_instance_id = uint64_t(reinterpret_cast<uintptr_t>(p_data.ptr()));
     } else {
         cluster_source_data_instance_id = 0;
     }
@@ -109,6 +117,21 @@ void GPUCuller::_track_cluster_source_data(const Ref<GaussianData> &p_data) {
 }
 
 void GPUCuller::_on_cluster_source_data_changed() {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs || rs->is_on_render_thread() || !rs->is_render_loop_enabled()) {
+        _mark_cluster_source_data_dirty_on_render_thread();
+        return;
+    }
+
+    // Avoid queueing duplicate render-thread invalidation tasks under edit bursts.
+    if (cluster_source_change_dispatch_pending.exchange(true, std::memory_order_acq_rel)) {
+        return;
+    }
+    rs->call_on_render_thread(callable_mp(this, &GPUCuller::_mark_cluster_source_data_dirty_on_render_thread));
+}
+
+void GPUCuller::_mark_cluster_source_data_dirty_on_render_thread() {
+    cluster_source_change_dispatch_pending.store(false, std::memory_order_release);
     // Handles in-place GaussianData edits (e.g. commit_runtime_changes()).
     clusters_need_rebuild = true;
     culling_state.hierarchical_structure_dirty = true;
