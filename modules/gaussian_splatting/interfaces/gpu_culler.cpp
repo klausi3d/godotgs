@@ -127,6 +127,17 @@ Error GPUCuller::initialize(RenderingDevice *p_device) {
         return ERR_CANT_CREATE;
     }
 
+    if (cluster_culler.is_null()) {
+        cluster_culler.instantiate();
+    }
+    if (cluster_culler.is_valid() && !cluster_culler->is_ready()) {
+        const Error cluster_err = cluster_culler->initialize(rd);
+        if (cluster_err != OK) {
+            GS_LOG_WARN_DEFAULT(vformat("[GPUCuller] ClusterCuller initialization failed (%d); coarse cluster path will use CPU data only",
+                    int(cluster_err)));
+        }
+    }
+
     // PERF (#634): Initialize batched async readback to reduce CPU/GPU sync points
     batched_readback.instantiate();
     // PERF: Staging buffer sized for: counters + indices + distances + importance (with alignment)
@@ -147,6 +158,9 @@ void GPUCuller::shutdown() {
     if (batched_readback.is_valid()) {
         batched_readback->shutdown();
         batched_readback.unref();
+    }
+    if (cluster_culler.is_valid()) {
+        cluster_culler->shutdown();
     }
     _release_resources();
     rd = nullptr;
@@ -199,6 +213,9 @@ void GPUCuller::update_culling_settings() {
     float project_bias_setting = culling_config.lod_bias;
     float importance_setting = culling_config.importance_cull_threshold;
     float frustum_slack_setting = culling_config.cull_frustum_plane_slack;
+    bool cluster_enabled_setting = culling_config.cluster_culling_enabled;
+    int cluster_target_size_setting = int(culling_config.cluster_target_size);
+    float cluster_frustum_slack_setting = culling_config.cluster_frustum_slack;
 
     if (!ps) {
         culling_state.culling_octree_max_depth = 8;
@@ -218,6 +235,9 @@ void GPUCuller::update_culling_settings() {
         project_bias_setting = _get_float_setting(ps, "rendering/gaussian_splatting/lod/bias", project_bias_setting);
         importance_setting = _get_float_setting(ps, "rendering/gaussian_splatting/lod/importance_threshold", importance_setting);
         frustum_slack_setting = _get_float_setting(ps, "rendering/gaussian_splatting/cull/frustum_plane_slack", frustum_slack_setting);
+        cluster_enabled_setting = _get_bool_setting(ps, "rendering/gaussian_splatting/culling/cluster_culling_enabled", cluster_enabled_setting);
+        cluster_target_size_setting = _get_int_setting(ps, "rendering/gaussian_splatting/culling/cluster_target_size", cluster_target_size_setting);
+        cluster_frustum_slack_setting = _get_float_setting(ps, "rendering/gaussian_splatting/culling/cluster_frustum_slack", cluster_frustum_slack_setting);
     }
 
     min_screen_setting = MAX(0.0f, min_screen_setting);
@@ -235,6 +255,17 @@ void GPUCuller::update_culling_settings() {
         culling_config.lod_max_distance = max_distance_setting;
     }
     culling_config.cull_frustum_plane_slack = CLAMP(frustum_slack_setting, 1.0f, 8.0f);
+    const bool previous_cluster_enabled = culling_config.cluster_culling_enabled;
+    const uint32_t previous_cluster_target = culling_config.cluster_target_size;
+    const float previous_cluster_slack = culling_config.cluster_frustum_slack;
+    culling_config.cluster_culling_enabled = cluster_enabled_setting;
+    culling_config.cluster_target_size = uint32_t(CLAMP(cluster_target_size_setting, 32, 256));
+    culling_config.cluster_frustum_slack = CLAMP(cluster_frustum_slack_setting, 1.0f, 8.0f);
+    if (previous_cluster_enabled != culling_config.cluster_culling_enabled ||
+            previous_cluster_target != culling_config.cluster_target_size ||
+            Math::abs(previous_cluster_slack - culling_config.cluster_frustum_slack) > 0.0001f) {
+        clusters_need_rebuild = true;
+    }
 }
 
 void GPUCuller::ensure_hierarchical_structure(const Ref<GaussianData> &p_data) {
@@ -728,6 +759,11 @@ void GPUCuller::_release_resources() {
     buffer_capacity = 0;
     resource_device = nullptr;
     instance_resource_device = nullptr;
+    clusters_need_rebuild = true;
+    cluster_source_data_instance_id = 0;
+    if (cluster_culler.is_valid()) {
+        cluster_culler->shutdown();
+    }
 }
 
 RenderingDevice *GPUCuller::_acquire_submission_device(RenderingDevice *p_device) {
@@ -1504,6 +1540,8 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
     culling_state.visible_static_chunk_indices.clear();
 
     if (using_preculled) {
+        cluster_source_data_instance_id = 0;
+        clusters_need_rebuild = true;
         if (p_inputs.preculled_generation != culling_state.preculled_generation) {
             culling_state.culled_indices = *p_inputs.preculled_indices;
             culling_state.preculled_generation = p_inputs.preculled_generation;
@@ -1541,6 +1579,8 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
                     false);
         }
         if (_gpu_frustum_cull_instance(instance_params, instance_inputs, start_time, summary)) {
+            cluster_source_data_instance_id = 0;
+            clusters_need_rebuild = true;
             summary.used_hierarchical_culling = false;
             return summary;
         }
@@ -1549,6 +1589,8 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
     // Legacy path: requires gaussian_data or test positions
     if (!p_inputs.gaussian_data.is_valid() &&
             (!p_inputs.test_positions || p_inputs.test_positions->is_empty())) {
+        cluster_source_data_instance_id = 0;
+        clusters_need_rebuild = true;
         summary.culling_time_ms = (OS::get_singleton()->get_ticks_usec() - start_time) / 1000.0f;
         culling_state.cull_time_ms = summary.culling_time_ms;
         return summary;
@@ -1572,6 +1614,8 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
                 p_inputs.readback_importance);
     }
     if (p_inputs.gpu_cull_attempted && gpu_cull_result) {
+        cluster_source_data_instance_id = 0;
+        clusters_need_rebuild = true;
         uint32_t visible_after = static_cast<uint32_t>(culling_state.culled_indices.size());
         if (visible_after == 0 && culling_state.gpu_visible_indices_count > 0) {
             visible_after = culling_state.gpu_visible_indices_count;
@@ -1616,11 +1660,22 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
     };
 
     bool used_hierarchical = false;
+    bool used_cluster_culling = false;
+    uint32_t cluster_total_count = 0;
+    uint32_t cluster_visible_count = 0;
+    uint32_t cluster_culled_count = 0;
+    float cluster_cull_time_ms = 0.0f;
+    float cluster_cull_ratio = 0.0f;
     uint32_t candidate_count = 0;
 
     if (p_inputs.gaussian_data.is_valid()) {
         const LocalVector<Gaussian> &gaussians = p_inputs.gaussian_data->get_gaussian_storage();
         culling_state.total_splats_pre_cull = gaussians.size();
+        const uint64_t data_instance_id = uint64_t(reinterpret_cast<uintptr_t>(p_inputs.gaussian_data.ptr()));
+        if (cluster_source_data_instance_id != data_instance_id) {
+            clusters_need_rebuild = true;
+            cluster_source_data_instance_id = data_instance_id;
+        }
 
         LocalVector<uint32_t> candidate_indices;
         LocalVector<float> candidate_weights;
@@ -1666,26 +1721,116 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
 
             candidate_count = static_cast<uint32_t>(candidate_indices.size());
         } else {
-            ensure_hierarchical_structure(p_inputs.gaussian_data);
+            bool cluster_candidates_ready = false;
+            if (culling_config.cluster_culling_enabled) {
+                if (cluster_culler.is_null()) {
+                    cluster_culler.instantiate();
+                    clusters_need_rebuild = true;
+                }
 
-            if (culling_state.hierarchical_structure && !culling_state.hierarchical_structure_dirty) {
-                RendererSceneCull::Frustum frustum_obj(planes);
-                uint32_t max_query = p_inputs.max_splats > 0
-                        ? p_inputs.max_splats
-                        : static_cast<uint32_t>(gaussians.size());
-                GaussianSplatting::HierarchicalSplatStructure::QueryResult query =
-                        culling_state.hierarchical_structure->query_visible_splats(frustum_obj, camera_pos, culling_config.lod_bias, max_query);
+                if (cluster_culler.is_valid()) {
+                    ClusterCullConfig &cluster_cfg = cluster_culler->get_config();
+                    const uint32_t target_cluster_size = CLAMP(culling_config.cluster_target_size, 32u, 256u);
+                    const uint32_t min_cluster_size = CLAMP(target_cluster_size / 2u, 32u, target_cluster_size);
+                    const uint32_t max_cluster_size = CLAMP(target_cluster_size * 2u, target_cluster_size, 256u);
+                    const float cluster_frustum_slack = MAX(culling_config.cluster_frustum_slack, 1.0f);
+                    if (cluster_cfg.target_cluster_size != target_cluster_size ||
+                            cluster_cfg.min_cluster_size != min_cluster_size ||
+                            cluster_cfg.max_cluster_size != max_cluster_size ||
+                            cluster_cfg.use_morton_order != culling_config.cluster_use_morton_order ||
+                            cluster_cfg.use_indirect_dispatch != culling_config.cluster_use_indirect_dispatch ||
+                            Math::abs(cluster_cfg.frustum_slack - cluster_frustum_slack) > 0.0001f) {
+                        clusters_need_rebuild = true;
+                    }
 
-                candidate_indices = query.visible_indices;
-                candidate_weights = query.lod_weights;
-                used_hierarchical = true;
-                candidate_count = static_cast<uint32_t>(candidate_indices.size());
-            } else {
-                used_hierarchical = false;
-                candidate_count = culling_state.total_splats_pre_cull;
-                candidate_indices.resize(culling_state.total_splats_pre_cull);
-                for (uint32_t i = 0; i < culling_state.total_splats_pre_cull; i++) {
-                    candidate_indices[i] = i;
+                    cluster_cfg.enabled = true;
+                    cluster_cfg.target_cluster_size = target_cluster_size;
+                    cluster_cfg.min_cluster_size = min_cluster_size;
+                    cluster_cfg.max_cluster_size = max_cluster_size;
+                    cluster_cfg.use_morton_order = culling_config.cluster_use_morton_order;
+                    cluster_cfg.use_indirect_dispatch = culling_config.cluster_use_indirect_dispatch;
+                    cluster_cfg.frustum_slack = cluster_frustum_slack;
+
+                    const uint64_t cluster_start_usec = OS::get_singleton()->get_ticks_usec();
+                    const bool rebuilt = cluster_culler->build_clusters(gaussians, clusters_need_rebuild);
+                    if (rebuilt) {
+                        clusters_need_rebuild = false;
+                        if (cluster_culler->is_ready()) {
+                            cluster_culler->upload_clusters_to_gpu();
+                        }
+                    }
+
+                    const GaussianSplatting::ClusterBuildResult &cluster_data = cluster_culler->get_cluster_data();
+                    const Vector<GaussianSplatting::SplatCluster> &clusters = cluster_data.clusters;
+                    const LocalVector<uint32_t> &sorted_order = cluster_data.sorted_splat_order;
+                    if (!clusters.is_empty() && !sorted_order.is_empty()) {
+                        used_cluster_culling = true;
+                        cluster_total_count = static_cast<uint32_t>(clusters.size());
+
+                        const uint32_t sorted_count = static_cast<uint32_t>(sorted_order.size());
+                        candidate_indices.reserve(sorted_count);
+                        for (int cluster_idx = 0; cluster_idx < clusters.size(); cluster_idx++) {
+                            const GaussianSplatting::SplatCluster &cluster = clusters[cluster_idx];
+
+                            float cluster_radius = cluster.radius;
+                            if (cluster_radius <= 0.0f) {
+                                const Vector3 half_extents = cluster.bounds.size * 0.5f;
+                                cluster_radius = half_extents.length();
+                            }
+                            cluster_radius += MAX(cluster.max_splat_radius, 0.0f);
+                            cluster_radius *= cluster_frustum_slack;
+
+                            if (culling_config.frustum_culling &&
+                                    !sphere_intersects_planes(cluster.center, cluster_radius, planes)) {
+                                culling_state.culled_by_frustum += cluster.splat_count;
+                                cluster_culled_count++;
+                                continue;
+                            }
+
+                            cluster_visible_count++;
+                            const uint32_t cluster_start = MIN(cluster.splat_start, sorted_count);
+                            const uint64_t cluster_end_u64 = uint64_t(cluster.splat_start) + uint64_t(cluster.splat_count);
+                            const uint32_t cluster_end = uint32_t(MIN<uint64_t>(cluster_end_u64, uint64_t(sorted_count)));
+                            for (uint32_t sorted_idx = cluster_start; sorted_idx < cluster_end; sorted_idx++) {
+                                candidate_indices.push_back(sorted_order[sorted_idx]);
+                            }
+                        }
+
+                        candidate_count = static_cast<uint32_t>(candidate_indices.size());
+                        cluster_cull_time_ms = (OS::get_singleton()->get_ticks_usec() - cluster_start_usec) / 1000.0f;
+                        if (culling_state.total_splats_pre_cull > 0 && cluster_total_count > 0) {
+                            const uint64_t culled_splats = uint64_t(culling_state.total_splats_pre_cull) > uint64_t(candidate_count)
+                                    ? uint64_t(culling_state.total_splats_pre_cull) - uint64_t(candidate_count)
+                                    : 0u;
+                            cluster_cull_ratio = float(culled_splats) * 100.0f / float(culling_state.total_splats_pre_cull);
+                        }
+                        cluster_candidates_ready = true;
+                    }
+                }
+            }
+
+            if (!cluster_candidates_ready) {
+                ensure_hierarchical_structure(p_inputs.gaussian_data);
+
+                if (culling_state.hierarchical_structure && !culling_state.hierarchical_structure_dirty) {
+                    RendererSceneCull::Frustum frustum_obj(planes);
+                    uint32_t max_query = p_inputs.max_splats > 0
+                            ? p_inputs.max_splats
+                            : static_cast<uint32_t>(gaussians.size());
+                    GaussianSplatting::HierarchicalSplatStructure::QueryResult query =
+                            culling_state.hierarchical_structure->query_visible_splats(frustum_obj, camera_pos, culling_config.lod_bias, max_query);
+
+                    candidate_indices = query.visible_indices;
+                    candidate_weights = query.lod_weights;
+                    used_hierarchical = true;
+                    candidate_count = static_cast<uint32_t>(candidate_indices.size());
+                } else {
+                    used_hierarchical = false;
+                    candidate_count = culling_state.total_splats_pre_cull;
+                    candidate_indices.resize(culling_state.total_splats_pre_cull);
+                    for (uint32_t i = 0; i < culling_state.total_splats_pre_cull; i++) {
+                        candidate_indices[i] = i;
+                    }
                 }
             }
         }
@@ -1764,6 +1909,8 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
             culling_state.culled_importance_weights.push_back(importance_weight);
         }
     } else {
+        cluster_source_data_instance_id = 0;
+        clusters_need_rebuild = true;
         const LocalVector<Vector3> &positions = *p_inputs.test_positions;
         const LocalVector<Vector3> *scales = p_inputs.test_scales;
         culling_state.total_splats_pre_cull = positions.size();
@@ -1838,6 +1985,12 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
     summary.culled_screen_count = culling_state.culled_by_screen;
     summary.culled_importance_count = culling_state.culled_by_importance;
     summary.used_hierarchical_culling = used_hierarchical;
+    summary.used_cluster_culling = used_cluster_culling;
+    summary.total_clusters = cluster_total_count;
+    summary.visible_clusters = cluster_visible_count;
+    summary.culled_clusters = cluster_culled_count;
+    summary.cluster_cull_time_ms = cluster_cull_time_ms;
+    summary.cluster_cull_ratio = cluster_cull_ratio;
     summary.culling_time_ms = culling_state.cull_time_ms = (OS::get_singleton()->get_ticks_usec() - start_time) / 1000.0f;
 
     return summary;

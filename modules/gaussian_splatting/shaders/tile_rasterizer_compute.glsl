@@ -119,7 +119,20 @@ layout(set = 1, binding = 1, std140) uniform InteractiveState {
     vec4 outline_color;
 } interactive_state;
 
+#ifndef TILE_RASTER_OUTPUT_FORMAT
+#define TILE_RASTER_OUTPUT_FORMAT 0
+#endif
+
+#if TILE_RASTER_OUTPUT_FORMAT == 0
 layout(set = 2, binding = 0, rgba8) writeonly uniform image2D out_color_image;
+#elif TILE_RASTER_OUTPUT_FORMAT == 1
+layout(set = 2, binding = 0, rgba16f) writeonly uniform image2D out_color_image;
+#elif TILE_RASTER_OUTPUT_FORMAT == 2
+layout(set = 2, binding = 0, rgba32f) writeonly uniform image2D out_color_image;
+#else
+#error "Unsupported TILE_RASTER_OUTPUT_FORMAT value"
+#endif
+
 layout(set = 2, binding = 1, r32f) writeonly uniform image2D out_depth_image;
 layout(set = 2, binding = 2, rgba16f) writeonly uniform image2D out_normal_image;
 
