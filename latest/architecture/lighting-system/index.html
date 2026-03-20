@@ -1,7 +1,4 @@
-
-<!doctype html>
-<html lang="en" class="no-js">
-  <head>
+<!DOCTYPE html><html lang="en" class="no-js"><head>
     
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -42,8 +39,8 @@
       
         
         
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
@@ -54,7 +51,17 @@
 
     
     
-  </head>
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style></head>
   
   
     <body dir="ltr">
@@ -75,7 +82,7 @@
       
     </div>
     
-      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden="">
         
       </div>
     
@@ -89,12 +96,12 @@
     <a href="../.." title="Godot Gaussian Splatting Docs" class="md-header__button md-logo" aria-label="Godot Gaussian Splatting Docs" data-md-component="logo">
       
   
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
       
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
     </label>
     <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
@@ -122,24 +129,24 @@
       
         <label class="md-header__button md-icon" for="__search">
           
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
         </label>
         <div class="md-search" data-md-component="search" role="dialog">
   <label class="md-search__overlay" for="__search"></label>
   <div class="md-search__inner" role="search">
     <form class="md-search__form" name="search">
-      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
       <label class="md-search__icon md-icon" for="__search">
         
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
         
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
       </label>
       <nav class="md-search__options" aria-label="Search">
         
         <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
           
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
         </button>
       </nav>
       
@@ -147,7 +154,7 @@
       
     </form>
     <div class="md-search__output">
-      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
         <div class="md-search-result" data-md-component="search-result">
           <div class="md-search-result__meta">
             Initializing search
@@ -165,7 +172,7 @@
         <a href="https://github.com/klausi3D/godotGS" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
   </div>
   <div class="md-source__repository">
     GitHub
@@ -189,7 +196,7 @@
           
             
               
-              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
                 <div class="md-sidebar__scrollwrap">
                   <div class="md-sidebar__inner">
                     
@@ -201,7 +208,7 @@
     <a href="../.." title="Godot Gaussian Splatting Docs" class="md-nav__button md-logo" aria-label="Godot Gaussian Splatting Docs" data-md-component="logo">
       
   
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
 
     </a>
     Godot Gaussian Splatting Docs
@@ -211,7 +218,7 @@
       <a href="https://github.com/klausi3D/godotGS" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
   </div>
   <div class="md-source__repository">
     GitHub
@@ -219,7 +226,7 @@
 </a>
     </div>
   
-  <ul class="md-nav__list" data-md-scrollfix>
+  <ul class="md-nav__list" data-md-scrollfix="">
     
       
       
@@ -322,7 +329,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4">
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -352,7 +359,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -691,7 +698,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked="">
         
           
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
@@ -721,7 +728,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -787,7 +794,7 @@
       <span class="md-nav__icon md-icon"></span>
       Table of contents
     </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
   <a href="#canonical-sources" class="md-nav__link">
@@ -1025,7 +1032,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6">
         
           
           <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
@@ -1055,7 +1062,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -1112,7 +1119,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7">
         
           
           <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
@@ -1142,7 +1149,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -1227,7 +1234,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8">
         
           
           <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
@@ -1257,7 +1264,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -1454,7 +1461,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9">
         
           
           <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
@@ -1484,7 +1491,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -1569,7 +1576,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10">
         
           
           <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="">
@@ -1599,7 +1606,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -1656,7 +1663,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11">
         
           
           <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="">
@@ -1686,7 +1693,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -1743,10 +1750,97 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12">
         
           
           <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13">
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="">
             
   
   
@@ -1764,8 +1858,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_12">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1773,7 +1867,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -1866,6 +1960,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../reference/engine-patch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engine Patch Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../reference/project-settings/" class="md-nav__link">
         
   
@@ -1914,10 +2036,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_14">
         
           
-          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="">
+          <label class="md-nav__link" for="__nav_14" id="__nav_14_label" tabindex="">
             
   
   
@@ -1935,8 +2057,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_13">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_14_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_14">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1944,7 +2066,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -2085,10 +2207,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_14" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15">
         
           
-          <label class="md-nav__link" for="__nav_14" id="__nav_14_label" tabindex="">
+          <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="">
             
   
   
@@ -2106,8 +2228,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_14_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_14">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_15">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2115,7 +2237,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -2172,10 +2294,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_16">
         
           
-          <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="">
+          <label class="md-nav__link" for="__nav_16" id="__nav_16_label" tabindex="">
             
   
   
@@ -2193,8 +2315,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_15">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_16_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_16">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2202,7 +2324,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -2218,7 +2340,7 @@
   <span class="md-ellipsis">
     
   
-    Benchmark Suite Runner
+    Benchmark Runner
   
 
     
@@ -2315,10 +2437,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_16" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_17">
         
           
-          <label class="md-nav__link" for="__nav_16" id="__nav_16_label" tabindex="">
+          <label class="md-nav__link" for="__nav_17" id="__nav_17_label" tabindex="">
             
   
   
@@ -2336,8 +2458,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_16_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_16">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_17_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_17">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2345,7 +2467,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -2402,10 +2524,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_17" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_18">
         
           
-          <label class="md-nav__link" for="__nav_17" id="__nav_17_label" tabindex="">
+          <label class="md-nav__link" for="__nav_18" id="__nav_18_label" tabindex="">
             
   
   
@@ -2423,8 +2545,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_17_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_17">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_18_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_18">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2432,7 +2554,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -2479,10 +2601,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_17_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_18_2">
         
           
-          <label class="md-nav__link" for="__nav_17_2" id="__nav_17_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_18_2" id="__nav_18_2_label" tabindex="0">
             
   
   
@@ -2500,8 +2622,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_17_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_17_2">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_18_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_18_2">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2509,7 +2631,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -2714,10 +2836,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_18" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_19">
         
           
-          <label class="md-nav__link" for="__nav_18" id="__nav_18_label" tabindex="">
+          <label class="md-nav__link" for="__nav_19" id="__nav_19_label" tabindex="">
             
   
   
@@ -2735,8 +2857,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_18_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_18">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_19_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_19">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2744,7 +2866,7 @@
   
 
           </label>
-          <ul class="md-nav__list" data-md-scrollfix>
+          <ul class="md-nav__list" data-md-scrollfix="">
             
               
                 
@@ -2817,7 +2939,7 @@
             
             
               
-              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
                 <div class="md-sidebar__scrollwrap">
                   <div class="md-sidebar__inner">
                     
@@ -2833,7 +2955,7 @@
       <span class="md-nav__icon md-icon"></span>
       Table of contents
     </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
   <a href="#canonical-sources" class="md-nav__link">
@@ -2999,19 +3121,19 @@
   
 
 
-<h1 id="lighting-system-architecture">Lighting System Architecture<a class="headerlink" href="#lighting-system-architecture" title="Permanent link">&para;</a></h1>
+<h1 id="lighting-system-architecture">Lighting System Architecture<a class="headerlink" href="#lighting-system-architecture" title="Permanent link">¶</a></h1>
 <p>This document explains how lighting and shadow controls flow from settings and node state into GPU parameters and shader execution.</p>
-<h2 id="canonical-sources">Canonical Sources<a class="headerlink" href="#canonical-sources" title="Permanent link">&para;</a></h2>
+<h2 id="canonical-sources">Canonical Sources<a class="headerlink" href="#canonical-sources" title="Permanent link">¶</a></h2>
 <ul>
-<li>Lighting defaults and renderer integration: <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp">../../modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp</a></li>
-<li>Lighting/shadow parameter assembly in stage setup: <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/renderer/render_pipeline_stages.cpp">../../modules/gaussian_splatting/renderer/render_pipeline_stages.cpp</a></li>
-<li>GPU param packing (<code>TileRenderParamsGPU</code>): <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/renderer/tile_render_stages.cpp">../../modules/gaussian_splatting/renderer/tile_render_stages.cpp</a></li>
-<li>GPU param layout contract: <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/renderer/gaussian_gpu_layout.h">../../modules/gaussian_splatting/renderer/gaussian_gpu_layout.h</a></li>
-<li>Lighting bridge and shadow sampling shaders: <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/shaders/includes/gs_lighting_bridge.glsl">../../modules/gaussian_splatting/shaders/includes/gs_lighting_bridge.glsl</a>, <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl">../../modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl</a>, <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/shaders/includes/gs_directional_shadow.glsl">../../modules/gaussian_splatting/shaders/includes/gs_directional_shadow.glsl</a></li>
-<li>Resolve pass shader: <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/shaders/tile_resolve.glsl">../../modules/gaussian_splatting/shaders/tile_resolve.glsl</a></li>
+<li>Lighting defaults and renderer integration: <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp">../../modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp</a></li>
+<li>Lighting/shadow parameter assembly in stage setup: <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/renderer/render_pipeline_stages.cpp">../../modules/gaussian_splatting/renderer/render_pipeline_stages.cpp</a></li>
+<li>GPU param packing (<code>TileRenderParamsGPU</code>): <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/renderer/tile_render_stages.cpp">../../modules/gaussian_splatting/renderer/tile_render_stages.cpp</a></li>
+<li>GPU param layout contract: <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/renderer/gaussian_gpu_layout.h">../../modules/gaussian_splatting/renderer/gaussian_gpu_layout.h</a></li>
+<li>Lighting bridge and shadow sampling shaders: <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/shaders/includes/gs_lighting_bridge.glsl">../../modules/gaussian_splatting/shaders/includes/gs_lighting_bridge.glsl</a>, <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl">../../modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl</a>, <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/shaders/includes/gs_directional_shadow.glsl">../../modules/gaussian_splatting/shaders/includes/gs_directional_shadow.glsl</a></li>
+<li>Resolve pass shader: <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/shaders/tile_resolve.glsl">../../modules/gaussian_splatting/shaders/tile_resolve.glsl</a></li>
 </ul>
-<h2 id="control-surfaces">Control Surfaces<a class="headerlink" href="#control-surfaces" title="Permanent link">&para;</a></h2>
-<h3 id="project-settings-global">Project Settings (Global)<a class="headerlink" href="#project-settings-global" title="Permanent link">&para;</a></h3>
+<h2 id="control-surfaces">Control Surfaces<a class="headerlink" href="#control-surfaces" title="Permanent link">¶</a></h2>
+<h3 id="project-settings-global">Project Settings (Global)<a class="headerlink" href="#project-settings-global" title="Permanent link">¶</a></h3>
 <p>Primary global lighting controls are initialized under <code>rendering/gaussian_splatting/lighting/*</code>:</p>
 <ul>
 <li><code>direct_light_scale</code></li>
@@ -3023,55 +3145,55 @@
 <li><code>shadow_receiver_bias_max</code></li>
 </ul>
 <p>See defaults setup in <code>GaussianSplatRenderer::_initialize_lighting_project_settings_defaults</code>.</p>
-<h3 id="node-controls-per-node">Node Controls (Per-Node)<a class="headerlink" href="#node-controls-per-node" title="Permanent link">&para;</a></h3>
+<h3 id="node-controls-per-node">Node Controls (Per-Node)<a class="headerlink" href="#node-controls-per-node" title="Permanent link">¶</a></h3>
 <p>Node-level controls that directly affect lighting/shadow-related behavior:</p>
 <ul>
 <li><code>rendering/cast_shadow</code></li>
 <li><code>rendering/color_grading</code></li>
 <li><code>rendering/wind_*</code> override controls for animation deformation inputs</li>
 </ul>
-<p>Source: <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp">../../modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp</a></p>
-<h2 id="data-flow-cpu-to-gpu">Data Flow: CPU to GPU<a class="headerlink" href="#data-flow-cpu-to-gpu" title="Permanent link">&para;</a></h2>
+<p>Source: <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp">../../modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp</a></p>
+<h2 id="data-flow-cpu-to-gpu">Data Flow: CPU to GPU<a class="headerlink" href="#data-flow-cpu-to-gpu" title="Permanent link">¶</a></h2>
 <ol>
 <li><code>render_pipeline_stages.cpp</code> reads project settings and assembles <code>TileRenderer::RenderParams</code>.</li>
 <li><code>tile_render_stages.cpp</code> packs these values into <code>TileRenderParamsGPU</code>.</li>
 <li><code>gaussian_gpu_layout.h</code> defines the authoritative memory layout and semantic fields: <code>lighting_config</code>, <code>shadow_strength</code>, <code>shadow_bias_config</code>, <code>lighting_mode</code>, and <code>light_counts</code>.</li>
 <li>Resolve/cull/raster shaders consume these fields.</li>
 </ol>
-<h2 id="direct-lighting-path">Direct Lighting Path<a class="headerlink" href="#direct-lighting-path" title="Permanent link">&para;</a></h2>
-<p>Resolve-stage direct lighting runs in <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/shaders/tile_resolve.glsl">tile_resolve.glsl</a>, using scene data, light buffers, and shadow helpers.</p>
+<h2 id="direct-lighting-path">Direct Lighting Path<a class="headerlink" href="#direct-lighting-path" title="Permanent link">¶</a></h2>
+<p>Resolve-stage direct lighting runs in <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/shaders/tile_resolve.glsl">tile_resolve.glsl</a>, using scene data, light buffers, and shadow helpers.</p>
 <p><code>lighting_mode.x</code> controls where direct lighting is applied:</p>
 <ul>
 <li><code>0</code>: resolve</li>
 <li><code>1</code>: per-splat</li>
 <li><code>2</code>: both</li>
 </ul>
-<p>Field semantics are defined in <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/renderer/gaussian_gpu_layout.h">../../modules/gaussian_splatting/renderer/gaussian_gpu_layout.h</a>.</p>
-<h2 id="clustered-vs-unclustered-lights">Clustered vs Unclustered Lights<a class="headerlink" href="#clustered-vs-unclustered-lights" title="Permanent link">&para;</a></h2>
+<p>Field semantics are defined in <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/renderer/gaussian_gpu_layout.h">../../modules/gaussian_splatting/renderer/gaussian_gpu_layout.h</a>.</p>
+<h2 id="clustered-vs-unclustered-lights">Clustered vs Unclustered Lights<a class="headerlink" href="#clustered-vs-unclustered-lights" title="Permanent link">¶</a></h2>
 <p>Cluster usage is determined by cluster buffer/config availability and <code>light_counts.z</code> semantics in GPU params.</p>
 <ul>
-<li>Cluster decision helper in shader: <code>gs_use_clustered_lights()</code> in <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl">../../modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl</a></li>
-<li>Debug override (force unclustered): <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/renderer/gpu_debug_utils.h">../../modules/gaussian_splatting/renderer/gpu_debug_utils.h</a></li>
+<li>Cluster decision helper in shader: <code>gs_use_clustered_lights()</code> in <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl">../../modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl</a></li>
+<li>Debug override (force unclustered): <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/renderer/gpu_debug_utils.h">../../modules/gaussian_splatting/renderer/gpu_debug_utils.h</a></li>
 </ul>
-<h2 id="shadow-system">Shadow System<a class="headerlink" href="#shadow-system" title="Permanent link">&para;</a></h2>
-<h3 id="runtime-shadow-sampling">Runtime Shadow Sampling<a class="headerlink" href="#runtime-shadow-sampling" title="Permanent link">&para;</a></h3>
-<p>Shadow factors are computed per light type in <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/shaders/includes/gs_directional_shadow.glsl">../../modules/gaussian_splatting/shaders/includes/gs_directional_shadow.glsl</a>:</p>
+<h2 id="shadow-system">Shadow System<a class="headerlink" href="#shadow-system" title="Permanent link">¶</a></h2>
+<h3 id="runtime-shadow-sampling">Runtime Shadow Sampling<a class="headerlink" href="#runtime-shadow-sampling" title="Permanent link">¶</a></h3>
+<p>Shadow factors are computed per light type in <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/shaders/includes/gs_directional_shadow.glsl">../../modules/gaussian_splatting/shaders/includes/gs_directional_shadow.glsl</a>:</p>
 <ul>
 <li>directional: <code>gs_directional_shadow</code></li>
 <li>omni: <code>gs_omni_shadow_factor</code></li>
 <li>spot: <code>gs_spot_shadow_factor</code></li>
 </ul>
-<h3 id="directional-shadow-atlas-path">Directional Shadow Atlas Path<a class="headerlink" href="#directional-shadow-atlas-path" title="Permanent link">&para;</a></h3>
+<h3 id="directional-shadow-atlas-path">Directional Shadow Atlas Path<a class="headerlink" href="#directional-shadow-atlas-path" title="Permanent link">¶</a></h3>
 <p>Directional shadow maps are rendered and blitted through:</p>
 <ul>
 <li><code>GaussianSplatRenderer::render_directional_shadow_map</code></li>
 <li>shadow output compositor setup</li>
 <li>shadow blit pipeline resources</li>
 </ul>
-<p>Source: <a href="https://github.com/klausi3D/godotGS/blob/daa700e0658c79ab349948478ca4be60f36ab96c/modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp">../../modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp</a></p>
-<h2 id="current-constraint-soft-shadows-in-compute-path">Current Constraint: Soft Shadows in Compute Path<a class="headerlink" href="#current-constraint-soft-shadows-in-compute-path" title="Permanent link">&para;</a></h2>
+<p>Source: <a href="https://github.com/klausi3D/godotGS/blob/25b5affe364f3d5a89c5689ab671834f1f6837f7/modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp">../../modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp</a></p>
+<h2 id="current-constraint-soft-shadows-in-compute-path">Current Constraint: Soft Shadows in Compute Path<a class="headerlink" href="#current-constraint-soft-shadows-in-compute-path" title="Permanent link">¶</a></h2>
 <p><code>gs_lighting_bridge.glsl</code> explicitly disables soft-shadow sampling in the compute compatibility path (<code>sc_*_shadow_samples()</code> return <code>0</code>). This is a current design constraint, not a documentation omission.</p>
-<h2 id="related-docs">Related Docs<a class="headerlink" href="#related-docs" title="Permanent link">&para;</a></h2>
+<h2 id="related-docs">Related Docs<a class="headerlink" href="#related-docs" title="Permanent link">¶</a></h2>
 <ul>
 <li>Architecture overview: <a href="../overview/">overview.md</a></li>
 <li>Render pipeline architecture: <a href="../render-pipeline/">render-pipeline.md</a></li>
@@ -3085,6 +3207,38 @@
 
 
 
+  
+    
+  
+  
+    
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 20, 2026 10:30:39 UTC">March 20, 2026</span>
+  </span>
+
+    
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Created">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 20, 2026 10:30:39 UTC">March 20, 2026</span>
+  </span>
+
+    
+    
+    
+  </aside>
 
 
 
@@ -3098,9 +3252,9 @@
 <script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
         </div>
         
-          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden="">
   
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
   Back to top
 </button>
         
@@ -3133,11 +3287,21 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
     
     
       <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
+        <script src="../../js/mkdocs-charts-plugin.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+      
     
-  </body>
-</html>
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>
