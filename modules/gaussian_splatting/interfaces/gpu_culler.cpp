@@ -85,6 +85,35 @@ void GPUCuller::_bind_methods() {
 GPUCuller::GPUCuller() {
 }
 
+void GPUCuller::_track_cluster_source_data(const Ref<GaussianData> &p_data) {
+    if (cluster_source_data == p_data) {
+        return;
+    }
+
+    const Callable changed_callable = callable_mp(this, &GPUCuller::_on_cluster_source_data_changed);
+    if (cluster_source_data.is_valid()) {
+        cluster_source_data->disconnect_changed(changed_callable);
+    }
+
+    cluster_source_data = p_data;
+    if (cluster_source_data.is_valid()) {
+        cluster_source_data->connect_changed(changed_callable);
+        cluster_source_data_instance_id = uint64_t(reinterpret_cast<uintptr_t>(cluster_source_data.ptr()));
+    } else {
+        cluster_source_data_instance_id = 0;
+    }
+
+    // Any source swap invalidates cluster bounds/order and hierarchy caches.
+    clusters_need_rebuild = true;
+    culling_state.hierarchical_structure_dirty = true;
+}
+
+void GPUCuller::_on_cluster_source_data_changed() {
+    // Handles in-place GaussianData edits (e.g. commit_runtime_changes()).
+    clusters_need_rebuild = true;
+    culling_state.hierarchical_structure_dirty = true;
+}
+
 void GPUCuller::set_instance_pipeline_inputs(const InstancePipelineInputs &p_inputs) {
     instance_inputs = p_inputs;
     instance_inputs_valid = true;
@@ -154,6 +183,8 @@ Error GPUCuller::initialize(RenderingDevice *p_device) {
 }
 
 void GPUCuller::shutdown() {
+    _track_cluster_source_data(Ref<GaussianData>());
+
     // PERF (#634): Clean up batched async readback
     if (batched_readback.is_valid()) {
         batched_readback->shutdown();
@@ -760,7 +791,7 @@ void GPUCuller::_release_resources() {
     resource_device = nullptr;
     instance_resource_device = nullptr;
     clusters_need_rebuild = true;
-    cluster_source_data_instance_id = 0;
+    _track_cluster_source_data(Ref<GaussianData>());
     if (cluster_culler.is_valid()) {
         cluster_culler->shutdown();
     }
@@ -1540,8 +1571,7 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
     culling_state.visible_static_chunk_indices.clear();
 
     if (using_preculled) {
-        cluster_source_data_instance_id = 0;
-        clusters_need_rebuild = true;
+        _track_cluster_source_data(Ref<GaussianData>());
         if (p_inputs.preculled_generation != culling_state.preculled_generation) {
             culling_state.culled_indices = *p_inputs.preculled_indices;
             culling_state.preculled_generation = p_inputs.preculled_generation;
@@ -1579,8 +1609,7 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
                     false);
         }
         if (_gpu_frustum_cull_instance(instance_params, instance_inputs, start_time, summary)) {
-            cluster_source_data_instance_id = 0;
-            clusters_need_rebuild = true;
+            _track_cluster_source_data(Ref<GaussianData>());
             summary.used_hierarchical_culling = false;
             return summary;
         }
@@ -1589,8 +1618,7 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
     // Legacy path: requires gaussian_data or test positions
     if (!p_inputs.gaussian_data.is_valid() &&
             (!p_inputs.test_positions || p_inputs.test_positions->is_empty())) {
-        cluster_source_data_instance_id = 0;
-        clusters_need_rebuild = true;
+        _track_cluster_source_data(Ref<GaussianData>());
         summary.culling_time_ms = (OS::get_singleton()->get_ticks_usec() - start_time) / 1000.0f;
         culling_state.cull_time_ms = summary.culling_time_ms;
         return summary;
@@ -1614,8 +1642,7 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
                 p_inputs.readback_importance);
     }
     if (p_inputs.gpu_cull_attempted && gpu_cull_result) {
-        cluster_source_data_instance_id = 0;
-        clusters_need_rebuild = true;
+        _track_cluster_source_data(Ref<GaussianData>());
         uint32_t visible_after = static_cast<uint32_t>(culling_state.culled_indices.size());
         if (visible_after == 0 && culling_state.gpu_visible_indices_count > 0) {
             visible_after = culling_state.gpu_visible_indices_count;
@@ -1669,6 +1696,7 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
     uint32_t candidate_count = 0;
 
     if (p_inputs.gaussian_data.is_valid()) {
+        _track_cluster_source_data(p_inputs.gaussian_data);
         const LocalVector<Gaussian> &gaussians = p_inputs.gaussian_data->get_gaussian_storage();
         culling_state.total_splats_pre_cull = gaussians.size();
         const uint64_t data_instance_id = uint64_t(reinterpret_cast<uintptr_t>(p_inputs.gaussian_data.ptr()));
@@ -1919,8 +1947,7 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
             culling_state.culled_importance_weights.push_back(importance_weight);
         }
     } else {
-        cluster_source_data_instance_id = 0;
-        clusters_need_rebuild = true;
+        _track_cluster_source_data(Ref<GaussianData>());
         const LocalVector<Vector3> &positions = *p_inputs.test_positions;
         const LocalVector<Vector3> *scales = p_inputs.test_scales;
         culling_state.total_splats_pre_cull = positions.size();

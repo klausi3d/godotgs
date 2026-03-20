@@ -1619,21 +1619,16 @@ Error TileRenderer::_ensure_resources(const Vector2i &p_size, int p_tile_size, R
     // Check if viewport size actually changed (not just initial difference)
     bool size_changed = grid_state.viewport_size.x > 0 && grid_state.viewport_size.y > 0 && grid_state.viewport_size != p_size;
 
-    Error err = _compile_tile_shaders();
-    if (err != OK) {
-        return err;
-    }
-
-	bool recreate_buffers = tile_size_changed || format_changed || size_changed;
-	// Debug/diagnostic buffers are required in both modes.
-	recreate_buffers = recreate_buffers || !debug_stats.debug_counter_buffer.is_valid() ||
+    bool recreate_buffers = tile_size_changed || format_changed || size_changed;
+    // Debug/diagnostic buffers are required in both modes.
+    recreate_buffers = recreate_buffers || !debug_stats.debug_counter_buffer.is_valid() ||
             !debug_stats.overflow_statistics_buffer.is_valid() || !debug_stats.debug_splat_audit_buffer.is_valid();
 
-	if (recreate_buffers) {
-		projection_buffers.release(device);
-		debug_stats.free_buffers(device);
-		_destroy_output_textures();
-		render_targets.depth_texture_copy_compatible = false;
+    if (recreate_buffers) {
+        projection_buffers.release(device);
+        debug_stats.free_buffers(device);
+        _destroy_output_textures();
+        render_targets.depth_texture_copy_compatible = false;
 
         _update_tile_dimensions(p_size);
         if (!_validate_tile_grid("ensure_resources")) {
@@ -1642,7 +1637,7 @@ Error TileRenderer::_ensure_resources(const Vector2i &p_size, int p_tile_size, R
         _create_aux_buffers();
         _create_output_texture(p_size, config_state.desired_output_format);
 
-		bool allocation_failed = !render_targets.output_texture.is_valid() || !debug_stats.debug_counter_buffer.is_valid() ||
+        bool allocation_failed = !render_targets.output_texture.is_valid() || !debug_stats.debug_counter_buffer.is_valid() ||
                 !debug_stats.overflow_statistics_buffer.is_valid() || !debug_stats.debug_splat_audit_buffer.is_valid();
         if (allocation_failed && tile_size_changed) {
             GS_LOG_WARN_DEFAULT("[TileRenderer] Adaptive tile size allocation failed, reverting to previous tile size");
@@ -1655,6 +1650,11 @@ Error TileRenderer::_ensure_resources(const Vector2i &p_size, int p_tile_size, R
             _create_aux_buffers();
             _create_output_texture(p_size, config_state.desired_output_format);
         }
+    }
+
+    Error err = _compile_tile_shaders();
+    if (err != OK) {
+        return err;
     }
 
     return OK;

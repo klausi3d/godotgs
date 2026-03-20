@@ -346,6 +346,10 @@ private:
             bool p_readback_importance);
     bool _gpu_frustum_cull_instance(const CullParams &p_params, const InstancePipelineInputs &p_inputs,
             uint64_t p_start_time_usec, CullingSummary &r_summary);
+    void _track_cluster_source_data(const Ref<GaussianData> &p_data);
+    void _on_cluster_source_data_changed();
+
+    Ref<GaussianData> cluster_source_data;
 };
 
 #endif // GS_GPU_CULLER_H
