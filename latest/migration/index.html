@@ -11,25 +11,25 @@
       
       
       
-        <link rel="prev" href="../media/">
+        <link rel="prev" href="../governance/contribution-standards/">
       
       
-        <link rel="next" href="../streaming/">
+        <link rel="next" href="../reference/build-test-ci/">
       
       
         
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+      <link rel="icon" href="../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>PLY Loader - Godot Gaussian Splatting Docs</title>
+        <title>Migration Guide and Compatibility Checklist - Godot Gaussian Splatting Docs</title>
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
       
 
@@ -48,7 +48,7 @@
       
     
     
-    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -66,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#ply-loader" class="md-skip">
+        <a href="#migration-guide-and-compatibility-checklist" class="md-skip">
           Skip to content
         </a>
       
@@ -86,7 +86,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="Godot Gaussian Splatting Docs" class="md-header__button md-logo" aria-label="Godot Gaussian Splatting Docs" data-md-component="logo">
+    <a href=".." title="Godot Gaussian Splatting Docs" class="md-header__button md-logo" aria-label="Godot Gaussian Splatting Docs" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              PLY Loader
+              Migration Guide and Compatibility Checklist
             
           </span>
         </div>
@@ -198,7 +198,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="Godot Gaussian Splatting Docs" class="md-nav__button md-logo" aria-label="Godot Gaussian Splatting Docs" data-md-component="logo">
+    <a href=".." title="Godot Gaussian Splatting Docs" class="md-nav__button md-logo" aria-label="Godot Gaussian Splatting Docs" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -228,7 +228,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href=".." class="md-nav__link">
         
   
   
@@ -255,7 +255,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../BUILDING/" class="md-nav__link">
+      <a href="../BUILDING/" class="md-nav__link">
         
   
   
@@ -282,7 +282,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../timing_metrics_reference/" class="md-nav__link">
+      <a href="../timing_metrics_reference/" class="md-nav__link">
         
   
   
@@ -361,7 +361,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/gaussian_data/" class="md-nav__link">
+      <a href="../api/gaussian_data/" class="md-nav__link">
         
   
   
@@ -389,7 +389,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/gaussian_splat_asset/" class="md-nav__link">
+      <a href="../api/gaussian_splat_asset/" class="md-nav__link">
         
   
   
@@ -417,7 +417,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/gaussian_splat_container/" class="md-nav__link">
+      <a href="../api/gaussian_splat_container/" class="md-nav__link">
         
   
   
@@ -445,7 +445,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/gaussian_splat_dynamic_instance3d/" class="md-nav__link">
+      <a href="../api/gaussian_splat_dynamic_instance3d/" class="md-nav__link">
         
   
   
@@ -473,7 +473,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/gaussian_splat_manager/" class="md-nav__link">
+      <a href="../api/gaussian_splat_manager/" class="md-nav__link">
         
   
   
@@ -501,7 +501,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/gaussian_splat_node3d/" class="md-nav__link">
+      <a href="../api/gaussian_splat_node3d/" class="md-nav__link">
         
   
   
@@ -529,7 +529,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/gaussian_splat_renderer/" class="md-nav__link">
+      <a href="../api/gaussian_splat_renderer/" class="md-nav__link">
         
   
   
@@ -557,7 +557,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/gaussian_splat_world3d/" class="md-nav__link">
+      <a href="../api/gaussian_splat_world3d/" class="md-nav__link">
         
   
   
@@ -585,7 +585,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/gdscript_reference/" class="md-nav__link">
+      <a href="../api/gdscript_reference/" class="md-nav__link">
         
   
   
@@ -613,7 +613,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/internal-classes/" class="md-nav__link">
+      <a href="../api/internal-classes/" class="md-nav__link">
         
   
   
@@ -641,7 +641,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/shader_reference/" class="md-nav__link">
+      <a href="../api/shader_reference/" class="md-nav__link">
         
   
   
@@ -728,7 +728,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/lighting-system/" class="md-nav__link">
+      <a href="../architecture/lighting-system/" class="md-nav__link">
         
   
   
@@ -756,7 +756,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/overview/" class="md-nav__link">
+      <a href="../architecture/overview/" class="md-nav__link">
         
   
   
@@ -784,7 +784,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/render-pipeline/" class="md-nav__link">
+      <a href="../architecture/render-pipeline/" class="md-nav__link">
         
   
   
@@ -871,7 +871,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../contributor/onboarding/" class="md-nav__link">
+      <a href="../contributor/onboarding/" class="md-nav__link">
         
   
   
@@ -958,7 +958,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../development/docs-site/" class="md-nav__link">
+      <a href="../development/docs-site/" class="md-nav__link">
         
   
   
@@ -986,7 +986,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../development/screenshot-capture-spec/" class="md-nav__link">
+      <a href="../development/screenshot-capture-spec/" class="md-nav__link">
         
   
   
@@ -1018,8 +1018,6 @@
       
   
   
-    
-  
   
   
     
@@ -1032,11 +1030,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
           <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
@@ -1057,7 +1055,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1075,7 +1073,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../animation/" class="md-nav__link">
+      <a href="../features/animation/" class="md-nav__link">
         
   
   
@@ -1103,7 +1101,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../artist_pipeline/" class="md-nav__link">
+      <a href="../features/artist_pipeline/" class="md-nav__link">
         
   
   
@@ -1131,7 +1129,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../color-grading-quick-start/" class="md-nav__link">
+      <a href="../features/color-grading-quick-start/" class="md-nav__link">
         
   
   
@@ -1159,7 +1157,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../media/" class="md-nav__link">
+      <a href="../features/media/" class="md-nav__link">
         
   
   
@@ -1184,37 +1182,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    PLY Loader
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../features/ply-loader/" class="md-nav__link">
         
   
   
@@ -1230,81 +1201,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#purpose" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Purpose
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Usage
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#api" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        API
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#examples" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Examples
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1317,7 +1213,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../streaming/" class="md-nav__link">
+      <a href="../features/streaming/" class="md-nav__link">
         
   
   
@@ -1404,7 +1300,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../getting-started/installation/" class="md-nav__link">
+      <a href="../getting-started/installation/" class="md-nav__link">
         
   
   
@@ -1432,7 +1328,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../getting-started/quick-start/" class="md-nav__link">
+      <a href="../getting-started/quick-start/" class="md-nav__link">
         
   
   
@@ -1519,7 +1415,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../governance/contribution-standards/" class="md-nav__link">
+      <a href="../governance/contribution-standards/" class="md-nav__link">
         
   
   
@@ -1551,8 +1447,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -1563,11 +1461,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" checked>
         
           
           <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="">
@@ -1588,7 +1486,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_11">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1603,10 +1501,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../migration/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration Guide and Compatibility Checklist
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1622,6 +1547,92 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#purpose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Purpose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migration-data-contract-required-per-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration data contract (required per release)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrade-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrade checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-entry-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Release entry template
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ownership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ownership
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1693,7 +1704,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/build-test-ci/" class="md-nav__link">
+      <a href="../reference/build-test-ci/" class="md-nav__link">
         
   
   
@@ -1721,7 +1732,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/color-grading/" class="md-nav__link">
+      <a href="../reference/color-grading/" class="md-nav__link">
         
   
   
@@ -1749,7 +1760,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/compatibility-matrix/" class="md-nav__link">
+      <a href="../reference/compatibility-matrix/" class="md-nav__link">
         
   
   
@@ -1777,7 +1788,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/project-settings/" class="md-nav__link">
+      <a href="../reference/project-settings/" class="md-nav__link">
         
   
   
@@ -1864,7 +1875,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reports/docs_assessment_2026-03-19/" class="md-nav__link">
+      <a href="../reports/docs_assessment_2026-03-19/" class="md-nav__link">
         
   
   
@@ -1892,7 +1903,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reports/docs_remediation_summary/" class="md-nav__link">
+      <a href="../reports/docs_remediation_summary/" class="md-nav__link">
         
   
   
@@ -1920,7 +1931,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reports/documentation-coverage/" class="md-nav__link">
+      <a href="../reports/documentation-coverage/" class="md-nav__link">
         
   
   
@@ -1948,7 +1959,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reports/documentation-gaps/" class="md-nav__link">
+      <a href="../reports/documentation-gaps/" class="md-nav__link">
         
   
   
@@ -2035,7 +2046,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../style/documentation-style-guide/" class="md-nav__link">
+      <a href="../style/documentation-style-guide/" class="md-nav__link">
         
   
   
@@ -2122,7 +2133,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../testing/benchmark-suite/" class="md-nav__link">
+      <a href="../testing/benchmark-suite/" class="md-nav__link">
         
   
   
@@ -2150,7 +2161,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../testing/setup-guide/" class="md-nav__link">
+      <a href="../testing/setup-guide/" class="md-nav__link">
         
   
   
@@ -2178,7 +2189,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../testing/unified-benchmark/" class="md-nav__link">
+      <a href="../testing/unified-benchmark/" class="md-nav__link">
         
   
   
@@ -2265,7 +2276,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../troubleshooting/recurring-issues/" class="md-nav__link">
+      <a href="../troubleshooting/recurring-issues/" class="md-nav__link">
         
   
   
@@ -2352,7 +2363,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user/quickstart/" class="md-nav__link">
+      <a href="../user/quickstart/" class="md-nav__link">
         
   
   
@@ -2429,7 +2440,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user/manual/concepts/" class="md-nav__link">
+      <a href="../user/manual/concepts/" class="md-nav__link">
         
   
   
@@ -2457,7 +2468,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user/manual/faq/" class="md-nav__link">
+      <a href="../user/manual/faq/" class="md-nav__link">
         
   
   
@@ -2485,7 +2496,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user/manual/lighting-behavior/" class="md-nav__link">
+      <a href="../user/manual/lighting-behavior/" class="md-nav__link">
         
   
   
@@ -2513,7 +2524,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user/manual/performance-presets/" class="md-nav__link">
+      <a href="../user/manual/performance-presets/" class="md-nav__link">
         
   
   
@@ -2541,7 +2552,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user/manual/runtime-behavior/" class="md-nav__link">
+      <a href="../user/manual/runtime-behavior/" class="md-nav__link">
         
   
   
@@ -2569,7 +2580,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user/manual/workflows/" class="md-nav__link">
+      <a href="../user/manual/workflows/" class="md-nav__link">
         
   
   
@@ -2664,7 +2675,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../workflows/GSPLATWORLD_BAKE/" class="md-nav__link">
+      <a href="../workflows/GSPLATWORLD_BAKE/" class="md-nav__link">
         
   
   
@@ -2692,7 +2703,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../workflows/importing/" class="md-nav__link">
+      <a href="../workflows/importing/" class="md-nav__link">
         
   
   
@@ -2758,10 +2769,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#usage" class="md-nav__link">
+  <a href="#current-scope" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Usage
+        Current scope
       
     </span>
   </a>
@@ -2769,10 +2780,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#api" class="md-nav__link">
+  <a href="#migration-data-contract-required-per-release" class="md-nav__link">
     <span class="md-ellipsis">
       
-        API
+        Migration data contract (required per release)
       
     </span>
   </a>
@@ -2780,10 +2791,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#examples" class="md-nav__link">
+  <a href="#upgrade-checklist" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Examples
+        Upgrade checklist
       
     </span>
   </a>
@@ -2791,10 +2802,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
+  <a href="#release-entry-template" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Troubleshooting
+        Release entry template
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ownership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ownership
       
     </span>
   </a>
@@ -2821,293 +2843,63 @@
   
 
 
-<h1 id="ply-loader">PLY Loader<a class="headerlink" href="#ply-loader" title="Permanent link">&para;</a></h1>
-<p>Last updated: 2026-02-13</p>
+<h1 id="migration-guide-and-compatibility-checklist">Migration Guide and Compatibility Checklist<a class="headerlink" href="#migration-guide-and-compatibility-checklist" title="Permanent link">&para;</a></h1>
 <h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">&para;</a></h2>
-<p>Load and inspect Gaussian PLY data with <code>PLYLoader</code>, or load and save PLY through <code>GaussianData</code>.</p>
-<h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Step</th>
-<th>Action</th>
-<th>Implementation reference</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>Use <code>GaussianData.load_from_file(path)</code> for runtime loading.</td>
-<td><code>modules/gaussian_splatting/core/gaussian_data.cpp:174</code>, <code>modules/gaussian_splatting/core/gaussian_data.cpp:969</code></td>
-</tr>
-<tr>
-<td>2</td>
-<td>Use <code>PLYLoader.load_file(path)</code> when you need property inspection or load statistics.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:61</code>, <code>modules/gaussian_splatting/io/ply_loader.cpp:69</code></td>
-</tr>
-<tr>
-<td>3</td>
-<td>Use <code>GaussianData.save_to_file(path)</code> to export binary little-endian PLY.</td>
-<td><code>modules/gaussian_splatting/core/gaussian_data.cpp:175</code>, <code>modules/gaussian_splatting/core/gaussian_data.cpp:1064</code>, <code>modules/gaussian_splatting/core/gaussian_data.cpp:1074</code></td>
-</tr>
-<tr>
-<td>4</td>
-<td>In editor import flow, use importer <code>gaussian_splat_ply</code> which outputs <code>GaussianSplatAsset</code> (<code>.tres</code>).</td>
-<td><code>modules/gaussian_splatting/io/resource_importer_ply.cpp:137</code>, <code>modules/gaussian_splatting/io/resource_importer_ply.cpp:153</code>, <code>modules/gaussian_splatting/io/resource_importer_ply.cpp:149</code></td>
-</tr>
-</tbody>
-</table>
-<h2 id="api">API<a class="headerlink" href="#api" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>API</th>
-<th>Type</th>
-<th>Behavior</th>
-<th>Implementation reference</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>GaussianData.load_from_file(path)</code></td>
-<td>Runtime method</td>
-<td>Routes by extension and loads PLY through <code>PLYLoader</code> unless extension is <code>.spz</code>.</td>
-<td><code>modules/gaussian_splatting/io/gaussian_data_loader.cpp:9</code>, <code>modules/gaussian_splatting/io/gaussian_data_loader.cpp:29</code></td>
-</tr>
-<tr>
-<td><code>GaussianData.save_to_file(path)</code></td>
-<td>Runtime method</td>
-<td>Writes PLY with position, SH DC, scale, rotation, opacity, and painterly fields.</td>
-<td><code>modules/gaussian_splatting/core/gaussian_data.cpp:1077</code>, <code>modules/gaussian_splatting/core/gaussian_data.cpp:1089</code>, <code>modules/gaussian_splatting/core/gaussian_data.cpp:1108</code></td>
-</tr>
-<tr>
-<td><code>PLYLoader.load_file(path)</code></td>
-<td>Runtime method</td>
-<td>Parses header, optionally uses <code>.gsplatworld</code> cache, then parses binary or ASCII vertex data.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:69</code>, <code>modules/gaussian_splatting/io/ply_loader.cpp:97</code>, <code>modules/gaussian_splatting/io/ply_loader.cpp:112</code></td>
-</tr>
-<tr>
-<td><code>PLYLoader.get_property_deficiencies()</code></td>
-<td>Runtime method</td>
-<td>Returns missing required and optional PLY properties.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:907</code></td>
-</tr>
-<tr>
-<td><code>PLYLoader.get_load_statistics()</code></td>
-<td>Runtime method</td>
-<td>Returns count, format, property count, timings, cache-hit flag, and bounds.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:885</code></td>
-</tr>
-</tbody>
-</table>
-<table>
-<thead>
-<tr>
-<th>PLY property set</th>
-<th>Required</th>
-<th>Notes</th>
-<th>Implementation reference</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>x,y,z</code></td>
-<td>Yes</td>
-<td>Position fields are required by validation and deficiency checks.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:911</code>, <code>modules/gaussian_splatting/io/resource_importer_ply.cpp:482</code></td>
-</tr>
-<tr>
-<td><code>f_dc_0,f_dc_1,f_dc_2</code></td>
-<td>Yes</td>
-<td>Color is read as SH DC and converted using <code>SH_C0</code>.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:336</code>, <code>modules/gaussian_splatting/io/ply_loader.cpp:692</code></td>
-</tr>
-<tr>
-<td><code>scale_0,scale_1,scale_2</code></td>
-<td>Yes</td>
-<td>Scale is decoded with <code>exp</code>.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:413</code></td>
-</tr>
-<tr>
-<td><code>rot_0..rot_3</code></td>
-<td>Yes</td>
-<td>Rotation is read as quaternion and normalized.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:419</code>, <code>modules/gaussian_splatting/io/ply_loader.cpp:424</code></td>
-</tr>
-<tr>
-<td><code>opacity</code></td>
-<td>Yes</td>
-<td>Opacity is decoded as sigmoid from logit.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:427</code></td>
-</tr>
-<tr>
-<td><code>nx,ny,nz</code></td>
-<td>No</td>
-<td>If present, loader enables 2D mode.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:323</code>, <code>modules/gaussian_splatting/io/ply_loader.cpp:327</code></td>
-</tr>
-<tr>
-<td><code>palette_id,brush_axis_u,brush_axis_v,stroke_age</code></td>
-<td>No</td>
-<td>Painterly metadata is loaded when present and written on save.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:331</code>, <code>modules/gaussian_splatting/core/gaussian_data.cpp:1108</code></td>
-</tr>
-<tr>
-<td><code>f_rest_*</code></td>
-<td>No</td>
-<td>Higher-order SH is repacked from channel-major to coefficient-major RGB.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:703</code>, <code>modules/gaussian_splatting/io/ply_loader.cpp:785</code></td>
-</tr>
-</tbody>
-</table>
-<table>
-<thead>
-<tr>
-<th>Format path</th>
-<th>Read support</th>
-<th>Write support</th>
-<th>Implementation reference</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ascii</code></td>
-<td>Yes</td>
-<td>No</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:158</code>, <code>modules/gaussian_splatting/io/ply_loader.cpp:517</code></td>
-</tr>
-<tr>
-<td><code>binary_little_endian</code></td>
-<td>Yes</td>
-<td>Yes</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:152</code>, <code>modules/gaussian_splatting/core/gaussian_data.cpp:1074</code></td>
-</tr>
-<tr>
-<td><code>binary_big_endian</code></td>
-<td>Yes</td>
-<td>No</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:155</code>, <code>modules/gaussian_splatting/io/ply_loader.cpp:807</code></td>
-</tr>
-</tbody>
-</table>
-<table>
-<thead>
-<tr>
-<th>Import option</th>
-<th>Default</th>
-<th>Effect</th>
-<th>Implementation reference</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>quality/preset</code></td>
-<td>preset-specific</td>
-<td>Chooses preset baseline (<code>mobile</code> to <code>custom</code>).</td>
-<td><code>modules/gaussian_splatting/io/resource_importer_ply.cpp:175</code></td>
-</tr>
-<tr>
-<td><code>quality/max_splats</code></td>
-<td>preset-specific</td>
-<td>Caps final splat count after import processing.</td>
-<td><code>modules/gaussian_splatting/io/resource_importer_ply.cpp:185</code>, <code>modules/gaussian_splatting/io/resource_importer_ply.cpp:308</code></td>
-</tr>
-<tr>
-<td><code>quality/density_multiplier</code></td>
-<td>preset-specific</td>
-<td>Reduces density and can merge source ranges.</td>
-<td><code>modules/gaussian_splatting/io/resource_importer_ply.cpp:189</code>, <code>modules/gaussian_splatting/io/resource_importer_ply.cpp:309</code></td>
-</tr>
-<tr>
-<td><code>validation/validate_required_properties</code></td>
-<td><code>true</code></td>
-<td>Fails import if required properties are missing or invalid.</td>
-<td><code>modules/gaussian_splatting/io/resource_importer_ply.cpp:196</code>, <code>modules/gaussian_splatting/io/resource_importer_ply.cpp:476</code></td>
-</tr>
-<tr>
-<td><code>validation/warn_missing_optional</code></td>
-<td><code>true</code></td>
-<td>Logs optional property presence and omissions.</td>
-<td><code>modules/gaussian_splatting/io/resource_importer_ply.cpp:198</code>, <code>modules/gaussian_splatting/io/resource_importer_ply.cpp:539</code></td>
-</tr>
-<tr>
-<td><code>preview/generate_thumbnail</code></td>
-<td><code>true</code></td>
-<td>Generates and stores thumbnail in imported asset metadata.</td>
-<td><code>modules/gaussian_splatting/io/resource_importer_ply.cpp:214</code>, <code>modules/gaussian_splatting/io/resource_importer_ply.cpp:381</code></td>
-</tr>
-</tbody>
-</table>
-<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="k">extends</span><span class="w"> </span><span class="n">Node</span>
+<p>Provide a release-to-release upgrade path for Gaussian Splatting users and contributors, with explicit compatibility checks and remediation steps.</p>
+<h2 id="current-scope">Current scope<a class="headerlink" href="#current-scope" title="Permanent link">&para;</a></h2>
+<p>This guide is intentionally process-first because a complete versioned delta requires release history curation (tags/changelog/PR-level breakage records).</p>
+<p>Use this page as the canonical migration template for each future release.</p>
+<h2 id="migration-data-contract-required-per-release">Migration data contract (required per release)<a class="headerlink" href="#migration-data-contract-required-per-release" title="Permanent link">&para;</a></h2>
+<p>For each release, fill these sections:</p>
+<ol>
+<li>Version transition (<code>from -&gt; to</code>) and release date.</li>
+<li>Breaking API changes (class/method/property/signal changes).</li>
+<li>Project setting changes (<code>added</code>, <code>renamed</code>, <code>removed</code>, <code>default changed</code>).</li>
+<li>Asset/workflow changes (import, bake, runtime behavior).</li>
+<li>Validation command updates (build/test/benchmark docs).</li>
+<li>Rollback and mitigation guidance.</li>
+</ol>
+<h2 id="upgrade-checklist">Upgrade checklist<a class="headerlink" href="#upgrade-checklist" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[ ] Build commands validated against <a href="../reference/build-test-ci/">../reference/build-test-ci.md</a>.</li>
+<li>[ ] Project settings diff reviewed against <a href="../reference/project-settings/">../reference/project-settings.md</a>.</li>
+<li>[ ] Import and bake workflows revalidated:</li>
+<li><a href="../workflows/importing/">../workflows/importing.md</a></li>
+<li><a href="../workflows/GSPLATWORLD_BAKE/">../workflows/GSPLATWORLD_BAKE.md</a></li>
+<li>[ ] Runtime smoke run completed from <a href="../getting-started/quick-start/">../getting-started/quick-start.md</a>.</li>
+<li>[ ] Troubleshooting updates added to <a href="../troubleshooting/recurring-issues/">../troubleshooting/recurring-issues.md</a> for newly observed regressions.</li>
+<li>[ ] Compatibility evidence updated in:</li>
+<li><a href="../reference/compatibility_sources.yaml">../reference/compatibility_sources.yaml</a></li>
+<li><a href="../reference/compatibility-matrix/">../reference/compatibility-matrix.md</a></li>
+</ul>
+<h2 id="release-entry-template">Release entry template<a class="headerlink" href="#release-entry-template" title="Permanent link">&para;</a></h2>
+<p>Copy this block for each release transition:</p>
+<div class="highlight"><pre><span></span><code><span class="gu">## vX.Y.Z -&gt; vA.B.C</span>
 
-<span class="k">func</span><span class="w"> </span><span class="n">load_and_save_ply</span><span class="p">()</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="p">:</span>
-<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">data</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">GaussianData</span><span class="o">.</span><span class="n">new</span><span class="p">()</span>
-<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">data</span><span class="o">.</span><span class="n">load_from_file</span><span class="p">(</span><span class="s2">&quot;res://models/scan.ply&quot;</span><span class="p">)</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">OK</span><span class="p">:</span>
-<span class="w">        </span><span class="n">push_error</span><span class="p">(</span><span class="s2">&quot;load_from_file failed: </span><span class="si">%d</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">err</span><span class="p">)</span>
-<span class="w">        </span><span class="k">return</span>
+<span class="gu">### Breaking changes</span>
+<span class="k">-</span><span class="w"> </span>...
 
-<span class="w">    </span><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Loaded splats:&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">data</span><span class="o">.</span><span class="n">get_count</span><span class="p">())</span>
-<span class="w">    </span><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Bounds:&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">data</span><span class="o">.</span><span class="n">get_aabb</span><span class="p">())</span>
+<span class="gu">### Project settings migration</span>
+<span class="k">-</span><span class="w"> </span>old_key -&gt; new_key
+<span class="k">-</span><span class="w"> </span>removed_key (replacement: ...)
 
-<span class="w">    </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">data</span><span class="o">.</span><span class="n">save_to_file</span><span class="p">(</span><span class="s2">&quot;user://scan_out.ply&quot;</span><span class="p">)</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">OK</span><span class="p">:</span>
-<span class="w">        </span><span class="n">push_error</span><span class="p">(</span><span class="s2">&quot;save_to_file failed: </span><span class="si">%d</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">err</span><span class="p">)</span>
+<span class="gu">### Workflow changes</span>
+<span class="k">-</span><span class="w"> </span>import: ...
+<span class="k">-</span><span class="w"> </span>bake: ...
+<span class="k">-</span><span class="w"> </span>runtime: ...
+
+<span class="gu">### Validation updates</span>
+<span class="k">-</span><span class="w"> </span>command changes: ...
+
+<span class="gu">### Known risks and mitigations</span>
+<span class="k">-</span><span class="w"> </span>risk: ...
+<span class="k">-</span><span class="w"> </span>mitigation: ...
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><span class="k">extends</span><span class="w"> </span><span class="n">Node</span>
-
-<span class="k">func</span><span class="w"> </span><span class="n">inspect_ply_header</span><span class="p">()</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="p">:</span>
-<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">loader</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">PLYLoader</span><span class="o">.</span><span class="n">new</span><span class="p">()</span>
-<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">loader</span><span class="o">.</span><span class="n">load_file</span><span class="p">(</span><span class="s2">&quot;res://models/scan.ply&quot;</span><span class="p">)</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">OK</span><span class="p">:</span>
-<span class="w">        </span><span class="n">push_error</span><span class="p">(</span><span class="s2">&quot;PLYLoader.load_file failed: </span><span class="si">%d</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">err</span><span class="p">)</span>
-<span class="w">        </span><span class="k">return</span>
-
-<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">stats</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">loader</span><span class="o">.</span><span class="n">get_load_statistics</span><span class="p">()</span>
-<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">summary</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">loader</span><span class="o">.</span><span class="n">get_property_summary</span><span class="p">()</span>
-
-<span class="w">    </span><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Stats:&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">stats</span><span class="p">)</span>
-<span class="w">    </span><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Missing required:&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">summary</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;missing_required&quot;</span><span class="p">,</span><span class="w"> </span><span class="nb nb-Type">PackedStringArray</span><span class="p">()))</span>
-<span class="w">    </span><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Missing optional:&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">summary</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;missing_optional&quot;</span><span class="p">,</span><span class="w"> </span><span class="nb nb-Type">PackedStringArray</span><span class="p">()))</span>
-</code></pre></div>
-<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Symptom</th>
-<th>Cause</th>
-<th>Fix</th>
-<th>Implementation reference</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ERR_FILE_CORRUPT</code> on load</td>
-<td>Required properties are missing in source PLY.</td>
-<td>Ensure <code>x,y,z</code>, <code>f_dc_0..2</code>, <code>scale_0..2</code>, <code>rot_0..3</code>, and <code>opacity</code> exist.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:911</code>, <code>modules/gaussian_splatting/core/gaussian_data.cpp:977</code></td>
-</tr>
-<tr>
-<td>Import fails during validation</td>
-<td>Validation found missing fields or invalid values.</td>
-<td>Re-export with required fields and finite position/scale/opacity values.</td>
-<td><code>modules/gaussian_splatting/io/resource_importer_ply.cpp:482</code>, <code>modules/gaussian_splatting/io/resource_importer_ply.cpp:531</code></td>
-</tr>
-<tr>
-<td>2D surfel mode is not enabled</td>
-<td>Source PLY does not include full normal triplet.</td>
-<td>Export <code>nx,ny,nz</code> for each vertex.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:521</code>, <code>modules/gaussian_splatting/io/ply_loader.cpp:526</code></td>
-</tr>
-<tr>
-<td>Repeated loads are slower than expected</td>
-<td>Cache path is disabled or cache metadata mismatch prevents reuse.</td>
-<td>Enable <code>rendering/gaussian_splatting/import/use_gsplatworld_cache</code> and keep source timestamp and size stable.</td>
-<td><code>modules/gaussian_splatting/io/ply_loader.cpp:46</code>, <code>modules/gaussian_splatting/io/ply_loader.cpp:242</code></td>
-</tr>
-</tbody>
-</table>
+<h2 id="ownership">Ownership<a class="headerlink" href="#ownership" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Primary owner: release manager / module maintainer.</li>
+<li>Supporting owners: docs maintainer, QA owner.</li>
+</ul>
 
 
 
@@ -3163,10 +2955,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>
