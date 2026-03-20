@@ -1835,6 +1835,16 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
             }
         }
 
+        if (p_inputs.max_splats > 0 && candidate_indices.size() > p_inputs.max_splats) {
+            const uint32_t previous_count = static_cast<uint32_t>(candidate_indices.size());
+            candidate_indices.resize(p_inputs.max_splats);
+            if (!candidate_weights.is_empty() && candidate_weights.size() > p_inputs.max_splats) {
+                candidate_weights.resize(p_inputs.max_splats);
+            }
+            culling_state.culled_by_limit += previous_count - p_inputs.max_splats;
+            candidate_count = static_cast<uint32_t>(candidate_indices.size());
+        }
+
         culling_state.culled_indices.reserve(candidate_indices.size());
         culling_state.culled_distances_sq.reserve(candidate_indices.size());
         culling_state.culled_importance_weights.reserve(candidate_indices.size());
@@ -1975,6 +1985,14 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
             culling_state.culled_indices.push_back(i);
             culling_state.culled_distances_sq.push_back(distance_sq);
             culling_state.culled_importance_weights.push_back(importance_weight);
+        }
+
+        if (p_inputs.max_splats > 0 && culling_state.culled_indices.size() > p_inputs.max_splats) {
+            const uint32_t previous_count = static_cast<uint32_t>(culling_state.culled_indices.size());
+            culling_state.culled_indices.resize(p_inputs.max_splats);
+            culling_state.culled_distances_sq.resize(p_inputs.max_splats);
+            culling_state.culled_importance_weights.resize(p_inputs.max_splats);
+            culling_state.culled_by_limit += previous_count - p_inputs.max_splats;
         }
     }
 
