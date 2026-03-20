@@ -320,6 +320,7 @@ private:
     // Cluster-level coarse culling
     Ref<ClusterCuller> cluster_culler;
     bool clusters_need_rebuild = true;
+    uint64_t cluster_source_data_instance_id = 0;
 
     // PERF (#634): Batched async readback to reduce CPU/GPU sync points
     Ref<BatchedAsyncReadback> batched_readback;
