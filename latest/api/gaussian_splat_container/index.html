@@ -11,10 +11,10 @@
       
       
       
-        <link rel="prev" href="../build-troubleshooting/">
+        <link rel="prev" href="../gaussian_splat_asset/">
       
       
-        <link rel="next" href="../recurring-issues/">
+        <link rel="next" href="../gaussian_splat_dynamic_instance3d/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>Quick Reference - Godot Gaussian Splatting Docs</title>
+        <title>GaussianSplatContainer API Reference - Godot Gaussian Splatting Docs</title>
       
     
     
@@ -66,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#quick-reference" class="md-skip">
+        <a href="#gaussiansplatcontainer-api-reference" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Quick Reference
+              GaussianSplatContainer API Reference
             
           </span>
         </div>
@@ -306,8 +306,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -318,11 +320,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -343,7 +345,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -361,7 +363,299 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/gaussian_splat_node3d/" class="md-nav__link">
+      <a href="../gaussian_data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GaussianData API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gaussian_splat_asset/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GaussianSplatAsset API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GaussianSplatContainer API Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GaussianSplatContainer API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#purpose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Purpose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#enums" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enums
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Properties
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Methods
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#signals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signals
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gaussian_splat_dynamic_instance3d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GaussianSplatDynamicInstance3D API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gaussian_splat_manager/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GaussianSplatManager API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gaussian_splat_node3d/" class="md-nav__link">
         
   
   
@@ -389,7 +683,63 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/gdscript_reference/" class="md-nav__link">
+      <a href="../gaussian_splat_renderer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GaussianSplatRenderer API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gaussian_splat_world3d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GaussianSplatWorld3D API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gdscript_reference/" class="md-nav__link">
         
   
   
@@ -417,7 +767,35 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/shader_reference/" class="md-nav__link">
+      <a href="../internal-classes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internal Classes Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shader_reference/" class="md-nav__link">
         
   
   
@@ -755,6 +1133,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/screenshot-capture-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Screenshot Capture Specification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -813,6 +1219,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/animation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Animation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -913,6 +1347,34 @@
     
   
     PLY Loader
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/streaming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Streaming
   
 
     
@@ -1365,6 +1827,62 @@
   
   
     <li class="md-nav__item">
+      <a href="../../reports/docs_assessment_2026-03-19/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation Assessment Report — Godot Gaussian Splatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/docs_remediation_summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation Remediation Summary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../reports/documentation-coverage/" class="md-nav__link">
         
   
@@ -1655,8 +2173,6 @@
       
   
   
-    
-  
   
   
     
@@ -1669,11 +2185,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" >
         
           
           <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="">
@@ -1694,7 +2210,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_15">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1712,73 +2228,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../build-troubleshooting/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Build Troubleshooting
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-    
-  
-  
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Quick Reference
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../recurring-issues/" class="md-nav__link">
+      <a href="../../troubleshooting/recurring-issues/" class="md-nav__link">
         
   
   
@@ -1872,7 +2322,7 @@
   <span class="md-ellipsis">
     
   
-    User Quickstart (Artists / Non-Programmers)
+    Quick Start (Artist / Non-Programmer Lane)
   
 
     
@@ -2253,6 +2703,119 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#purpose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Purpose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#enums" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enums
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Properties
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Methods
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#signals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signals
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -2271,11 +2834,225 @@
   
 
 
-<h1 id="quick-reference">Quick Reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h1>
-<p>This page has been consolidated into the canonical recurring issues guide:</p>
-<ul>
-<li><a href="../recurring-issues/">recurring-issues.md</a></li>
-</ul>
+<h1 id="gaussiansplatcontainer-api-reference">GaussianSplatContainer API Reference<a class="headerlink" href="#gaussiansplatcontainer-api-reference" title="Permanent link">&para;</a></h1>
+<h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">&para;</a></h2>
+<p>Use <code>GaussianSplatContainer</code> to merge multiple child <code>GaussianSplatNode3D</code> nodes into a single chunk-based Gaussian splat dataset using spatial subdivision (<code>modules/gaussian_splatting/nodes/gaussian_splat_container.h:15</code>).</p>
+<h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
+<table>
+  <thead>
+    <tr>
+      <th>Task</th>
+      <th>Primary API</th>
+      <th>Implementation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Merge child splat nodes on scene start.</td>
+      <td><code>set_merge_on_ready(true)</code></td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:44</code></td>
+    </tr>
+    <tr>
+      <td>Trigger a merge manually.</td>
+      <td><code>merge_children()</code></td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:71</code></td>
+    </tr>
+    <tr>
+      <td>Export merged data as a reusable world resource.</td>
+      <td><code>export_world_resource()</code></td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:145</code></td>
+    </tr>
+    <tr>
+      <td>Apply merged data to a target node in one call.</td>
+      <td><code>merge_children_to_node(node)</code></td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:140</code></td>
+    </tr>
+    <tr>
+      <td>Inspect merge results.</td>
+      <td><code>get_chunk_count()</code>, <code>get_chunk_sizes()</code>, <code>get_chunk_aabbs()</code></td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:226</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="api">API<a class="headerlink" href="#api" title="Permanent link">&para;</a></h2>
+<h3 id="enums">Enums<a class="headerlink" href="#enums" title="Permanent link">&para;</a></h3>
+<p>This class does not define any enums.</p>
+<h3 id="properties">Properties<a class="headerlink" href="#properties" title="Permanent link">&para;</a></h3>
+<table>
+  <thead>
+    <tr>
+      <th>Inspector path</th>
+      <th>Type</th>
+      <th>Accessors</th>
+      <th>Notes</th>
+      <th>Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>merge_on_ready</code></td>
+      <td><code>bool</code></td>
+      <td><code>set_merge_on_ready</code>, <code>is_merge_on_ready</code></td>
+      <td>When enabled, automatically calls <code>merge_children()</code> on <code>NOTIFICATION_READY</code>.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:34</code></td>
+    </tr>
+    <tr>
+      <td><code>chunk_size</code></td>
+      <td><code>float</code></td>
+      <td><code>set_chunk_size</code>, <code>get_chunk_size</code></td>
+      <td>Spatial subdivision cell size for merge chunking. Clamped to <code>&gt;= 0.1</code>.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:35</code></td>
+    </tr>
+    <tr>
+      <td><code>hide_children_after_merge</code></td>
+      <td><code>bool</code></td>
+      <td><code>set_hide_children_after_merge</code>, <code>get_hide_children_after_merge</code></td>
+      <td>Hides child <code>GaussianSplatNode3D</code> nodes after a merge completes. Restores visibility on <code>clear_merged_data()</code>.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:36</code></td>
+    </tr>
+    <tr>
+      <td><code>apply_to_target_on_merge</code></td>
+      <td><code>bool</code></td>
+      <td><code>set_apply_to_target_on_merge</code>, <code>is_apply_to_target_on_merge</code></td>
+      <td>When enabled, automatically calls <code>apply_to_node()</code> on the <code>target_node_path</code> node after each merge.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:37</code></td>
+    </tr>
+    <tr>
+      <td><code>target_node_path</code></td>
+      <td><code>NodePath</code></td>
+      <td><code>set_target_node_path</code>, <code>get_target_node_path</code></td>
+      <td>Path to a <code>GaussianSplatWorld3D</code> or <code>GaussianSplatNode3D</code> that receives merged data when <code>apply_to_target_on_merge</code> is enabled.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:38</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 id="methods">Methods<a class="headerlink" href="#methods" title="Permanent link">&para;</a></h3>
+<table>
+  <thead>
+    <tr>
+      <th>Method</th>
+      <th>Behavior</th>
+      <th>Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>merge_children()</code></td>
+      <td>Collects all child <code>GaussianSplatNode3D</code> nodes with valid assets, merges their splat data using chunk-based spatial subdivision, optionally hides children and applies to the target node.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:71</code></td>
+    </tr>
+    <tr>
+      <td><code>clear_merged_data()</code></td>
+      <td>Clears chunks, resizes merged data to zero, resets bounds, and restores child visibility if <code>hide_children_after_merge</code> is enabled.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:159</code></td>
+    </tr>
+    <tr>
+      <td><code>apply_to_renderer(renderer)</code></td>
+      <td>Pushes merged <code>GaussianData</code> and static chunks to the given <code>GaussianSplatRenderer</code>. Returns <code>ERR_UNAVAILABLE</code> when no merged data exists.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:86</code></td>
+    </tr>
+    <tr>
+      <td><code>apply_to_node(node)</code></td>
+      <td>Applies merged data to a <code>GaussianSplatWorld3D</code> (via <code>export_world_resource()</code>) or a <code>GaussianSplatNode3D</code> (via asset conversion). Returns <code>ERR_INVALID_PARAMETER</code> for unsupported node types.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:102</code></td>
+    </tr>
+    <tr>
+      <td><code>merge_children_to_node(node)</code></td>
+      <td>Convenience method that calls <code>merge_children()</code> followed by <code>apply_to_node(node)</code>.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:140</code></td>
+    </tr>
+    <tr>
+      <td><code>export_world_resource()</code></td>
+      <td>Creates and returns a new <code>GaussianSplatWorld</code> resource populated with the merged data, bounds, and static chunks. Returns null when no merged data is available.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:145</code></td>
+    </tr>
+    <tr>
+      <td><code>get_merged_data()</code></td>
+      <td>Returns the current merged <code>GaussianData</code> resource, or null if no merge has been performed.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:29</code></td>
+    </tr>
+    <tr>
+      <td><code>get_chunk_count()</code></td>
+      <td>Returns the number of spatial chunks produced by the most recent merge.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:30</code></td>
+    </tr>
+    <tr>
+      <td><code>get_chunk_sizes()</code></td>
+      <td>Returns a <code>PackedInt32Array</code> where each element is the index count of the corresponding chunk.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:226</code></td>
+    </tr>
+    <tr>
+      <td><code>get_chunk_aabbs()</code></td>
+      <td>Returns an <code>Array</code> of <code>AABB</code> values, one per chunk, representing each chunk's bounding box.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:235</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 id="signals">Signals<a class="headerlink" href="#signals" title="Permanent link">&para;</a></h3>
+<p>This class does not define any signals.</p>
+<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="k">extends</span><span class="w"> </span><span class="n">Node3D</span>
+
+<span class="c1">## Merge children at startup and push to a GaussianSplatWorld3D target.</span>
+<span class="err">@</span><span class="k">onready</span><span class="w"> </span><span class="k">var</span><span class="w"> </span><span class="n">container</span><span class="p">:</span><span class="w"> </span><span class="n">GaussianSplatContainer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="n">GaussianSplatContainer</span>
+<span class="err">@</span><span class="k">onready</span><span class="w"> </span><span class="k">var</span><span class="w"> </span><span class="n">world_node</span><span class="p">:</span><span class="w"> </span><span class="n">GaussianSplatWorld3D</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="n">GaussianSplatWorld3D</span>
+
+<span class="k">func</span><span class="w"> </span><span class="n">_ready</span><span class="p">()</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="p">:</span>
+<span class="w">    </span><span class="n">container</span><span class="o">.</span><span class="n">set_chunk_size</span><span class="p">(</span><span class="mf">16.0</span><span class="p">)</span>
+<span class="w">    </span><span class="n">container</span><span class="o">.</span><span class="n">set_hide_children_after_merge</span><span class="p">(</span><span class="bp">true</span><span class="p">)</span>
+<span class="w">    </span><span class="n">container</span><span class="o">.</span><span class="n">merge_children</span><span class="p">()</span>
+<span class="w">    </span><span class="n">container</span><span class="o">.</span><span class="n">apply_to_node</span><span class="p">(</span><span class="n">world_node</span><span class="p">)</span>
+<span class="w">    </span><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Chunks: &quot;</span><span class="p">,</span><span class="w"> </span><span class="n">container</span><span class="o">.</span><span class="n">get_chunk_count</span><span class="p">())</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="k">extends</span><span class="w"> </span><span class="n">Node3D</span>
+
+<span class="c1">## Export merged data to a GaussianSplatWorld resource and save to disk.</span>
+<span class="err">@</span><span class="k">onready</span><span class="w"> </span><span class="k">var</span><span class="w"> </span><span class="n">container</span><span class="p">:</span><span class="w"> </span><span class="n">GaussianSplatContainer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="n">GaussianSplatContainer</span>
+
+<span class="k">func</span><span class="w"> </span><span class="n">export_merged_world</span><span class="p">(</span><span class="n">save_path</span><span class="p">:</span><span class="w"> </span><span class="nb nb-Type">String</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="p">:</span>
+<span class="w">    </span><span class="n">container</span><span class="o">.</span><span class="n">merge_children</span><span class="p">()</span>
+<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">world_resource</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">container</span><span class="o">.</span><span class="n">export_world_resource</span><span class="p">()</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">world_resource</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nb nb-Type">null</span><span class="p">:</span>
+<span class="w">        </span><span class="n">push_warning</span><span class="p">(</span><span class="s2">&quot;No merged data to export.&quot;</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="n">ResourceSaver</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">world_resource</span><span class="p">,</span><span class="w"> </span><span class="n">save_path</span><span class="p">)</span>
+<span class="w">    </span><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Saved &quot;</span><span class="p">,</span><span class="w"> </span><span class="n">container</span><span class="o">.</span><span class="n">get_chunk_count</span><span class="p">(),</span><span class="w"> </span><span class="s2">&quot; chunks to &quot;</span><span class="p">,</span><span class="w"> </span><span class="n">save_path</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<table>
+  <thead>
+    <tr>
+      <th>Problem</th>
+      <th>Action</th>
+      <th>Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>No merged data after calling <code>merge_children()</code>.</td>
+      <td>Verify that child <code>GaussianSplatNode3D</code> nodes have valid <code>splat_asset</code> resources with non-zero splat counts.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:191</code></td>
+    </tr>
+    <tr>
+      <td><code>apply_to_node()</code> returns <code>ERR_INVALID_PARAMETER</code>.</td>
+      <td>The target node must be a <code>GaussianSplatWorld3D</code> or <code>GaussianSplatNode3D</code>. Other node types are not supported.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:120</code></td>
+    </tr>
+    <tr>
+      <td>Target world node warns about non-identity transform.</td>
+      <td>Merged splat data is in world space. Keep the target <code>GaussianSplatWorld3D</code> at the scene origin with an identity transform.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:110</code></td>
+    </tr>
+    <tr>
+      <td><code>target_node_path</code> not found warning during auto-apply.</td>
+      <td>Ensure the <code>target_node_path</code> points to a valid node in the scene tree when <code>apply_to_target_on_merge</code> is enabled.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:79</code></td>
+    </tr>
+  </tbody>
+</table>
 
 
 
