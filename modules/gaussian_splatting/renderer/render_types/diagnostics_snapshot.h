@@ -84,6 +84,13 @@ struct GaussianSplatDiagnosticsSnapshot {
 	uint32_t overlap_record_budget = 0;
 
 	// ---------------------------------------------------------------
+	// SH Cache
+	// ---------------------------------------------------------------
+	uint32_t sh_cache_hits = 0;
+	uint32_t sh_cache_updates = 0;
+	float sh_cache_hit_rate_pct = 0.0f;
+
+	// ---------------------------------------------------------------
 	// Stage Metrics (from pipeline stage outputs)
 	// ---------------------------------------------------------------
 
@@ -110,6 +117,7 @@ struct GaussianSplatDiagnosticsSnapshot {
 	float frame_time_ms = 0.0f;         ///< Wall-clock frame-to-frame time.
 	bool telemetry_active = false;
 	String route_uid;
+	String sort_route_uid;
 	String data_source;
 
 	// ---------------------------------------------------------------
@@ -168,6 +176,11 @@ struct GaussianSplatDiagnosticsSnapshot {
 		overlap_records_used = 0;
 		overlap_record_budget = 0;
 
+		// SH Cache
+		sh_cache_hits = 0;
+		sh_cache_updates = 0;
+		sh_cache_hit_rate_pct = 0.0f;
+
 		// Stage metrics
 		stage_cull_candidate_count = 0;
 		stage_cull_visible_count = 0;
@@ -186,6 +199,7 @@ struct GaussianSplatDiagnosticsSnapshot {
 		frame_time_ms = 0.0f;
 		telemetry_active = false;
 		route_uid = String();
+		sort_route_uid = String();
 		data_source = String();
 
 		// Validity
@@ -247,6 +261,11 @@ struct GaussianSplatDiagnosticsSnapshot {
 		d["overlap_records_used"] = overlap_records_used;
 		d["overlap_record_budget"] = overlap_record_budget;
 
+		// SH Cache
+		d["sh_cache_hits"] = sh_cache_hits;
+		d["sh_cache_updates"] = sh_cache_updates;
+		d["sh_cache_hit_rate_pct"] = sh_cache_hit_rate_pct;
+
 		// Stage metrics
 		d["stage_cull_candidate_count"] = stage_cull_candidate_count;
 		d["stage_cull_visible_count"] = stage_cull_visible_count;
@@ -265,6 +284,7 @@ struct GaussianSplatDiagnosticsSnapshot {
 		d["frame_time_ms"] = frame_time_ms;
 		d["telemetry_active"] = telemetry_active;
 		d["route_uid"] = route_uid;
+		d["sort_route_uid"] = sort_route_uid;
 		d["data_source"] = data_source;
 
 		// Validity

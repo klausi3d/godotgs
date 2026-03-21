@@ -1377,6 +1377,11 @@ void RenderDiagnosticsOrchestrator::build_diagnostics_snapshot() {
 		const TileRenderer::RenderStats tile_stats = tr->get_last_render_stats();
 		snap.overlap_records_used = tile_stats.overlap_records;
 		snap.overlap_record_budget = tile_stats.overlap_record_budget;
+
+		// SH Cache
+		snap.sh_cache_hits = tr->get_sh_cache_hits();
+		snap.sh_cache_updates = tr->get_sh_cache_updates();
+		snap.sh_cache_hit_rate_pct = tr->get_sh_cache_hit_rate_pct();
 	}
 
 	// ---------------------------------------------------------------
@@ -1409,6 +1414,7 @@ void RenderDiagnosticsOrchestrator::build_diagnostics_snapshot() {
 	snap.frame_time_ms = perf.frame_to_frame_time_ms;
 	snap.telemetry_active = !diagnostics_state.last_telemetry_snapshot.is_empty();
 	snap.route_uid = debug_state.route_uid;
+	snap.sort_route_uid = debug_state.sort_route_uid;
 	snap.data_source = perf.data_source;
 
 	// ---------------------------------------------------------------

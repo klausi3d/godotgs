@@ -1,5 +1,4 @@
 #include "performance_monitors.h"
-#include "../renderer/tile_renderer.h"
 #include "../renderer/gaussian_splat_renderer.h"
 #include "../renderer/gaussian_gpu_layout.h"
 #include "../renderer/render_types/diagnostics_snapshot.h"
@@ -51,32 +50,6 @@ void GaussianSplattingPerformanceMonitors::destroy_singleton() {
     if (singleton) {
         memdelete(singleton);
         singleton = nullptr;
-    }
-}
-
-void GaussianSplattingPerformanceMonitors::register_renderer(TileRenderer *p_renderer) {
-    ERR_FAIL_NULL(p_renderer);
-    if (!monitors_registered) {
-        initialize_monitors();
-    }
-
-    // Add to tracking list if not already registered
-    if (!registered_renderers.has(p_renderer)) {
-        registered_renderers.push_back(p_renderer);
-    }
-
-    // Always prefer the most recently registered renderer so monitor values
-    // follow the currently active viewport/session.
-    active_renderer = p_renderer;
-}
-
-void GaussianSplattingPerformanceMonitors::unregister_renderer(TileRenderer *p_renderer) {
-    // Remove from tracking list
-    registered_renderers.erase(p_renderer);
-
-    // If this was the active renderer, switch to another if available
-    if (active_renderer == p_renderer) {
-        active_renderer = registered_renderers.size() > 0 ? registered_renderers[0] : nullptr;
     }
 }
 
@@ -138,8 +111,7 @@ GaussianSplatRenderer *GaussianSplattingPerformanceMonitors::_get_active_splat_r
 }
 
 bool GaussianSplattingPerformanceMonitors::_is_telemetry_active() const {
-    return active_renderer != nullptr || active_splat_renderer != nullptr ||
-            !registered_renderers.is_empty() || !registered_splat_renderers.is_empty();
+    return active_splat_renderer != nullptr || !registered_splat_renderers.is_empty();
 }
 
 Dictionary GaussianSplattingPerformanceMonitors::_get_streaming_analytics() const {
@@ -459,9 +431,7 @@ void GaussianSplattingPerformanceMonitors::cleanup_monitors() {
 
     registered_monitor_ids.clear();
     monitors_registered = false;
-    active_renderer = nullptr;
     active_splat_renderer = nullptr;
-    registered_renderers.clear();
     registered_splat_renderers.clear();
 }
 
@@ -646,7 +616,11 @@ String GaussianSplattingPerformanceMonitors::_get_sort_route_uid() const {
     if (!renderer) {
         return String();
     }
-    return renderer->get_debug_state().sort_route_uid;
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return String();
+    }
+    return snapshot.sort_route_uid;
 }
 
 // ============================================================================
@@ -770,15 +744,39 @@ int GaussianSplattingPerformanceMonitors::_get_index_mismatch_count() const {
 // ============================================================================
 
 int GaussianSplattingPerformanceMonitors::_get_sh_cache_hits() const {
-    return active_renderer ? active_renderer->get_sh_cache_hits() : 0;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return snapshot.sh_cache_hits;
 }
 
 int GaussianSplattingPerformanceMonitors::_get_sh_cache_updates() const {
-    return active_renderer ? active_renderer->get_sh_cache_updates() : 0;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return snapshot.sh_cache_updates;
 }
 
 float GaussianSplattingPerformanceMonitors::_get_sh_cache_hit_rate_pct() const {
-    return active_renderer ? active_renderer->get_sh_cache_hit_rate_pct() : 0.0f;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0.0f;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
+    }
+    return snapshot.sh_cache_hit_rate_pct;
 }
 
 // ============================================================================

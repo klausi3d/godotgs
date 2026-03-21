@@ -136,6 +136,11 @@ TEST_CASE("[Gaussian Diagnostics] Snapshot clear resets all fields to defaults")
     CHECK(snapshot.overlap_records_used == 0);
     CHECK(snapshot.overlap_record_budget == 0);
 
+    // SH cache.
+    CHECK(snapshot.sh_cache_hits == 0);
+    CHECK(snapshot.sh_cache_updates == 0);
+    CHECK(snapshot.sh_cache_hit_rate_pct == 0.0f);
+
     // Stage metrics.
     CHECK(snapshot.stage_cull_candidate_count == 0);
     CHECK(snapshot.stage_cull_visible_count == 0);
@@ -151,6 +156,7 @@ TEST_CASE("[Gaussian Diagnostics] Snapshot clear resets all fields to defaults")
     CHECK(snapshot.frame_time_ms == 0.0f);
     CHECK(!snapshot.telemetry_active);
     CHECK(snapshot.route_uid == String());
+    CHECK(snapshot.sort_route_uid == String());
     CHECK(snapshot.data_source == String());
 }
 
@@ -158,9 +164,9 @@ TEST_CASE("[Gaussian Diagnostics] Snapshot to_dictionary exports every field") {
     GaussianSplatDiagnosticsSnapshot snapshot;
     Dictionary d = snapshot.to_dictionary();
 
-    // The snapshot has exactly 46 fields exported to the dictionary.
-    CHECK_MESSAGE(d.size() == 46,
-            vformat("Expected 46 keys in to_dictionary(), got %d", d.size()));
+    // The snapshot has exactly 50 fields exported to the dictionary.
+    CHECK_MESSAGE(d.size() == 50,
+            vformat("Expected 50 keys in to_dictionary(), got %d", d.size()));
 
     // Pipeline stage timing keys.
     CHECK(d.has("pipeline_frame_time_ms"));
@@ -213,11 +219,17 @@ TEST_CASE("[Gaussian Diagnostics] Snapshot to_dictionary exports every field") {
     CHECK(d.has("stage_raster_painterly_active"));
     CHECK(d.has("stage_composite_executed"));
 
+    // SH cache keys.
+    CHECK(d.has("sh_cache_hits"));
+    CHECK(d.has("sh_cache_updates"));
+    CHECK(d.has("sh_cache_hit_rate_pct"));
+
     // Frame metadata keys.
     CHECK(d.has("frame_index"));
     CHECK(d.has("frame_time_ms"));
     CHECK(d.has("telemetry_active"));
     CHECK(d.has("route_uid"));
+    CHECK(d.has("sort_route_uid"));
     CHECK(d.has("data_source"));
 
     // Validity keys.

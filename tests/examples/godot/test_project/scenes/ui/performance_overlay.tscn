@@ -139,7 +139,7 @@ horizontal_alignment = 2
 
 [node name="pipeline_sort_time_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
 theme_override_font_sizes/font_size = 8
-text = "Sort (GPU)"
+text = "Sort"
 
 [node name="pipeline_sort_time_ms" type="Label" parent="Panel/Columns/Left/GPU"]
 theme_override_font_sizes/font_size = 8

@@ -7,7 +7,6 @@
 #include "core/string/string_name.h"
 #include "core/variant/dictionary.h"
 
-class TileRenderer;
 class GaussianSplatRenderer;
 
 /**
@@ -42,17 +41,6 @@ public:
     static void destroy_singleton();
 
     /**
-     * Register a TileRenderer to be monitored.
-     * The renderer must remain valid for the lifetime of monitoring.
-     */
-    void register_renderer(TileRenderer *p_renderer);
-
-    /**
-     * Unregister a TileRenderer when it's destroyed.
-     */
-    void unregister_renderer(TileRenderer *p_renderer);
-
-    /**
      * Register a GaussianSplatRenderer to be monitored for streaming/LOD metrics.
      * The renderer must remain valid for the lifetime of monitoring.
      */
@@ -85,11 +73,9 @@ private:
 
     // Track all registered renderers to handle multi-viewport scenarios
     // When active renderer is destroyed, we automatically switch to another
-    LocalVector<TileRenderer *> registered_renderers;
     LocalVector<GaussianSplatRenderer *> registered_splat_renderers;
 
     // Currently active renderer used for monitor queries
-    TileRenderer *active_renderer = nullptr;
     GaussianSplatRenderer *active_splat_renderer = nullptr;
     LocalVector<StringName> registered_monitor_ids;
 

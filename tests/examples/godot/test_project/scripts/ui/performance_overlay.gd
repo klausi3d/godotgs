@@ -327,7 +327,8 @@ func _refresh() -> void:
 		fps_node.add_theme_color_override("font_color", fps_color)
 
 	# Pipeline Timing — show N/A when telemetry is inactive
-	if not _has_monitor("pipeline_frame_time_ms"):
+	var _telemetry_on := _has_monitor("telemetry_active") and int(_m("telemetry_active")) == 1
+	if not _telemetry_on:
 		_set_group_na(TIMING_FIELDS)
 	else:
 		var frame = _m("pipeline_frame_time_ms")

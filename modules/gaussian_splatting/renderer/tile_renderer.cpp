@@ -25,7 +25,6 @@
 #include "../logger/gs_logger.h"
 #include "../interfaces/render_device_manager.h"
 #include "../interfaces/sync_policy.h"
-#include "../core/performance_monitors.h"
 #include "../shaders/tile_binning.glsl.gen.h"
 #include "../shaders/tile_prefix_scan.glsl.gen.h"
 #include "../shaders/tile_rasterizer.glsl.gen.h"
@@ -1243,10 +1242,6 @@ TileRenderer::TileRenderer() : debug_stats(*this), params_builder(*this), prefix
     frame_state = TileFrameState();
     shader_compilation_manager = std::make_unique<ShaderCompilationManager>(*this);
 
-    // Register with performance monitors for editor debugger
-    if (GaussianSplattingPerformanceMonitors *monitors = GaussianSplattingPerformanceMonitors::get_singleton()) {
-        monitors->register_renderer(this);
-    }
 }
 
 void TileRenderer::_bind_methods() {
@@ -1350,11 +1345,7 @@ bool TileRenderer::_is_main_rendering_device(RenderingDevice *p_device) {
 }
 
 TileRenderer::~TileRenderer() {
-    clear_adaptive_overlap_budget_runtime_state();
-    // Unregister from performance monitors
-    if (GaussianSplattingPerformanceMonitors *monitors = GaussianSplattingPerformanceMonitors::get_singleton()) {
-        monitors->unregister_renderer(this);
-    }
+    _clear_adaptive_overlap_budget_state(this);
     cleanup();
 }
 
