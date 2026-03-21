@@ -1049,8 +1049,8 @@ Dictionary GaussianSplatNode3D::get_statistics() const {
 
     if (renderer.is_valid()) {
         Dictionary render_stats = renderer->get_render_stats();
-        if (render_stats.has("visible_splats")) {
-            stats["renderer_visible_splats"] = render_stats["visible_splats"];
+        if (render_stats.has("visible_splat_count")) {
+            stats["renderer_visible_splats"] = render_stats["visible_splat_count"];
         }
         if (render_stats.has("total_splats")) {
             stats["renderer_total_splats"] = render_stats["total_splats"];

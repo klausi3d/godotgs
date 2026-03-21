@@ -1184,10 +1184,9 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 	if (!streaming_state.current_streaming_system.is_valid()) {
 		const StreamingReadinessState readiness_state = StreamingReadinessState::MISSING_STREAMING_SYSTEM;
 		publish_not_ready_route(readiness_state);
-		Dictionary streaming_metrics = renderer->get_performance_state().metrics.streaming_state;
+		Dictionary streaming_metrics;
 		_apply_streaming_render_readiness_diagnostics(streaming_metrics, readiness_state,
 				"current_streaming_system invalid");
-		renderer->get_performance_state().metrics.streaming_state = streaming_metrics;
 		return false;
 	}
 	auto log_streaming_reset = [&](const char *p_reason) {
@@ -1242,7 +1241,6 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 				static_cast<int64_t>(owner_mismatch_detected_count);
 		streaming_metrics["instance_pipeline_owner_mismatch_forced_invalidation"] =
 				static_cast<int64_t>(owner_mismatch_forced_invalidation_count);
-		renderer->get_performance_state().metrics.streaming_state = streaming_metrics;
 	};
 
 	streaming_state.current_streaming_system->begin_frame();
@@ -1930,12 +1928,11 @@ void RenderStreamingOrchestrator::tick_streaming_only(const Transform3D &p_camer
 			static_layout_fallback_last_reason_category,
 			static_layout_fallback_last_context,
 			static_layout_fallback_last_detail);
-	auto &perf_metrics = renderer->get_performance_state().metrics;
 	const auto &frame_state = renderer->get_frame_state();
 	const auto &debug_state = renderer->get_debug_state();
 
 	bool stage_metrics_valid = debug_state.last_stage_metrics_valid;
-	float stage_cull_time_ms = perf_metrics.culling_time_ms;
+	float stage_cull_time_ms = 0.0f;
 	float stage_sort_time_ms = 0.0f;
 	float stage_raster_time_ms = 0.0f;
 	float stage_composite_time_ms = 0.0f;
@@ -1962,17 +1959,36 @@ void RenderStreamingOrchestrator::tick_streaming_only(const Transform3D &p_camer
 	streaming_metrics["frame_sort_time_ms"] = stage_sort_time_ms;
 	streaming_metrics["frame_render_time_ms"] = stage_raster_time_ms;
 
-	streaming_metrics["gpu_frame_time_ms"] = perf_metrics.gpu_frame_time_ms;
-	streaming_metrics["gpu_tile_binning_time_ms"] = perf_metrics.gpu_tile_binning_time_ms;
-	streaming_metrics["gpu_tile_prefix_time_ms"] = perf_metrics.gpu_tile_prefix_time_ms;
-	streaming_metrics["gpu_tile_raster_time_ms"] = perf_metrics.gpu_tile_raster_time_ms;
-	streaming_metrics["gpu_tile_resolve_time_ms"] = perf_metrics.gpu_tile_resolve_time_ms;
-	streaming_metrics["gpu_timing_frame_serial"] = static_cast<int64_t>(perf_metrics.gpu_timing_frame_serial);
-	streaming_metrics["gpu_timing_frames_behind"] = static_cast<int64_t>(perf_metrics.gpu_timing_frames_behind);
-	streaming_metrics["gpu_pass_breakdown_available"] = perf_metrics.gpu_tile_binning_time_ms > 0.0f ||
-			perf_metrics.gpu_tile_prefix_time_ms > 0.0f ||
-			perf_metrics.gpu_tile_raster_time_ms > 0.0f ||
-			perf_metrics.gpu_tile_resolve_time_ms > 0.0f;
-
-	perf_metrics.streaming_state = streaming_metrics;
+	// Read GPU timing directly from TileRenderer/rasterizer.
+	float gpu_frame_time_ms = 0.0f;
+	float gpu_binning_ms = 0.0f;
+	float gpu_prefix_ms = 0.0f;
+	float gpu_raster_ms = 0.0f;
+	float gpu_resolve_ms = 0.0f;
+	int64_t gpu_timing_frame_serial = 0;
+	int64_t gpu_timing_frames_behind = 0;
+	if (renderer->get_tile_renderer_state().renderer.is_valid()) {
+		const TileRenderer *tr = renderer->get_tile_renderer_state().renderer.ptr();
+		gpu_frame_time_ms = tr->get_last_gpu_frame_time_ms();
+		gpu_binning_ms = tr->get_last_gpu_binning_time_ms();
+		gpu_prefix_ms = tr->get_last_gpu_prefix_time_ms();
+		gpu_raster_ms = tr->get_last_gpu_raster_time_ms();
+		gpu_resolve_ms = tr->get_last_gpu_resolve_time_ms();
+		if (renderer->get_subsystem_state().rasterizer.is_valid()) {
+			RasterPerformance rp = renderer->get_subsystem_state().rasterizer->get_performance();
+			gpu_timing_frame_serial = static_cast<int64_t>(rp.timing_frame_serial);
+			gpu_timing_frames_behind = static_cast<int64_t>(rp.timing_frames_behind);
+		}
+	}
+	streaming_metrics["gpu_frame_time_ms"] = gpu_frame_time_ms;
+	streaming_metrics["gpu_tile_binning_time_ms"] = gpu_binning_ms;
+	streaming_metrics["gpu_tile_prefix_time_ms"] = gpu_prefix_ms;
+	streaming_metrics["gpu_tile_raster_time_ms"] = gpu_raster_ms;
+	streaming_metrics["gpu_tile_resolve_time_ms"] = gpu_resolve_ms;
+	streaming_metrics["gpu_timing_frame_serial"] = gpu_timing_frame_serial;
+	streaming_metrics["gpu_timing_frames_behind"] = gpu_timing_frames_behind;
+	streaming_metrics["gpu_pass_breakdown_available"] = gpu_binning_ms > 0.0f ||
+			gpu_prefix_ms > 0.0f ||
+			gpu_raster_ms > 0.0f ||
+			gpu_resolve_ms > 0.0f;
 }

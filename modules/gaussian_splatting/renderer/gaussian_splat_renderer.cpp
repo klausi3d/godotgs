@@ -338,10 +338,10 @@ GaussianSplatRenderer::DataSourcePlan GaussianSplatRenderer::build_data_source_p
             p_resource_state, p_subsystem_state);
 }
 
-void GaussianSplatRenderer::apply_data_source_plan(const DataSourcePlan &p_plan, PerformanceMetrics &p_metrics,
+void GaussianSplatRenderer::apply_data_source_plan(const DataSourcePlan &p_plan, DataSourceInfo &p_info,
         const ResourceState &p_resource_state) {
     // Delegate to RenderPipelineStages (T4-PR3)
-    RenderPipelineStages::apply_data_source_plan(p_plan, p_metrics, p_resource_state);
+    RenderPipelineStages::apply_data_source_plan(p_plan, p_info, p_resource_state);
 }
 
 GaussianSplatRenderer::RenderFramePlan GaussianSplatRenderer::build_frame_plan(const SceneState &p_scene_state,
@@ -380,7 +380,6 @@ bool GaussianSplatRenderer::validate_cull_projection_contract(RenderDataRD *p_re
 		return true;
 	}
 
-	get_performance_state().metrics.cull_projection_contract_mismatch_count++;
 	const String context = p_context ? String(p_context) : String("unknown");
 	WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Cull projection contract mismatch in %s; expected shared flip_y-aware cull projection.",
 			context));
@@ -512,9 +511,6 @@ GaussianSplatRenderer::FrameState &GaussianSplatRenderer::FrameStateProvider::ge
 GaussianSplatRenderer::PerformanceState &GaussianSplatRenderer::FrameStateProvider::get_performance_state() const {
     static PerformanceState fallback;
     ERR_FAIL_NULL_V(renderer, fallback);
-    if (deps && deps->performance_state) {
-        return *deps->performance_state;
-    }
     return renderer->get_performance_state();
 }
 

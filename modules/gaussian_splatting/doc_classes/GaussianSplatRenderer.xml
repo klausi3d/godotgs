@@ -532,7 +532,7 @@
 		<method name="get_sort_metrics_history">
 			<return type="Array" />
 			<description>
-				Returns an array of recent sort metric dictionaries, one per frame. The history length is controlled by project settings.
+				Returns an array containing the most recent sort metric dictionary when available. This method is kept for compatibility with older tooling.
 			</description>
 		</method>
 		<method name="get_sort_time_ms">
@@ -644,26 +644,26 @@
 			<return type="void" />
 			<param index="0" name="enabled" type="bool" />
 			<description>
-				Enables or disables the performance HUD overlay displaying frame timing, splat counts, and sort metrics.
+				Enables or disables per-frame diagnostic data collection for performance monitors and overlays.
 			</description>
 		</method>
 		<method name="is_debug_show_performance_hud">
 			<return type="bool" />
 			<description>
-				Returns [code]true[/code] if the performance HUD is visible.
+				Returns [code]true[/code] when per-frame performance diagnostics collection is enabled.
 			</description>
 		</method>
 		<method name="set_debug_show_residency_hud">
 			<return type="void" />
 			<param index="0" name="enabled" type="bool" />
 			<description>
-				Enables or disables the residency HUD overlay showing GPU memory and streaming state.
+				Enables or disables per-frame residency diagnostic data collection (GPU memory and streaming state) for monitors and overlays.
 			</description>
 		</method>
 		<method name="is_debug_show_residency_hud">
 			<return type="bool" />
 			<description>
-				Returns [code]true[/code] if the residency HUD is visible.
+				Returns [code]true[/code] when per-frame residency diagnostics collection is enabled.
 			</description>
 		</method>
 		<method name="set_debug_show_tile_bounds">
@@ -1133,10 +1133,10 @@
 			Shows the per-tile density heatmap overlay.
 		</member>
 		<member name="debug/show_performance_hud" type="bool" setter="set_debug_show_performance_hud" getter="is_debug_show_performance_hud" default="false">
-			Shows the performance HUD overlay.
+			Enables per-frame diagnostic data collection for performance monitors and overlays.
 		</member>
 		<member name="debug/show_residency_hud" type="bool" setter="set_debug_show_residency_hud" getter="is_debug_show_residency_hud" default="false">
-			Shows the GPU residency HUD overlay.
+			Enables per-frame residency diagnostic data collection for monitors and overlays.
 		</member>
 		<member name="debug/show_tile_bounds" type="bool" setter="set_debug_show_tile_bounds" getter="get_debug_show_tile_bounds" default="false">
 			Shows the tile bounds debug overlay.

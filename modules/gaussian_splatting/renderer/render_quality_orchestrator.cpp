@@ -216,15 +216,6 @@ GaussianRenderState::CullStageOutput RenderQualityOrchestrator::cull_for_view(co
 	GaussianRenderState::CullStageOutput output;
 	if (!gpu_culler) {
 		renderer->get_frame_state().visible_splat_count.store(0, std::memory_order_release);
-		auto &metrics = renderer->get_performance_state().metrics;
-		metrics.visible_after_culling = 0;
-		metrics.culling_candidate_count = 0;
-		metrics.culled_frustum_count = 0;
-		metrics.culled_distance_count = 0;
-		metrics.culled_screen_count = 0;
-		metrics.culled_importance_count = 0;
-		metrics.used_hierarchical_culling = false;
-		metrics.culling_time_ms = 0.0f;
 		return output;
 	}
 
@@ -251,15 +242,6 @@ GaussianRenderState::CullStageOutput RenderQualityOrchestrator::cull_for_view(co
 	}
 
 	renderer->get_frame_state().visible_splat_count.store(summary.visible_after_culling, std::memory_order_release);
-	auto &metrics = renderer->get_performance_state().metrics;
-	metrics.visible_after_culling = summary.visible_after_culling;
-	metrics.culling_candidate_count = summary.culling_candidate_count;
-	metrics.culled_frustum_count = summary.culled_frustum_count;
-	metrics.culled_distance_count = summary.culled_distance_count;
-	metrics.culled_screen_count = summary.culled_screen_count;
-	metrics.culled_importance_count = summary.culled_importance_count;
-	metrics.used_hierarchical_culling = summary.used_hierarchical_culling;
-	metrics.culling_time_ms = summary.culling_time_ms;
 
 	output.visible_count = summary.visible_after_culling;
 	output.candidate_count = summary.culling_candidate_count;

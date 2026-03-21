@@ -1097,12 +1097,12 @@ void GaussianEditorPlugin::_update_stats() {
         stats_text += "\n" + TTR("Renderer Statistics:") + "\n";
         stats_text += vformat(TTR("Total Gaussians: %d"), splat_data->get_count()) + "\n";
         stats_text += vformat(TTR("Visible Splats: %d"),
-                int(_dict_get_int(render_stats, StringName("visible_splats"), splat_data->get_count()))) + "\n";
+                int(_dict_get_int(render_stats, StringName("visible_splat_count"), splat_data->get_count()))) + "\n";
         stats_text += vformat(TTR("Memory Usage: %.2f MB"), splat_data->get_memory_usage() / (1024.0 * 1024.0)) + "\n";
         stats_text += vformat(TTR("Sort Time: %.2f ms"),
-                _dict_get_double(render_stats, StringName("sort_time_ms"), 0.0)) + "\n";
+                _dict_get_double(render_stats, StringName("pipeline_sort_time_ms"), 0.0)) + "\n";
         stats_text += vformat(TTR("Render Time: %.2f ms"),
-                _dict_get_double(render_stats, StringName("render_time_ms"), 0.0)) + "\n";
+                _dict_get_double(render_stats, StringName("pipeline_raster_time_ms"), 0.0)) + "\n";
 
         if (render_stats.has(StringName("tile_assignment_ms"))) {
             stats_text += vformat(TTR("Tile Assign: %.2f ms"),
@@ -1115,12 +1115,12 @@ void GaussianEditorPlugin::_update_stats() {
 
         bool show_grid = _dict_get_bool(render_stats, StringName("debug_show_tile_grid"), false);
         bool show_heatmap = _dict_get_bool(render_stats, StringName("debug_show_density_heatmap"), false);
-        bool show_hud = _dict_get_bool(render_stats, StringName("debug_show_performance_hud"), false);
-        if (show_grid || show_heatmap || show_hud) {
+        bool collect_perf_diagnostics = _dict_get_bool(render_stats, StringName("debug_show_performance_hud"), false);
+        if (show_grid || show_heatmap || collect_perf_diagnostics) {
             stats_text += TTR("Overlays: ");
             stats_text += vformat("Grid=%s", show_grid ? "On" : "Off");
             stats_text += vformat(", Heatmap=%s", show_heatmap ? "On" : "Off");
-            stats_text += vformat(", HUD=%s", show_hud ? "On" : "Off") + "\n";
+            stats_text += vformat(", PerfData=%s", collect_perf_diagnostics ? "On" : "Off") + "\n";
         }
 
         if (render_stats.has(StringName("debug_preview_mode"))) {

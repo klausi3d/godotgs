@@ -81,10 +81,8 @@ private:
 
     bool monitors_registered = false;
 
-    GaussianSplatRenderer *_get_active_splat_renderer(bool p_require_streaming) const;
-    bool _is_telemetry_active() const;
-    void _register_monitor_definitions(Performance *p_perf);
-    Dictionary _get_streaming_analytics() const;
+	GaussianSplatRenderer *_get_active_splat_renderer(bool p_require_streaming) const;
+	void _register_monitor_definitions(Performance *p_perf);
 
     // Monitor getter callbacks (these are called by the Performance singleton)
     float _get_pipeline_frame_time_ms() const;

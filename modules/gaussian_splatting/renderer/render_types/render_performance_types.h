@@ -12,8 +12,6 @@
 
 #include "core/string/string_name.h"
 #include "core/string/ustring.h"
-#include "core/templates/local_vector.h"
-#include "core/variant/dictionary.h"
 #include "render_pipeline_io_types.h"
 #include <cstdint>
 
@@ -43,62 +41,24 @@ struct SortFrameMetrics {
 	bool used_hybrid = false;       ///< Reserved for future hybrid GPU/CPU sorting.
 };
 
-struct PerformanceMetrics {
-	float buffer_upload_time_ms = 0.0f;
-	float culling_time_ms = 0.0f;
-	float gpu_memory_usage_mb = 0.0f;
-	uint32_t uploaded_splat_count = 0;
-	uint32_t rendered_splat_count = 0;
-	bool using_real_data = false;
+/**
+ * @struct DataSourceInfo
+ * @brief Tracks which data source is feeding the renderer.
+ *
+ * The three fields previously lived in the monolithic PerformanceMetrics
+ * struct.  They are actively written by apply_data_source_plan() and
+ * read by the diagnostics snapshot and telemetry dictionaries.
+ */
+struct DataSourceInfo {
 	String data_source = GaussianRenderPipeline::SplatDataSource::kSourceNone;
+	bool using_real_data = false;
 	String data_source_error;
-	String raster_path = "unknown";
-	uint64_t total_frames_rendered = 0;
-	float avg_frame_time_ms = 0.0f;
-	float peak_frame_time_ms = 0.0f;
-	float sort_submission_time_ms = 0.0f;
-	float sort_wait_time_ms = 0.0f;
-	float sort_input_build_time_ms = 0.0f;
-	uint64_t instance_sort_sync_fallback_count = 0;
-	uint64_t tile_sort_sync_fallback_count = 0;
-	uint64_t sort_cached_fallback_count = 0;
-	uint64_t sort_identity_fallback_count = 0;
-	uint64_t sort_cull_order_fallback_count = 0;
-	bool async_sort_used = false;
-	bool async_sort_waited = false;
-	float async_overlap_efficiency = 0.0f;
-	uint32_t culled_frustum_count = 0;
-	uint32_t culled_distance_count = 0;
-	uint32_t culled_screen_count = 0;
-	uint32_t culled_importance_count = 0;
-	uint32_t culling_candidate_count = 0;
-	uint32_t visible_after_culling = 0;
-	bool used_hierarchical_culling = false;
-	Dictionary streaming_state;
-	uint64_t sort_cache_hits = 0;
-	uint64_t sort_cache_misses = 0;
-	float gpu_utilization = 0.0f;
-	float gpu_frame_time_ms = 0.0f;
-	float gpu_tile_binning_time_ms = 0.0f;
-	float gpu_tile_raster_time_ms = 0.0f;
-	float gpu_tile_prefix_time_ms = 0.0f;
-	float gpu_tile_resolve_time_ms = 0.0f;
-	uint64_t gpu_timing_frame_serial = 0;
-	uint64_t gpu_timing_frames_behind = 0;
-	uint32_t gpu_timeline_inflight_frames = 0;
-	uint32_t gpu_timeline_completed_frames = 0;
-	uint32_t gpu_timeline_stall_count = 0;
-	float gpu_timeline_stall_ms = 0.0f;
-	uint64_t gpu_timeline_last_value = 0;
-	uint64_t last_frame_start_usec = 0;
-	float frame_to_frame_time_ms = 0.0f;
-	float avg_frame_to_frame_ms = 0.0f;
-	uint64_t cull_projection_contract_mismatch_count = 0;
 };
 
 struct PerformanceState {
-	PerformanceMetrics metrics;
-	LocalVector<SortFrameMetrics> sort_metrics_history;
+	DataSourceInfo data_source_info;
+	SortFrameMetrics last_sort_metrics;
+	bool last_sort_metrics_valid = false;
 };
 
 } // namespace GaussianRenderPerformance

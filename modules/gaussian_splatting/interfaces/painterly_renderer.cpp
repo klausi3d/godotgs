@@ -1976,11 +1976,6 @@ Error PainterlyRenderer::populate_painterly_gbuffer(GaussianSplatRenderer *p_ren
     debug_state.last_stage_metrics = {};
     debug_state.last_stage_metrics_valid = false;
 
-    if (tile_renderer_state.renderer.is_valid()) {
-        float utilization = tile_renderer_state.gpu_performance_monitor.get_gpu_utilization_async();
-        performance_state.metrics.gpu_utilization = utilization * 100.0f;
-    }
-
     if (subsystem_state.rasterizer.is_valid() && subsystem_state.gpu_culler->get_state().overflow_autotune_enabled) {
         RasterOverflowStats overflow_stats = subsystem_state.rasterizer->get_overflow_stats();
         RasterStats raster_stats = subsystem_state.rasterizer->get_render_stats();

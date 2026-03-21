@@ -485,46 +485,14 @@ void RenderResourceOrchestrator::update_pipeline_features(RenderingDevice *p_dev
 
 void RenderResourceOrchestrator::update_gpu_pass_metrics_from_tile_renderer() {
 	if (!renderer->get_tile_renderer_state().renderer.is_valid()) {
-		renderer->get_performance_state().metrics.gpu_tile_binning_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.gpu_tile_raster_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.gpu_tile_prefix_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.gpu_tile_resolve_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.gpu_frame_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.gpu_utilization = 0.0f;
-		renderer->get_performance_state().metrics.gpu_timing_frame_serial = 0;
-		renderer->get_performance_state().metrics.gpu_timing_frames_behind = 0;
-		renderer->get_performance_state().metrics.gpu_timeline_inflight_frames = 0;
-		renderer->get_performance_state().metrics.gpu_timeline_completed_frames = 0;
-		renderer->get_performance_state().metrics.gpu_timeline_stall_count = 0;
-		renderer->get_performance_state().metrics.gpu_timeline_stall_ms = 0.0f;
-		renderer->get_performance_state().metrics.gpu_timeline_last_value = 0;
-		renderer->get_performance_state().metrics.tile_sort_sync_fallback_count = 0;
 		return;
 	}
 
-	// Use subsystem_state.rasterizer interface for GPU timing (Phase 8 migration)
+	// Resolve GPU timestamps so that TileRenderer/rasterizer getters return
+	// fresh data.  Downstream consumers (DiagnosticsSnapshot, telemetry
+	// dictionaries) now read directly from TileRenderer rather than from the
+	// deleted PerformanceMetrics cache.
 	renderer->get_subsystem_state().rasterizer->resolve_gpu_timestamps_async();
-	RasterPerformance perf = renderer->get_subsystem_state().rasterizer->get_performance();
-
-	renderer->get_performance_state().metrics.gpu_tile_binning_time_ms = perf.binning_gpu_ms;
-	renderer->get_performance_state().metrics.gpu_tile_raster_time_ms = perf.raster_gpu_ms;
-	renderer->get_performance_state().metrics.gpu_tile_prefix_time_ms = perf.prefix_gpu_ms;
-	renderer->get_performance_state().metrics.gpu_tile_resolve_time_ms = perf.resolve_gpu_ms;
-	renderer->get_performance_state().metrics.gpu_frame_time_ms = perf.frame_gpu_ms;
-	renderer->get_performance_state().metrics.tile_sort_sync_fallback_count = perf.sort_sync_fallback_count;
-	renderer->get_performance_state().metrics.gpu_timing_frame_serial = perf.timing_frame_serial;
-	renderer->get_performance_state().metrics.gpu_timing_frames_behind = perf.timing_frames_behind;
-
-	GPUPerformanceMonitor::SummaryMetrics timeline_summary =
-			renderer->get_tile_renderer_state().gpu_performance_monitor.get_summary_metrics();
-	renderer->get_performance_state().metrics.gpu_timeline_inflight_frames = timeline_summary.inflight_frames;
-	renderer->get_performance_state().metrics.gpu_timeline_completed_frames = timeline_summary.completed_frames;
-	renderer->get_performance_state().metrics.gpu_timeline_stall_count = timeline_summary.stall_count;
-	renderer->get_performance_state().metrics.gpu_timeline_stall_ms = float(timeline_summary.total_stall_ns) / 1000000.0f;
-	renderer->get_performance_state().metrics.gpu_timeline_last_value = timeline_summary.last_frame_index;
-
-	float utilization = renderer->get_tile_renderer_state().gpu_performance_monitor.get_gpu_utilization_async();
-	renderer->get_performance_state().metrics.gpu_utilization = utilization * 100.0f;
 }
 
 RID RenderResourceOrchestrator::load_graphics_shader(const Vector<String> &p_vertex_paths,

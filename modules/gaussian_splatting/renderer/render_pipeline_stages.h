@@ -24,7 +24,7 @@ public:
 	using SortingState = GaussianSplatRenderer::SortingState;
 	using ResourceState = GaussianSplatRenderer::ResourceState;
 	using SubsystemState = GaussianSplatRenderer::SubsystemState;
-	using PerformanceMetrics = GaussianSplatRenderer::PerformanceMetrics;
+	using DataSourceInfo = GaussianSplatRenderer::DataSourceInfo;
 	using PipelineFeatureSet = ::PipelineFeatureSet;
 
 	// Frame planning static helpers (moved from GaussianSplatRenderer)
@@ -33,7 +33,7 @@ public:
 			const SortingState &p_sorting_state,
 			const ResourceState &p_resource_state,
 			const SubsystemState &p_subsystem_state);
-	static void apply_data_source_plan(const DataSourcePlan &p_plan, PerformanceMetrics &p_metrics,
+	static void apply_data_source_plan(const DataSourcePlan &p_plan, DataSourceInfo &p_info,
 			const ResourceState &p_resource_state);
 	static RenderFramePlan build_frame_plan(const SceneState &p_scene_state,
 			const StreamingState &p_streaming_state,

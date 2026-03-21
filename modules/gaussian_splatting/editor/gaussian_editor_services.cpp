@@ -94,8 +94,8 @@ String format_gaussian_splat_stats(GaussianSplatNode3D *p_node, const Ref<Gaussi
 
     if (p_renderer.is_valid()) {
         Dictionary render_stats = p_renderer->get_render_stats();
-        const double sort_ms = dict_get_double(render_stats, "sort_time_ms", 0.0);
-        const double render_ms = dict_get_double(render_stats, "render_time_ms", 0.0);
+        const double sort_ms = dict_get_double(render_stats, "pipeline_sort_time_ms", 0.0);
+        const double render_ms = dict_get_double(render_stats, "pipeline_raster_time_ms", 0.0);
         const int64_t frame_count = dict_get_int(render_stats, "frame_count", 0);
 
         text += "\nSort Time: " + String::num(sort_ms, 2) + " ms";

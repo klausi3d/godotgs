@@ -78,8 +78,8 @@ TEST_CASE("[GaussianSplatting] Tile renderer fallback without streaming") {
         CHECK(renderer->get_visible_splat_count() > 0);
 
         Dictionary stats = renderer->get_render_stats();
-        CHECK(stats.has("visible_splats"));
-        CHECK(int(stats["visible_splats"]) > 0);
+        CHECK(stats.has("visible_splat_count"));
+        CHECK(int(stats["visible_splat_count"]) > 0);
 
         CHECK(renderer->has_rendered_content());
 

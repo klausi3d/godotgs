@@ -605,7 +605,6 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 	sorting_state.override_force_algorithm = force_algorithm;
 	sorting_state.override_forced_algorithm = forced_algorithm_name;
 
-	renderer->get_performance_state().metrics.sort_input_build_time_ms = 0.0f;
 	const bool instance_pipeline_buffers_valid = renderer->has_instance_pipeline_buffers();
 	uint64_t instance_content_generation = 0;
 	uint32_t instance_max_visible_splats = 0;
@@ -627,12 +626,6 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 	if (!input_domain_known) {
 		GS_LOG_ERROR_DEFAULT("[GPU Sort] Index-domain contract violation: sort input domain is unknown");
 		local_sort_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_submission_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_wait_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_input_build_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.async_sort_used = false;
-		renderer->get_performance_state().metrics.async_sort_waited = false;
-		renderer->get_performance_state().metrics.async_overlap_efficiency = 0.0f;
 		sorting_state.sorted_splat_count = 0;
 		renderer->get_frame_state().visible_splat_count.store(0, std::memory_order_release);
 		renderer->get_debug_state().sort_route_uid = RenderRouteUID::COMMON_FAIL_SORT_FAILED;
@@ -641,12 +634,6 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 	if (input_domain_is_chunk && !instance_pipeline_active) {
 		GS_LOG_ERROR_DEFAULT("[GPU Sort] Index-domain contract violation: chunk-domain sort input requires instance pipeline inputs");
 		local_sort_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_submission_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_wait_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_input_build_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.async_sort_used = false;
-		renderer->get_performance_state().metrics.async_sort_waited = false;
-		renderer->get_performance_state().metrics.async_overlap_efficiency = 0.0f;
 		sorting_state.sorted_splat_count = 0;
 		renderer->get_frame_state().visible_splat_count.store(0, std::memory_order_release);
 		renderer->get_debug_state().sort_route_uid = RenderRouteUID::COMMON_FAIL_SORT_FAILED;
@@ -655,12 +642,6 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 	if (input_domain_is_global && instance_pipeline_active) {
 		GS_LOG_ERROR_DEFAULT("[GPU Sort] Index-domain contract violation: global-domain sort input is incompatible with instance pipeline sort");
 		local_sort_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_submission_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_wait_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_input_build_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.async_sort_used = false;
-		renderer->get_performance_state().metrics.async_sort_waited = false;
-		renderer->get_performance_state().metrics.async_overlap_efficiency = 0.0f;
 		sorting_state.sorted_splat_count = 0;
 		renderer->get_frame_state().visible_splat_count.store(0, std::memory_order_release);
 		renderer->get_debug_state().sort_route_uid = RenderRouteUID::COMMON_FAIL_SORT_FAILED;
@@ -705,12 +686,6 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 
 	auto reset_sort_metrics = [&]() {
 		local_sort_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_submission_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_wait_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_input_build_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.async_sort_used = false;
-		renderer->get_performance_state().metrics.async_sort_waited = false;
-		renderer->get_performance_state().metrics.async_overlap_efficiency = 0.0f;
 	};
 
 	auto record_gpu_sort_sample = [&]() {
@@ -720,7 +695,7 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 		sample.total_ms = local_sort_time_ms;
 		sample.gpu_ms = local_sort_time_ms;
 		sample.cpu_ms = 0.0f;
-		sample.cpu_selection_ms = renderer->get_performance_state().metrics.sort_input_build_time_ms;
+		sample.cpu_selection_ms = 0.0f;
 		if (sorting_state.gpu_sorter.is_valid()) {
 			sample.algorithm = sorting_state.gpu_sorter->get_algorithm_name();
 		} else if (sorting_pipeline) {
@@ -750,7 +725,6 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 		reset_sort_metrics();
 		renderer->get_debug_state().sort_route_uid = p_route_uid;
 		renderer->get_frame_state().visible_splat_count.store(sorting_state.sorted_splat_count, std::memory_order_release);
-		renderer->get_performance_state().metrics.rendered_splat_count =
 				renderer->get_frame_state().visible_splat_count.load(std::memory_order_acquire);
 		set_active_sort_algorithm(sorting_state.active_sort_algorithm, p_reason);
 		return true;
@@ -784,7 +758,6 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 			} else {
 				sorting_state.sorted_splat_count = cached_count;
 				renderer->get_frame_state().visible_splat_count.store(cached_count, std::memory_order_release);
-				renderer->get_performance_state().metrics.rendered_splat_count =
 						renderer->get_frame_state().visible_splat_count.load(std::memory_order_acquire);
 				reset_sort_metrics();
 				renderer->get_debug_state().sort_route_uid = RenderRouteUID::INSTANCE_SORT_CACHED;
@@ -835,12 +808,6 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 		renderer->get_frame_state().visible_splat_count.store(0, std::memory_order_release);
 		sorting_state.sorted_splat_count = 0;
 		local_sort_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_submission_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_wait_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.sort_input_build_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.async_sort_used = false;
-		renderer->get_performance_state().metrics.async_sort_waited = false;
-		renderer->get_performance_state().metrics.async_overlap_efficiency = 0.0f;
 		// Fix: Reset cull_params_dirty on early return to prevent stuck dirty state
 		gpu_culler->get_config().cull_params_dirty = false;
 		refresh_cull_signature_tracking();
@@ -945,7 +912,6 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 				sorting_state.sort_index_bytes.ptr());
 		sorting_state.sorted_splat_count = instance_visible_splats;
 		renderer->get_frame_state().visible_splat_count.store(instance_visible_splats, std::memory_order_release);
-		renderer->get_performance_state().metrics.rendered_splat_count =
 				renderer->get_frame_state().visible_splat_count.load(std::memory_order_acquire);
 		renderer->get_debug_state().sort_route_uid = RenderRouteUID::INSTANCE_SORT_IDENTITY_FALLBACK;
 		sorting_state.last_sort_transform_valid = false;
@@ -966,8 +932,6 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 			const uint32_t reused_count = instance_pipeline_active ? sorting_state.sorted_splat_count : available_splats;
 			sorting_state.sorted_splat_count = reused_count;
 			renderer->get_frame_state().visible_splat_count.store(reused_count, std::memory_order_release);
-			renderer->get_performance_state().metrics.rendered_splat_count =
-					renderer->get_frame_state().visible_splat_count.load(std::memory_order_acquire);
 		} else if (publish_instance_identity_fallback("Missing previous sorted buffer on camera-stable frame")) {
 			reset_sort_metrics();
 			return build_summary();
@@ -999,7 +963,6 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 				}
 				sorting_state.sorted_splat_count = copy_count;
 				renderer->get_frame_state().visible_splat_count.store(copy_count, std::memory_order_release);
-				renderer->get_performance_state().metrics.rendered_splat_count =
 						renderer->get_frame_state().visible_splat_count.load(std::memory_order_acquire);
 				// Force a real re-sort on the next frame; this bootstrap order is not depth-sorted.
 				sorting_state.last_sort_transform_valid = false;
@@ -1047,7 +1010,7 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 		sample.total_ms = p_cpu_time_ms;
 		sample.gpu_ms = 0.0f;
 		sample.cpu_ms = p_cpu_time_ms;
-		sample.cpu_selection_ms = renderer->get_performance_state().metrics.sort_input_build_time_ms;
+		sample.cpu_selection_ms = 0.0f;
 		sample.algorithm = p_algorithm;
 		sample.used_gpu = false;
 		sample.used_cpu_fallback = true;
@@ -1157,14 +1120,8 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 
 		sorting_state.sorted_splat_count = available_splats;
 		renderer->get_frame_state().visible_splat_count.store(available_splats, std::memory_order_release);
-		renderer->get_performance_state().metrics.rendered_splat_count =
 				renderer->get_frame_state().visible_splat_count.load(std::memory_order_acquire);
 		local_sort_time_ms = cpu_time_ms;
-		renderer->get_performance_state().metrics.sort_submission_time_ms = cpu_time_ms;
-		renderer->get_performance_state().metrics.sort_wait_time_ms = 0.0f;
-		renderer->get_performance_state().metrics.async_sort_used = false;
-		renderer->get_performance_state().metrics.async_sort_waited = false;
-		renderer->get_performance_state().metrics.async_overlap_efficiency = 0.0f;
 
 		sorting_state.last_sort_world_to_camera_transform = p_world_to_camera_transform;
 		sorting_state.last_sort_transform_valid = true;
@@ -1426,17 +1383,14 @@ bool RenderSortingOrchestrator::_try_reuse_instance_sort_cache_with_camera(const
 		return false;
 	}
 	if (!instance_sort_cache.valid || p_max_visible_splats == 0) {
-		renderer->get_performance_state().metrics.sort_cache_misses++;
 		return false;
 	}
 	if (instance_sort_cache.content_generation != p_content_generation ||
 			instance_sort_cache.max_visible_splats != p_max_visible_splats ||
 			instance_sort_cache.visible_chunk_count != p_visible_chunk_count) {
-		renderer->get_performance_state().metrics.sort_cache_misses++;
 		return false;
 	}
 	if (!sorting_pipeline || !sorting_pipeline->get_sort_indices_buffer().is_valid()) {
-		renderer->get_performance_state().metrics.sort_cache_misses++;
 		return false;
 	}
 
@@ -1453,14 +1407,12 @@ bool RenderSortingOrchestrator::_try_reuse_instance_sort_cache_with_camera(const
 			: camera_forward.dot(instance_sort_cache.camera_direction);
 	if (gpu_culler->get_state().sort_cache_angle_cos_threshold > 0.0f &&
 			dot < gpu_culler->get_state().sort_cache_angle_cos_threshold) {
-		renderer->get_performance_state().metrics.sort_cache_misses++;
 		return false;
 	}
 
 	if (gpu_culler->get_state().sort_cache_position_threshold_sq > 0.0f) {
 		Vector3 delta = instance_sort_cache.camera_position - camera_position;
 		if (delta.length_squared() > gpu_culler->get_state().sort_cache_position_threshold_sq) {
-			renderer->get_performance_state().metrics.sort_cache_misses++;
 			return false;
 		}
 	}
@@ -1470,7 +1422,6 @@ bool RenderSortingOrchestrator::_try_reuse_instance_sort_cache_with_camera(const
 	r_sorted_count = p_visible_chunk_count == 0
 			? 0u
 			: MIN(instance_sort_cache.sorted_count, p_max_visible_splats);
-	renderer->get_performance_state().metrics.sort_cache_hits++;
 	return true;
 }
 

@@ -288,10 +288,8 @@ TEST_CASE("[GaussianSplatting] Cull projection contract applies flip_y consisten
 	CHECK(flipped.columns[1][1] == doctest::Approx(-1.75f));
 
 	CHECK(renderer->validate_cull_projection_contract(&render_data, projection, flipped, "unit_test"));
-	CHECK(renderer->get_performance_state().metrics.cull_projection_contract_mismatch_count == 0);
 
 	CHECK(!renderer->validate_cull_projection_contract(&render_data, projection, unflipped, "unit_test_mismatch"));
-	CHECK(renderer->get_performance_state().metrics.cull_projection_contract_mismatch_count == 1);
 }
 
 TEST_CASE("[GaussianSplatting] Instanced readiness gate requires quantization buffer when enabled") {

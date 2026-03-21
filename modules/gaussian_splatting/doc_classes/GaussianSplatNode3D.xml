@@ -494,13 +494,13 @@
 			<return type="void" />
 			<param index="0" name="show" type="bool" />
 			<description>
-				Enables or disables the performance HUD overlay.
+				Enables or disables per-frame diagnostic data collection for performance monitors and overlays.
 			</description>
 		</method>
 		<method name="is_showing_performance_hud">
 			<return type="bool" />
 			<description>
-				Returns [code]true[/code] if the performance HUD is visible.
+				Returns [code]true[/code] when per-frame performance diagnostics collection is enabled.
 			</description>
 		</method>
 		<method name="set_show_lod_spheres">
@@ -520,13 +520,13 @@
 			<return type="void" />
 			<param index="0" name="show" type="bool" />
 			<description>
-				Enables or disables the runtime performance overlay.
+				Enables or disables the performance debug gizmo overlay.
 			</description>
 		</method>
 		<method name="is_showing_performance_overlay">
 			<return type="bool" />
 			<description>
-				Returns [code]true[/code] if the performance overlay is visible.
+				Returns [code]true[/code] if the performance debug gizmo overlay is visible.
 			</description>
 		</method>
 		<method name="set_debug_overlay_opacity">
@@ -572,13 +572,13 @@
 			<return type="void" />
 			<param index="0" name="show" type="bool" />
 			<description>
-				Enables or disables the GPU residency HUD overlay.
+				Enables or disables per-frame residency diagnostic data collection for monitors and overlays.
 			</description>
 		</method>
 		<method name="is_showing_residency_hud">
 			<return type="bool" />
 			<description>
-				Returns [code]true[/code] if the residency HUD is visible.
+				Returns [code]true[/code] when per-frame residency diagnostics collection is enabled.
 			</description>
 		</method>
 		<method name="get_renderer">
@@ -686,13 +686,13 @@
 			Shows the per-tile density heatmap.
 		</member>
 		<member name="debug/show_performance_hud" type="bool" setter="set_show_performance_hud" getter="is_showing_performance_hud" default="false">
-			Shows the performance HUD overlay.
+			Enables per-frame diagnostic data collection for performance monitors and overlays.
 		</member>
 		<member name="debug/show_lod_spheres" type="bool" setter="set_show_lod_spheres" getter="is_showing_lod_spheres" default="false">
 			Shows LOD transition sphere visualization.
 		</member>
 		<member name="debug/show_performance_overlay" type="bool" setter="set_show_performance_overlay" getter="is_showing_performance_overlay" default="false">
-			Shows the runtime performance overlay.
+			Shows the performance debug gizmo overlay.
 		</member>
 		<member name="debug/overlay_opacity" type="float" setter="set_debug_overlay_opacity" getter="get_debug_overlay_opacity" default="0.5">
 			Opacity of debug overlays.
@@ -704,7 +704,7 @@
 			Enables runtime preview viewport overlay.
 		</member>
 		<member name="debug/show_residency_hud" type="bool" setter="set_show_residency_hud" getter="is_showing_residency_hud" default="false">
-			Shows the GPU residency HUD overlay.
+			Enables per-frame residency diagnostic data collection for monitors and overlays.
 		</member>
 	</members>
 	<signals>

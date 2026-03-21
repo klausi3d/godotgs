@@ -140,34 +140,71 @@ static Array _production_metrics_contract() {
 	return keys;
 }
 
-static void _merge_dictionary(Dictionary &p_target, const Dictionary &p_source) {
-	Array keys = p_source.keys();
-	for (int i = 0; i < keys.size(); i++) {
-		const Variant &key = keys[i];
-		p_target[key] = p_source[key];
-	}
-}
-
 static bool _is_finite(float p_value) {
 	return !(Math::is_nan(p_value) || Math::is_inf(p_value));
+}
+
+static int64_t _dict_get_i64(const Dictionary &p_dict, const char *p_key, int64_t p_default = 0) {
+	const StringName key(p_key);
+	if (!p_dict.has(key)) {
+		return p_default;
+	}
+	return static_cast<int64_t>(p_dict[key]);
+}
+
+static float _dict_get_f32(const Dictionary &p_dict, const char *p_key, float p_default = 0.0f) {
+	const StringName key(p_key);
+	if (!p_dict.has(key)) {
+		return p_default;
+	}
+	return static_cast<float>(p_dict[key]);
+}
+
+static bool _dict_get_bool(const Dictionary &p_dict, const char *p_key, bool p_default = false) {
+	const StringName key(p_key);
+	if (!p_dict.has(key)) {
+		return p_default;
+	}
+	return static_cast<bool>(p_dict[key]);
 }
 
 static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_renderer,
 		const GaussianSplatRenderer::StageMetrics &p_stage_metrics, bool p_stage_valid, float p_frame_time_ms) {
 	Dictionary metrics;
 	const auto &frame_state = p_renderer.get_frame_state();
-	const auto &perf = p_renderer.get_performance_state().metrics;
+	const auto &data_source_info = p_renderer.get_performance_state().data_source_info;
 	const auto &debug_state = p_renderer.get_debug_state();
 	uint32_t visible_splats = frame_state.visible_splat_count.load(std::memory_order_acquire);
 	const auto &scene_state = p_renderer.get_scene_state();
 	uint32_t total_splats = scene_state.gaussian_data.is_valid()
 			? scene_state.gaussian_data->get_count()
 			: 0;
-	float cull_ms = p_stage_valid ? p_stage_metrics.cull.cull_time_ms : perf.culling_time_ms;
+	float cull_ms = p_stage_valid ? p_stage_metrics.cull.cull_time_ms : 0.0f;
 	float sort_ms = p_stage_valid ? p_stage_metrics.sort.sort_time_ms : 0.0f;
 	float raster_ms = p_stage_valid ? p_stage_metrics.raster.render_time_ms : 0.0f;
 	float composite_ms = p_stage_valid ? p_stage_metrics.composite_time_ms : 0.0f;
 	float stage_total_ms = cull_ms + sort_ms + raster_ms;
+
+	// Read GPU timing directly from TileRenderer/rasterizer when available.
+	float gpu_frame_ms = 0.0f;
+	float gpu_binning_ms = 0.0f;
+	float gpu_prefix_ms = 0.0f;
+	float gpu_raster_ms = 0.0f;
+	float gpu_resolve_ms = 0.0f;
+	int64_t gpu_timing_frame_serial = 0;
+	int64_t gpu_timing_frames_behind = 0;
+	const bool has_tile_renderer = p_renderer.get_tile_renderer_state().renderer.is_valid();
+	if (has_tile_renderer) {
+		const TileRenderer *tr = p_renderer.get_tile_renderer_state().renderer.ptr();
+		gpu_frame_ms = tr->get_last_gpu_frame_time_ms();
+		gpu_binning_ms = tr->get_last_gpu_binning_time_ms();
+		gpu_prefix_ms = tr->get_last_gpu_prefix_time_ms();
+		gpu_raster_ms = tr->get_last_gpu_raster_time_ms();
+		gpu_resolve_ms = tr->get_last_gpu_resolve_time_ms();
+		RasterPerformance rp = p_renderer.get_subsystem_state().rasterizer->get_performance();
+		gpu_timing_frame_serial = static_cast<int64_t>(rp.timing_frame_serial);
+		gpu_timing_frames_behind = static_cast<int64_t>(rp.timing_frames_behind);
+	}
 
 	metrics["frame"] = static_cast<int64_t>(frame_state.frame_counter);
 	metrics["visible_splats"] = static_cast<int64_t>(visible_splats);
@@ -179,25 +216,22 @@ static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_re
 	metrics["stage_total_ms"] = stage_total_ms;
 	metrics["render_ms"] = raster_ms;
 	metrics["frame_time_ms"] = p_frame_time_ms;
-	metrics["gpu_frame_ms"] = perf.gpu_frame_time_ms;
-	metrics["gpu_binning_ms"] = perf.gpu_tile_binning_time_ms;
-	metrics["gpu_prefix_ms"] = perf.gpu_tile_prefix_time_ms;
-	metrics["gpu_raster_ms"] = perf.gpu_tile_raster_time_ms;
-	metrics["gpu_resolve_ms"] = perf.gpu_tile_resolve_time_ms;
-	metrics["gpu_timing_frame_serial"] = static_cast<int64_t>(perf.gpu_timing_frame_serial);
-	metrics["gpu_timing_frames_behind"] = static_cast<int64_t>(perf.gpu_timing_frames_behind);
-	metrics["gpu_pass_breakdown_available"] = perf.gpu_tile_binning_time_ms > 0.0f ||
-			perf.gpu_tile_prefix_time_ms > 0.0f ||
-			perf.gpu_tile_raster_time_ms > 0.0f ||
-			perf.gpu_tile_resolve_time_ms > 0.0f;
-	metrics["data_source"] = perf.data_source;
-	metrics["data_source_error"] = perf.data_source_error;
-	String raster_path = perf.raster_path;
+	metrics["gpu_frame_ms"] = gpu_frame_ms;
+	metrics["gpu_binning_ms"] = gpu_binning_ms;
+	metrics["gpu_prefix_ms"] = gpu_prefix_ms;
+	metrics["gpu_raster_ms"] = gpu_raster_ms;
+	metrics["gpu_resolve_ms"] = gpu_resolve_ms;
+	metrics["gpu_timing_frame_serial"] = gpu_timing_frame_serial;
+	metrics["gpu_timing_frames_behind"] = gpu_timing_frames_behind;
+	metrics["gpu_pass_breakdown_available"] = gpu_binning_ms > 0.0f ||
+			gpu_prefix_ms > 0.0f ||
+			gpu_raster_ms > 0.0f ||
+			gpu_resolve_ms > 0.0f;
+	metrics["data_source"] = data_source_info.data_source;
+	metrics["data_source_error"] = data_source_info.data_source_error;
+	String raster_path = "unknown";
 	if (p_stage_valid && !p_stage_metrics.raster.raster_path.is_empty()) {
 		raster_path = p_stage_metrics.raster.raster_path;
-	}
-	if (raster_path.is_empty()) {
-		raster_path = "unknown";
 	}
 	metrics["raster_path"] = raster_path;
 	const auto &render_config = p_renderer.get_render_config();
@@ -217,69 +251,100 @@ static void _append_telemetry_extras(GaussianSplatRenderer &p_renderer,
 		const GaussianSplatRenderer::StageMetrics &p_stage_metrics, bool p_stage_valid,
 		float p_frame_time_ms, Dictionary &r_metrics) {
 	const auto &frame_state = p_renderer.get_frame_state();
-	const auto &perf = p_renderer.get_performance_state().metrics;
+	const auto &data_source_info = p_renderer.get_performance_state().data_source_info;
 	const auto &sorting_state = p_renderer.get_sorting_state();
 	const auto &debug_state = p_renderer.get_debug_state();
 	const auto &subsystem_state = p_renderer.get_subsystem_state();
-
 	r_metrics["frame_count"] = static_cast<int64_t>(frame_state.frame_counter);
 	r_metrics["sorted_splats"] = static_cast<int64_t>(sorting_state.sorted_splat_count);
-	r_metrics["render_time_ms"] = p_stage_valid ? p_stage_metrics.raster.render_time_ms : 0.0f;
-	r_metrics["sort_time_ms"] = p_stage_valid ? p_stage_metrics.sort.sort_time_ms : 0.0f;
 	r_metrics["frame_time_ms"] = p_frame_time_ms;
-	r_metrics["total_frames_rendered"] = static_cast<int64_t>(perf.total_frames_rendered);
-	r_metrics["avg_frame_time_ms"] = perf.avg_frame_time_ms;
-	r_metrics["avg_frame_to_frame_ms"] = perf.avg_frame_to_frame_ms;
-	r_metrics["peak_frame_time_ms"] = perf.peak_frame_time_ms;
-	r_metrics["cull_projection_contract_mismatches"] = static_cast<int64_t>(perf.cull_projection_contract_mismatch_count);
-	r_metrics["buffer_upload_time_ms"] = perf.buffer_upload_time_ms;
-	r_metrics["culling_time_ms"] = perf.culling_time_ms;
-	r_metrics["gpu_memory_usage_mb"] = perf.gpu_memory_usage_mb;
-	r_metrics["uploaded_splat_count"] = static_cast<int64_t>(perf.uploaded_splat_count);
-	r_metrics["rendered_splat_count"] = static_cast<int64_t>(perf.rendered_splat_count);
-	r_metrics["using_real_data"] = perf.using_real_data;
-	r_metrics["sort_submission_time_ms"] = perf.sort_submission_time_ms;
-	r_metrics["sort_wait_time_ms"] = perf.sort_wait_time_ms;
-	r_metrics["sort_input_build_time_ms"] = perf.sort_input_build_time_ms;
-	r_metrics["instance_sort_sync_fallback_count"] = static_cast<int64_t>(perf.instance_sort_sync_fallback_count);
-	r_metrics["tile_sort_sync_fallback_count"] = static_cast<int64_t>(perf.tile_sort_sync_fallback_count);
-	r_metrics["sort_sync_fallback_count"] = static_cast<int64_t>(
-			perf.instance_sort_sync_fallback_count + perf.tile_sort_sync_fallback_count);
-	r_metrics["sort_cached_fallback_count"] = static_cast<int64_t>(perf.sort_cached_fallback_count);
-	r_metrics["sort_identity_fallback_count"] = static_cast<int64_t>(perf.sort_identity_fallback_count);
-	r_metrics["sort_cull_order_fallback_count"] = static_cast<int64_t>(perf.sort_cull_order_fallback_count);
-	r_metrics["sort_total_route_fallback_count"] = static_cast<int64_t>(
-			perf.sort_cached_fallback_count + perf.sort_identity_fallback_count + perf.sort_cull_order_fallback_count);
+	// Frame timing aggregates (total/avg/peak) are no longer tracked per-frame;
+	// consumers should derive them from the per-frame frame_time_ms stream.
+	r_metrics["total_frames_rendered"] = static_cast<int64_t>(frame_state.frame_counter);
+	r_metrics["avg_frame_time_ms"] = p_frame_time_ms;
+	r_metrics["avg_frame_to_frame_ms"] = p_frame_time_ms;
+	r_metrics["peak_frame_time_ms"] = p_frame_time_ms;
+	r_metrics["cull_projection_contract_mismatches"] = static_cast<int64_t>(0);
+	r_metrics["buffer_upload_time_ms"] = 0.0f;
+	r_metrics["culling_time_ms"] = p_stage_valid ? p_stage_metrics.cull.cull_time_ms : 0.0f;
+	r_metrics["gpu_memory_usage_mb"] = 0.0f;
+	r_metrics["uploaded_splat_count"] = static_cast<int64_t>(0);
+	r_metrics["rendered_splat_count"] = static_cast<int64_t>(frame_state.visible_splat_count.load(std::memory_order_acquire));
+	r_metrics["using_real_data"] = data_source_info.using_real_data;
+	r_metrics["instance_sort_sync_fallback_count"] = static_cast<int64_t>(0);
+	r_metrics["tile_sort_sync_fallback_count"] = static_cast<int64_t>(0);
+	r_metrics["sort_sync_fallback_count"] = static_cast<int64_t>(0);
+	r_metrics["sort_cached_fallback_count"] = static_cast<int64_t>(0);
+	r_metrics["sort_identity_fallback_count"] = static_cast<int64_t>(0);
+	r_metrics["sort_cull_order_fallback_count"] = static_cast<int64_t>(0);
+	r_metrics["sort_total_route_fallback_count"] = static_cast<int64_t>(0);
 	r_metrics["sort_active_algorithm"] = sorting_state.active_sort_algorithm;
 	r_metrics["sort_switch_reason"] = sorting_state.sort_switch_reason;
 	r_metrics["sort_override_force_cpu"] = sorting_state.override_force_cpu;
 	r_metrics["sort_override_force_algorithm"] = sorting_state.override_force_algorithm;
 	r_metrics["sort_override_forced_algorithm"] = sorting_state.override_forced_algorithm;
-	r_metrics["async_sort_used"] = perf.async_sort_used;
-	r_metrics["async_sort_waited"] = perf.async_sort_waited;
-	r_metrics["async_overlap_efficiency"] = perf.async_overlap_efficiency;
-	r_metrics["culled_by_frustum"] = perf.culled_frustum_count;
-	r_metrics["culled_by_distance"] = perf.culled_distance_count;
-	r_metrics["culled_by_screen"] = perf.culled_screen_count;
-	r_metrics["culled_by_importance"] = perf.culled_importance_count;
-	r_metrics["culling_candidate_count"] = perf.culling_candidate_count;
-	r_metrics["visible_after_culling"] = perf.visible_after_culling;
-	r_metrics["used_hierarchical_culling"] = perf.used_hierarchical_culling;
-	r_metrics["sort_cache_hits"] = static_cast<int64_t>(perf.sort_cache_hits);
-	r_metrics["sort_cache_misses"] = static_cast<int64_t>(perf.sort_cache_misses);
-	r_metrics["gpu_utilization_percent"] = perf.gpu_utilization;
-	r_metrics["gpu_frame_time_ms"] = perf.gpu_frame_time_ms;
-	r_metrics["gpu_tile_binning_time_ms"] = perf.gpu_tile_binning_time_ms;
-	r_metrics["gpu_tile_raster_time_ms"] = perf.gpu_tile_raster_time_ms;
-	r_metrics["gpu_tile_prefix_time_ms"] = perf.gpu_tile_prefix_time_ms;
-	r_metrics["gpu_tile_resolve_time_ms"] = perf.gpu_tile_resolve_time_ms;
-	r_metrics["gpu_timing_frame_serial"] = static_cast<int64_t>(perf.gpu_timing_frame_serial);
-	r_metrics["gpu_timing_frames_behind"] = static_cast<int64_t>(perf.gpu_timing_frames_behind);
-	r_metrics["gpu_timeline_inflight_frames"] = static_cast<int64_t>(perf.gpu_timeline_inflight_frames);
-	r_metrics["gpu_timeline_completed_frames"] = static_cast<int64_t>(perf.gpu_timeline_completed_frames);
-	r_metrics["gpu_timeline_stall_count"] = static_cast<int64_t>(perf.gpu_timeline_stall_count);
-	r_metrics["gpu_timeline_stall_ms"] = perf.gpu_timeline_stall_ms;
-	r_metrics["gpu_timeline_last_value"] = static_cast<int64_t>(perf.gpu_timeline_last_value);
+	r_metrics["async_sort_used"] = false;
+	r_metrics["async_sort_waited"] = false;
+	r_metrics["async_overlap_efficiency"] = 0.0f;
+	r_metrics["culled_by_frustum"] = p_stage_valid ? p_stage_metrics.cull.candidate_count - p_stage_metrics.cull.visible_count : static_cast<uint32_t>(0);
+	r_metrics["culled_by_distance"] = static_cast<uint32_t>(0);
+	r_metrics["culled_by_screen"] = static_cast<uint32_t>(0);
+	r_metrics["culled_by_importance"] = static_cast<uint32_t>(0);
+	r_metrics["culling_candidate_count"] = p_stage_valid ? p_stage_metrics.cull.candidate_count : static_cast<uint32_t>(0);
+	r_metrics["visible_after_culling"] = p_stage_valid ? p_stage_metrics.cull.visible_count : static_cast<uint32_t>(0);
+	r_metrics["used_hierarchical_culling"] = false;
+	r_metrics["sort_cache_hits"] = static_cast<int64_t>(0);
+	r_metrics["sort_cache_misses"] = static_cast<int64_t>(0);
+
+	// GPU timing: read directly from TileRenderer/rasterizer
+	float gpu_utilization_pct = 0.0f;
+	float gpu_frame_time_ms = 0.0f;
+	float gpu_binning_ms = 0.0f;
+	float gpu_raster_ms = 0.0f;
+	float gpu_prefix_ms = 0.0f;
+	float gpu_resolve_ms = 0.0f;
+	int64_t gpu_timing_frame_serial = 0;
+	int64_t gpu_timing_frames_behind = 0;
+	uint32_t gpu_timeline_inflight = 0;
+	uint32_t gpu_timeline_completed = 0;
+	uint32_t gpu_timeline_stall_count = 0;
+	float gpu_timeline_stall_ms = 0.0f;
+	uint64_t gpu_timeline_last_value = 0;
+	const bool has_tile_renderer = p_renderer.get_tile_renderer_state().renderer.is_valid();
+	if (has_tile_renderer) {
+		const TileRenderer *tr = p_renderer.get_tile_renderer_state().renderer.ptr();
+		gpu_frame_time_ms = tr->get_last_gpu_frame_time_ms();
+		gpu_binning_ms = tr->get_last_gpu_binning_time_ms();
+		gpu_raster_ms = tr->get_last_gpu_raster_time_ms();
+		gpu_prefix_ms = tr->get_last_gpu_prefix_time_ms();
+		gpu_resolve_ms = tr->get_last_gpu_resolve_time_ms();
+		if (subsystem_state.rasterizer.is_valid()) {
+			RasterPerformance rp = subsystem_state.rasterizer->get_performance();
+			gpu_timing_frame_serial = static_cast<int64_t>(rp.timing_frame_serial);
+			gpu_timing_frames_behind = static_cast<int64_t>(rp.timing_frames_behind);
+		}
+		GPUPerformanceMonitor::SummaryMetrics timeline =
+				p_renderer.get_tile_renderer_state().gpu_performance_monitor.get_summary_metrics();
+		gpu_timeline_inflight = timeline.inflight_frames;
+		gpu_timeline_completed = timeline.completed_frames;
+		gpu_timeline_stall_count = timeline.stall_count;
+		gpu_timeline_stall_ms = float(timeline.total_stall_ns) / 1000000.0f;
+		gpu_timeline_last_value = timeline.last_frame_index;
+		gpu_utilization_pct = p_renderer.get_tile_renderer_state().gpu_performance_monitor.get_gpu_utilization_async() * 100.0f;
+	}
+	r_metrics["gpu_utilization_percent"] = gpu_utilization_pct;
+	r_metrics["gpu_frame_time_ms"] = gpu_frame_time_ms;
+	r_metrics["gpu_tile_binning_time_ms"] = gpu_binning_ms;
+	r_metrics["gpu_tile_raster_time_ms"] = gpu_raster_ms;
+	r_metrics["gpu_tile_prefix_time_ms"] = gpu_prefix_ms;
+	r_metrics["gpu_tile_resolve_time_ms"] = gpu_resolve_ms;
+	r_metrics["gpu_timing_frame_serial"] = gpu_timing_frame_serial;
+	r_metrics["gpu_timing_frames_behind"] = gpu_timing_frames_behind;
+	r_metrics["gpu_timeline_inflight_frames"] = static_cast<int64_t>(gpu_timeline_inflight);
+	r_metrics["gpu_timeline_completed_frames"] = static_cast<int64_t>(gpu_timeline_completed);
+	r_metrics["gpu_timeline_stall_count"] = static_cast<int64_t>(gpu_timeline_stall_count);
+	r_metrics["gpu_timeline_stall_ms"] = gpu_timeline_stall_ms;
+	r_metrics["gpu_timeline_last_value"] = static_cast<int64_t>(gpu_timeline_last_value);
 	r_metrics["stage_metrics_valid"] = p_stage_valid;
 	r_metrics["stage_cull_has_visible"] = p_stage_metrics.cull.has_visible;
 	r_metrics["stage_cull_visible_count"] = p_stage_metrics.cull.visible_count;
@@ -312,8 +377,10 @@ static void _append_telemetry_extras(GaussianSplatRenderer &p_renderer,
 	r_metrics["route_uid"] = debug_state.route_uid;
 	r_metrics["sort_route_uid"] = debug_state.sort_route_uid;
 
-	if (!perf.streaming_state.is_empty()) {
-		const Dictionary streaming_state = perf.streaming_state;
+	// Streaming telemetry: read from streaming system directly
+	const auto &streaming_state_obj = p_renderer.get_streaming_state();
+	if (streaming_state_obj.current_streaming_system.is_valid()) {
+		const Dictionary streaming_state = streaming_state_obj.current_streaming_system->get_streaming_analytics();
 		r_metrics["streaming_state"] = streaming_state;
 		Dictionary streaming_diagnostics;
 		if (streaming_state.has("diagnostics")) {
@@ -873,29 +940,7 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 	Dictionary stats = snap.to_dictionary();
 
 	// -------------------------------------------------------------------
-	// Step 2: Backward-compatibility aliases.
-	// Existing consumers (scripts, editor, inspector, tests) reference
-	// the old key names.  We emit aliases so they keep working.
-	// -------------------------------------------------------------------
-	// CPU sort timing aliases (old name -> snapshot field value)
-	stats["sort_submission_time_ms"] = snap.cpu_sort_submit_ms;
-	stats["sort_wait_time_ms"] = snap.cpu_sort_wait_ms;
-	stats["sort_input_build_time_ms"] = snap.cpu_sort_input_build_ms;
-
-	// "sort_time_ms" and "render_time_ms" are expected by inspector,
-	// editor plugin, gizmo, hello_splat_test, and other scripts.
-	// Map them to the best available stage timing from the snapshot.
-	stats["sort_time_ms"] = snap.pipeline_sort_time_ms;
-	stats["render_time_ms"] = snap.pipeline_raster_time_ms;
-
-	// "visible_splats" alias for visible_splat_count
-	stats["visible_splats"] = snap.visible_splat_count;
-
-	// "culled_by_frustum" -- not in the snapshot; will be populated by
-	// _append_telemetry_extras below from PerformanceMetrics.
-
-	// -------------------------------------------------------------------
-	// Step 3: Rebuild overlays if dirty (side-effect on mutable renderer).
+	// Step 2: Rebuild overlays if dirty (side-effect on mutable renderer).
 	// -------------------------------------------------------------------
 	GaussianSplatRenderer *mutable_renderer = const_cast<GaussianSplatRenderer *>(renderer);
 	if (mutable_renderer->get_debug_state().overlay_dirty) {
@@ -904,7 +949,7 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 		}
 	}
 	// -------------------------------------------------------------------
-	// Step 4: Merge the telemetry extras (streaming, VRAM, LOD, culling
+	// Step 3: Merge the telemetry extras (streaming, VRAM, LOD, culling
 	// breakdown, GPU timeline, etc.) that live outside the snapshot.
 	// When the full telemetry snapshot exists we merge it first so that
 	// _append_telemetry_extras can overwrite with fresh values.
@@ -935,7 +980,7 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 	}
 
 	// -------------------------------------------------------------------
-	// Step 5: Additional keys NOT in the snapshot and NOT in telemetry.
+	// Step 4: Additional keys NOT in the snapshot and NOT in telemetry.
 	// -------------------------------------------------------------------
 
 	// Painterly config
@@ -1124,9 +1169,8 @@ float RenderDiagnosticsOrchestrator::get_render_time_ms_internal() const {
 Dictionary RenderDiagnosticsOrchestrator::get_last_sort_metrics_internal() const {
 	Dictionary metrics;
 	SortingStrategyConfig config = SortingStrategyConfig::load_from_project_settings();
-	if (!renderer->get_performance_state().sort_metrics_history.is_empty()) {
-		const GaussianSplatRenderer::SortFrameMetrics &sample =
-				renderer->get_performance_state().sort_metrics_history[renderer->get_performance_state().sort_metrics_history.size() - 1];
+	if (renderer->get_performance_state().last_sort_metrics_valid) {
+		const GaussianSplatRenderer::SortFrameMetrics &sample = renderer->get_performance_state().last_sort_metrics;
 		metrics["frame"] = sample.frame_index;
 		metrics["elements"] = sample.element_count;
 		metrics["total_ms"] = sample.total_ms;
@@ -1150,7 +1194,8 @@ Dictionary RenderDiagnosticsOrchestrator::get_last_sort_metrics_internal() const
 
 Array RenderDiagnosticsOrchestrator::get_sort_metrics_history_internal() const {
 	Array history;
-	for (const GaussianSplatRenderer::SortFrameMetrics &sample : renderer->get_performance_state().sort_metrics_history) {
+	if (renderer->get_performance_state().last_sort_metrics_valid) {
+		const GaussianSplatRenderer::SortFrameMetrics &sample = renderer->get_performance_state().last_sort_metrics;
 		Dictionary entry;
 		entry["frame"] = sample.frame_index;
 		entry["elements"] = sample.element_count;
@@ -1169,12 +1214,8 @@ Array RenderDiagnosticsOrchestrator::get_sort_metrics_history_internal() const {
 
 void RenderDiagnosticsOrchestrator::record_sort_sample(const GaussianSplatRenderer::SortFrameMetrics &p_sample) {
 	SortingStrategyConfig config = SortingStrategyConfig::load_from_project_settings();
-	uint32_t history_limit = config.history_size > 0 ? config.history_size : 120;
-
-	renderer->get_performance_state().sort_metrics_history.push_back(p_sample);
-	while (renderer->get_performance_state().sort_metrics_history.size() > history_limit) {
-		renderer->get_performance_state().sort_metrics_history.remove_at(0);
-	}
+	renderer->get_performance_state().last_sort_metrics = p_sample;
+	renderer->get_performance_state().last_sort_metrics_valid = true;
 
 	if (config.log_metrics && config.log_interval_frames > 0) {
 		if (p_sample.frame_index % config.log_interval_frames == 0) {
@@ -1191,39 +1232,38 @@ void RenderDiagnosticsOrchestrator::record_sort_sample(const GaussianSplatRender
 void RenderDiagnosticsOrchestrator::finalize_frame_metrics(uint64_t p_frame_start_usec) {
 	debug_state_orchestrator->update_frame_times(0.0f, 0.0f);
 
-	// Update performance metrics
+	// Update frame timing tracked in diagnostics_state
 	uint64_t frame_end = OS::get_singleton()->get_ticks_usec();
 	float frame_time_ms = (frame_end - p_frame_start_usec) / 1000.0f;
 
 	// Frame-to-frame timing (measures actual throughput including GPU wait)
-	if (renderer->get_performance_state().metrics.last_frame_start_usec > 0) {
-		renderer->get_performance_state().metrics.frame_to_frame_time_ms =
-				(p_frame_start_usec - renderer->get_performance_state().metrics.last_frame_start_usec) / 1000.0f;
+	if (diagnostics_state.last_frame_start_usec > 0) {
+		diagnostics_state.frame_to_frame_time_ms =
+				(p_frame_start_usec - diagnostics_state.last_frame_start_usec) / 1000.0f;
 	}
-	renderer->get_performance_state().metrics.last_frame_start_usec = p_frame_start_usec;
+	diagnostics_state.last_frame_start_usec = p_frame_start_usec;
 
-	renderer->get_performance_state().metrics.total_frames_rendered++;
-	renderer->get_performance_state().metrics.rendered_splat_count = renderer->get_frame_state().visible_splat_count.load(std::memory_order_acquire);
+	diagnostics_state.total_frames_rendered++;
 
 	// Update rolling average frame time (use frame-to-frame for true FPS)
 	float alpha = 0.1f; // Smoothing factor
-	float timing_for_avg = renderer->get_performance_state().metrics.frame_to_frame_time_ms > 0.0f
-			? renderer->get_performance_state().metrics.frame_to_frame_time_ms
+	float timing_for_avg = diagnostics_state.frame_to_frame_time_ms > 0.0f
+			? diagnostics_state.frame_to_frame_time_ms
 			: frame_time_ms;
-	if (renderer->get_performance_state().metrics.total_frames_rendered <= 2) {
-		renderer->get_performance_state().metrics.avg_frame_time_ms = timing_for_avg;
-		renderer->get_performance_state().metrics.avg_frame_to_frame_ms = timing_for_avg;
+	if (diagnostics_state.total_frames_rendered <= 2) {
+		diagnostics_state.avg_frame_time_ms = timing_for_avg;
+		diagnostics_state.avg_frame_to_frame_ms = timing_for_avg;
 	} else {
-		renderer->get_performance_state().metrics.avg_frame_time_ms =
-				renderer->get_performance_state().metrics.avg_frame_time_ms * (1.0f - alpha) + frame_time_ms * alpha;
-		renderer->get_performance_state().metrics.avg_frame_to_frame_ms =
-				renderer->get_performance_state().metrics.avg_frame_to_frame_ms * (1.0f - alpha) + timing_for_avg * alpha;
+		diagnostics_state.avg_frame_time_ms =
+				diagnostics_state.avg_frame_time_ms * (1.0f - alpha) + frame_time_ms * alpha;
+		diagnostics_state.avg_frame_to_frame_ms =
+				diagnostics_state.avg_frame_to_frame_ms * (1.0f - alpha) + timing_for_avg * alpha;
 	}
 
-	renderer->get_performance_state().metrics.peak_frame_time_ms =
-			MAX(renderer->get_performance_state().metrics.peak_frame_time_ms, renderer->get_performance_state().metrics.frame_to_frame_time_ms);
+	diagnostics_state.peak_frame_time_ms =
+			MAX(diagnostics_state.peak_frame_time_ms, diagnostics_state.frame_to_frame_time_ms);
 
-	// Ensure GPU metrics are up to date before logging
+	// Ensure GPU timestamps are resolved before logging
 	renderer->update_gpu_pass_metrics_from_tile_renderer();
 
 	ProductionMetricsConfig metrics_config = _load_production_metrics_config();
@@ -1267,10 +1307,11 @@ void RenderDiagnosticsOrchestrator::build_diagnostics_snapshot() {
 	GaussianSplatDiagnosticsSnapshot &snap = renderer->get_diagnostics_snapshot();
 	snap.clear();
 
-	const auto &perf = renderer->get_performance_state().metrics;
+	const auto &data_source_info = renderer->get_performance_state().data_source_info;
 	const auto &frame_state = renderer->get_frame_state();
 	const auto &debug_state = renderer->get_debug_state();
-	const auto &sort_history = renderer->get_performance_state().sort_metrics_history;
+	const bool has_last_sort_metrics = renderer->get_performance_state().last_sort_metrics_valid;
+	const GaussianSplatRenderer::SortFrameMetrics &last_sort_metrics = renderer->get_performance_state().last_sort_metrics;
 
 	// Populate frame_index early so downstream sections can use it for
 	// freshness checks (e.g. sort history staleness guard).
@@ -1279,9 +1320,7 @@ void RenderDiagnosticsOrchestrator::build_diagnostics_snapshot() {
 	// ---------------------------------------------------------------
 	// GPU Pipeline Timing
 	// ---------------------------------------------------------------
-	// Prefer TileRenderer direct methods when the tile renderer is available,
-	// otherwise fall back to the PerformanceMetrics copies (which are populated
-	// from the same source via update_gpu_pass_metrics_from_tile_renderer).
+	// Read GPU pipeline timing directly from TileRenderer when available.
 	const bool has_tile_renderer = renderer->get_tile_renderer_state().renderer.is_valid();
 	if (has_tile_renderer) {
 		const TileRenderer *tr = renderer->get_tile_renderer_state().renderer.ptr();
@@ -1290,31 +1329,20 @@ void RenderDiagnosticsOrchestrator::build_diagnostics_snapshot() {
 		snap.pipeline_prefix_time_ms = tr->get_last_gpu_prefix_time_ms();
 		snap.pipeline_raster_time_ms = tr->get_last_gpu_raster_time_ms();
 		snap.pipeline_resolve_time_ms = tr->get_last_gpu_resolve_time_ms();
-	} else {
-		snap.pipeline_frame_time_ms = perf.gpu_frame_time_ms;
-		snap.pipeline_binning_time_ms = perf.gpu_tile_binning_time_ms;
-		snap.pipeline_prefix_time_ms = perf.gpu_tile_prefix_time_ms;
-		snap.pipeline_raster_time_ms = perf.gpu_tile_raster_time_ms;
-		snap.pipeline_resolve_time_ms = perf.gpu_tile_resolve_time_ms;
 	}
 
-	// GPU cull time: prefer stage metrics when valid, else PerformanceMetrics.
+	// GPU cull time from stage metrics when valid.
 	const bool stage_metrics_valid = debug_state.last_stage_metrics_valid;
 	const GaussianSplatRenderer::StageMetrics &stage_metrics = debug_state.last_stage_metrics;
 	if (stage_metrics_valid) {
 		snap.pipeline_cull_time_ms = stage_metrics.cull.cull_time_ms;
-	} else {
-		snap.pipeline_cull_time_ms = perf.culling_time_ms;
 	}
 
-	// GPU sort time: from the latest sort_metrics_history entry, only when GPU sort was used.
-	// Guard: only use sort data if it belongs to the current frame; stale entries from
+	// GPU sort time: from the latest sort metrics sample, only when GPU sort was used.
+	// Guard: only use sort data if it belongs to the current frame; stale samples from
 	// skip/reuse frames would misattribute previous-frame timing to this frame.
-	if (!sort_history.is_empty()) {
-		const GaussianSplatRenderer::SortFrameMetrics &latest_sort = sort_history[sort_history.size() - 1];
-		if (latest_sort.frame_index == snap.frame_index && latest_sort.used_gpu) {
-			snap.pipeline_sort_time_ms = latest_sort.gpu_ms;
-		}
+	if (has_last_sort_metrics && last_sort_metrics.frame_index == snap.frame_index && last_sort_metrics.used_gpu) {
+		snap.pipeline_sort_time_ms = last_sort_metrics.gpu_ms;
 	}
 
 	// GPU composite time: from stage metrics when composite actually executed.
@@ -1328,9 +1356,8 @@ void RenderDiagnosticsOrchestrator::build_diagnostics_snapshot() {
 	if (has_tile_renderer) {
 		snap.cpu_setup_time_ms = renderer->get_tile_renderer_state().renderer->get_last_setup_cpu_ms();
 	}
-	snap.cpu_sort_submit_ms = perf.sort_submission_time_ms;
-	snap.cpu_sort_wait_ms = perf.sort_wait_time_ms;
-	snap.cpu_sort_input_build_ms = perf.sort_input_build_time_ms;
+	// CPU sort timing was previously cached in PerformanceMetrics; those fields
+	// have been removed.  The snapshot retains 0.0f defaults.
 
 	// ---------------------------------------------------------------
 	// Sort Metadata
@@ -1338,14 +1365,11 @@ void RenderDiagnosticsOrchestrator::build_diagnostics_snapshot() {
 	// Only populate from sort history if the entry matches the current frame.
 	// On skip/reuse frames the history still holds previous-frame data which
 	// must not be stamped onto this frame's snapshot.
-	if (!sort_history.is_empty()) {
-		const GaussianSplatRenderer::SortFrameMetrics &latest_sort = sort_history[sort_history.size() - 1];
-		if (latest_sort.frame_index == snap.frame_index) {
-			snap.sort_used_gpu = latest_sort.used_gpu;
-			snap.sort_used_cpu_fallback = latest_sort.used_cpu_fallback;
-			snap.sort_algorithm = latest_sort.algorithm;
-			snap.sort_element_count = latest_sort.element_count;
-		}
+	if (has_last_sort_metrics && last_sort_metrics.frame_index == snap.frame_index) {
+		snap.sort_used_gpu = last_sort_metrics.used_gpu;
+		snap.sort_used_cpu_fallback = last_sort_metrics.used_cpu_fallback;
+		snap.sort_algorithm = last_sort_metrics.algorithm;
+		snap.sort_element_count = last_sort_metrics.element_count;
 	}
 
 	// ---------------------------------------------------------------
@@ -1411,11 +1435,157 @@ void RenderDiagnosticsOrchestrator::build_diagnostics_snapshot() {
 	// ---------------------------------------------------------------
 	// Note: snap.frame_index is populated early (before GPU pipeline timing)
 	// so that sort history freshness guards can compare against it.
-	snap.frame_time_ms = perf.frame_to_frame_time_ms;
+	snap.frame_time_ms = diagnostics_state.frame_to_frame_time_ms;
 	snap.telemetry_active = !diagnostics_state.last_telemetry_snapshot.is_empty();
 	snap.route_uid = debug_state.route_uid;
 	snap.sort_route_uid = debug_state.sort_route_uid;
-	snap.data_source = perf.data_source;
+	snap.data_source = data_source_info.data_source;
+
+	// ---------------------------------------------------------------
+	// Streaming / VRAM / LOD / Memory Stream / Compression
+	// ---------------------------------------------------------------
+	const auto &streaming_state = renderer->get_streaming_state();
+	if (streaming_state.current_streaming_system.is_valid()) {
+		GaussianSplatDiagnosticsSnapshot::StreamingSnapshot &stream = snap.streaming;
+		stream.clear();
+
+		const Dictionary analytics = streaming_state.current_streaming_system->get_streaming_analytics();
+		const Dictionary vram_stats = streaming_state.current_streaming_system->get_vram_debug_stats();
+		const Dictionary cull_stats = streaming_state.current_streaming_system->get_chunk_culling_stats();
+		const Dictionary lod_stats = streaming_state.current_streaming_system->get_lod_debug_stats();
+
+		// VRAM budget regulation.
+		stream.vram_current_usage_mb = _dict_get_f32(vram_stats, "current_usage_bytes") / (1024.0f * 1024.0f);
+		stream.vram_budget_mb = _dict_get_f32(vram_stats, "budget_bytes") / (1024.0f * 1024.0f);
+		stream.vram_usage_percent = _dict_get_f32(vram_stats, "usage_percent");
+		stream.vram_current_max_chunks = static_cast<uint32_t>(_dict_get_i64(vram_stats, "current_max_chunks"));
+		stream.vram_loaded_chunks = static_cast<uint32_t>(_dict_get_i64(vram_stats, "loaded_chunks"));
+		stream.vram_evicted_this_frame = static_cast<uint32_t>(_dict_get_i64(vram_stats, "evicted_this_frame"));
+		stream.vram_loaded_this_frame = static_cast<uint32_t>(_dict_get_i64(vram_stats, "loaded_this_frame"));
+		stream.vram_budget_warning_active = _dict_get_bool(vram_stats, "budget_warning_active");
+		stream.vram_regulation_adjustments = static_cast<uint32_t>(_dict_get_i64(vram_stats, "regulation_adjustments"));
+		stream.vram_thrashing_events = static_cast<uint32_t>(_dict_get_i64(vram_stats, "thrashing_events"));
+
+		// Streaming core.
+		stream.streaming_monitor_ready = streaming_state.current_streaming_system->is_runtime_ready();
+		stream.streaming_runtime_capacity_zero = _dict_get_bool(analytics, "runtime_capacity_zero");
+		stream.streaming_runtime_buffer_invalid = _dict_get_bool(analytics, "runtime_buffer_invalid");
+		stream.streaming_invalid_camera_inputs = static_cast<uint32_t>(_dict_get_i64(cull_stats, "invalid_camera_input_events"));
+		stream.streaming_total_chunks = static_cast<uint32_t>(_dict_get_i64(cull_stats, "total_chunks"));
+		stream.streaming_visible_chunks = static_cast<uint32_t>(_dict_get_i64(cull_stats, "visible_chunks"));
+		stream.streaming_loaded_chunks = static_cast<uint32_t>(_dict_get_i64(cull_stats, "loaded_chunks"));
+		stream.streaming_frustum_culled_chunks = static_cast<uint32_t>(_dict_get_i64(cull_stats, "frustum_culled_chunks"));
+		stream.streaming_vram_usage_mb = static_cast<float>(streaming_state.current_streaming_system->get_vram_usage()) / (1024.0f * 1024.0f);
+		stream.streaming_chunks_loaded_this_frame = streaming_state.current_streaming_system->get_chunks_loaded_this_frame();
+		stream.streaming_chunks_evicted_this_frame = streaming_state.current_streaming_system->get_chunks_evicted_this_frame();
+		stream.streaming_visible_count = streaming_state.current_streaming_system->get_visible_count();
+		stream.streaming_buffer_capacity_splats = streaming_state.current_streaming_system->get_buffer_capacity_splats();
+		stream.streaming_effective_splat_count = streaming_state.current_streaming_system->get_effective_splat_count();
+		stream.streaming_visible_change_ratio = streaming_state.current_streaming_system->get_visible_chunk_change_ratio();
+		stream.streaming_lod_blend_factor = streaming_state.current_streaming_system->get_global_lod_blend_factor();
+		stream.streaming_sh_band_level = streaming_state.current_streaming_system->get_global_sh_band_level();
+		stream.streaming_effective_upload_cap_mb_per_frame = _dict_get_f32(analytics, "effective_upload_cap_mb_per_frame");
+		stream.streaming_effective_upload_cap_mb_per_slice = _dict_get_f32(analytics, "effective_upload_cap_mb_per_slice");
+		stream.streaming_effective_upload_cap_mb_per_second = _dict_get_f32(analytics, "effective_upload_cap_mb_per_second");
+		stream.streaming_effective_vram_budget_mb = _dict_get_f32(analytics, "effective_vram_budget_mb");
+		stream.streaming_effective_vram_max_chunks = static_cast<uint32_t>(_dict_get_i64(analytics, "effective_vram_max_chunks"));
+		stream.streaming_upload_frame_cap_hit = _dict_get_bool(analytics, "upload_frame_cap_hit");
+		stream.streaming_upload_bandwidth_cap_hit = _dict_get_bool(analytics, "upload_bandwidth_cap_hit");
+		stream.streaming_chunk_load_cap_hit = _dict_get_bool(analytics, "chunk_load_cap_hit");
+		stream.streaming_vram_chunk_cap_hit = _dict_get_bool(analytics, "vram_chunk_cap_hit");
+		stream.streaming_queue_pressure_active = _dict_get_bool(analytics, "queue_pressure_active");
+
+		// LOD system.
+		stream.lod_current_level = static_cast<int32_t>(_dict_get_i64(lod_stats, "current_lod_level"));
+		stream.lod_target_distance = _dict_get_f32(lod_stats, "lod_target_distance");
+		stream.lod_hysteresis_zone = streaming_state.current_streaming_system->get_lod_hysteresis_zone();
+		stream.lod_blend_distance = streaming_state.current_streaming_system->get_lod_blend_distance();
+		stream.lod_transitions_this_frame = static_cast<uint32_t>(_dict_get_i64(lod_stats, "transitions_this_frame"));
+		stream.lod_splat_skip_factor = static_cast<uint32_t>(_dict_get_i64(lod_stats, "max_splat_skip_factor", 1));
+		stream.lod_opacity_multiplier = _dict_get_f32(lod_stats, "min_opacity_multiplier", 1.0f);
+		stream.lod_effective_count_after_skip = streaming_state.current_streaming_system->get_effective_splat_count();
+		stream.lod_chunk_blend_factors_avg = streaming_state.current_streaming_system->get_global_lod_blend_factor();
+		stream.lod_chunks_in_transition = static_cast<uint32_t>(_dict_get_i64(lod_stats, "chunks_in_transition"));
+		stream.lod_min_chunk_distance = _dict_get_f32(lod_stats, "min_distance");
+		stream.lod_max_chunk_distance = _dict_get_f32(lod_stats, "max_distance");
+		stream.lod_avg_chunk_distance = _dict_get_f32(lod_stats, "avg_distance");
+		stream.lod_reduction_ratio_pct = 100.0f * _dict_get_f32(lod_stats, "reduction_ratio");
+
+		if (lod_stats.has("lod_distribution")) {
+			const Array lod_dist = lod_stats["lod_distribution"];
+			stream.lod_level_0_chunk_count = lod_dist.size() > 0 ? static_cast<uint32_t>(static_cast<int64_t>(lod_dist[0])) : 0u;
+		}
+		if (lod_stats.has("sh_band_distribution")) {
+			const Array sh_dist = lod_stats["sh_band_distribution"];
+			stream.lod_sh_band_3_chunk_count = sh_dist.size() > 3 ? static_cast<uint32_t>(static_cast<int64_t>(sh_dist[3])) : 0u;
+		}
+
+		Ref<VRAMBudgetRegulator> regulator = streaming_state.current_streaming_system->get_vram_regulator();
+		if (regulator.is_valid()) {
+			stream.lod_distance_multiplier = regulator->get_lod_distance_multiplier();
+			stream.lod_quality_degradation_active = stream.lod_distance_multiplier > 1.0f;
+		}
+
+		// Memory stream.
+		if (streaming_state.memory_stream.is_valid()) {
+			const StreamingStats ms_stats = streaming_state.memory_stream->get_stats();
+			stream.memory_stream_total_bytes_uploaded_mb = static_cast<float>(ms_stats.total_bytes_uploaded) / (1024.0f * 1024.0f);
+			stream.memory_stream_total_bytes_downloaded_mb = static_cast<float>(ms_stats.total_bytes_downloaded) / (1024.0f * 1024.0f);
+			stream.memory_stream_buffer_switches = ms_stats.buffer_switches;
+			stream.memory_stream_stalls = ms_stats.stalls;
+			stream.memory_stream_stall_percent = ms_stats.total_frames == 0
+					? 0.0f
+					: 100.0f * static_cast<float>(ms_stats.stalls) / static_cast<float>(ms_stats.total_frames);
+			stream.memory_stream_pool_hits = ms_stats.pool_hits;
+			stream.memory_stream_pool_misses = ms_stats.pool_misses;
+			const uint32_t pool_total = ms_stats.pool_hits + ms_stats.pool_misses;
+			stream.memory_stream_pool_hit_rate_pct = pool_total == 0
+					? 0.0f
+					: 100.0f * static_cast<float>(ms_stats.pool_hits) / static_cast<float>(pool_total);
+			stream.memory_stream_peak_memory_mb = ms_stats.peak_memory_mb;
+			stream.memory_stream_defrag_count = ms_stats.defrag_count;
+
+			// Keep existing streaming monitor behavior.
+			stream.streaming_bytes_uploaded_mb = static_cast<float>(ms_stats.total_bytes_uploaded) / (1024.0f * 1024.0f);
+			stream.streaming_buffer_switches = ms_stats.buffer_switches;
+		} else {
+			stream.memory_stream_total_bytes_downloaded_mb = _dict_get_f32(analytics, "evicted_bytes_total_mb");
+		}
+
+		// Chunk management + pack/upload timing.
+		const uint32_t prefetch_hits = static_cast<uint32_t>(_dict_get_i64(analytics, "prefetch_hits",
+				_dict_get_i64(analytics, "scheduler_prefetch_candidates")));
+		const uint32_t prefetch_misses = static_cast<uint32_t>(_dict_get_i64(analytics, "prefetch_misses"));
+		stream.chunk_prefetch_hits = prefetch_hits;
+		stream.chunk_prefetch_misses = prefetch_misses;
+		const uint32_t prefetch_total = prefetch_hits + prefetch_misses;
+		stream.chunk_prefetch_efficiency_pct = prefetch_total == 0
+				? 0.0f
+				: 100.0f * static_cast<float>(prefetch_hits) / static_cast<float>(prefetch_total);
+		stream.chunk_camera_velocity = _dict_get_f32(analytics, "camera_velocity");
+		stream.chunk_average_load_time_ms = _dict_get_f32(analytics, "avg_chunk_load_time_ms",
+				_dict_get_f32(analytics, "pack_avg_ms"));
+		stream.chunk_upload_queue_depth = static_cast<uint32_t>(_dict_get_i64(analytics, "pending_uploads",
+				_dict_get_i64(analytics, "scheduler_upload_queue_depth")));
+		stream.chunk_pack_jobs_in_flight = static_cast<uint32_t>(_dict_get_i64(analytics, "pack_jobs_in_flight"));
+		stream.chunk_total_capacity_mb = (static_cast<float>(streaming_state.current_streaming_system->get_buffer_capacity_splats()) * sizeof(PackedGaussian)) / (1024.0f * 1024.0f);
+
+		stream.pack_avg_time_ms = _dict_get_f32(analytics, "pack_avg_ms");
+		stream.pack_max_time_ms = _dict_get_f32(analytics, "pack_max_ms");
+		stream.pack_jobs_completed = static_cast<uint32_t>(_dict_get_i64(analytics, "pack_jobs_completed"));
+		stream.upload_mb_this_frame = _dict_get_f32(analytics, "upload_mb_this_frame");
+		stream.upload_chunks_this_frame = static_cast<uint32_t>(_dict_get_i64(analytics, "upload_chunks_this_frame"));
+
+		// SH compression analytics.
+		const SHCompressionMetrics sh_metrics = streaming_state.current_streaming_system->get_total_sh_metrics();
+		stream.sh_compression_raw_mb = static_cast<float>(sh_metrics.raw_bytes) / (1024.0f * 1024.0f);
+		stream.sh_compression_compressed_mb = static_cast<float>(sh_metrics.compressed_bytes) / (1024.0f * 1024.0f);
+		stream.sh_compression_ratio_pct = sh_metrics.raw_bytes > 0
+				? 100.0f * static_cast<float>(sh_metrics.compressed_bytes) / static_cast<float>(sh_metrics.raw_bytes)
+				: 0.0f;
+
+		snap.streaming_valid = true;
+	}
 
 	// ---------------------------------------------------------------
 	// Mark valid
@@ -1463,20 +1633,35 @@ Dictionary RenderDiagnosticsOrchestrator::get_runtime_diagnostic_snapshot() cons
 	snapshot["debug_modes"] = debug_modes;
 
 	Dictionary gpu_performance;
-	const auto &perf = renderer->get_performance_state().metrics;
-	gpu_performance["utilization_percent"] = perf.gpu_utilization;
-	gpu_performance["frame_gpu_ms"] = perf.gpu_frame_time_ms;
-	gpu_performance["binning_gpu_ms"] = perf.gpu_tile_binning_time_ms;
-	gpu_performance["raster_gpu_ms"] = perf.gpu_tile_raster_time_ms;
-	gpu_performance["prefix_gpu_ms"] = perf.gpu_tile_prefix_time_ms;
-	gpu_performance["resolve_gpu_ms"] = perf.gpu_tile_resolve_time_ms;
-	gpu_performance["timing_frame_serial"] = (int64_t)perf.gpu_timing_frame_serial;
-	gpu_performance["timing_frames_behind"] = (int64_t)perf.gpu_timing_frames_behind;
-	gpu_performance["timeline_inflight_frames"] = (int64_t)perf.gpu_timeline_inflight_frames;
-	gpu_performance["timeline_completed_frames"] = (int64_t)perf.gpu_timeline_completed_frames;
-	gpu_performance["timeline_stall_count"] = (int64_t)perf.gpu_timeline_stall_count;
-	gpu_performance["timeline_stall_ms"] = perf.gpu_timeline_stall_ms;
-	gpu_performance["timeline_last_value"] = (int64_t)perf.gpu_timeline_last_value;
+	const bool has_tr = renderer->get_tile_renderer_state().renderer.is_valid();
+	if (has_tr) {
+		const TileRenderer *tr = renderer->get_tile_renderer_state().renderer.ptr();
+		gpu_performance["frame_gpu_ms"] = tr->get_last_gpu_frame_time_ms();
+		gpu_performance["binning_gpu_ms"] = tr->get_last_gpu_binning_time_ms();
+		gpu_performance["raster_gpu_ms"] = tr->get_last_gpu_raster_time_ms();
+		gpu_performance["prefix_gpu_ms"] = tr->get_last_gpu_prefix_time_ms();
+		gpu_performance["resolve_gpu_ms"] = tr->get_last_gpu_resolve_time_ms();
+		if (renderer->get_subsystem_state().rasterizer.is_valid()) {
+			RasterPerformance rp = renderer->get_subsystem_state().rasterizer->get_performance();
+			gpu_performance["timing_frame_serial"] = (int64_t)rp.timing_frame_serial;
+			gpu_performance["timing_frames_behind"] = (int64_t)rp.timing_frames_behind;
+		}
+		GPUPerformanceMonitor::SummaryMetrics timeline =
+				renderer->get_tile_renderer_state().gpu_performance_monitor.get_summary_metrics();
+		gpu_performance["timeline_inflight_frames"] = (int64_t)timeline.inflight_frames;
+		gpu_performance["timeline_completed_frames"] = (int64_t)timeline.completed_frames;
+		gpu_performance["timeline_stall_count"] = (int64_t)timeline.stall_count;
+		gpu_performance["timeline_stall_ms"] = float(timeline.total_stall_ns) / 1000000.0f;
+		gpu_performance["timeline_last_value"] = (int64_t)timeline.last_frame_index;
+		gpu_performance["utilization_percent"] = renderer->get_tile_renderer_state().gpu_performance_monitor.get_gpu_utilization_async() * 100.0f;
+	} else {
+		gpu_performance["utilization_percent"] = 0.0f;
+		gpu_performance["frame_gpu_ms"] = 0.0f;
+		gpu_performance["binning_gpu_ms"] = 0.0f;
+		gpu_performance["raster_gpu_ms"] = 0.0f;
+		gpu_performance["prefix_gpu_ms"] = 0.0f;
+		gpu_performance["resolve_gpu_ms"] = 0.0f;
+	}
 	snapshot["gpu_performance"] = gpu_performance;
 
 	return snapshot;

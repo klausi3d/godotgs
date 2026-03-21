@@ -554,11 +554,11 @@ RenderPipelineStages::DataSourcePlan RenderPipelineStages::build_data_source_pla
 	return plan;
 }
 
-void RenderPipelineStages::apply_data_source_plan(const DataSourcePlan &p_plan, PerformanceMetrics &p_metrics,
+void RenderPipelineStages::apply_data_source_plan(const DataSourcePlan &p_plan, DataSourceInfo &p_info,
 		const ResourceState &p_resource_state) {
-	p_metrics.data_source = p_plan.source.source_name;
-	p_metrics.using_real_data = p_plan.using_real_data;
-	p_metrics.data_source_error = p_plan.using_real_data ? String() : p_plan.error;
+	p_info.data_source = p_plan.source.source_name;
+	p_info.using_real_data = p_plan.using_real_data;
+	p_info.data_source_error = p_plan.using_real_data ? String() : p_plan.error;
 	(void)p_resource_state;
 }
 
@@ -663,7 +663,6 @@ void RenderPipelineStages::prepare_frame_context(RenderDataRD *p_render_data,
 	r_context.deps.jacobian_debug = &renderer->get_jacobian_debug();
 	r_context.deps.resource_state = &renderer->get_resource_state();
 	r_context.deps.frame_state = &renderer->get_frame_state();
-	r_context.deps.performance_state = &renderer->get_performance_state();
 	r_context.deps.subsystem_state = &renderer->get_subsystem_state();
 	r_context.deps.pipeline_features = &renderer->pipeline_features_effective;
 	DEV_ASSERT(r_context.deps.validate());
@@ -1196,7 +1195,7 @@ struct RenderPipelineStages::RasterStage {
 				const Transform3D &p_world_to_camera_transform, const Projection &p_projection, const Projection &p_render_projection,
 				RenderDataRD *p_render_data, uint32_t p_sorted_splat_count, GaussianSplatRenderer::IndexDomain p_sorted_index_domain,
 				const GaussianSplatRenderer::IFrameStateProvider &p_state_provider,
-				RID &r_color_output, RID &r_depth_output);
+				RID &r_color_output, RID &r_depth_output, String &r_raster_path);
 	StageResult resolve_painterly_output(const GaussianSplatRenderer::RasterStageInput &p_input,
 			GaussianSplatRenderer::RasterStageOutput &r_output);
 	bool try_reuse_cached_render(const GaussianSplatRenderer::RasterStageInput &p_input,
@@ -1475,29 +1474,16 @@ void RenderPipelineStages::reset_render_state_for_frame(const GaussianSplatRende
 	output_cache.last_viewport_copy_success = false;
 	output_cache.last_viewport_copy_source_size = Size2i();
 	output_cache.last_viewport_copy_dest_size = Size2i();
-	GaussianSplatRenderer::PerformanceState &performance_state = state_provider.get_performance_state();
-	auto &metrics = performance_state.metrics;
-	metrics.gpu_frame_time_ms = 0.0f;
-	metrics.gpu_tile_binning_time_ms = 0.0f;
-	metrics.gpu_tile_raster_time_ms = 0.0f;
-	metrics.gpu_tile_prefix_time_ms = 0.0f;
-	metrics.gpu_tile_resolve_time_ms = 0.0f;
-	metrics.gpu_timeline_inflight_frames = 0;
-	metrics.gpu_timeline_completed_frames = 0;
-	metrics.gpu_timeline_stall_count = 0;
-	metrics.gpu_timeline_stall_ms = 0.0f;
-	metrics.gpu_timeline_last_value = 0;
 }
 
 Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_viewport_size, RD::DataFormat p_target_format,
 		const Transform3D &p_world_to_camera_transform, const Projection &p_projection, const Projection &p_render_projection,
 		RenderDataRD *p_render_data, uint32_t p_sorted_splat_count, GaussianSplatRenderer::IndexDomain p_sorted_index_domain,
 		const GaussianSplatRenderer::IFrameStateProvider &p_state_provider,
-		RID &r_color_output, RID &r_depth_output) {
+		RID &r_color_output, RID &r_depth_output, String &r_raster_path) {
 	GaussianSplatRenderer::SubsystemState &subsystem_state = p_state_provider.get_subsystem_state();
 	GaussianSplatRenderer::RenderConfig &render_config = p_state_provider.get_render_config();
 	GaussianSplatRenderer::JacobianDebugConfig &jacobian_debug = p_state_provider.get_jacobian_debug();
-	GaussianSplatRenderer::PerformanceState &performance_state = p_state_provider.get_performance_state();
 	// Simplified tile fallback - assumes tile_renderer/rasterizer initialized in _create_gpu_resources_safe()
 	if (!renderer->ensure_rendering_device("_render_tile_fallback")) {
 		return ERR_UNCONFIGURED;
@@ -1828,7 +1814,7 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 
 	// Handle zero splat count
 	if (render_params.splat_count == 0) {
-		performance_state.metrics.raster_path = "none";
+		r_raster_path = "none";
 		RID color_output = subsystem_state.rasterizer->get_output_texture();
 		RID depth_output = subsystem_state.rasterizer->has_depth_output() ?
 			subsystem_state.rasterizer->get_depth_texture() : RID();
@@ -1860,7 +1846,7 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 	RasterPerformance raster_perf = subsystem_state.rasterizer->get_performance();
 
 	RasterStats raster_stats = subsystem_state.rasterizer->get_render_stats();
-	performance_state.metrics.raster_path = raster_stats.last_raster_used_compute ? "compute" : "fragment";
+	r_raster_path = raster_stats.last_raster_used_compute ? "compute" : "fragment";
 	if (pipeline && pipeline->debug_state_orchestrator) {
 		pipeline->debug_state_orchestrator->update_raster_metrics(raster_perf, raster_stats);
 	}
@@ -1954,7 +1940,6 @@ bool RenderPipelineStages::RasterStage::try_reuse_cached_render(const GaussianSp
 	r_output.reused_cached_render = r_output.color.is_valid();
 	if (r_output.reused_cached_render) {
 		r_output.raster_path = "cached";
-		performance_state.metrics.raster_path = "cached";
 	}
 	return r_output.reused_cached_render;
 }
@@ -1973,8 +1958,7 @@ RenderPipelineStages::StageResult RenderPipelineStages::RasterStage::render_base
 	Error fallback_err = render_tile_fallback(p_input.viewport_size, p_input.viewport_format,
 			p_input.world_to_camera_transform, p_input.projection, p_input.render_projection,
 			p_input.render_data, p_input.sorted_splat_count, p_input.sorted_index_domain,
-			state_provider, r_output.color, r_output.depth);
-	r_output.raster_path = performance_state.metrics.raster_path;
+			state_provider, r_output.color, r_output.depth, r_output.raster_path);
 	uint64_t fallback_end = OS::get_singleton()->get_ticks_usec();
 	const float render_time_ms = (fallback_end - fallback_start) / 1000.0f;
 	r_output.render_time_ms = render_time_ms;
@@ -2000,7 +1984,6 @@ RenderPipelineStages::StageResult RenderPipelineStages::RasterStage::render_base
 	};
 
 	if (fallback_err != OK || !r_output.color.is_valid()) {
-		performance_state.metrics.raster_path = "failed";
 		r_output.raster_path = "failed";
 		fill_raster_io(true);
 		StageResult result = _make_stage_result(StageResult::StageStatus::FAILED,
@@ -2014,24 +1997,10 @@ RenderPipelineStages::StageResult RenderPipelineStages::RasterStage::render_base
 		uint64_t frame_end = OS::get_singleton()->get_ticks_usec();
 		float frame_time_ms = (frame_end - p_frame_start_usec) / 1000.0f;
 
-		auto &metrics = performance_state.metrics;
-		metrics.total_frames_rendered++;
-		metrics.rendered_splat_count = 0;
-
-		float alpha = 0.05f;
-		if (metrics.total_frames_rendered == 1) {
-			metrics.avg_frame_time_ms = frame_time_ms;
-		} else {
-			metrics.avg_frame_time_ms =
-					metrics.avg_frame_time_ms * (1.0f - alpha) + frame_time_ms * alpha;
-		}
-
-		metrics.peak_frame_time_ms = MAX(metrics.peak_frame_time_ms, frame_time_ms);
-
 		const GaussianSplatRenderer::RenderFramePlan *frame_plan = state_provider.get_frame_plan();
 		DEV_ASSERT(frame_plan);
 		if (frame_plan) {
-			GaussianSplatRenderer::apply_data_source_plan(frame_plan->data_source, metrics, resource_state);
+			GaussianSplatRenderer::apply_data_source_plan(frame_plan->data_source, performance_state.data_source_info, resource_state);
 		} else {
 			GS_LOG_ERROR_DEFAULT("[GaussianSplatRenderer] RenderFramePlan missing; data source metrics unavailable");
 		}
@@ -2097,7 +2066,6 @@ RenderPipelineStages::StageResult RenderPipelineStages::RasterStage::render_pain
 	}
 
 	r_output.raster_path = "painterly";
-	performance_state.metrics.raster_path = "painterly";
 	r_output.render_time_ms = painterly_render_time_ms;
 	return StageResult();
 }
@@ -2212,16 +2180,11 @@ void RenderPipelineStages::render_sorted_splats_with_context(const GaussianSplat
 	output_cache.last_viewport_copy_dest_size = Size2i();
 	GaussianSplatRenderer::PerformanceState &performance_state = state_provider.get_performance_state();
 	GaussianSplatRenderer::ResourceState &resource_state = state_provider.get_resource_state();
-	auto &metrics = performance_state.metrics;
-	metrics.raster_path = "unknown";
-	metrics.gpu_frame_time_ms = 0.0f;
-	metrics.gpu_tile_binning_time_ms = 0.0f;
-	metrics.gpu_tile_raster_time_ms = 0.0f;
 	const GaussianSplatRenderer::RenderFramePlan *frame_plan = state_provider.get_frame_plan();
 	DEV_ASSERT(frame_plan);
 	ERR_FAIL_COND_MSG(!frame_plan, "RenderFramePlan missing in render_sorted_splats_with_context.");
 	_begin_pipeline_trace(renderer);
-	GaussianSplatRenderer::apply_data_source_plan(frame_plan->data_source, metrics, resource_state);
+	GaussianSplatRenderer::apply_data_source_plan(frame_plan->data_source, performance_state.data_source_info, resource_state);
 	const uint64_t frame_start_usec = OS::get_singleton()->get_ticks_usec();
 
 	auto emit_stage_metrics = [&]() {
@@ -2238,7 +2201,6 @@ void RenderPipelineStages::render_sorted_splats_with_context(const GaussianSplat
 	};
 
 	if (!p_context.metrics && !p_context.snapshot.valid) {
-		performance_state.metrics.raster_path = "skipped";
 		_record_pipeline_event(renderer, "raster", "fail: missing frame snapshot/metrics", 0, 0, true,
 				GaussianSplatRenderer::RenderFallbackReason::DATA_UNAVAILABLE,
 				RenderRouteUID::COMMON_SKIP_NO_DATA);
@@ -2255,7 +2217,6 @@ void RenderPipelineStages::render_sorted_splats_with_context(const GaussianSplat
 		log_stage_result("Sort", p_context.metrics->sort_result);
 	}
 	if (p_context.metrics && p_context.metrics->sort_result.status == StageResult::StageStatus::FAILED) {
-		performance_state.metrics.raster_path = "skipped";
 		const String reason = p_context.metrics->sort_result.reason.is_empty() ?
 				"Sort failed; skipping raster/composite" :
 				p_context.metrics->sort_result.reason;
@@ -2305,7 +2266,6 @@ void RenderPipelineStages::render_sorted_splats_with_context(const GaussianSplat
 			_finalize_stage_io(renderer, "composite", composite_io, composite_validation);
 		};
 		if (current_visible == 0) {
-			performance_state.metrics.raster_path = "none";
 			_record_pipeline_event(renderer, "raster", "skip: no visible splats", current_visible, 0, false,
 					GaussianSplatRenderer::RenderFallbackReason::NO_VISIBLE_SPLATS,
 					RenderRouteUID::COMMON_SKIP_NO_VISIBLE);
@@ -2332,7 +2292,6 @@ void RenderPipelineStages::render_sorted_splats_with_context(const GaussianSplat
 	}
 
 	if (!renderer->ensure_rendering_device("render_sorted_splats")) {
-		performance_state.metrics.raster_path = "failed";
 		_record_pipeline_event(renderer, "raster", "fail: RenderingDevice unavailable", current_visible, 0, true,
 				GaussianSplatRenderer::RenderFallbackReason::RENDERING_DEVICE_UNAVAILABLE,
 				RenderRouteUID::COMMON_FAIL_NO_DEVICE);

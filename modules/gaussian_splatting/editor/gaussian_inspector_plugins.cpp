@@ -186,9 +186,9 @@ void GaussianRendererInspectorPlugin::parse_begin(Object *p_object) {
     Dictionary stats = renderer->get_render_stats();
     Label *stats_label = memnew(Label);
     String stats_text = "Performance:\n";
-    stats_text += "Visible: " + itos(stats["visible_splats"]) + "/" + itos(stats["total_splats"]) + " splats\n";
-    stats_text += "Sort: " + String::num(stats["sort_time_ms"], 1) + " ms | ";
-    stats_text += "Render: " + String::num(stats["render_time_ms"], 1) + " ms";
+    stats_text += "Visible: " + itos(stats.get("visible_splat_count", int64_t(0))) + "/" + itos(stats.get("total_splats", int64_t(0))) + " splats\n";
+    stats_text += "Sort: " + String::num(stats.get("pipeline_sort_time_ms", 0.0), 1) + " ms | ";
+    stats_text += "Render: " + String::num(stats.get("pipeline_raster_time_ms", 0.0), 1) + " ms";
     stats_label->set_text(stats_text);
     add_custom_control(stats_label);
 }
@@ -286,7 +286,7 @@ void GaussianSplatNodeInspectorPlugin::_on_density_heatmap_toggled(bool p_presse
 }
 
 void GaussianSplatNodeInspectorPlugin::_on_performance_hud_toggled(bool p_pressed, ObjectID p_node_id) {
-    _commit_node_property_change(p_node_id, TTR("Toggle Gaussian Performance HUD"), "debug/show_performance_hud", p_pressed, true);
+    _commit_node_property_change(p_node_id, TTR("Toggle Gaussian Performance Diagnostics"), "debug/show_performance_hud", p_pressed, true);
 }
 
 void GaussianSplatNodeInspectorPlugin::_on_lod_spheres_toggled(bool p_pressed, ObjectID p_node_id) {
@@ -318,7 +318,7 @@ void GaussianSplatNodeInspectorPlugin::_on_runtime_preview_toggled(bool p_presse
 }
 
 void GaussianSplatNodeInspectorPlugin::_on_residency_hud_toggled(bool p_pressed, ObjectID p_node_id) {
-    _commit_node_property_change(p_node_id, TTR("Toggle Gaussian Residency HUD"), "debug/show_residency_hud", p_pressed, true);
+    _commit_node_property_change(p_node_id, TTR("Toggle Gaussian Residency Diagnostics"), "debug/show_residency_hud", p_pressed, true);
 }
 
 void GaussianSplatNodeInspectorPlugin::_on_brush_center_changed(double p_value, int p_axis) {
@@ -553,7 +553,7 @@ void GaussianSplatNodeInspectorPlugin::parse_begin(Object *p_object) {
     overlay_row->add_child(heatmap_toggle);
 
     CheckButton *hud_toggle = memnew(CheckButton);
-    hud_toggle->set_text("HUD");
+    hud_toggle->set_text("Perf Data");
     hud_toggle->set_h_size_flags(Control::SIZE_EXPAND_FILL);
     hud_toggle->set_pressed(node->is_showing_performance_hud());
     hud_toggle->connect("toggled", callable_mp(this, &GaussianSplatNodeInspectorPlugin::_on_performance_hud_toggled).bind(node->get_instance_id()));
@@ -618,7 +618,7 @@ void GaussianSplatNodeInspectorPlugin::parse_begin(Object *p_object) {
     runtime_row->add_child(runtime_preview_toggle);
 
     CheckButton *residency_toggle = memnew(CheckButton);
-    residency_toggle->set_text(TTR("Residency HUD"));
+    residency_toggle->set_text(TTR("Residency Data"));
     residency_toggle->set_h_size_flags(Control::SIZE_EXPAND_FILL);
     residency_toggle->set_pressed(node->is_showing_residency_hud());
     residency_toggle->connect("toggled", callable_mp(this, &GaussianSplatNodeInspectorPlugin::_on_residency_hud_toggled).bind(node->get_instance_id()));

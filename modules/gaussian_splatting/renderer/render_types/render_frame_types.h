@@ -105,6 +105,14 @@ struct DiagnosticsState {
 	Vector<TextureTraceEntry> texture_allocation_trace;
 	Vector<CrossDeviceOperation> cross_device_operations;
 	Vector<FrameTimingSample> frame_timing_history;
+
+	// Frame timing tracking (previously in PerformanceMetrics).
+	uint64_t last_frame_start_usec = 0;
+	float frame_to_frame_time_ms = 0.0f;
+	uint64_t total_frames_rendered = 0;
+	float avg_frame_time_ms = 0.0f;
+	float avg_frame_to_frame_ms = 0.0f;
+	float peak_frame_time_ms = 0.0f;
 	Dictionary last_telemetry_snapshot;
 	Dictionary last_production_metrics;
 	Dictionary last_production_metrics_validation;

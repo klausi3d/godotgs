@@ -87,11 +87,9 @@ Error RenderDataOrchestrator::set_gaussian_data(const Ref<::GaussianData> &p_dat
 
 	renderer->get_subsystem_state().gpu_culler->get_state().hierarchical_structure_dirty = true;
 
-	renderer->get_performance_state().metrics.data_source = GaussianSplatRenderer::SplatDataSource::kSourceNone;
-	renderer->get_performance_state().metrics.using_real_data = false;
-	renderer->get_performance_state().metrics.data_source_error = String();
-	renderer->get_performance_state().metrics.uploaded_splat_count = 0;
-	renderer->get_performance_state().metrics.raster_path = "unknown";
+	renderer->get_performance_state().data_source_info.data_source = GaussianSplatRenderer::SplatDataSource::kSourceNone;
+	renderer->get_performance_state().data_source_info.using_real_data = false;
+	renderer->get_performance_state().data_source_info.data_source_error = String();
 
 	if (!scene_state.gaussian_data.is_valid()) {
 		// Clearing data resets streaming state and metrics.
@@ -114,9 +112,8 @@ Error RenderDataOrchestrator::set_gaussian_data(const Ref<::GaussianData> &p_dat
 		return OK;
 	}
 
-	renderer->get_performance_state().metrics.data_source = GaussianSplatRenderer::SplatDataSource::kSourceCpuData;
-	renderer->get_performance_state().metrics.data_source_error = String();
-	renderer->get_performance_state().metrics.raster_path = "unknown";
+	renderer->get_performance_state().data_source_info.data_source = GaussianSplatRenderer::SplatDataSource::kSourceCpuData;
+	renderer->get_performance_state().data_source_info.data_source_error = String();
 
 	Error status = OK;
 
@@ -141,7 +138,7 @@ Error RenderDataOrchestrator::set_gaussian_data(const Ref<::GaussianData> &p_dat
 			GS_LOG_RENDERER_DEBUG(vformat("[SET-DATA-DBG] update_gpu_buffers_with_real_data returned init_err=%d", init_err));
 		}
 		if (init_err != OK) {
-			renderer->get_performance_state().metrics.using_real_data = false;
+			renderer->get_performance_state().data_source_info.using_real_data = false;
 			status = init_err;
 		}
 	}

@@ -776,6 +776,7 @@ bool GPUSortingPipeline::_publish_sorted_results(const Vector<uint8_t> &p_sorted
 
     const uint32_t *sorted_order = reinterpret_cast<const uint32_t *>(p_sorted_index_bytes.ptr());
 
+
     // BUF-3 optimization: Read from snapshot indices instead of copied arrays.
     // The sorted_order tells us for each output position which input position to read from.
     // We only snapshotted the indices; distances/importance are not needed for sorting.
@@ -2039,7 +2040,6 @@ bool GPUSortingPipeline::_sort_instance_pipeline(GaussianSplatRenderer &renderer
 
     auto &sorting_state = renderer.get_sorting_state();
     auto &frame_state = renderer.get_frame_state();
-    auto &performance_state = renderer.get_performance_state();
     Ref<GPUCuller> gpu_culler = renderer.get_subsystem_state().gpu_culler;
     if (gpu_culler.is_valid()) {
         gpu_culler->update_culling_settings();
@@ -2107,8 +2107,6 @@ bool GPUSortingPipeline::_sort_instance_pipeline(GaussianSplatRenderer &renderer
         last_instance_visible_splat_count = 0;
         sorting_state.sorted_splat_count = 0;
         frame_state.visible_splat_count.store(0, std::memory_order_release);
-        performance_state.metrics.sort_submission_time_ms = 0.0f;
-        performance_state.metrics.sort_wait_time_ms = 0.0f;
         return true;
     }
     if (trace_enabled) {
@@ -2626,7 +2624,7 @@ bool GPUSortingPipeline::_sort_instance_pipeline(GaussianSplatRenderer &renderer
             compute_rd &&
             inputs.instance_count_buffer.is_valid()) {
         instance_count_readback_state.bootstrap_sync_attempted = true;
-        performance_state.metrics.instance_sort_sync_fallback_count++;
+
         Vector<uint8_t> bootstrap_count_data = compute_rd->buffer_get_data(
                 inputs.instance_count_buffer, 0, sizeof(GaussianSplatting::IndirectDispatchLayout));
         if (bootstrap_count_data.size() >= static_cast<int>(sizeof(GaussianSplatting::IndirectDispatchLayout))) {
@@ -2646,7 +2644,7 @@ bool GPUSortingPipeline::_sort_instance_pipeline(GaussianSplatRenderer &renderer
         // Once pending async readback is stale, recover immediately with a sync snapshot
         // so visibility changes are not masked until the much later hard-reset window.
         if (compute_rd && inputs.instance_count_buffer.is_valid() && readback_policy.allow_sync_pending_readback) {
-            performance_state.metrics.instance_sort_sync_fallback_count++;
+    
             const uint32_t stale_age_frames = pending_count_age_frames;
             // Invalidate the stale async request so its callback cannot overwrite the
             // refreshed count and so we can immediately enqueue a fresh async readback.
@@ -2708,7 +2706,7 @@ bool GPUSortingPipeline::_sort_instance_pipeline(GaussianSplatRenderer &renderer
             if (compute_rd && inputs.instance_count_buffer.is_valid() && readback_policy.allow_sync_enqueue_fallback) {
                 // Preserve count freshness when async enqueue fails, while honoring strict
                 // async/timestamp-preserving policy modes that disallow blocking fallbacks.
-                performance_state.metrics.instance_sort_sync_fallback_count++;
+        
                 Vector<uint8_t> sync_count_data = compute_rd->buffer_get_data(
                         inputs.instance_count_buffer, 0, sizeof(GaussianSplatting::IndirectDispatchLayout));
                 if (sync_count_data.size() >= static_cast<int>(sizeof(GaussianSplatting::IndirectDispatchLayout))) {
@@ -2744,11 +2742,6 @@ bool GPUSortingPipeline::_sort_instance_pipeline(GaussianSplatRenderer &renderer
                         sorting_state.sorted_splat_count),
                 false);
     }
-    performance_state.metrics.sort_submission_time_ms = sort_result.gpu_time_ms;
-    performance_state.metrics.sort_wait_time_ms = 0.0f;
-    performance_state.metrics.async_sort_used = true;
-    performance_state.metrics.async_sort_waited = false;
-    performance_state.metrics.async_overlap_efficiency = 0.0f;
     last_compute_error = String();
     return true;
 }

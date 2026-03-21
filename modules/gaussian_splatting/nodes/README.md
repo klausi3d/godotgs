@@ -158,8 +158,8 @@ These overlays render directly in the viewport when using the tile renderer:
 
 ##### Stats-Only Toggles (No Viewport Rendering)
 These flags populate `get_statistics()` but do **not** draw HUD text in the viewport:
-- `debug/show_performance_hud`: Enables performance metrics in stats dictionary
-- `debug/show_residency_hud`: Enables memory residency info in stats dictionary
+- `debug/show_performance_hud`: Enables per-frame diagnostic data collection for performance monitors and overlays
+- `debug/show_residency_hud`: Enables per-frame residency diagnostics collection for monitors and overlays
 
 > **Note:** The HUD toggles affect what data is collected and returned by
 > `get_statistics()`, but there is currently no in-viewport text rendering.
@@ -185,7 +185,7 @@ update_splats()
 
 # Get performance statistics
 var stats = get_statistics()
-print("Visible splats: ", stats.visible_splats)
+print("Visible splats: ", stats.visible_splat_count)
 print("Total splats: ", stats.total_splats)
 print("Update time: ", stats.update_time_ms)
 print("GPU memory: ", stats.gpu_memory_mb)

@@ -254,8 +254,8 @@ void GaussianSplatGizmoPlugin::draw_statistics(EditorNode3DGizmo *p_gizmo, Gauss
         };
 
         float update_ms = stats.has(StringName("update_time_ms")) ? float(stats[StringName("update_time_ms")]) : 0.0f;
-        float render_ms = stats.has(StringName("render_time_ms")) ? float(stats[StringName("render_time_ms")]) : 0.0f;
-        float sort_ms = stats.has(StringName("sort_time_ms")) ? float(stats[StringName("sort_time_ms")]) : 0.0f;
+        float render_ms = stats.has(StringName("pipeline_raster_time_ms")) ? float(stats[StringName("pipeline_raster_time_ms")]) : 0.0f;
+        float sort_ms = stats.has(StringName("pipeline_sort_time_ms")) ? float(stats[StringName("pipeline_sort_time_ms")]) : 0.0f;
 
         Vector3 aabb_size = p_node->get_aabb().get_size();
         const float max_height = MAX(0.25f, aabb_size.y * 0.6f);

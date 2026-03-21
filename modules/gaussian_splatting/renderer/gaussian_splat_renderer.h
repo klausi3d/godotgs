@@ -216,7 +216,7 @@ public:
     // Extracted performance types (ISSUE-029)
     using PerformanceSettings = GaussianRenderPerformance::PerformanceSettings;
     using SortFrameMetrics = GaussianRenderPerformance::SortFrameMetrics;
-    using PerformanceMetrics = GaussianRenderPerformance::PerformanceMetrics;
+    using DataSourceInfo = GaussianRenderPerformance::DataSourceInfo;
     using PerformanceState = GaussianRenderPerformance::PerformanceState;
 
     // Rendering state
@@ -279,7 +279,6 @@ public:
             SceneState *scene_state = nullptr;
             ResourceState *resource_state = nullptr;
             FrameState *frame_state = nullptr;
-            PerformanceState *performance_state = nullptr;
             SubsystemState *subsystem_state = nullptr;
             RenderConfig *render_config = nullptr;
             const PipelineFeatureSet *pipeline_features = nullptr;
@@ -304,7 +303,6 @@ public:
                 ERR_FAIL_NULL_V_MSG(scene_state, false, "FrameDeps: scene_state is null");
                 ERR_FAIL_NULL_V_MSG(resource_state, false, "FrameDeps: resource_state is null");
                 ERR_FAIL_NULL_V_MSG(frame_state, false, "FrameDeps: frame_state is null");
-                ERR_FAIL_NULL_V_MSG(performance_state, false, "FrameDeps: performance_state is null");
                 ERR_FAIL_NULL_V_MSG(subsystem_state, false, "FrameDeps: subsystem_state is null");
                 ERR_FAIL_NULL_V_MSG(render_config, false, "FrameDeps: render_config is null");
                 ERR_FAIL_NULL_V_MSG(pipeline_features, false, "FrameDeps: pipeline_features is null");
@@ -400,7 +398,7 @@ public:
             const SortingState &p_sorting_state,
             const ResourceState &p_resource_state,
             const SubsystemState &p_subsystem_state);
-    static void apply_data_source_plan(const DataSourcePlan &p_plan, PerformanceMetrics &p_metrics,
+    static void apply_data_source_plan(const DataSourcePlan &p_plan, DataSourceInfo &p_info,
             const ResourceState &p_resource_state);
 
     static RenderFramePlan build_frame_plan(const SceneState &p_scene_state,

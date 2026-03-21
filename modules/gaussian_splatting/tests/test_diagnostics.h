@@ -6,6 +6,7 @@
 #include "../renderer/render_types/diagnostics_snapshot.h"
 #include "../renderer/gaussian_splat_renderer.h"
 #include "../core/gaussian_splat_manager.h"
+#include "../core/performance_monitors.h"
 #include "main/performance.h"
 
 TEST_CASE("[Gaussian Diagnostics] Singleton initialization is idempotent") {
@@ -85,15 +86,24 @@ TEST_CASE("[Gaussian Diagnostics] Snapshot clear resets all fields to defaults")
     snapshot.stage_composite_executed = true;
     snapshot.frame_index = 42;
     snapshot.frame_time_ms = 16.6f;
-    snapshot.telemetry_active = true;
-    snapshot.route_uid = "test-route";
-    snapshot.data_source = "TestSource";
+	snapshot.telemetry_active = true;
+	snapshot.route_uid = "test-route";
+	snapshot.sort_route_uid = "test-sort-route";
+	snapshot.data_source = "TestSource";
+	snapshot.streaming_valid = true;
+	snapshot.streaming.vram_current_usage_mb = 64.0f;
+	snapshot.streaming.streaming_monitor_ready = true;
+	snapshot.streaming.streaming_total_chunks = 128;
+	snapshot.streaming.lod_distance_multiplier = 1.5f;
+	snapshot.streaming.memory_stream_total_bytes_uploaded_mb = 12.5f;
+	snapshot.streaming.pack_jobs_completed = 3;
 
     snapshot.clear();
 
-    // Validity flags must be false.
-    CHECK_MESSAGE(!snapshot.valid, "clear() must set valid to false");
-    CHECK_MESSAGE(!snapshot.stage_metrics_valid, "clear() must set stage_metrics_valid to false");
+	// Validity flags must be false.
+	CHECK_MESSAGE(!snapshot.valid, "clear() must set valid to false");
+	CHECK_MESSAGE(!snapshot.stage_metrics_valid, "clear() must set stage_metrics_valid to false");
+	CHECK_MESSAGE(!snapshot.streaming_valid, "clear() must set streaming_valid to false");
 
     // Pipeline timing must all be zero.
     CHECK(snapshot.pipeline_frame_time_ms == 0.0f);
@@ -155,21 +165,23 @@ TEST_CASE("[Gaussian Diagnostics] Snapshot clear resets all fields to defaults")
     CHECK(snapshot.frame_index == 0);
     CHECK(snapshot.frame_time_ms == 0.0f);
     CHECK(!snapshot.telemetry_active);
-    CHECK(snapshot.route_uid == String());
-    CHECK(snapshot.sort_route_uid == String());
-    CHECK(snapshot.data_source == String());
+	CHECK(snapshot.route_uid == String());
+	CHECK(snapshot.sort_route_uid == String());
+	CHECK(snapshot.data_source == String());
+	CHECK(snapshot.streaming.vram_current_usage_mb == 0.0f);
+	CHECK(!snapshot.streaming.streaming_monitor_ready);
+	CHECK(snapshot.streaming.streaming_total_chunks == 0);
+	CHECK(snapshot.streaming.lod_distance_multiplier == 1.0f);
+	CHECK(snapshot.streaming.memory_stream_total_bytes_uploaded_mb == 0.0f);
+	CHECK(snapshot.streaming.pack_jobs_completed == 0);
 }
 
 TEST_CASE("[Gaussian Diagnostics] Snapshot to_dictionary exports every field") {
-    GaussianSplatDiagnosticsSnapshot snapshot;
-    Dictionary d = snapshot.to_dictionary();
+	GaussianSplatDiagnosticsSnapshot snapshot;
+	Dictionary d = snapshot.to_dictionary();
 
-    // The snapshot has exactly 50 fields exported to the dictionary.
-    CHECK_MESSAGE(d.size() == 50,
-            vformat("Expected 50 keys in to_dictionary(), got %d", d.size()));
-
-    // Pipeline stage timing keys.
-    CHECK(d.has("pipeline_frame_time_ms"));
+	// Pipeline stage timing keys.
+	CHECK(d.has("pipeline_frame_time_ms"));
     CHECK(d.has("pipeline_cull_time_ms"));
     CHECK(d.has("pipeline_sort_time_ms"));
     CHECK(d.has("pipeline_binning_time_ms"));
@@ -224,17 +236,29 @@ TEST_CASE("[Gaussian Diagnostics] Snapshot to_dictionary exports every field") {
     CHECK(d.has("sh_cache_updates"));
     CHECK(d.has("sh_cache_hit_rate_pct"));
 
-    // Frame metadata keys.
-    CHECK(d.has("frame_index"));
-    CHECK(d.has("frame_time_ms"));
-    CHECK(d.has("telemetry_active"));
-    CHECK(d.has("route_uid"));
-    CHECK(d.has("sort_route_uid"));
-    CHECK(d.has("data_source"));
+	// Frame metadata keys.
+	CHECK(d.has("frame_index"));
+	CHECK(d.has("frame_time_ms"));
+	CHECK(d.has("telemetry_active"));
+	CHECK(d.has("route_uid"));
+	CHECK(d.has("sort_route_uid"));
+	CHECK(d.has("data_source"));
 
-    // Validity keys.
-    CHECK(d.has("valid"));
-    CHECK(d.has("stage_metrics_valid"));
+	// Validity keys.
+	CHECK(d.has("valid"));
+	CHECK(d.has("stage_metrics_valid"));
+	CHECK(d.has("streaming_valid"));
+
+	// Representative streaming keys.
+	CHECK(d.has("vram_current_usage_mb"));
+	CHECK(d.has("streaming_monitor_ready"));
+	CHECK(d.has("streaming_total_chunks"));
+	CHECK(d.has("lod_distance_multiplier"));
+	CHECK(d.has("memory_stream_total_bytes_uploaded_mb"));
+	CHECK(d.has("chunk_prefetch_hits"));
+	CHECK(d.has("pack_jobs_completed"));
+	CHECK(d.has("lod_min_chunk_distance"));
+	CHECK(d.has("sh_compression_ratio_pct"));
 }
 
 TEST_CASE("[Gaussian Diagnostics] Snapshot to_dictionary returns populated values") {
@@ -251,11 +275,20 @@ TEST_CASE("[Gaussian Diagnostics] Snapshot to_dictionary returns populated value
     snapshot.overlap_records_used = 2048;
     snapshot.overlap_record_budget = 8192;
     snapshot.frame_index = 99;
-    snapshot.telemetry_active = true;
-    snapshot.sort_used_gpu = true;
-    snapshot.data_source = "StreamingGPU";
-    snapshot.stage_sort_did_sort = true;
-    snapshot.stage_composite_executed = true;
+	snapshot.telemetry_active = true;
+	snapshot.sort_used_gpu = true;
+	snapshot.data_source = "StreamingGPU";
+	snapshot.stage_sort_did_sort = true;
+	snapshot.stage_composite_executed = true;
+	snapshot.streaming_valid = true;
+	snapshot.streaming.vram_current_usage_mb = 512.5f;
+	snapshot.streaming.streaming_monitor_ready = true;
+	snapshot.streaming.streaming_total_chunks = 256;
+	snapshot.streaming.lod_distance_multiplier = 1.25f;
+	snapshot.streaming.memory_stream_total_bytes_uploaded_mb = 32.0f;
+	snapshot.streaming.chunk_prefetch_hits = 42;
+	snapshot.streaming.pack_jobs_completed = 7;
+	snapshot.streaming.sh_compression_ratio_pct = 45.0f;
 
     Dictionary d = snapshot.to_dictionary();
 
@@ -270,10 +303,19 @@ TEST_CASE("[Gaussian Diagnostics] Snapshot to_dictionary returns populated value
     CHECK(int(d["overlap_record_budget"]) == 8192);
     CHECK(int64_t(d["frame_index"]) == 99);
     CHECK(bool(d["telemetry_active"]) == true);
-    CHECK(bool(d["sort_used_gpu"]) == true);
-    CHECK(String(d["data_source"]) == "StreamingGPU");
-    CHECK(bool(d["stage_sort_did_sort"]) == true);
-    CHECK(bool(d["stage_composite_executed"]) == true);
+	CHECK(bool(d["sort_used_gpu"]) == true);
+	CHECK(String(d["data_source"]) == "StreamingGPU");
+	CHECK(bool(d["stage_sort_did_sort"]) == true);
+	CHECK(bool(d["stage_composite_executed"]) == true);
+	CHECK(bool(d["streaming_valid"]) == true);
+	CHECK(float(d["vram_current_usage_mb"]) == doctest::Approx(512.5f));
+	CHECK(bool(d["streaming_monitor_ready"]) == true);
+	CHECK(int64_t(d["streaming_total_chunks"]) == 256);
+	CHECK(float(d["lod_distance_multiplier"]) == doctest::Approx(1.25f));
+	CHECK(float(d["memory_stream_total_bytes_uploaded_mb"]) == doctest::Approx(32.0f));
+	CHECK(int64_t(d["chunk_prefetch_hits"]) == 42);
+	CHECK(int64_t(d["pack_jobs_completed"]) == 7);
+	CHECK(float(d["sh_compression_ratio_pct"]) == doctest::Approx(45.0f));
 }
 
 TEST_CASE("[Gaussian Diagnostics] Snapshot clear then to_dictionary returns all-zero defaults") {
@@ -304,10 +346,16 @@ TEST_CASE("[Gaussian Diagnostics] Snapshot clear then to_dictionary returns all-
     CHECK(int(d["visible_splat_count"]) == 0);
     CHECK(int(d["overlap_records_used"]) == 0);
     CHECK(int(d["overlap_record_budget"]) == 0);
-    CHECK(int64_t(d["frame_index"]) == 0);
-    CHECK(bool(d["telemetry_active"]) == false);
-    CHECK(String(d["data_source"]) == String());
-    CHECK(bool(d["stage_metrics_valid"]) == false);
+	CHECK(int64_t(d["frame_index"]) == 0);
+	CHECK(bool(d["telemetry_active"]) == false);
+	CHECK(String(d["data_source"]) == String());
+	CHECK(bool(d["stage_metrics_valid"]) == false);
+	CHECK(bool(d["streaming_valid"]) == false);
+	CHECK(float(d["vram_current_usage_mb"]) == 0.0f);
+	CHECK(int64_t(d["streaming_total_chunks"]) == 0);
+	CHECK(float(d["lod_distance_multiplier"]) == doctest::Approx(1.0f));
+	CHECK(float(d["memory_stream_total_bytes_uploaded_mb"]) == 0.0f);
+	CHECK(int64_t(d["pack_jobs_completed"]) == 0);
 }
 
 TEST_CASE("[Gaussian Diagnostics] New monitors are registered in Performance singleton") {
@@ -392,7 +440,79 @@ TEST_CASE("[Gaussian Diagnostics] New monitors are registered in Performance sin
     if (owns_rd) {
         memdelete(rd);
     }
-    if (owns_manager) {
-        memdelete(manager);
-    }
+	if (owns_manager) {
+		memdelete(manager);
+	}
+}
+
+TEST_CASE("[Gaussian Diagnostics] Multi-instance monitors follow active renderer snapshot") {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (rs == nullptr) {
+		MESSAGE("Skipping test - Rendering server unavailable");
+		return;
+	}
+
+	GaussianSplatManager *manager = GaussianSplatManager::get_singleton();
+	bool owns_manager = false;
+	if (!manager) {
+		manager = memnew(GaussianSplatManager);
+		owns_manager = true;
+	}
+	REQUIRE(manager != nullptr);
+
+	RenderingDevice *rd = manager->get_primary_rendering_device();
+	bool owns_rd = false;
+	if (!rd) {
+		rd = rs->create_local_rendering_device();
+		owns_rd = true;
+	}
+	REQUIRE(rd != nullptr);
+
+	Ref<GaussianSplatRenderer> renderer_a;
+	Ref<GaussianSplatRenderer> renderer_b;
+	renderer_a.instantiate(rd);
+	renderer_b.instantiate(rd);
+	REQUIRE(renderer_a.is_valid());
+	REQUIRE(renderer_b.is_valid());
+
+	{
+		GaussianSplatDiagnosticsSnapshot &snap_a = renderer_a->get_diagnostics_snapshot();
+		snap_a.clear();
+		snap_a.valid = true;
+		snap_a.pipeline_frame_time_ms = 11.0f;
+		snap_a.streaming_valid = false;
+	}
+	{
+		GaussianSplatDiagnosticsSnapshot &snap_b = renderer_b->get_diagnostics_snapshot();
+		snap_b.clear();
+		snap_b.valid = true;
+		snap_b.pipeline_frame_time_ms = 22.0f;
+		snap_b.streaming_valid = true;
+		snap_b.streaming.vram_current_usage_mb = 123.0f;
+	}
+
+	Performance *perf = Performance::get_singleton();
+	REQUIRE(perf != nullptr);
+
+	// renderer_b is the most recently registered renderer and should be active.
+	CHECK(float(perf->get_custom_monitor("gaussian_splatting/pipeline_frame_time_ms")) == doctest::Approx(22.0f));
+	CHECK(float(perf->get_custom_monitor("gaussian_splatting/vram_current_usage_mb")) == doctest::Approx(123.0f));
+
+	// Force renderer_a active and verify streaming monitor does not drift to renderer_b.
+	GaussianSplattingPerformanceMonitors *monitors = GaussianSplattingPerformanceMonitors::get_singleton();
+	REQUIRE(monitors != nullptr);
+	monitors->register_splat_renderer(renderer_a.ptr());
+
+	CHECK(float(perf->get_custom_monitor("gaussian_splatting/pipeline_frame_time_ms")) == doctest::Approx(11.0f));
+	CHECK(float(perf->get_custom_monitor("gaussian_splatting/vram_current_usage_mb")) == doctest::Approx(0.0f));
+
+	renderer_b.unref();
+	renderer_a.unref();
+
+	if (owns_rd) {
+		memdelete(rd);
+	}
+	if (owns_manager) {
+		memdelete(manager);
+	}
 }

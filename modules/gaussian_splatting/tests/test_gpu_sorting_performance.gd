@@ -76,7 +76,7 @@ func benchmark_algorithm(algorithm_name: String) -> void:
                         break
                     prev_dist = dist
 
-            if stats.get("sort_submission_time_ms", 0.0) <= 0.0 and stats.get("sort_wait_time_ms", 0.0) <= 0.0:
+            if stats.get("cpu_sort_submit_ms", 0.0) <= 0.0 and stats.get("cpu_sort_wait_ms", 0.0) <= 0.0:
                 push_error("[GPU SORT BENCHMARK] ❌ GPU timing metrics missing at size %d" % size)
                 exit_code = 1
 
