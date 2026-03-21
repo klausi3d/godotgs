@@ -11,9 +11,9 @@ const GRID_SPACING := 1.0
 const CAMERA_ORBIT_SPEED := 0.35
 
 const MONITOR_KEYS := [
-	"gpu_time_frame_ms",
-	"gpu_time_cull_ms",
-	"gpu_time_raster_ms",
+	"pipeline_frame_time_ms",
+	"pipeline_cull_time_ms",
+	"pipeline_raster_time_ms",
 	"visible_splats",
 	"overflow_tile_count",
 	"streaming_vram_usage_mb",

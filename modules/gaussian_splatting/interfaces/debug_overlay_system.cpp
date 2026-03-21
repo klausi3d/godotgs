@@ -22,7 +22,6 @@ void DebugOverlaySystem::initialize() {
     options = DebugOverlayOptions();
     counters = DebugCounterSnapshot();
     binning_counters.clear();
-    hud_lines.clear();
     tile_density_cache.clear();
     tile_density_width = 0;
     tile_density_height = 0;
@@ -34,7 +33,6 @@ void DebugOverlaySystem::initialize() {
 
 void DebugOverlaySystem::shutdown() {
     binning_counters.clear();
-    hud_lines.clear();
     tile_density_cache.clear();
 }
 
@@ -176,9 +174,10 @@ GS_DEBUG_OVERLAY_RENDERER_SETTER_OVERLAY_IMPL(show_density_heatmap)
 GS_DEBUG_OVERLAY_RENDERER_SETTER_OVERLAY_IMPL(show_device_boundaries)
 GS_DEBUG_OVERLAY_RENDERER_SETTER_OVERLAY_IMPL(show_texture_states)
 
-// Renderer-syncing setters - HUD invalidation variants
-GS_DEBUG_OVERLAY_RENDERER_SETTER_HUD_IMPL(show_performance_hud)
-GS_DEBUG_OVERLAY_RENDERER_SETTER_HUD_IMPL(show_residency_hud)
+// Renderer-syncing setters - performance_hud and residency_hud use overlay invalidation
+// (HUD node was removed; the canonical overlay is now GDScript-based)
+GS_DEBUG_OVERLAY_RENDERER_SETTER_OVERLAY_IMPL(show_performance_hud)
+GS_DEBUG_OVERLAY_RENDERER_SETTER_OVERLAY_IMPL(show_residency_hud)
 
 void DebugOverlaySystem::set_renderer_overlay_opacity(GaussianSplatRenderer *p_renderer, float p_opacity) {
     if (!p_renderer) {
@@ -215,23 +214,6 @@ void DebugOverlaySystem::invalidate_renderer_overlay(GaussianSplatRenderer *p_re
         debug_state.tile_density_peak = 0;
         debug_state.tile_density_average = 0.0f;
     }
-}
-
-void DebugOverlaySystem::invalidate_renderer_hud(GaussianSplatRenderer *p_renderer, bool p_increment_version) {
-    if (!p_renderer) {
-        return;
-    }
-
-    auto &debug_state = p_renderer->get_debug_state();
-    if (p_increment_version) {
-        debug_state.hud_version++;
-    }
-
-    if (!debug_state.show_performance_hud && !debug_state.show_residency_hud) {
-        debug_state.hud_lines.clear();
-    }
-
-    debug_state.hud_dirty = true;
 }
 
 void DebugOverlaySystem::rebuild_renderer_overlay_statistics_from_cache(GaussianSplatRenderer *p_renderer) {
@@ -274,200 +256,3 @@ void DebugOverlaySystem::rebuild_renderer_overlay_statistics_from_cache(Gaussian
     debug_state.overlay_dirty = false;
 }
 
-void DebugOverlaySystem::rebuild_renderer_performance_hud_lines(GaussianSplatRenderer *p_renderer) {
-    if (!p_renderer) {
-        return;
-    }
-
-    auto &debug_state = p_renderer->get_debug_state();
-    auto &frame_state = p_renderer->get_frame_state();
-    auto &sorting_state = p_renderer->get_sorting_state();
-    auto &performance_state = p_renderer->get_performance_state();
-    auto &device_state = p_renderer->get_device_state();
-    auto &subsystem_state = p_renderer->get_subsystem_state();
-
-    debug_state.hud_lines.clear();
-
-    if (debug_state.show_performance_hud) {
-        const String route_uid = debug_state.route_uid.is_empty() ? String("unset") : debug_state.route_uid;
-        debug_state.hud_lines.push_back(vformat("Route UID: %s", route_uid));
-		debug_state.hud_lines.push_back(String("Visible Splats: ") +
-				String::num_uint64(frame_state.visible_splat_count.load(std::memory_order_acquire)));
-		debug_state.hud_lines.push_back(String("Sorted Splats: ") + String::num_uint64(sorting_state.sorted_splat_count));
-		if (!performance_state.metrics.data_source.is_empty()) {
-			debug_state.hud_lines.push_back(vformat("Data Source: %s", performance_state.metrics.data_source));
-			if (!performance_state.metrics.data_source_error.is_empty()) {
-				debug_state.hud_lines.push_back(vformat("Data Error: %s", performance_state.metrics.data_source_error));
-			}
-		}
-		float sort_time_ms = debug_state.last_sort_time_ms;
-		float render_time_ms = debug_state.last_render_time_ms;
-        if (debug_state.last_stage_metrics_valid) {
-            sort_time_ms = debug_state.last_stage_metrics.sort.sort_time_ms;
-            render_time_ms = debug_state.last_stage_metrics.raster.render_time_ms;
-        }
-        debug_state.hud_lines.push_back(vformat("Sort Time: %.2f ms", sort_time_ms));
-        debug_state.hud_lines.push_back(vformat("Render Time: %.2f ms", render_time_ms));
-        debug_state.hud_lines.push_back(vformat("Tile Assign: %.2f ms", debug_state.last_tile_assignment_ms));
-        debug_state.hud_lines.push_back(vformat("Tile Raster: %.2f ms", debug_state.last_tile_rasterization_ms));
-        if (subsystem_state.rasterizer.is_valid()) {
-            RasterStats raster_stats = subsystem_state.rasterizer->get_render_stats();
-            debug_state.hud_lines.push_back(vformat("Raster Path: %s (compute=%s, fragment=%s)",
-                    raster_stats.last_raster_used_compute ? "compute" : "fragment",
-                    String::num_uint64(raster_stats.compute_raster_frames),
-                    String::num_uint64(raster_stats.fragment_raster_frames)));
-            debug_state.hud_lines.push_back(vformat("Tile Size: %d (compute max 32)", subsystem_state.rasterizer->get_tile_size()));
-            debug_state.hud_lines.push_back(vformat("Overlap Records: %u / %u (effective %u)",
-                    raster_stats.overlap_records,
-                    raster_stats.overlap_record_budget_configured,
-                    raster_stats.overlap_record_budget_effective));
-            if (raster_stats.sorted_indices_blend_fallback_active) {
-                debug_state.hud_lines.push_back(vformat("Blend Sort Fallback: %s",
-                        raster_stats.sorted_indices_blend_fallback_reason));
-            }
-            if (raster_stats.overlap_thinning_keep_ratio < 0.999f) {
-                debug_state.hud_lines.push_back(vformat("Overlap Thinning: keep %.1f%%",
-                        raster_stats.overlap_thinning_keep_ratio * 100.0f));
-            }
-        }
-        if (debug_state.last_stage_metrics_valid) {
-            const auto &stage_metrics = debug_state.last_stage_metrics;
-            debug_state.hud_lines.push_back(vformat("Cull: %.2f ms (cand %u -> vis %u)",
-                    stage_metrics.cull.cull_time_ms, stage_metrics.cull.candidate_count, stage_metrics.cull.visible_count));
-            if (stage_metrics.sort.did_sort) {
-                debug_state.hud_lines.push_back(vformat("Sort: %.2f ms (in %u -> %u)",
-                        stage_metrics.sort.sort_time_ms, stage_metrics.sort.input_count, stage_metrics.sort.sorted_count));
-            } else {
-                debug_state.hud_lines.push_back(vformat("Sort: skipped (in %u)", stage_metrics.sort.input_count));
-            }
-            const char *raster_label = stage_metrics.raster.reused_cached_render
-                    ? "cached"
-                    : (stage_metrics.raster.painterly_active ? "painterly" : "baseline");
-            debug_state.hud_lines.push_back(vformat("Raster: %.2f ms (%s)", stage_metrics.raster.render_time_ms, raster_label));
-            if (stage_metrics.composite_executed) {
-                debug_state.hud_lines.push_back(vformat("Composite: %.2f ms", stage_metrics.composite_time_ms));
-            } else {
-                debug_state.hud_lines.push_back(String("Composite: skipped"));
-            }
-            auto stage_io_label = [](const GaussianSplatRenderer::StageIO &p_io) -> const char * {
-                if (!p_io.validated) {
-                    return "n/a";
-                }
-                return p_io.validation_failed ? "fail" : "ok";
-            };
-            debug_state.hud_lines.push_back(vformat("Stage IO: cull %s | sort %s | raster %s | comp %s",
-                    stage_io_label(stage_metrics.cull_io),
-                    stage_io_label(stage_metrics.sort_io),
-                    stage_io_label(stage_metrics.raster_io),
-                    stage_io_label(stage_metrics.composite_io)));
-            const GaussianSplatRenderer::StageIO *failed_io = nullptr;
-            const char *failed_label = nullptr;
-            if (stage_metrics.cull_io.validation_failed) {
-                failed_io = &stage_metrics.cull_io;
-                failed_label = "cull";
-            } else if (stage_metrics.sort_io.validation_failed) {
-                failed_io = &stage_metrics.sort_io;
-                failed_label = "sort";
-            } else if (stage_metrics.raster_io.validation_failed) {
-                failed_io = &stage_metrics.raster_io;
-                failed_label = "raster";
-            } else if (stage_metrics.composite_io.validation_failed) {
-                failed_io = &stage_metrics.composite_io;
-                failed_label = "comp";
-            }
-            if (failed_io && !failed_io->validation_error.is_empty()) {
-                debug_state.hud_lines.push_back(vformat("IO Error (%s): %s", failed_label, failed_io->validation_error));
-            }
-        }
-        float fps = (performance_state.metrics.avg_frame_to_frame_ms > 0.001f)
-                ? (1000.0f / performance_state.metrics.avg_frame_to_frame_ms)
-                : 0.0f;
-        debug_state.hud_lines.push_back(
-                vformat("Frame Time: %.2f ms (%.1f FPS)", performance_state.metrics.avg_frame_to_frame_ms, fps));
-        debug_state.hud_lines.push_back(vformat("GPU Utilization: %.1f%%", performance_state.metrics.gpu_utilization));
-        debug_state.hud_lines.push_back(vformat("GPU Frame Time: %.2f ms", performance_state.metrics.gpu_frame_time_ms));
-        debug_state.hud_lines.push_back(vformat("GPU Binning: %.2f ms", performance_state.metrics.gpu_tile_binning_time_ms));
-        debug_state.hud_lines.push_back(vformat("GPU Prefix: %.2f ms", performance_state.metrics.gpu_tile_prefix_time_ms));
-        debug_state.hud_lines.push_back(vformat("GPU Resolve: %.2f ms", performance_state.metrics.gpu_tile_resolve_time_ms));
-        debug_state.hud_lines.push_back(vformat("GPU Raster: %.2f ms", performance_state.metrics.gpu_tile_raster_time_ms));
-        debug_state.hud_lines.push_back(vformat("GPU Memory: %.2f MB", performance_state.metrics.gpu_memory_usage_mb));
-
-        const Dictionary binning = get_binning_debug_counters();
-        if (!binning.is_empty()) {
-            debug_state.hud_lines.push_back(vformat("Binning counters: hits=%lld updates=%lld forced=%lld hitrate=%.2f",
-                    int64_t(binning.get("sh_cache_hits", int64_t(0))),
-                    int64_t(binning.get("sh_cache_updates", int64_t(0))),
-                    int64_t(binning.get("sh_cache_forced_updates", int64_t(0))),
-                    double(binning.get("sh_cache_hit_rate", 0.0))));
-        }
-
-
-        if (debug_state.show_device_boundaries) {
-            debug_state.hud_lines.push_back(String());
-            debug_state.hud_lines.push_back(String("Device Boundaries"));
-            auto append_device = [&](const char *p_label, RenderingDevice *p_device) {
-                if (!p_device) {
-                    return;
-                }
-                debug_state.hud_lines.push_back(vformat("%s: %s", p_label, p_device->get_device_name()));
-            };
-            RenderingDevice *tile_device = nullptr;
-            if (subsystem_state.rasterizer.is_valid()) {
-                tile_device = subsystem_state.rasterizer->get_output_texture_owner();
-                if (!tile_device && subsystem_state.rasterizer->has_depth_output()) {
-                    tile_device = subsystem_state.rasterizer->get_depth_texture_owner();
-                }
-            }
-
-            RenderingDevice *sort_device = nullptr;
-            if (subsystem_state.sorting_pipeline.is_valid()) {
-                sort_device = subsystem_state.sorting_pipeline->get_sort_resource_device();
-            }
-
-            append_device("Primary", device_state.rd);
-            append_device("Local", p_renderer->get_submission_device());
-            append_device("Viewport", p_renderer->get_main_rendering_device());
-            append_device("Tile", tile_device);
-            append_device("Sorter", sort_device);
-        }
-
-        if (debug_state.show_texture_states) {
-            debug_state.hud_lines.push_back(String());
-            debug_state.hud_lines.push_back(String("Texture States"));
-            if (subsystem_state.device_manager.is_valid()) {
-                uint32_t tracked_count = subsystem_state.device_manager->get_tracked_resource_count();
-                debug_state.hud_lines.push_back(vformat("Total tracked resources: %d", tracked_count));
-            } else {
-                debug_state.hud_lines.push_back(String("RenderDeviceManager not initialized"));
-            }
-        }
-    }
-
-    if (debug_state.show_residency_hud) {
-        if (!debug_state.hud_lines.is_empty()) {
-            debug_state.hud_lines.push_back(String());
-        }
-        debug_state.hud_lines.push_back(String("Residency"));
-
-        if (GaussianSplatManager *mgr = GaussianSplatManager::get_singleton()) {
-            Dictionary stats = mgr->get_global_stats();
-            int buffer_count = stats.get(StringName("buffer_count"), 0);
-            double total_gaussians = stats.get(StringName("total_gaussians"), 0.0);
-            double reported_gaussians = stats.get(StringName("reported_gaussians"), 0.0);
-            double total_memory = stats.get(StringName("total_memory_mb"), 0.0);
-            double reported_memory = stats.get(StringName("reported_memory_mb"), 0.0);
-            debug_state.hud_lines.push_back(vformat("GPU Buffers: %d", buffer_count));
-            debug_state.hud_lines.push_back(vformat("Resident Splats: %.0f / %.0f", reported_gaussians, total_gaussians));
-            debug_state.hud_lines.push_back(vformat("Resident Memory: %.2f / %.2f MB", reported_memory, total_memory));
-        } else {
-            debug_state.hud_lines.push_back(String("GPU Buffers: n/a"));
-        }
-    }
-
-    if (debug_state.hud_lines.is_empty()) {
-        debug_state.hud_dirty = false;
-        return;
-    }
-
-    debug_state.hud_dirty = false;
-}

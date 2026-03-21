@@ -164,8 +164,8 @@ static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_re
 			? scene_state.gaussian_data->get_count()
 			: 0;
 	float cull_ms = p_stage_valid ? p_stage_metrics.cull.cull_time_ms : perf.culling_time_ms;
-	float sort_ms = p_stage_valid ? p_stage_metrics.sort.sort_time_ms : frame_state.sort_time_ms;
-	float raster_ms = p_stage_valid ? p_stage_metrics.raster.render_time_ms : frame_state.render_time_ms;
+	float sort_ms = p_stage_valid ? p_stage_metrics.sort.sort_time_ms : 0.0f;
+	float raster_ms = p_stage_valid ? p_stage_metrics.raster.render_time_ms : 0.0f;
 	float composite_ms = p_stage_valid ? p_stage_metrics.composite_time_ms : 0.0f;
 	float stage_total_ms = cull_ms + sort_ms + raster_ms;
 
@@ -177,7 +177,7 @@ static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_re
 	metrics["raster_ms"] = raster_ms;
 	metrics["composite_ms"] = composite_ms;
 	metrics["stage_total_ms"] = stage_total_ms;
-	metrics["render_ms"] = frame_state.render_time_ms;
+	metrics["render_ms"] = raster_ms;
 	metrics["frame_time_ms"] = p_frame_time_ms;
 	metrics["gpu_frame_ms"] = perf.gpu_frame_time_ms;
 	metrics["gpu_binning_ms"] = perf.gpu_tile_binning_time_ms;
@@ -224,8 +224,8 @@ static void _append_telemetry_extras(GaussianSplatRenderer &p_renderer,
 
 	r_metrics["frame_count"] = static_cast<int64_t>(frame_state.frame_counter);
 	r_metrics["sorted_splats"] = static_cast<int64_t>(sorting_state.sorted_splat_count);
-	r_metrics["render_time_ms"] = frame_state.render_time_ms;
-	r_metrics["sort_time_ms"] = frame_state.sort_time_ms;
+	r_metrics["render_time_ms"] = p_stage_valid ? p_stage_metrics.raster.render_time_ms : 0.0f;
+	r_metrics["sort_time_ms"] = p_stage_valid ? p_stage_metrics.sort.sort_time_ms : 0.0f;
 	r_metrics["frame_time_ms"] = p_frame_time_ms;
 	r_metrics["total_frames_rendered"] = static_cast<int64_t>(perf.total_frames_rendered);
 	r_metrics["avg_frame_time_ms"] = perf.avg_frame_time_ms;
@@ -280,10 +280,6 @@ static void _append_telemetry_extras(GaussianSplatRenderer &p_renderer,
 	r_metrics["gpu_timeline_stall_count"] = static_cast<int64_t>(perf.gpu_timeline_stall_count);
 	r_metrics["gpu_timeline_stall_ms"] = perf.gpu_timeline_stall_ms;
 	r_metrics["gpu_timeline_last_value"] = static_cast<int64_t>(perf.gpu_timeline_last_value);
-	r_metrics["tile_assignment_ms"] = debug_state.last_tile_assignment_ms;
-	r_metrics["tile_rasterization_ms"] = debug_state.last_tile_rasterization_ms;
-	r_metrics["debug_last_render_time_ms"] = debug_state.last_render_time_ms;
-	r_metrics["debug_last_sort_time_ms"] = debug_state.last_sort_time_ms;
 	r_metrics["stage_metrics_valid"] = p_stage_valid;
 	r_metrics["stage_cull_has_visible"] = p_stage_metrics.cull.has_visible;
 	r_metrics["stage_cull_visible_count"] = p_stage_metrics.cull.visible_count;
@@ -383,7 +379,9 @@ static void _append_telemetry_extras(GaussianSplatRenderer &p_renderer,
 		r_metrics["tile_size"] = subsystem_state.rasterizer->get_tile_size();
 		RasterStats raster_stats = subsystem_state.rasterizer->get_render_stats();
 		r_metrics["overlap_records"] = static_cast<int64_t>(raster_stats.overlap_records);
-		r_metrics["overlap_record_budget"] = static_cast<int64_t>(raster_stats.overlap_record_budget);
+		// Note: "overlap_record_budget" is now provided by the diagnostics snapshot
+		// (via overlap_record_budget in GaussianSplatDiagnosticsSnapshot::to_dictionary()).
+		// Only inject the extended budget keys that are NOT in the snapshot.
 		r_metrics["overlap_record_budget_effective"] = static_cast<int64_t>(raster_stats.overlap_record_budget_effective);
 		r_metrics["overlap_record_budget_configured"] = static_cast<int64_t>(raster_stats.overlap_record_budget_configured);
 		r_metrics["overlap_thinning_keep_ratio"] = raster_stats.overlap_thinning_keep_ratio;
@@ -393,7 +391,7 @@ static void _append_telemetry_extras(GaussianSplatRenderer &p_renderer,
 		r_metrics["tile_grid_size"] = Vector2i(0, 0);
 		r_metrics["tile_size"] = 0;
 		r_metrics["overlap_records"] = static_cast<int64_t>(0);
-		r_metrics["overlap_record_budget"] = static_cast<int64_t>(0);
+		// Note: "overlap_record_budget" is now provided by the diagnostics snapshot.
 		r_metrics["overlap_record_budget_effective"] = static_cast<int64_t>(0);
 		r_metrics["overlap_record_budget_configured"] = static_cast<int64_t>(0);
 		r_metrics["overlap_thinning_keep_ratio"] = 1.0f;
@@ -750,9 +748,12 @@ void RenderDiagnosticsOrchestrator::capture_frame_timing_sample() {
 	GaussianSplatRenderer::FrameTimingSample sample;
 	sample.timestamp_usec = OS::get_singleton()->get_ticks_usec();
 	sample.frame = renderer->get_frame_state().frame_counter;
-	sample.render_ms = renderer->get_frame_state().render_time_ms;
-	sample.sort_ms = renderer->get_frame_state().sort_time_ms;
-	sample.total_ms = renderer->get_frame_state().render_time_ms + renderer->get_frame_state().sort_time_ms;
+	// Timing data now comes from StageMetrics / DiagnosticsSnapshot.
+	const bool sm_valid = renderer->get_debug_state().last_stage_metrics_valid;
+	const auto &sm = renderer->get_debug_state().last_stage_metrics;
+	sample.render_ms = sm_valid ? sm.raster.render_time_ms : 0.0f;
+	sample.sort_ms = sm_valid ? sm.sort.sort_time_ms : 0.0f;
+	sample.total_ms = sample.render_ms + sample.sort_ms;
 	sample.visible_splats = renderer->get_frame_state().visible_splat_count.load(std::memory_order_acquire);
 	sample.used_gpu = renderer->get_sorting_state().gpu_sorter.is_valid();
 	diagnostics_state.frame_timing_history.push_back(sample);
@@ -863,48 +864,96 @@ Dictionary RenderDiagnosticsOrchestrator::serialize_error_statistics() const {
 }
 
 Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
-	Dictionary stats;
+	// -------------------------------------------------------------------
+	// Step 1: Start from the canonical diagnostics snapshot.
+	// This is the single source of truth for per-frame timing, stats,
+	// and metadata.  Keys emitted here should NOT be re-added below.
+	// -------------------------------------------------------------------
+	const GaussianSplatDiagnosticsSnapshot &snap = renderer->get_diagnostics_snapshot();
+	Dictionary stats = snap.to_dictionary();
+
+	// -------------------------------------------------------------------
+	// Step 2: Backward-compatibility aliases.
+	// Existing consumers (scripts, editor, inspector, tests) reference
+	// the old key names.  We emit aliases so they keep working.
+	// -------------------------------------------------------------------
+	// CPU sort timing aliases (old name -> snapshot field value)
+	stats["sort_submission_time_ms"] = snap.cpu_sort_submit_ms;
+	stats["sort_wait_time_ms"] = snap.cpu_sort_wait_ms;
+	stats["sort_input_build_time_ms"] = snap.cpu_sort_input_build_ms;
+
+	// "sort_time_ms" and "render_time_ms" are expected by inspector,
+	// editor plugin, gizmo, hello_splat_test, and other scripts.
+	// Map them to the best available stage timing from the snapshot.
+	stats["sort_time_ms"] = snap.pipeline_sort_time_ms;
+	stats["render_time_ms"] = snap.pipeline_raster_time_ms;
+
+	// "visible_splats" alias for visible_splat_count
+	stats["visible_splats"] = snap.visible_splat_count;
+
+	// "culled_by_frustum" -- not in the snapshot; will be populated by
+	// _append_telemetry_extras below from PerformanceMetrics.
+
+	// -------------------------------------------------------------------
+	// Step 3: Rebuild overlays if dirty (side-effect on mutable renderer).
+	// -------------------------------------------------------------------
 	GaussianSplatRenderer *mutable_renderer = const_cast<GaussianSplatRenderer *>(renderer);
 	if (mutable_renderer->get_debug_state().overlay_dirty) {
 		if (mutable_renderer->get_subsystem_state().debug_overlay_system.is_valid()) {
 			mutable_renderer->get_subsystem_state().debug_overlay_system->rebuild_renderer_overlay_statistics_from_cache(mutable_renderer);
 		}
 	}
-	if (mutable_renderer->get_debug_state().hud_dirty) {
-		if (mutable_renderer->get_subsystem_state().debug_overlay_system.is_valid()) {
-			mutable_renderer->get_subsystem_state().debug_overlay_system->rebuild_renderer_performance_hud_lines(mutable_renderer);
-		}
-	}
+	// -------------------------------------------------------------------
+	// Step 4: Merge the telemetry extras (streaming, VRAM, LOD, culling
+	// breakdown, GPU timeline, etc.) that live outside the snapshot.
+	// When the full telemetry snapshot exists we merge it first so that
+	// _append_telemetry_extras can overwrite with fresh values.
+	// -------------------------------------------------------------------
 	if (!diagnostics_state.last_telemetry_snapshot.is_empty()) {
-		_merge_dictionary(stats, diagnostics_state.last_telemetry_snapshot);
+		// Merge telemetry, but skip keys the snapshot already provides
+		// to avoid stale data overwriting the canonical source.
+		Array telemetry_keys = diagnostics_state.last_telemetry_snapshot.keys();
+		for (int i = 0; i < telemetry_keys.size(); i++) {
+			const Variant &key = telemetry_keys[i];
+			if (!stats.has(key)) {
+				stats[key] = diagnostics_state.last_telemetry_snapshot[key];
+			}
+		}
 	} else {
-		stats["visible_splats"] = renderer->get_frame_state().visible_splat_count.load(std::memory_order_acquire);
+		// Fallback: populate the basics that consumers expect when no
+		// telemetry snapshot is available.
 		stats["total_splats"] = renderer->get_scene_state().gaussian_data.is_valid() ? renderer->get_scene_state().gaussian_data->get_count() : 0;
-		stats["sort_time_ms"] = renderer->get_frame_state().sort_time_ms;
-		stats["render_time_ms"] = renderer->get_frame_state().render_time_ms;
 		stats["frame_count"] = renderer->get_frame_state().frame_counter;
 		stats["render_mode"] = renderer->get_render_config().render_mode;
-		const bool stage_metrics_valid = mutable_renderer->get_debug_state().last_stage_metrics_valid;
-		GaussianSplatRenderer::StageMetrics stage_metrics = stage_metrics_valid
+		const bool sm_valid = mutable_renderer->get_debug_state().last_stage_metrics_valid;
+		GaussianSplatRenderer::StageMetrics stage_metrics = sm_valid
 				? mutable_renderer->get_debug_state().last_stage_metrics
 				: GaussianSplatRenderer::StageMetrics();
-		_append_telemetry_extras(*mutable_renderer, stage_metrics, stage_metrics_valid,
-				renderer->get_frame_state().render_time_ms, stats);
+		float fallback_render_ms = sm_valid ? stage_metrics.raster.render_time_ms : 0.0f;
+		_append_telemetry_extras(*mutable_renderer, stage_metrics, sm_valid,
+				fallback_render_ms, stats);
 	}
+
+	// -------------------------------------------------------------------
+	// Step 5: Additional keys NOT in the snapshot and NOT in telemetry.
+	// -------------------------------------------------------------------
+
+	// Painterly config
 	stats["painterly_enabled"] = renderer->get_painterly_config().enabled;
 	stats["painterly_low_end_mode"] = renderer->get_painterly_config().low_end_mode;
 	PainterlyPassGraph *pass_graph = renderer->get_subsystem_state().painterly_renderer.is_valid()
 			? renderer->get_subsystem_state().painterly_renderer->get_pass_graph()
 			: nullptr;
 	stats["painterly_internal_scale"] = pass_graph ? pass_graph->get_internal_scale() : renderer->get_painterly_config().internal_scale;
+
+	// Camera / view state
 	stats["using_scene_data_camera"] = renderer->get_view_state().using_scene_data;
-	// Debug: expose camera transform values to verify they're updating
 	stats["debug_cam_origin_x"] = renderer->get_view_state().last_camera_to_world_transform.origin.x;
 	stats["debug_cam_origin_y"] = renderer->get_view_state().last_camera_to_world_transform.origin.y;
 	stats["debug_cam_origin_z"] = renderer->get_view_state().last_camera_to_world_transform.origin.z;
-	// Expose view matrix basis[0][0] as rotation indicator
 	stats["debug_cam_basis_00"] = renderer->get_view_state().last_camera_to_world_transform.basis[0][0];
 
+	// Binning debug counters
 	if (debug_state_orchestrator) {
 		const GaussianSplatRenderer::DebugConfig &debug_config = renderer->get_debug_config();
 		if (debug_config.enable_binning_counters || debug_config.dump_gpu_counters) {
@@ -918,6 +967,7 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 		}
 	}
 
+	// Sorted indices preview
 	PackedInt32Array sorted_preview;
 	if (renderer->get_subsystem_state().gpu_culler.is_valid()) {
 		int preview_count = MIN((int)renderer->get_subsystem_state().gpu_culler->get_state().culled_indices.size(), 32);
@@ -1007,19 +1057,26 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 		stats["culled_ratio"] = 0.0;
 	}
 
+	// Debug state flags
 	stats["debug_show_tile_grid"] = renderer->get_debug_state().show_tile_grid;
 	stats["debug_show_density_heatmap"] = renderer->get_debug_state().show_density_heatmap;
 	stats["debug_show_performance_hud"] = renderer->get_debug_state().show_performance_hud;
 	stats["debug_show_residency_hud"] = renderer->get_debug_state().show_residency_hud;
+
+	// Route UIDs (overwrite snapshot values with normalized versions)
 	const String normalized_route_uid = _normalize_route_uid_for_stats(renderer->get_debug_state().route_uid);
 	const String normalized_sort_route_uid = _normalize_sort_route_uid_for_stats(renderer->get_debug_state().sort_route_uid);
 	stats["route_uid"] = normalized_route_uid;
 	stats["sort_route_uid"] = normalized_sort_route_uid;
 	stats["route_uid_missing"] = RenderRouteUID::is_route_uid_missing(normalized_route_uid);
 	stats["sort_route_uid_missing"] = RenderRouteUID::is_sort_route_uid_missing(normalized_sort_route_uid);
+
+	// Instance pipeline & caching
 	stats["instance_pipeline_content_generation"] =
 			static_cast<int64_t>(renderer->get_resource_state().instance_pipeline_content_generation);
 	stats["cached_render_reuse_enabled"] = renderer->is_cached_render_reuse_enabled();
+
+	// GPU culler stats
 	if (renderer->get_subsystem_state().gpu_culler.is_valid()) {
 		const auto &cull_state = renderer->get_subsystem_state().gpu_culler->get_state();
 		stats["cull_static_chunk_total"] = static_cast<int64_t>(cull_state.static_chunks.size());
@@ -1034,33 +1091,34 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 		stats["cull_cpu_visible_count"] = static_cast<int64_t>(0);
 		stats["cull_total_splats_pre_cull"] = static_cast<int64_t>(0);
 	}
+
+	// Debug overlay metadata
 	stats["debug_overlay_version"] = renderer->get_debug_state().overlay_version;
-	stats["debug_hud_version"] = renderer->get_debug_state().hud_version;
 	stats["debug_tile_density_peak"] = (int)renderer->get_debug_state().tile_density_peak;
 	stats["debug_tile_density_average"] = renderer->get_debug_state().tile_density_average;
 	stats["debug_tile_density_size"] =
 			Vector2i(renderer->get_debug_state().tile_density_width, renderer->get_debug_state().tile_density_height);
 
-	Array hud_lines_array;
-	for (const String &line : renderer->get_debug_state().hud_lines) {
-		hud_lines_array.push_back(line);
-	}
-	stats["performance_hud_lines"] = hud_lines_array;
 	stats["debug_preview_mode"] = renderer->get_debug_state().preview_mode;
+
+	// Diagnostics state dictionaries
 	stats["telemetry"] = diagnostics_state.last_telemetry_snapshot;
 	stats["production_metrics"] = diagnostics_state.last_production_metrics;
 	stats["production_metrics_validation"] = diagnostics_state.last_production_metrics_validation;
 	stats["production_metrics_invalid_count"] = static_cast<int64_t>(diagnostics_state.production_metrics_invalid_count);
 	stats["perf_gate"] = diagnostics_state.last_perf_gate_result;
+
 	return stats;
 }
 
 float RenderDiagnosticsOrchestrator::get_sort_time_ms_internal() const {
-	return renderer->get_frame_state().sort_time_ms;
+	const bool sm_valid = renderer->get_debug_state().last_stage_metrics_valid;
+	return sm_valid ? renderer->get_debug_state().last_stage_metrics.sort.sort_time_ms : 0.0f;
 }
 
 float RenderDiagnosticsOrchestrator::get_render_time_ms_internal() const {
-	return renderer->get_frame_state().render_time_ms;
+	const bool sm_valid = renderer->get_debug_state().last_stage_metrics_valid;
+	return sm_valid ? renderer->get_debug_state().last_stage_metrics.raster.render_time_ms : 0.0f;
 }
 
 Dictionary RenderDiagnosticsOrchestrator::get_last_sort_metrics_internal() const {
@@ -1131,12 +1189,7 @@ void RenderDiagnosticsOrchestrator::record_sort_sample(const GaussianSplatRender
 }
 
 void RenderDiagnosticsOrchestrator::finalize_frame_metrics(uint64_t p_frame_start_usec) {
-	debug_state_orchestrator->update_frame_times(renderer->get_frame_state().render_time_ms, renderer->get_frame_state().sort_time_ms);
-	if (renderer->get_debug_state().show_performance_hud || renderer->get_debug_state().show_residency_hud) {
-		if (renderer->get_subsystem_state().debug_overlay_system.is_valid()) {
-			renderer->get_subsystem_state().debug_overlay_system->invalidate_renderer_hud(renderer, false);
-		}
-	}
+	debug_state_orchestrator->update_frame_times(0.0f, 0.0f);
 
 	// Update performance metrics
 	uint64_t frame_end = OS::get_singleton()->get_ticks_usec();
@@ -1204,6 +1257,164 @@ void RenderDiagnosticsOrchestrator::finalize_frame_metrics(uint64_t p_frame_star
 
 	_update_production_summary(diagnostics_state, metrics_config, diagnostics_state.last_production_metrics,
 			diagnostics_state.last_perf_gate_result, frame_end);
+
+	// Populate the canonical per-frame diagnostics snapshot once all stages have
+	// completed and all metrics are up to date.
+	build_diagnostics_snapshot();
+}
+
+void RenderDiagnosticsOrchestrator::build_diagnostics_snapshot() {
+	GaussianSplatDiagnosticsSnapshot &snap = renderer->get_diagnostics_snapshot();
+	snap.clear();
+
+	const auto &perf = renderer->get_performance_state().metrics;
+	const auto &frame_state = renderer->get_frame_state();
+	const auto &debug_state = renderer->get_debug_state();
+	const auto &sort_history = renderer->get_performance_state().sort_metrics_history;
+
+	// Populate frame_index early so downstream sections can use it for
+	// freshness checks (e.g. sort history staleness guard).
+	snap.frame_index = frame_state.frame_counter;
+
+	// ---------------------------------------------------------------
+	// GPU Pipeline Timing
+	// ---------------------------------------------------------------
+	// Prefer TileRenderer direct methods when the tile renderer is available,
+	// otherwise fall back to the PerformanceMetrics copies (which are populated
+	// from the same source via update_gpu_pass_metrics_from_tile_renderer).
+	const bool has_tile_renderer = renderer->get_tile_renderer_state().renderer.is_valid();
+	if (has_tile_renderer) {
+		const TileRenderer *tr = renderer->get_tile_renderer_state().renderer.ptr();
+		snap.pipeline_frame_time_ms = tr->get_last_gpu_frame_time_ms();
+		snap.pipeline_binning_time_ms = tr->get_last_gpu_binning_time_ms();
+		snap.pipeline_prefix_time_ms = tr->get_last_gpu_prefix_time_ms();
+		snap.pipeline_raster_time_ms = tr->get_last_gpu_raster_time_ms();
+		snap.pipeline_resolve_time_ms = tr->get_last_gpu_resolve_time_ms();
+	} else {
+		snap.pipeline_frame_time_ms = perf.gpu_frame_time_ms;
+		snap.pipeline_binning_time_ms = perf.gpu_tile_binning_time_ms;
+		snap.pipeline_prefix_time_ms = perf.gpu_tile_prefix_time_ms;
+		snap.pipeline_raster_time_ms = perf.gpu_tile_raster_time_ms;
+		snap.pipeline_resolve_time_ms = perf.gpu_tile_resolve_time_ms;
+	}
+
+	// GPU cull time: prefer stage metrics when valid, else PerformanceMetrics.
+	const bool stage_metrics_valid = debug_state.last_stage_metrics_valid;
+	const GaussianSplatRenderer::StageMetrics &stage_metrics = debug_state.last_stage_metrics;
+	if (stage_metrics_valid) {
+		snap.pipeline_cull_time_ms = stage_metrics.cull.cull_time_ms;
+	} else {
+		snap.pipeline_cull_time_ms = perf.culling_time_ms;
+	}
+
+	// GPU sort time: from the latest sort_metrics_history entry, only when GPU sort was used.
+	// Guard: only use sort data if it belongs to the current frame; stale entries from
+	// skip/reuse frames would misattribute previous-frame timing to this frame.
+	if (!sort_history.is_empty()) {
+		const GaussianSplatRenderer::SortFrameMetrics &latest_sort = sort_history[sort_history.size() - 1];
+		if (latest_sort.frame_index == snap.frame_index && latest_sort.used_gpu) {
+			snap.pipeline_sort_time_ms = latest_sort.gpu_ms;
+		}
+	}
+
+	// GPU composite time: from stage metrics when composite actually executed.
+	if (stage_metrics_valid && stage_metrics.composite_executed) {
+		snap.pipeline_composite_time_ms = stage_metrics.composite_time_ms;
+	}
+
+	// ---------------------------------------------------------------
+	// CPU Timing
+	// ---------------------------------------------------------------
+	if (has_tile_renderer) {
+		snap.cpu_setup_time_ms = renderer->get_tile_renderer_state().renderer->get_last_setup_cpu_ms();
+	}
+	snap.cpu_sort_submit_ms = perf.sort_submission_time_ms;
+	snap.cpu_sort_wait_ms = perf.sort_wait_time_ms;
+	snap.cpu_sort_input_build_ms = perf.sort_input_build_time_ms;
+
+	// ---------------------------------------------------------------
+	// Sort Metadata
+	// ---------------------------------------------------------------
+	// Only populate from sort history if the entry matches the current frame.
+	// On skip/reuse frames the history still holds previous-frame data which
+	// must not be stamped onto this frame's snapshot.
+	if (!sort_history.is_empty()) {
+		const GaussianSplatRenderer::SortFrameMetrics &latest_sort = sort_history[sort_history.size() - 1];
+		if (latest_sort.frame_index == snap.frame_index) {
+			snap.sort_used_gpu = latest_sort.used_gpu;
+			snap.sort_used_cpu_fallback = latest_sort.used_cpu_fallback;
+			snap.sort_algorithm = latest_sort.algorithm;
+			snap.sort_element_count = latest_sort.element_count;
+		}
+	}
+
+	// ---------------------------------------------------------------
+	// Visibility / Projection Stats
+	// ---------------------------------------------------------------
+	snap.visible_splat_count = frame_state.visible_splat_count.load(std::memory_order_acquire);
+	if (has_tile_renderer) {
+		const TileRenderer *tr = renderer->get_tile_renderer_state().renderer.ptr();
+		snap.total_processed = tr->get_total_processed();
+		snap.projection_success_count = tr->get_projection_success_count();
+		snap.projection_success_rate_pct = tr->get_projection_success_rate_pct();
+		snap.clip_reject_count = tr->get_clip_bounds_reject_count();
+		snap.radius_reject_count = tr->get_radius_reject_count();
+		snap.viewport_reject_count = tr->get_viewport_bounds_reject_count();
+		snap.extreme_aspect_count = tr->get_extreme_aspect_count();
+		snap.index_mismatch_count = tr->get_index_mismatch_count();
+	}
+
+	// ---------------------------------------------------------------
+	// Tile Stats
+	// ---------------------------------------------------------------
+	if (has_tile_renderer) {
+		const TileRenderer *tr = renderer->get_tile_renderer_state().renderer.ptr();
+		snap.tile_count = tr->get_tile_count();
+		snap.overflow_tile_count = tr->get_overflow_tile_count();
+		snap.clamped_records = tr->get_clamped_records();
+		snap.aggregated_count = tr->get_aggregated_count();
+
+		const TileRenderer::RenderStats tile_stats = tr->get_last_render_stats();
+		snap.overlap_records_used = tile_stats.overlap_records;
+		snap.overlap_record_budget = tile_stats.overlap_record_budget;
+	}
+
+	// ---------------------------------------------------------------
+	// Stage Metrics
+	// ---------------------------------------------------------------
+	snap.stage_metrics_valid = stage_metrics_valid;
+	if (stage_metrics_valid) {
+		// Cull stage
+		snap.stage_cull_candidate_count = stage_metrics.cull.candidate_count;
+		snap.stage_cull_visible_count = stage_metrics.cull.visible_count;
+
+		// Sort stage
+		snap.stage_sort_did_sort = stage_metrics.sort.did_sort;
+		snap.stage_sort_input_count = stage_metrics.sort.input_count;
+		snap.stage_sort_sorted_count = stage_metrics.sort.sorted_count;
+
+		// Raster stage
+		snap.stage_raster_reused_cached = stage_metrics.raster.reused_cached_render;
+		snap.stage_raster_painterly_active = stage_metrics.raster.painterly_active;
+
+		// Composite stage
+		snap.stage_composite_executed = stage_metrics.composite_executed;
+	}
+
+	// ---------------------------------------------------------------
+	// Frame Metadata
+	// ---------------------------------------------------------------
+	// Note: snap.frame_index is populated early (before GPU pipeline timing)
+	// so that sort history freshness guards can compare against it.
+	snap.frame_time_ms = perf.frame_to_frame_time_ms;
+	snap.telemetry_active = !diagnostics_state.last_telemetry_snapshot.is_empty();
+	snap.route_uid = debug_state.route_uid;
+	snap.data_source = perf.data_source;
+
+	// ---------------------------------------------------------------
+	// Mark valid
+	// ---------------------------------------------------------------
+	snap.valid = true;
 }
 
 Dictionary RenderDiagnosticsOrchestrator::get_runtime_diagnostic_snapshot() const {

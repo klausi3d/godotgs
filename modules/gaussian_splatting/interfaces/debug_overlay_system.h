@@ -94,12 +94,9 @@ public:
     void set_renderer_show_texture_states(GaussianSplatRenderer *p_renderer, bool p_enabled);
     void set_renderer_overlay_opacity(GaussianSplatRenderer *p_renderer, float p_opacity);
     void invalidate_renderer_overlay(GaussianSplatRenderer *p_renderer, bool p_increment_version);
-    void invalidate_renderer_hud(GaussianSplatRenderer *p_renderer, bool p_increment_version);
     void rebuild_renderer_overlay_statistics_from_cache(GaussianSplatRenderer *p_renderer);
-    void rebuild_renderer_performance_hud_lines(GaussianSplatRenderer *p_renderer);
 
-    // HUD text access for renderer integration
-    const Vector<String> &get_hud_lines() const { return hud_lines; }
+    // Tile density access for renderer integration
     uint32_t get_tile_density_peak() const { return tile_density_peak; }
     float get_tile_density_average() const { return tile_density_average; }
     const Vector<uint32_t> &get_tile_density_cache() const { return tile_density_cache; }
@@ -116,8 +113,7 @@ private:
     bool dirty = false;
     uint64_t version = 0;
 
-    // HUD and overlay state
-    Vector<String> hud_lines;
+    // Overlay state
     Vector<uint32_t> tile_density_cache;
     int tile_density_width = 0;
     int tile_density_height = 0;

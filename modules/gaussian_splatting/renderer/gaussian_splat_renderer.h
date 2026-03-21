@@ -59,6 +59,7 @@
 #include "../interfaces/render_thread_dispatcher.h"
 #include "../interfaces/render_device_manager.h"
 #include "../interfaces/renderer_interfaces.h"
+#include "render_types/diagnostics_snapshot.h"
 #include "render_types/render_config_types.h"
 #include "render_types/render_debug_types.h"
 #include "render_types/render_facade_state_types.h"
@@ -450,6 +451,7 @@ public:
 
 public:
     PerformanceState performance_state;
+    GaussianSplatDiagnosticsSnapshot diagnostics_snapshot_;
     TestDataState test_data_state;
 
     // Phase 15: painterly texture RIDs removed - now managed by PainterlyMaterialManager
@@ -600,6 +602,8 @@ public:
     FrameState &get_frame_state() { return frame_context_manager.get_frame_state(); }
     const FrameState &get_frame_state() const { return frame_context_manager.get_frame_state(); }
     PerformanceState &get_performance_state() { return performance_state; }
+    GaussianSplatDiagnosticsSnapshot &get_diagnostics_snapshot() { return diagnostics_snapshot_; }
+    const GaussianSplatDiagnosticsSnapshot &get_diagnostics_snapshot() const { return diagnostics_snapshot_; }
     DeviceState &get_device_state();
     const DeviceState &get_device_state() const;
     RenderConfig &get_render_config();

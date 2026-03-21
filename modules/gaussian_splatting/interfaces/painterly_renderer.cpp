@@ -1972,10 +1972,7 @@ Error PainterlyRenderer::populate_painterly_gbuffer(GaussianSplatRenderer *p_ren
     debug_state.tile_density_height = 0;
     debug_state.tile_density_peak = 0;
     debug_state.tile_density_average = 0.0f;
-    debug_state.last_tile_assignment_ms = 0.0f;
-    debug_state.last_tile_rasterization_ms = 0.0f;
     debug_state.overlay_dirty = false;
-    debug_state.hud_dirty = false;
     debug_state.last_stage_metrics = {};
     debug_state.last_stage_metrics_valid = false;
 

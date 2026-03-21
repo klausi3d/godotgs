@@ -526,6 +526,7 @@ void RenderSortingOrchestrator::benchmark_sorting_performance() {
 
 GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_for_view(
 		const Transform3D &p_world_to_camera_transform, GaussianRenderState::IndexDomain p_input_domain) {
+	float local_sort_time_ms = 0.0f; // Tracks sort timing for the summary (FrameState mirror removed).
 	auto &cull_state = gpu_culler->get_state();
 	uint32_t available_splats = cull_state.culled_indices.size();
 	auto resolve_output_domain_for_input = [](GaussianRenderState::IndexDomain p_domain) {
@@ -543,7 +544,7 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 	auto build_summary = [&]() {
 		GaussianRenderState::SortStageSummary summary;
 		summary.sorted_count = sorting_state.sorted_splat_count;
-		summary.sort_time_ms = renderer->get_frame_state().sort_time_ms;
+		summary.sort_time_ms = local_sort_time_ms;
 		summary.input_domain = p_input_domain;
 		summary.output_domain = resolve_output_domain_for_input(p_input_domain);
 		return summary;
@@ -625,7 +626,7 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 	renderer->get_debug_state().sort_route_uid = RenderRouteUID::COMMON_UNSET_SORT_ROUTE;
 	if (!input_domain_known) {
 		GS_LOG_ERROR_DEFAULT("[GPU Sort] Index-domain contract violation: sort input domain is unknown");
-		renderer->get_frame_state().sort_time_ms = 0.0f;
+		local_sort_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_submission_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_wait_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_input_build_time_ms = 0.0f;
@@ -639,7 +640,7 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 	}
 	if (input_domain_is_chunk && !instance_pipeline_active) {
 		GS_LOG_ERROR_DEFAULT("[GPU Sort] Index-domain contract violation: chunk-domain sort input requires instance pipeline inputs");
-		renderer->get_frame_state().sort_time_ms = 0.0f;
+		local_sort_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_submission_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_wait_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_input_build_time_ms = 0.0f;
@@ -653,7 +654,7 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 	}
 	if (input_domain_is_global && instance_pipeline_active) {
 		GS_LOG_ERROR_DEFAULT("[GPU Sort] Index-domain contract violation: global-domain sort input is incompatible with instance pipeline sort");
-		renderer->get_frame_state().sort_time_ms = 0.0f;
+		local_sort_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_submission_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_wait_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_input_build_time_ms = 0.0f;
@@ -703,7 +704,7 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 	};
 
 	auto reset_sort_metrics = [&]() {
-		renderer->get_frame_state().sort_time_ms = 0.0f;
+		local_sort_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_submission_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_wait_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_input_build_time_ms = 0.0f;
@@ -716,8 +717,8 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 		GaussianSplatRenderer::SortFrameMetrics sample;
 		sample.frame_index = renderer->get_frame_state().frame_counter;
 		sample.element_count = sorting_state.sorted_splat_count;
-		sample.total_ms = renderer->get_frame_state().sort_time_ms;
-		sample.gpu_ms = renderer->get_frame_state().sort_time_ms;
+		sample.total_ms = local_sort_time_ms;
+		sample.gpu_ms = local_sort_time_ms;
 		sample.cpu_ms = 0.0f;
 		sample.cpu_selection_ms = renderer->get_performance_state().metrics.sort_input_build_time_ms;
 		if (sorting_state.gpu_sorter.is_valid()) {
@@ -833,7 +834,7 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 		renderer->get_debug_state().sort_route_uid = RenderRouteUID::COMMON_SKIP_NO_VISIBLE;
 		renderer->get_frame_state().visible_splat_count.store(0, std::memory_order_release);
 		sorting_state.sorted_splat_count = 0;
-		renderer->get_frame_state().sort_time_ms = 0.0f;
+		local_sort_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_submission_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_wait_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.sort_input_build_time_ms = 0.0f;
@@ -1158,7 +1159,7 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 		renderer->get_frame_state().visible_splat_count.store(available_splats, std::memory_order_release);
 		renderer->get_performance_state().metrics.rendered_splat_count =
 				renderer->get_frame_state().visible_splat_count.load(std::memory_order_acquire);
-		renderer->get_frame_state().sort_time_ms = cpu_time_ms;
+		local_sort_time_ms = cpu_time_ms;
 		renderer->get_performance_state().metrics.sort_submission_time_ms = cpu_time_ms;
 		renderer->get_performance_state().metrics.sort_wait_time_ms = 0.0f;
 		renderer->get_performance_state().metrics.async_sort_used = false;

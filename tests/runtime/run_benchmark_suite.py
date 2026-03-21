@@ -734,7 +734,7 @@ def _run_lane(
     gpu_timing_available = None
     gpu_frame_time_source = None
     gpu_frame_estimate_ms = None
-    gpu_time_frame_ms = None
+    pipeline_frame_time_ms = None
     node_visible_splats_max = None
     node_total_visible_splats_max = None
     node_primary_visible_splats_max = None
@@ -803,7 +803,7 @@ def _run_lane(
         gpu_timing_available = _report_renderer_metric(report, "gpu_timing_available")
         gpu_frame_time_source = _report_renderer_metric(report, "gpu_frame_time_source")
         gpu_frame_estimate_ms = _report_renderer_metric(report, "gpu_frame_estimate_ms")
-        gpu_time_frame_ms = _report_renderer_metric(report, "gpu_frame_time_ms")
+        pipeline_frame_time_ms = _report_renderer_metric(report, "gpu_frame_time_ms")
         node_visible_splats_max = report.get("node_visible_splats_max")
         node_total_visible_splats_max = report.get("node_total_visible_splats_max")
         node_primary_visible_splats_max = report.get("node_primary_visible_splats_max")
@@ -876,7 +876,7 @@ def _run_lane(
         "gpu_timing_available": gpu_timing_available,
         "gpu_frame_time_source": gpu_frame_time_source,
         "gpu_frame_estimate_ms": gpu_frame_estimate_ms,
-        "gpu_time_frame_ms": gpu_time_frame_ms,
+        "pipeline_frame_time_ms": pipeline_frame_time_ms,
         "node_visible_splats_max": node_visible_splats_max,
         "node_total_visible_splats_max": node_total_visible_splats_max,
         "node_primary_visible_splats_max": node_primary_visible_splats_max,
@@ -1006,7 +1006,7 @@ def _write_suite_summary_markdown(
             f"{_fmt(lane.get('stage_sort_time_ms'))} | "
             f"{_fmt(lane.get('stage_raster_time_ms'))} | "
             f"{_fmt(lane.get('node_total_visible_splats_max') if lane.get('node_total_visible_splats_max') is not None else lane.get('node_visible_splats_max'), 0)} | "
-            f"{_fmt(lane.get('gpu_time_frame_ms'))} | "
+            f"{_fmt(lane.get('pipeline_frame_time_ms'))} | "
             f"{lane.get('gpu_frame_time_source', 'n/a')} | "
             f"{lane.get('effective_quality_preset', 'n/a')} | "
             f"{_fmt(lane.get('effective_max_splats'), 0)} | "
@@ -1161,7 +1161,7 @@ def main() -> int:
             f"route_fb={result.get('sort_total_route_fallback_count', 'n/a')} "
             f"sort_ms={result.get('stage_sort_time_ms', 'n/a')} raster_ms={result.get('stage_raster_time_ms', 'n/a')} "
             f"visible={result.get('node_total_visible_splats_max', result.get('node_visible_splats_max', 'n/a'))} "
-            f"gpu_ms={result.get('gpu_time_frame_ms', 'n/a')} "
+            f"gpu_ms={result.get('pipeline_frame_time_ms', 'n/a')} "
             f"gpu_src={result.get('gpu_frame_time_source', 'n/a')} "
             f"effective_preset={result.get('effective_quality_preset', 'n/a')} "
             f"effective_max_splats={result.get('effective_max_splats', 'n/a')} "

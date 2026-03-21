@@ -44,7 +44,7 @@ This page displays interactive benchmark results from the latest suite run.
       {"field": "lane_id", "title": "Lane"},
       {"field": "p99_frame_ms", "title": "P99 Frame (ms)", "format": ".2f"},
       {"field": "avg_fps", "title": "Avg FPS", "format": ".1f"},
-      {"field": "gpu_time_frame_ms", "title": "GPU Time (ms)", "format": ".2f"}
+      {"field": "pipeline_frame_time_ms", "title": "Pipeline Time (ms)", "format": ".2f"}
     ]
   },
   "width": "container",

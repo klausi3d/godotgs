@@ -188,7 +188,7 @@ def _extract_metrics(report: dict[str, Any]) -> dict[str, Any]:
         "execution_path": execution_path,
         "execution_reason": execution_reason,
         "gpu_timing_available": report.get("overall", {}).get("gpu_timing_available", None),
-        "gpu_frame_time_source": report.get("overall", {}).get("gpu_time_frame_source", None),
+        "gpu_frame_time_source": report.get("overall", {}).get("pipeline_frame_time_source", None),
         "true_single_pass_enabled": report.get("project_settings", {}).get(
             "rendering/gaussian_splatting/instance_pipeline/true_single_pass_enabled", None
         ),

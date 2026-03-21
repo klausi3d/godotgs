@@ -21,7 +21,7 @@ EXPORT_FIELDS = [
     "score",
     "avg_fps",
     "p99_frame_ms",
-    "gpu_time_frame_ms",
+    "pipeline_frame_time_ms",
     "capture_ssim_min",
     "capture_psnr_min",
     "weight",

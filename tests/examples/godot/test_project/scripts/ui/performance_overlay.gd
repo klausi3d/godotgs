@@ -104,16 +104,36 @@ const SH_COMPRESSION_FIELDS := [
 	"sh_compression_ratio_pct",
 ]
 
+const TIMING_FIELDS := [
+	"pipeline_frame_time_ms",
+	"pipeline_cull_time_ms",
+	"pipeline_binning_time_ms",
+	"pipeline_prefix_time_ms",
+	"pipeline_raster_time_ms",
+	"pipeline_resolve_time_ms",
+	"pipeline_sort_time_ms",
+	"pipeline_composite_time_ms",
+	"cpu_setup_time_ms",
+	"sort_cpu_submit_ms",
+	"sort_cpu_wait_ms",
+	"sort_cpu_input_ms",
+]
+
 # Node path mapping for the new 2-column layout
 var _node_paths := {
-	# Left column - GPU
-	"gpu_time_frame_ms": "Panel/Columns/Left/GPU/gpu_time_frame_ms",
-	"gpu_time_cull_ms": "Panel/Columns/Left/GPU/gpu_time_cull_ms",
-	"gpu_time_binning_ms": "Panel/Columns/Left/GPU/gpu_time_binning_ms",
-	"gpu_time_prefix_ms": "Panel/Columns/Left/GPU/gpu_time_prefix_ms",
-	"gpu_time_raster_ms": "Panel/Columns/Left/GPU/gpu_time_raster_ms",
-	"gpu_time_resolve_ms": "Panel/Columns/Left/GPU/gpu_time_resolve_ms",
+	# Left column - Pipeline
+	"pipeline_frame_time_ms": "Panel/Columns/Left/GPU/pipeline_frame_time_ms",
+	"pipeline_cull_time_ms": "Panel/Columns/Left/GPU/pipeline_cull_time_ms",
+	"pipeline_binning_time_ms": "Panel/Columns/Left/GPU/pipeline_binning_time_ms",
+	"pipeline_prefix_time_ms": "Panel/Columns/Left/GPU/pipeline_prefix_time_ms",
+	"pipeline_raster_time_ms": "Panel/Columns/Left/GPU/pipeline_raster_time_ms",
+	"pipeline_resolve_time_ms": "Panel/Columns/Left/GPU/pipeline_resolve_time_ms",
 	"cpu_setup_time_ms": "Panel/Columns/Left/GPU/cpu_setup_time_ms",
+	"pipeline_sort_time_ms": "Panel/Columns/Left/GPU/pipeline_sort_time_ms",
+	"pipeline_composite_time_ms": "Panel/Columns/Left/GPU/pipeline_composite_time_ms",
+	"sort_cpu_submit_ms": "Panel/Columns/Left/GPU/sort_cpu_submit_ms",
+	"sort_cpu_wait_ms": "Panel/Columns/Left/GPU/sort_cpu_wait_ms",
+	"sort_cpu_input_ms": "Panel/Columns/Left/GPU/sort_cpu_input_ms",
 	# Left column - Visibility
 	"visible_splats": "Panel/Columns/Left/VIS/visible_splats",
 	"total_processed": "Panel/Columns/Left/VIS/total_processed",
@@ -130,6 +150,8 @@ var _node_paths := {
 	"overflow_tile_count": "Panel/Columns/Left/TILE/overflow_tile_count",
 	"clamped_records": "Panel/Columns/Left/TILE/clamped_records",
 	"aggregated_count": "Panel/Columns/Left/TILE/aggregated_count",
+	"overlap_records_used": "Panel/Columns/Left/TILE/overlap_records_used",
+	"overlap_record_budget": "Panel/Columns/Left/TILE/overlap_record_budget",
 	# Left column - VRAM
 	"vram_current_usage_mb": "Panel/Columns/Left/VRAM/vram_current_usage_mb",
 	"vram_budget_mb": "Panel/Columns/Left/VRAM/vram_budget_mb",
@@ -304,22 +326,36 @@ func _refresh() -> void:
 		fps_node.text = "%.0f FPS" % _ema_fps
 		fps_node.add_theme_color_override("font_color", fps_color)
 
-	# GPU Timing
-	var frame = _m("gpu_time_frame_ms")
-	var cull = _m("gpu_time_cull_ms")
-	var bin = _m("gpu_time_binning_ms")
-	var prefix = _m("gpu_time_prefix_ms")
-	var raster = _m("gpu_time_raster_ms")
-	var resolve = _m("gpu_time_resolve_ms")
-	var cpu_setup = _m("cpu_setup_time_ms")
+	# Pipeline Timing — show N/A when telemetry is inactive
+	if not _has_monitor("pipeline_frame_time_ms"):
+		_set_group_na(TIMING_FIELDS)
+	else:
+		var frame = _m("pipeline_frame_time_ms")
+		var cull = _m("pipeline_cull_time_ms")
+		var bin = _m("pipeline_binning_time_ms")
+		var prefix = _m("pipeline_prefix_time_ms")
+		var raster = _m("pipeline_raster_time_ms")
+		var resolve = _m("pipeline_resolve_time_ms")
+		var cpu_setup = _m("cpu_setup_time_ms")
 
-	_set_label("gpu_time_frame_ms", "%.2f ms" % frame, _time_color(frame))
-	_set_label("gpu_time_cull_ms", "%.2f ms" % cull, _time_color(cull))
-	_set_label("gpu_time_binning_ms", "%.2f ms" % bin, _time_color(bin))
-	_set_label("gpu_time_prefix_ms", "%.2f ms" % prefix, _time_color(prefix))
-	_set_label("gpu_time_raster_ms", "%.2f ms" % raster, _time_color(raster))
-	_set_label("gpu_time_resolve_ms", "%.2f ms" % resolve, _time_color(resolve))
-	_set_label("cpu_setup_time_ms", "%.2f ms" % cpu_setup, _time_color(cpu_setup))
+		_set_label("pipeline_frame_time_ms", "%.2f ms" % frame, _time_color(frame))
+		_set_label("pipeline_cull_time_ms", "%.2f ms" % cull, _time_color(cull))
+		_set_label("pipeline_binning_time_ms", "%.2f ms" % bin, _time_color(bin))
+		_set_label("pipeline_prefix_time_ms", "%.2f ms" % prefix, _time_color(prefix))
+		_set_label("pipeline_raster_time_ms", "%.2f ms" % raster, _time_color(raster))
+		_set_label("pipeline_resolve_time_ms", "%.2f ms" % resolve, _time_color(resolve))
+		_set_label("cpu_setup_time_ms", "%.2f ms" % cpu_setup, _time_color(cpu_setup))
+
+		var pipeline_sort = _m("pipeline_sort_time_ms")
+		_set_label("pipeline_sort_time_ms", "%.2f ms" % pipeline_sort, _time_color(pipeline_sort))
+		var composite = _m("pipeline_composite_time_ms")
+		_set_label("pipeline_composite_time_ms", "%.2f ms" % composite, _time_color(composite))
+		var sort_submit = _m("cpu_sort_submit_ms")
+		_set_label("sort_cpu_submit_ms", "%.2f ms" % sort_submit, _time_color(sort_submit))
+		var sort_wait = _m("cpu_sort_wait_ms")
+		_set_label("sort_cpu_wait_ms", "%.2f ms" % sort_wait, _time_color(sort_wait))
+		var sort_input = _m("cpu_sort_input_build_ms")
+		_set_label("sort_cpu_input_ms", "%.2f ms" % sort_input, _time_color(sort_input))
 
 	# Visibility
 	_set_label("visible_splats", _n(_m("visible_splats")))
@@ -340,6 +376,8 @@ func _refresh() -> void:
 	_set_label("overflow_tile_count", _n(_m("overflow_tile_count")))
 	_set_label("clamped_records", _n(_m("clamped_records")))
 	_set_label("aggregated_count", _n(_m("aggregated_count")))
+	_set_label("overlap_records_used", _n(_m("overlap_records_used")))
+	_set_label("overlap_record_budget", _n(_m("overlap_record_budget")))
 
 	var streaming_active = _is_streaming_active()
 

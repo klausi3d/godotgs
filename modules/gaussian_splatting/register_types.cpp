@@ -22,7 +22,6 @@
 #include "renderer/rendering_diagnostics.h"
 #include "painterly/painterly_material.h"
 #include "nodes/gaussian_splat_node_3d.h"
-#include "nodes/gaussian_splat_debug_hud.h"
 #include "nodes/gaussian_splat_container.h"
 #include "nodes/gaussian_splat_dynamic_instance_3d.h"
 #include "nodes/gaussian_splat_world_3d.h"
@@ -75,7 +74,6 @@ void initialize_gaussian_splatting_module(ModuleInitializationLevel p_level) {
 
             // Node classes
             GDREGISTER_CLASS(GaussianSplatNode3D);
-            GDREGISTER_CLASS(GaussianSplatDebugHUD);
             GDREGISTER_CLASS(GaussianSplatContainer);
             GDREGISTER_CLASS(GaussianSplatDynamicInstance3D);
             GDREGISTER_CLASS(GaussianSplatWorld3D);

@@ -1966,7 +1966,6 @@ RenderPipelineStages::StageResult RenderPipelineStages::RasterStage::render_base
 	GaussianSplatRenderer::FrameStateProvider fallback_provider(renderer);
 	const GaussianSplatRenderer::IFrameStateProvider &state_provider =
 			p_input.state_provider ? *p_input.state_provider : fallback_provider;
-	GaussianSplatRenderer::FrameState &frame_state = state_provider.get_frame_state();
 	GaussianSplatRenderer::PerformanceState &performance_state = state_provider.get_performance_state();
 	GaussianSplatRenderer::ResourceState &resource_state = state_provider.get_resource_state();
 	OutputCompositor *output_compositor = state_provider.get_output_compositor();
@@ -1978,7 +1977,6 @@ RenderPipelineStages::StageResult RenderPipelineStages::RasterStage::render_base
 	r_output.raster_path = performance_state.metrics.raster_path;
 	uint64_t fallback_end = OS::get_singleton()->get_ticks_usec();
 	const float render_time_ms = (fallback_end - fallback_start) / 1000.0f;
-	frame_state.render_time_ms = render_time_ms;
 	r_output.render_time_ms = render_time_ms;
 	auto fill_raster_io = [&](bool p_failed) {
 		if (!p_input.metrics) {
@@ -2010,7 +2008,6 @@ RenderPipelineStages::StageResult RenderPipelineStages::RasterStage::render_base
 				GaussianSplatRenderer::RenderFallbackReason::TILE_FALLBACK_FAILED);
 
 		pipeline->reset_render_state_for_frame(&state_provider);
-		frame_state.render_time_ms = 0.0f;
 		r_output.render_time_ms = 0.0f;
 		pipeline->reset_debug_overlay_metrics(p_input.sort_time_ms);
 
@@ -2070,7 +2067,6 @@ RenderPipelineStages::StageResult RenderPipelineStages::RasterStage::render_pain
 			p_input.state_provider ? *p_input.state_provider : fallback_provider;
 	GaussianSplatRenderer::PerformanceState &performance_state = state_provider.get_performance_state();
 	float painterly_render_time_ms = 0.0f;
-	GaussianSplatRenderer::FrameState &frame_state = state_provider.get_frame_state();
 	PainterlyRenderer *painterly_renderer = state_provider.get_painterly_renderer();
 	if (!painterly_renderer) {
 		StageResult painterly_failure = _make_stage_result(StageResult::StageStatus::FALLBACK,
@@ -2102,7 +2098,6 @@ RenderPipelineStages::StageResult RenderPipelineStages::RasterStage::render_pain
 
 	r_output.raster_path = "painterly";
 	performance_state.metrics.raster_path = "painterly";
-	frame_state.render_time_ms = painterly_render_time_ms;
 	r_output.render_time_ms = painterly_render_time_ms;
 	return StageResult();
 }
@@ -2215,10 +2210,8 @@ void RenderPipelineStages::render_sorted_splats_with_context(const GaussianSplat
 	output_cache.last_viewport_copy_success = false;
 	output_cache.last_viewport_copy_source_size = Size2i();
 	output_cache.last_viewport_copy_dest_size = Size2i();
-	GaussianSplatRenderer::FrameState &frame_state = state_provider.get_frame_state();
 	GaussianSplatRenderer::PerformanceState &performance_state = state_provider.get_performance_state();
 	GaussianSplatRenderer::ResourceState &resource_state = state_provider.get_resource_state();
-	frame_state.render_time_ms = 0.0f;
 	auto &metrics = performance_state.metrics;
 	metrics.raster_path = "unknown";
 	metrics.gpu_frame_time_ms = 0.0f;

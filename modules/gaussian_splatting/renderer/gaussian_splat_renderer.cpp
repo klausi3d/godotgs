@@ -1592,8 +1592,6 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
             get_debug_state().route_uid = RenderRouteUID::COMMON_FAIL_NO_DEVICE;
         }
         get_frame_state().visible_splat_count.store(0, std::memory_order_release);
-        get_frame_state().render_time_ms = 0.0f;
-        get_frame_state().sort_time_ms = 0.0f;
         get_sorting_state().sorted_splat_count = 0;
         if (get_subsystem_state().gpu_culler.is_valid()) {
             get_subsystem_state().gpu_culler->get_state().culled_indices.clear();

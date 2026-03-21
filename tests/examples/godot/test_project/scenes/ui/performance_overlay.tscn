@@ -63,7 +63,7 @@ theme_override_styles/separator = SubResource("separator_style")
 [node name="GPU_Header" type="Label" parent="Panel/Columns/Left"]
 theme_override_colors/font_color = Color(0.5, 0.7, 1.0, 1)
 theme_override_font_sizes/font_size = 9
-text = "GPU TIMING"
+text = "PIPELINE TIMING"
 horizontal_alignment = 1
 
 [node name="GPU" type="GridContainer" parent="Panel/Columns/Left"]
@@ -72,58 +72,58 @@ theme_override_constants/h_separation = 16
 theme_override_constants/v_separation = 0
 columns = 2
 
-[node name="gpu_time_frame_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
+[node name="pipeline_frame_time_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
 custom_minimum_size = Vector2(90, 0)
 theme_override_font_sizes/font_size = 8
 text = "Frame"
 
-[node name="gpu_time_frame_ms" type="Label" parent="Panel/Columns/Left/GPU"]
+[node name="pipeline_frame_time_ms" type="Label" parent="Panel/Columns/Left/GPU"]
 custom_minimum_size = Vector2(70, 0)
 theme_override_font_sizes/font_size = 8
 text = "0.00 ms"
 horizontal_alignment = 2
 
-[node name="gpu_time_cull_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
+[node name="pipeline_cull_time_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
 theme_override_font_sizes/font_size = 8
 text = "Cull"
 
-[node name="gpu_time_cull_ms" type="Label" parent="Panel/Columns/Left/GPU"]
+[node name="pipeline_cull_time_ms" type="Label" parent="Panel/Columns/Left/GPU"]
 theme_override_font_sizes/font_size = 8
 text = "0.00 ms"
 horizontal_alignment = 2
 
-[node name="gpu_time_binning_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
+[node name="pipeline_binning_time_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
 theme_override_font_sizes/font_size = 8
 text = "Binning"
 
-[node name="gpu_time_binning_ms" type="Label" parent="Panel/Columns/Left/GPU"]
+[node name="pipeline_binning_time_ms" type="Label" parent="Panel/Columns/Left/GPU"]
 theme_override_font_sizes/font_size = 8
 text = "0.00 ms"
 horizontal_alignment = 2
 
-[node name="gpu_time_prefix_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
+[node name="pipeline_prefix_time_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
 theme_override_font_sizes/font_size = 8
 text = "Prefix"
 
-[node name="gpu_time_prefix_ms" type="Label" parent="Panel/Columns/Left/GPU"]
+[node name="pipeline_prefix_time_ms" type="Label" parent="Panel/Columns/Left/GPU"]
 theme_override_font_sizes/font_size = 8
 text = "0.00 ms"
 horizontal_alignment = 2
 
-[node name="gpu_time_raster_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
+[node name="pipeline_raster_time_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
 theme_override_font_sizes/font_size = 8
 text = "Raster"
 
-[node name="gpu_time_raster_ms" type="Label" parent="Panel/Columns/Left/GPU"]
+[node name="pipeline_raster_time_ms" type="Label" parent="Panel/Columns/Left/GPU"]
 theme_override_font_sizes/font_size = 8
 text = "0.00 ms"
 horizontal_alignment = 2
 
-[node name="gpu_time_resolve_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
+[node name="pipeline_resolve_time_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
 theme_override_font_sizes/font_size = 8
 text = "Resolve"
 
-[node name="gpu_time_resolve_ms" type="Label" parent="Panel/Columns/Left/GPU"]
+[node name="pipeline_resolve_time_ms" type="Label" parent="Panel/Columns/Left/GPU"]
 theme_override_font_sizes/font_size = 8
 text = "0.00 ms"
 horizontal_alignment = 2
@@ -133,6 +133,51 @@ theme_override_font_sizes/font_size = 8
 text = "CPU Setup"
 
 [node name="cpu_setup_time_ms" type="Label" parent="Panel/Columns/Left/GPU"]
+theme_override_font_sizes/font_size = 8
+text = "0.00 ms"
+horizontal_alignment = 2
+
+[node name="pipeline_sort_time_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
+theme_override_font_sizes/font_size = 8
+text = "Sort (GPU)"
+
+[node name="pipeline_sort_time_ms" type="Label" parent="Panel/Columns/Left/GPU"]
+theme_override_font_sizes/font_size = 8
+text = "0.00 ms"
+horizontal_alignment = 2
+
+[node name="pipeline_composite_time_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
+theme_override_font_sizes/font_size = 8
+text = "Composite"
+
+[node name="pipeline_composite_time_ms" type="Label" parent="Panel/Columns/Left/GPU"]
+theme_override_font_sizes/font_size = 8
+text = "0.00 ms"
+horizontal_alignment = 2
+
+[node name="sort_cpu_submit_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
+theme_override_font_sizes/font_size = 8
+text = "Sort CPU Submit"
+
+[node name="sort_cpu_submit_ms" type="Label" parent="Panel/Columns/Left/GPU"]
+theme_override_font_sizes/font_size = 8
+text = "0.00 ms"
+horizontal_alignment = 2
+
+[node name="sort_cpu_wait_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
+theme_override_font_sizes/font_size = 8
+text = "Sort CPU Wait"
+
+[node name="sort_cpu_wait_ms" type="Label" parent="Panel/Columns/Left/GPU"]
+theme_override_font_sizes/font_size = 8
+text = "0.00 ms"
+horizontal_alignment = 2
+
+[node name="sort_cpu_input_ms_lbl" type="Label" parent="Panel/Columns/Left/GPU"]
+theme_override_font_sizes/font_size = 8
+text = "Sort CPU Input"
+
+[node name="sort_cpu_input_ms" type="Label" parent="Panel/Columns/Left/GPU"]
 theme_override_font_sizes/font_size = 8
 text = "0.00 ms"
 horizontal_alignment = 2
@@ -301,6 +346,24 @@ theme_override_font_sizes/font_size = 8
 text = "Aggregated"
 
 [node name="aggregated_count" type="Label" parent="Panel/Columns/Left/TILE"]
+theme_override_font_sizes/font_size = 8
+text = "0"
+horizontal_alignment = 2
+
+[node name="overlap_records_used_lbl" type="Label" parent="Panel/Columns/Left/TILE"]
+theme_override_font_sizes/font_size = 8
+text = "Overlap Used"
+
+[node name="overlap_records_used" type="Label" parent="Panel/Columns/Left/TILE"]
+theme_override_font_sizes/font_size = 8
+text = "0"
+horizontal_alignment = 2
+
+[node name="overlap_record_budget_lbl" type="Label" parent="Panel/Columns/Left/TILE"]
+theme_override_font_sizes/font_size = 8
+text = "Overlap Budget"
+
+[node name="overlap_record_budget" type="Label" parent="Panel/Columns/Left/TILE"]
 theme_override_font_sizes/font_size = 8
 text = "0"
 horizontal_alignment = 2

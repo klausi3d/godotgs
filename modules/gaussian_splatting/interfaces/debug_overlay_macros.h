@@ -75,25 +75,6 @@
         invalidate_renderer_overlay(p_renderer, true);                                     \
     }
 
-/**
- * Renderer-syncing setter that updates both DebugOverlaySystem and
- * GaussianSplatRenderer::DebugState, then invalidates the HUD.
- */
-#define GS_DEBUG_OVERLAY_RENDERER_SETTER_HUD_IMPL(field_name)                              \
-    void DebugOverlaySystem::set_renderer_##field_name(                                    \
-            GaussianSplatRenderer *p_renderer, bool p_enabled) {                           \
-        if (!p_renderer) {                                                                 \
-            return;                                                                        \
-        }                                                                                  \
-        auto &debug_state = p_renderer->get_debug_state();                                 \
-        if (debug_state.field_name == p_enabled) {                                         \
-            return;                                                                        \
-        }                                                                                  \
-        debug_state.field_name = p_enabled;                                                \
-        set_##field_name(p_enabled);                                                       \
-        invalidate_renderer_hud(p_renderer, true);                                         \
-    }
-
 // ============================================================================
 // RenderDebugStateOrchestrator setter macros
 // ============================================================================

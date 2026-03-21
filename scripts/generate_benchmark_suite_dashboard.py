@@ -135,7 +135,7 @@ def _render_html(report: dict[str, Any], output_dir: Path, chart_files: list[Pat
             f"<td>{html.escape(_format_metric(lane.get('score')))}</td>"
             f"<td>{html.escape(_format_metric(lane.get('avg_fps')))}</td>"
             f"<td>{html.escape(_format_metric(lane.get('p99_frame_ms')))}</td>"
-            f"<td>{html.escape(_format_metric(lane.get('gpu_time_frame_ms')))}</td>"
+            f"<td>{html.escape(_format_metric(lane.get('pipeline_frame_time_ms')))}</td>"
             f"<td>{html.escape(_format_metric(lane.get('capture_ssim_min'), 3))}</td>"
             f"<td>{html.escape(_format_metric(lane.get('capture_psnr_min')))}</td>"
             "</tr>"
@@ -296,7 +296,7 @@ def main() -> int:
     charts = [
         ("benchmark_suite_scores.svg", "Lane Score", "Weighted throughput/fidelity score per lane", "score", "", "#1f8f6b"),
         ("benchmark_suite_fps.svg", "Average FPS", "Mean FPS by lane", "avg_fps", " fps", "#c96b2c"),
-        ("benchmark_suite_gpu_ms.svg", "GPU Frame Time", "Lower is better", "gpu_time_frame_ms", " ms", "#355caa"),
+        ("benchmark_suite_gpu_ms.svg", "Pipeline Frame Time", "Lower is better", "pipeline_frame_time_ms", " ms", "#355caa"),
         ("benchmark_suite_ssim.svg", "SSIM Minimum", "Visual similarity for captured lanes", "capture_ssim_min", "", "#7a4ea3"),
         ("benchmark_suite_psnr.svg", "PSNR Minimum", "Visual error envelope for captured lanes", "capture_psnr_min", " dB", "#9f3d3d"),
     ]

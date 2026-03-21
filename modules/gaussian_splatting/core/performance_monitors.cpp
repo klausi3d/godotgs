@@ -2,6 +2,7 @@
 #include "../renderer/tile_renderer.h"
 #include "../renderer/gaussian_splat_renderer.h"
 #include "../renderer/gaussian_gpu_layout.h"
+#include "../renderer/render_types/diagnostics_snapshot.h"
 #include "core/math/math_funcs.h"
 #include "main/performance.h"
 
@@ -26,14 +27,6 @@ static float _sanitize_ms(float p_value) {
         return 0.0f;
     }
     return p_value;
-}
-
-static float _prefer_direct_or_fallback(float p_direct_ms, float p_fallback_ms) {
-    const float direct = _sanitize_ms(p_direct_ms);
-    if (direct > 0.0f) {
-        return direct;
-    }
-    return _sanitize_ms(p_fallback_ms);
 }
 
 GaussianSplattingPerformanceMonitors::GaussianSplattingPerformanceMonitors() {
@@ -167,27 +160,35 @@ void GaussianSplattingPerformanceMonitors::_register_monitor_definitions(Perform
     };
 
     const MonitorDefinition monitor_definitions[] = {
-        // GPU Timing Monitors
-        { "gaussian_splatting/gpu_time_frame_ms",
-                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_gpu_frame_time_ms) },
-        { "gaussian_splatting/gpu_time_cull_ms",
-                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_gpu_cull_time_ms) },
-        { "gaussian_splatting/gpu_time_sort_ms",
-                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_gpu_sort_time_ms) },
-        { "gaussian_splatting/gpu_time_binning_ms",
-                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_gpu_binning_time_ms) },
-        { "gaussian_splatting/gpu_time_prefix_ms",
-                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_gpu_prefix_time_ms) },
-        { "gaussian_splatting/gpu_time_raster_ms",
-                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_gpu_raster_time_ms) },
-        { "gaussian_splatting/gpu_time_resolve_ms",
-                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_gpu_resolve_time_ms) },
+        // Pipeline Timing Monitors
+        { "gaussian_splatting/pipeline_frame_time_ms",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_pipeline_frame_time_ms) },
+        { "gaussian_splatting/pipeline_cull_time_ms",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_pipeline_cull_time_ms) },
+        { "gaussian_splatting/pipeline_sort_time_ms",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_pipeline_sort_time_ms) },
+        { "gaussian_splatting/pipeline_binning_time_ms",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_pipeline_binning_time_ms) },
+        { "gaussian_splatting/pipeline_prefix_time_ms",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_pipeline_prefix_time_ms) },
+        { "gaussian_splatting/pipeline_raster_time_ms",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_pipeline_raster_time_ms) },
+        { "gaussian_splatting/pipeline_resolve_time_ms",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_pipeline_resolve_time_ms) },
+        { "gaussian_splatting/pipeline_composite_time_ms",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_pipeline_composite_time_ms) },
 
         // CPU Timing Monitors
         { "gaussian_splatting/telemetry_active",
                 callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_telemetry_active) },
         { "gaussian_splatting/cpu_setup_time_ms",
                 callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_cpu_setup_time_ms) },
+        { "gaussian_splatting/cpu_sort_submit_ms",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_cpu_sort_submit_ms) },
+        { "gaussian_splatting/cpu_sort_wait_ms",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_cpu_sort_wait_ms) },
+        { "gaussian_splatting/cpu_sort_input_build_ms",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_cpu_sort_input_build_ms) },
 
         // Projection Statistics Monitors
         { "gaussian_splatting/visible_splats",
@@ -228,6 +229,10 @@ void GaussianSplattingPerformanceMonitors::_register_monitor_definitions(Perform
                 callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_clamped_records) },
         { "gaussian_splatting/aggregated_count",
                 callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_aggregated_count) },
+        { "gaussian_splatting/overlap_records_used",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_overlap_records_used) },
+        { "gaussian_splatting/overlap_record_budget",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_overlap_record_budget) },
 
         // Rendering Configuration Monitors
         { "gaussian_splatting/tile_count",
@@ -461,70 +466,103 @@ void GaussianSplattingPerformanceMonitors::cleanup_monitors() {
 }
 
 // ============================================================================
-// GPU Timing Monitor Getters
+// Pipeline Timing Monitor Getters
 // ============================================================================
 
-float GaussianSplattingPerformanceMonitors::_get_gpu_frame_time_ms() const {
-    const float direct = active_renderer ? active_renderer->get_last_gpu_frame_time_ms() : 0.0f;
-    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
-    const float fallback = renderer ? renderer->get_performance_state().metrics.gpu_frame_time_ms : 0.0f;
-    return _prefer_direct_or_fallback(direct, fallback);
-}
-
-float GaussianSplattingPerformanceMonitors::_get_gpu_cull_time_ms() const {
+float GaussianSplattingPerformanceMonitors::_get_pipeline_frame_time_ms() const {
     GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
     if (!renderer) {
         return 0.0f;
     }
-
-    const GaussianSplatRenderer::DebugState &debug_state = renderer->get_debug_state();
-    if (debug_state.last_stage_metrics_valid) {
-        return _sanitize_ms(debug_state.last_stage_metrics.cull.cull_time_ms);
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
     }
-
-    return _sanitize_ms(renderer->get_performance_state().metrics.culling_time_ms);
+    return _sanitize_ms(snapshot.pipeline_frame_time_ms);
 }
 
-float GaussianSplattingPerformanceMonitors::_get_gpu_sort_time_ms() const {
+float GaussianSplattingPerformanceMonitors::_get_pipeline_cull_time_ms() const {
     GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
     if (!renderer) {
         return 0.0f;
     }
-
-    const GaussianSplatRenderer::DebugState &debug_state = renderer->get_debug_state();
-    if (debug_state.last_stage_metrics_valid) {
-        return _sanitize_ms(debug_state.last_stage_metrics.sort.sort_time_ms);
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
     }
-
-    return _sanitize_ms(renderer->get_frame_state().sort_time_ms);
+    return _sanitize_ms(snapshot.pipeline_cull_time_ms);
 }
 
-float GaussianSplattingPerformanceMonitors::_get_gpu_binning_time_ms() const {
-    const float direct = active_renderer ? active_renderer->get_last_gpu_binning_time_ms() : 0.0f;
+float GaussianSplattingPerformanceMonitors::_get_pipeline_sort_time_ms() const {
     GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
-    const float fallback = renderer ? renderer->get_performance_state().metrics.gpu_tile_binning_time_ms : 0.0f;
-    return _prefer_direct_or_fallback(direct, fallback);
+    if (!renderer) {
+        return 0.0f;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
+    }
+    return _sanitize_ms(snapshot.pipeline_sort_time_ms);
 }
 
-float GaussianSplattingPerformanceMonitors::_get_gpu_prefix_time_ms() const {
-    const float direct = active_renderer ? active_renderer->get_last_gpu_prefix_time_ms() : 0.0f;
+float GaussianSplattingPerformanceMonitors::_get_pipeline_composite_time_ms() const {
     GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
-    const float fallback = renderer ? renderer->get_performance_state().metrics.gpu_tile_prefix_time_ms : 0.0f;
-    return _prefer_direct_or_fallback(direct, fallback);
+    if (!renderer) {
+        return 0.0f;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
+    }
+    return _sanitize_ms(snapshot.pipeline_composite_time_ms);
 }
 
-float GaussianSplattingPerformanceMonitors::_get_gpu_raster_time_ms() const {
-    const float direct = active_renderer ? active_renderer->get_last_gpu_raster_time_ms() : 0.0f;
+float GaussianSplattingPerformanceMonitors::_get_pipeline_binning_time_ms() const {
     GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
-    const float fallback = renderer ? renderer->get_performance_state().metrics.gpu_tile_raster_time_ms : 0.0f;
-    return _prefer_direct_or_fallback(direct, fallback);
+    if (!renderer) {
+        return 0.0f;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
+    }
+    return _sanitize_ms(snapshot.pipeline_binning_time_ms);
 }
 
-float GaussianSplattingPerformanceMonitors::_get_gpu_resolve_time_ms() const {
-    const float direct = active_renderer ? active_renderer->get_last_gpu_resolve_time_ms() : 0.0f;
+float GaussianSplattingPerformanceMonitors::_get_pipeline_prefix_time_ms() const {
     GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
-    const float fallback = renderer ? renderer->get_performance_state().metrics.gpu_tile_resolve_time_ms : 0.0f;
-    return _prefer_direct_or_fallback(direct, fallback);
+    if (!renderer) {
+        return 0.0f;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
+    }
+    return _sanitize_ms(snapshot.pipeline_prefix_time_ms);
+}
+
+float GaussianSplattingPerformanceMonitors::_get_pipeline_raster_time_ms() const {
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0.0f;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
+    }
+    return _sanitize_ms(snapshot.pipeline_raster_time_ms);
+}
+
+float GaussianSplattingPerformanceMonitors::_get_pipeline_resolve_time_ms() const {
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0.0f;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
+    }
+    return _sanitize_ms(snapshot.pipeline_resolve_time_ms);
 }
 
 // ============================================================================
@@ -532,11 +570,63 @@ float GaussianSplattingPerformanceMonitors::_get_gpu_resolve_time_ms() const {
 // ============================================================================
 
 float GaussianSplattingPerformanceMonitors::_get_cpu_setup_time_ms() const {
-    return active_renderer ? active_renderer->get_last_setup_cpu_ms() : 0.0f;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0.0f;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
+    }
+    return _sanitize_ms(snapshot.cpu_setup_time_ms);
+}
+
+float GaussianSplattingPerformanceMonitors::_get_cpu_sort_submit_ms() const {
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0.0f;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
+    }
+    return _sanitize_ms(snapshot.cpu_sort_submit_ms);
+}
+
+float GaussianSplattingPerformanceMonitors::_get_cpu_sort_wait_ms() const {
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0.0f;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
+    }
+    return _sanitize_ms(snapshot.cpu_sort_wait_ms);
+}
+
+float GaussianSplattingPerformanceMonitors::_get_cpu_sort_input_build_ms() const {
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0.0f;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
+    }
+    return _sanitize_ms(snapshot.cpu_sort_input_build_ms);
 }
 
 int GaussianSplattingPerformanceMonitors::_get_telemetry_active() const {
-    return _is_telemetry_active() ? 1 : 0;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return snapshot.telemetry_active ? 1 : 0;
 }
 
 String GaussianSplattingPerformanceMonitors::_get_route_uid() const {
@@ -544,7 +634,11 @@ String GaussianSplattingPerformanceMonitors::_get_route_uid() const {
     if (!renderer) {
         return String();
     }
-    return renderer->get_debug_state().route_uid;
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return String();
+    }
+    return snapshot.route_uid;
 }
 
 String GaussianSplattingPerformanceMonitors::_get_sort_route_uid() const {
@@ -560,113 +654,87 @@ String GaussianSplattingPerformanceMonitors::_get_sort_route_uid() const {
 // ============================================================================
 
 int GaussianSplattingPerformanceMonitors::_get_visible_splat_count() const {
-    // Try TileRenderer first (GPU counter readback from binning pass)
-    if (active_renderer) {
-        int count = active_renderer->get_visible_splat_count();
-        if (count > 0) {
-            return count;
-        }
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
     }
-    // Fall back to GaussianSplatRenderer (streaming/sorting pipeline count)
-    // This is essential for streaming mode where TileRenderer counters may not update
-    if (active_splat_renderer) {
-        return static_cast<int>(active_splat_renderer->get_visible_splat_count());
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
     }
-    return 0;
+    return static_cast<int>(snapshot.visible_splat_count);
 }
 
 int GaussianSplattingPerformanceMonitors::_get_total_processed() const {
-    // Try TileRenderer first (GPU counter readback from binning pass)
-    if (active_renderer) {
-        int count = active_renderer->get_total_processed();
-        if (count > 0) {
-            return count;
-        }
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
     }
-    // Fall back to GaussianSplatRenderer frame-scoped metrics.
-    // Do not use asset cardinality here because it is not a per-frame processed workload.
-    if (active_splat_renderer) {
-        const GaussianSplatRenderer::PerformanceMetrics &metrics = active_splat_renderer->get_performance_state().metrics;
-        uint32_t total_processed = metrics.visible_after_culling;
-        if (metrics.rendered_splat_count > total_processed) {
-            total_processed = metrics.rendered_splat_count;
-        }
-        if (total_processed > 0u) {
-            return static_cast<int>(total_processed);
-        }
-        const uint32_t visible_count = active_splat_renderer->get_visible_splat_count();
-        if (visible_count > 0u) {
-            return static_cast<int>(visible_count);
-        }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
     }
-    return 0;
+    return static_cast<int>(snapshot.total_processed);
 }
 
 int GaussianSplattingPerformanceMonitors::_get_projection_success_count() const {
-    // Try TileRenderer first (GPU counter readback from binning pass)
-    if (active_renderer) {
-        int count = active_renderer->get_projection_success_count();
-        if (count > 0) {
-            return count;
-        }
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
     }
-    // Fall back to GaussianSplatRenderer visible count (projection success = visible after projection)
-    if (active_splat_renderer) {
-        const GaussianSplatRenderer::PerformanceMetrics &metrics = active_splat_renderer->get_performance_state().metrics;
-        if (metrics.rendered_splat_count > 0u) {
-            return static_cast<int>(metrics.rendered_splat_count);
-        }
-        return static_cast<int>(active_splat_renderer->get_visible_splat_count());
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
     }
-    return 0;
+    return static_cast<int>(snapshot.projection_success_count);
 }
 
 float GaussianSplattingPerformanceMonitors::_get_projection_success_rate_pct() const {
-    if (active_renderer) {
-        const int total_processed = active_renderer->get_total_processed();
-        if (total_processed > 0) {
-            const int success_count = active_renderer->get_projection_success_count();
-            const float ratio = float(success_count) / float(total_processed);
-            return CLAMP(ratio * 100.0f, 0.0f, 100.0f);
-        }
-
-        const float direct_rate = active_renderer->get_projection_success_rate_pct();
-        if (direct_rate > 0.0f) {
-            return direct_rate;
-        }
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0.0f;
     }
-
-    if (active_splat_renderer) {
-        const GaussianSplatRenderer::PerformanceMetrics &metrics = active_splat_renderer->get_performance_state().metrics;
-        uint32_t success_count = metrics.rendered_splat_count;
-        if (success_count == 0u) {
-            success_count = active_splat_renderer->get_visible_splat_count();
-        }
-
-        uint32_t total_processed = metrics.visible_after_culling;
-        if (metrics.rendered_splat_count > total_processed) {
-            total_processed = metrics.rendered_splat_count;
-        }
-
-        if (total_processed > 0u) {
-            const float ratio = float(success_count) / float(total_processed);
-            return CLAMP(ratio * 100.0f, 0.0f, 100.0f);
-        }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0.0f;
     }
-
-    return 0.0f;
+    return snapshot.projection_success_rate_pct;
 }
 
 int GaussianSplattingPerformanceMonitors::_get_clip_reject_count() const {
-    return active_renderer ? active_renderer->get_clip_bounds_reject_count() : 0;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return static_cast<int>(snapshot.clip_reject_count);
 }
 
 int GaussianSplattingPerformanceMonitors::_get_radius_reject_count() const {
-    return active_renderer ? active_renderer->get_radius_reject_count() : 0;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return static_cast<int>(snapshot.radius_reject_count);
 }
 
 int GaussianSplattingPerformanceMonitors::_get_viewport_reject_count() const {
-    return active_renderer ? active_renderer->get_viewport_bounds_reject_count() : 0;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return static_cast<int>(snapshot.viewport_reject_count);
 }
 
 // ============================================================================
@@ -674,11 +742,27 @@ int GaussianSplattingPerformanceMonitors::_get_viewport_reject_count() const {
 // ============================================================================
 
 int GaussianSplattingPerformanceMonitors::_get_extreme_aspect_count() const {
-    return active_renderer ? active_renderer->get_extreme_aspect_count() : 0;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return static_cast<int>(snapshot.extreme_aspect_count);
 }
 
 int GaussianSplattingPerformanceMonitors::_get_index_mismatch_count() const {
-    return active_renderer ? active_renderer->get_index_mismatch_count() : 0;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return static_cast<int>(snapshot.index_mismatch_count);
 }
 
 // ============================================================================
@@ -702,15 +786,63 @@ float GaussianSplattingPerformanceMonitors::_get_sh_cache_hit_rate_pct() const {
 // ============================================================================
 
 int GaussianSplattingPerformanceMonitors::_get_overflow_tile_count() const {
-    return active_renderer ? active_renderer->get_overflow_tile_count() : 0;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return static_cast<int>(snapshot.overflow_tile_count);
 }
 
 int GaussianSplattingPerformanceMonitors::_get_clamped_records() const {
-    return active_renderer ? active_renderer->get_clamped_records() : 0;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return static_cast<int>(snapshot.clamped_records);
 }
 
 int GaussianSplattingPerformanceMonitors::_get_aggregated_count() const {
-    return active_renderer ? active_renderer->get_aggregated_count() : 0;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return static_cast<int>(snapshot.aggregated_count);
+}
+
+int GaussianSplattingPerformanceMonitors::_get_overlap_records_used() const {
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return static_cast<int>(snapshot.overlap_records_used);
+}
+
+int GaussianSplattingPerformanceMonitors::_get_overlap_record_budget() const {
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return static_cast<int>(snapshot.overlap_record_budget);
 }
 
 // ============================================================================
@@ -718,7 +850,15 @@ int GaussianSplattingPerformanceMonitors::_get_aggregated_count() const {
 // ============================================================================
 
 int GaussianSplattingPerformanceMonitors::_get_tile_count() const {
-    return active_renderer ? (int)active_renderer->get_tile_count() : 0;
+    GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
+    if (!renderer) {
+        return 0;
+    }
+    const auto &snapshot = renderer->get_diagnostics_snapshot();
+    if (!snapshot.valid) {
+        return 0;
+    }
+    return static_cast<int>(snapshot.tile_count);
 }
 
 // ============================================================================

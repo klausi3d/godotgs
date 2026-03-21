@@ -1936,8 +1936,8 @@ void RenderStreamingOrchestrator::tick_streaming_only(const Transform3D &p_camer
 
 	bool stage_metrics_valid = debug_state.last_stage_metrics_valid;
 	float stage_cull_time_ms = perf_metrics.culling_time_ms;
-	float stage_sort_time_ms = frame_state.sort_time_ms;
-	float stage_raster_time_ms = frame_state.render_time_ms;
+	float stage_sort_time_ms = 0.0f;
+	float stage_raster_time_ms = 0.0f;
 	float stage_composite_time_ms = 0.0f;
 	bool stage_composite_executed = false;
 	if (stage_metrics_valid) {
@@ -1959,8 +1959,8 @@ void RenderStreamingOrchestrator::tick_streaming_only(const Transform3D &p_camer
 	streaming_metrics["sort_ms"] = stage_sort_time_ms;
 	streaming_metrics["raster_ms"] = stage_raster_time_ms;
 	streaming_metrics["composite_ms"] = stage_composite_time_ms;
-	streaming_metrics["frame_sort_time_ms"] = frame_state.sort_time_ms;
-	streaming_metrics["frame_render_time_ms"] = frame_state.render_time_ms;
+	streaming_metrics["frame_sort_time_ms"] = stage_sort_time_ms;
+	streaming_metrics["frame_render_time_ms"] = stage_raster_time_ms;
 
 	streaming_metrics["gpu_frame_time_ms"] = perf_metrics.gpu_frame_time_ms;
 	streaming_metrics["gpu_tile_binning_time_ms"] = perf_metrics.gpu_tile_binning_time_ms;

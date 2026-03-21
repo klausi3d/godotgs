@@ -9,7 +9,6 @@
 #include "../logger/gs_debug_trace.h"
 #include "../renderer/gpu_debug_utils.h"
 #include "../resources/color_grading_resource.h"
-#include "gaussian_splat_debug_hud.h"
 #include "core/error/error_macros.h"
 #include "core/config/project_settings.h"
 #include "core/math/math_funcs.h"
@@ -323,7 +322,6 @@ void GaussianSplatNode3D::_notification_enter_tree() {
     _ensure_renderer();
     _update_render_instance();
     _register_shared_renderer();
-    _update_debug_hud_visibility();
 }
 
 void GaussianSplatNode3D::_notification_enter_world() {
@@ -333,10 +331,6 @@ void GaussianSplatNode3D::_notification_enter_world() {
 }
 
 void GaussianSplatNode3D::_notification_exit_tree() {
-    if (debug_hud_control) {
-        debug_hud_control->set_visible(false);
-        debug_hud_control->set_process(false);
-    }
     visible_in_viewport = false;
     _update_visibility();
     _clear_parent_visibility_tracking();
@@ -1508,51 +1502,6 @@ void GaussianSplatNode3D::_apply_painterly_settings() {
 
 void GaussianSplatNode3D::_ensure_renderer() {
     renderer_helper.ensure_renderer();
-}
-
-void GaussianSplatNode3D::_ensure_debug_hud_control() {
-    if (debug_hud_control) {
-        return;
-    }
-    if (!is_inside_tree()) {
-        return;
-    }
-
-    if (!debug_hud_layer) {
-        debug_hud_layer = memnew(CanvasLayer);
-        debug_hud_layer->set_name("GaussianSplatDebugHUDLayer");
-        add_child(debug_hud_layer);
-    }
-
-    debug_hud_control = memnew(GaussianSplatDebugHUD);
-    debug_hud_control->set_name("GaussianSplatDebugHUD");
-    debug_hud_control->set_splat_node(this);
-    debug_hud_control->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
-    debug_hud_layer->add_child(debug_hud_control);
-}
-
-void GaussianSplatNode3D::_update_debug_hud_visibility() {
-    bool should_show_hud = show_performance_hud || show_residency_hud;
-    if (renderer.is_valid()) {
-        should_show_hud = renderer->is_debug_show_performance_hud() || renderer->is_debug_show_residency_hud();
-    }
-    if (!should_show_hud) {
-        if (debug_hud_control) {
-            debug_hud_control->set_visible(false);
-            debug_hud_control->set_process(false);
-        }
-        return;
-    }
-
-    _ensure_debug_hud_control();
-    if (!debug_hud_control) {
-        return;
-    }
-
-    debug_hud_control->set_visible(true);
-    debug_hud_control->set_process(true);
-    debug_hud_control->set_splat_node(this);
-    debug_hud_control->refresh_stats();
 }
 
 void GaussianSplatNode3D::_apply_renderer_settings() {

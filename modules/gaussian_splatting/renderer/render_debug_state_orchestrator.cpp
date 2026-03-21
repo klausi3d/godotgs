@@ -531,8 +531,8 @@ void RenderDebugStateOrchestrator::clear_stage_metrics() {
 }
 
 void RenderDebugStateOrchestrator::update_frame_times(float p_render_ms, float p_sort_ms) {
-	debug_state.last_render_time_ms = p_render_ms;
-	debug_state.last_sort_time_ms = p_sort_ms;
+	// Timing mirrors removed -- canonical data now lives in DiagnosticsSnapshot.
+	// Parameters kept for API compatibility; callers will be cleaned up separately.
 }
 
 bool RenderDebugStateOrchestrator::_check_cull_guardrails(uint64_t p_frame_id, uint32_t p_visible_count, String &r_message) {
@@ -609,21 +609,15 @@ bool RenderDebugStateOrchestrator::_check_cull_guardrails(uint64_t p_frame_id, u
 }
 
 void RenderDebugStateOrchestrator::reset_debug_overlay_metrics(float p_sort_ms) {
-	debug_state.last_render_time_ms = 0.0f;
-	debug_state.last_sort_time_ms = p_sort_ms;
 	debug_state.tile_density_cache.clear();
 	debug_state.tile_density_width = 0;
 	debug_state.tile_density_height = 0;
 	debug_state.tile_density_peak = 0;
 	debug_state.tile_density_average = 0.0f;
-	debug_state.last_tile_assignment_ms = 0.0f;
-	debug_state.last_tile_rasterization_ms = 0.0f;
 	clear_overlay_dirty_flags();
 }
 
 void RenderDebugStateOrchestrator::update_raster_metrics(const RasterPerformance &p_perf, const RasterStats &p_stats) {
-	debug_state.last_tile_assignment_ms = p_perf.tile_assignment_ms;
-	debug_state.last_tile_rasterization_ms = p_perf.rasterization_ms;
 	debug_state.tile_density_peak = p_stats.max_splats_in_tile;
 	debug_state.tile_density_average = p_stats.average_splats_per_tile;
 
@@ -745,7 +739,6 @@ void RenderDebugStateOrchestrator::update_raster_metrics(const RasterPerformance
 
 void RenderDebugStateOrchestrator::clear_overlay_dirty_flags() {
 	debug_state.overlay_dirty = false;
-	debug_state.hud_dirty = false;
 }
 
 void RenderDebugStateOrchestrator::apply_debug_options_to_render_params(TileRenderer::RenderParams &r_params) const {

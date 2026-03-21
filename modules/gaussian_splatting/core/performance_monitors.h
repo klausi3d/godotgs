@@ -19,7 +19,7 @@ class GaussianSplatRenderer;
  * when the debugger is closed.
  *
  * Monitors are organized into categories:
- * - GPU Timings: Frame, cull, binning, prefix, sort, raster, resolve times
+ * - Pipeline Timings: Frame, cull, binning, prefix, sort, raster, resolve times
  * - Statistics: Visible splats, projection success rates, rejection counts
  * - Quality: Extreme aspect ratios, SH cache hit rates
  * - Overflow: Tile overflow statistics
@@ -101,15 +101,19 @@ private:
     Dictionary _get_streaming_analytics() const;
 
     // Monitor getter callbacks (these are called by the Performance singleton)
-    float _get_gpu_frame_time_ms() const;
-    float _get_gpu_cull_time_ms() const;
-    float _get_gpu_sort_time_ms() const;
-    float _get_gpu_binning_time_ms() const;
-    float _get_gpu_prefix_time_ms() const;
-    float _get_gpu_raster_time_ms() const;
-    float _get_gpu_resolve_time_ms() const;
+    float _get_pipeline_frame_time_ms() const;
+    float _get_pipeline_cull_time_ms() const;
+    float _get_pipeline_sort_time_ms() const;
+    float _get_pipeline_binning_time_ms() const;
+    float _get_pipeline_prefix_time_ms() const;
+    float _get_pipeline_raster_time_ms() const;
+    float _get_pipeline_resolve_time_ms() const;
+    float _get_pipeline_composite_time_ms() const;
     int _get_telemetry_active() const;
     float _get_cpu_setup_time_ms() const;
+    float _get_cpu_sort_submit_ms() const;
+    float _get_cpu_sort_wait_ms() const;
+    float _get_cpu_sort_input_build_ms() const;
     String _get_route_uid() const;
     String _get_sort_route_uid() const;
 
@@ -130,6 +134,8 @@ private:
     int _get_overflow_tile_count() const;
     int _get_clamped_records() const;
     int _get_aggregated_count() const;
+    int _get_overlap_records_used() const;
+    int _get_overlap_record_budget() const;
 
     int _get_tile_count() const;
 

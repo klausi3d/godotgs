@@ -217,9 +217,9 @@ print("Rasterization: ", renderer.get_rasterization_time(), " ms")
 print("GPU frame time: ", renderer.get_last_gpu_frame_time_ms(), " ms")
 ```
 
-For pass-by-pass monitor semantics (`gpu_time_cull_ms`, `gpu_time_sort_ms`,
-`gpu_time_binning_ms`, `gpu_time_prefix_ms`, `gpu_time_raster_ms`,
-`gpu_time_resolve_ms`) and freshness interpretation, see:
+For pass-by-pass monitor semantics (`pipeline_cull_time_ms`, `pipeline_sort_time_ms`,
+`pipeline_binning_time_ms`, `pipeline_prefix_time_ms`, `pipeline_raster_time_ms`,
+`pipeline_resolve_time_ms`) and freshness interpretation, see:
 `docs/timing_metrics_reference.md`.
 
 ---

@@ -93,6 +93,7 @@ TEST_SUITE("[Gaussian Splatting Integration]") {
         return data;
     }
 
+
     struct ScopedErrorCapture : public ErrorHandlerList {
         Vector<String> messages;
 
@@ -276,8 +277,6 @@ TEST_SUITE("[Gaussian Splatting Integration]") {
         CHECK(stats.has("tile_assignment_ms"));
         CHECK(stats.has("tile_rasterization_ms"));
         CHECK(stats.has("debug_overlay_version"));
-        CHECK(stats.has("debug_hud_version"));
-        CHECK(stats.has("performance_hud_lines"));
         CHECK(stats.has("debug_tile_density_peak"));
         CHECK(stats.has("debug_tile_density_size"));
         CHECK(!bool(stats["debug_show_tile_grid"]));
@@ -286,9 +285,6 @@ TEST_SUITE("[Gaussian Splatting Integration]") {
         CHECK(!bool(stats["debug_show_residency_hud"]));
 
         int overlay_version = int(stats["debug_overlay_version"]);
-        int hud_version = int(stats["debug_hud_version"]);
-        Array hud_lines = stats["performance_hud_lines"];
-        CHECK(hud_lines.is_empty());
 
         renderer->set_debug_show_tile_grid(true);
         renderer->set_debug_show_density_heatmap(true);
@@ -299,9 +295,6 @@ TEST_SUITE("[Gaussian Splatting Integration]") {
         CHECK(bool(stats["debug_show_density_heatmap"]));
         CHECK(bool(stats["debug_show_performance_hud"]));
         CHECK(int(stats["debug_overlay_version"]) >= overlay_version + 2);
-        CHECK(int(stats["debug_hud_version"]) > hud_version);
-        Array hud_enabled_lines = stats["performance_hud_lines"];
-        CHECK(hud_enabled_lines.size() > 0);
         int overlay_version_enabled = int(stats["debug_overlay_version"]);
 
         renderer->set_debug_show_performance_hud(false);
@@ -310,16 +303,6 @@ TEST_SUITE("[Gaussian Splatting Integration]") {
         stats = renderer->get_render_stats();
         CHECK(!bool(stats["debug_show_performance_hud"]));
         CHECK(bool(stats["debug_show_residency_hud"]));
-        Array residency_lines = stats["performance_hud_lines"];
-        CHECK(residency_lines.size() > 0);
-        bool has_residency_heading = false;
-        for (int i = 0; i < residency_lines.size(); i++) {
-            if (String(residency_lines[i]) == String("Residency")) {
-                has_residency_heading = true;
-                break;
-            }
-        }
-        CHECK(has_residency_heading);
 
         renderer->set_debug_show_tile_grid(false);
         renderer->set_debug_show_density_heatmap(false);
@@ -332,12 +315,14 @@ TEST_SUITE("[Gaussian Splatting Integration]") {
         CHECK(!bool(stats["debug_show_performance_hud"]));
         CHECK(!bool(stats["debug_show_residency_hud"]));
         CHECK(int(stats["debug_overlay_version"]) >= overlay_version_enabled + 2);
-        Array hud_disabled_lines = stats["performance_hud_lines"];
-        CHECK(hud_disabled_lines.is_empty());
 
         renderer.unref();
         memdelete(manager);
     }
+
+    // NOTE: Test case "[Integration] Template performance overlay references registered monitors"
+    // was removed. The template overlay file (performance_overlay.gd) was deleted as part of
+    // the diagnostics snapshot consolidation (Steps 1-8 of the metrics reset plan).
 
     // NOTE: Test case "[Integration] Runtime wiring and reference counting" was removed.
     // GaussianSplatManager inherits from Object (not RefCounted) and does not expose

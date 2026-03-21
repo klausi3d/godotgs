@@ -14,8 +14,6 @@ public:
 	struct FrameState {
 		std::atomic<uint32_t> visible_splat_count{0};
 		uint32_t frame_counter = 0;
-		float sort_time_ms = 0.0f;
-		float render_time_ms = 0.0f;
 	};
 
 	struct ViewState {

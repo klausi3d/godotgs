@@ -29,11 +29,8 @@ class GaussianData;
 class GaussianSplatRenderer;
 class Camera3D;
 class Control;
-class CanvasLayer;
 class Viewport;
 class ViewportTexture;
-class GaussianSplatDebugHUD;
-
 /**
  * @class GaussianSplatNode3D
  * @brief 3D scene node for displaying Gaussian splat content.
@@ -221,8 +218,6 @@ private:
     bool runtime_preview_enabled = false;
     bool show_residency_hud = false;
     int runtime_preview_restore_mode = DEBUG_DRAW_POINTS;
-    CanvasLayer *debug_hud_layer = nullptr;
-    GaussianSplatDebugHUD *debug_hud_control = nullptr;
 
     GaussianSplatNodeAssetHelper asset_helper;
     GaussianSplatNodeViewportHelper viewport_helper;
@@ -290,8 +285,6 @@ private:
             bool predictive_loading, float prediction_time, int lod_level_count, float lod_distance_multiplier,
             bool adaptive_quality, int effective_stream_budget_ms, bool async_loading, bool compression);
     void _fill_preset_config(QualityPreset p_preset, Dictionary &config) const;
-    void _ensure_debug_hud_control();
-    void _update_debug_hud_visibility();
 
     void _ensure_renderer();
     void _apply_renderer_settings();

@@ -5,13 +5,11 @@ class_name GaussianTemplateRoot
 @export var enable_demo_painterly: bool = true
 
 @onready var gaussian_node: GaussianSplatNode3D = $GaussianSplatNode3D
-@onready var performance_overlay: GaussianPerformanceOverlay = $CanvasLayer/PerformanceOverlay
-@onready var camera_rig: OrbitCameraRig = $CameraRig
+@onready var camera_rig = $CameraRig
 
-## Configures the template scene by wiring the node, overlay, and camera focus.
+## Configures the template scene by wiring the node and camera focus.
 func _ready() -> void:
     _configure_gaussian_node()
-    _wire_overlay()
     _focus_camera()
 
 ## Applies template defaults to the GaussianSplatNode3D instance.
@@ -49,16 +47,9 @@ func _configure_gaussian_node() -> void:
     gaussian_node.set_show_tile_grid(false)
     gaussian_node.set_show_density_heatmap(false)
     gaussian_node.set_show_performance_hud(false)
-    gaussian_node.set_show_performance_overlay(false)
     gaussian_node.set_debug_draw_mode(GaussianSplatNode3D.DEBUG_DRAW_POINTS)
     gaussian_node.set_runtime_preview_enabled(false)
     gaussian_node.set_show_residency_hud(false)
-
-## Binds the overlay to the gaussian node and camera rig.
-func _wire_overlay() -> void:
-    if performance_overlay:
-        performance_overlay.set_gaussian_node(gaussian_node)
-        performance_overlay.set_camera_node(camera_rig)
 
 ## Centers the orbit camera on the current Gaussian bounds.
 func _focus_camera() -> void:

@@ -2744,7 +2744,6 @@ bool GPUSortingPipeline::_sort_instance_pipeline(GaussianSplatRenderer &renderer
                         sorting_state.sorted_splat_count),
                 false);
     }
-    frame_state.sort_time_ms = sort_result.gpu_time_ms;
     performance_state.metrics.sort_submission_time_ms = sort_result.gpu_time_ms;
     performance_state.metrics.sort_wait_time_ms = 0.0f;
     performance_state.metrics.async_sort_used = true;

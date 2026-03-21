@@ -7,8 +7,6 @@ RenderFrameContextManager::RenderFrameContextManager() {
 void RenderFrameContextManager::reset_frame_state() {
 	frame_state.visible_splat_count.store(0, std::memory_order_release);
 	frame_state.frame_counter = 0;
-	frame_state.sort_time_ms = 0.0f;
-	frame_state.render_time_ms = 0.0f;
 }
 
 void RenderFrameContextManager::reset_view_state_defaults() {

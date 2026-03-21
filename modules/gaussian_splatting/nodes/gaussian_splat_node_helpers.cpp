@@ -609,8 +609,6 @@ void GaussianSplatNodeDebugHelper::apply_renderer_debug_settings() {
         owner.runtime_preview_restore_mode = owner.renderer->get_debug_preview_mode();
         owner.renderer->set_debug_preview_mode(GaussianSplatRenderer::DEBUG_PREVIEW_RUNTIME_MODIFICATIONS);
     }
-
-    owner._update_debug_hud_visibility();
 }
 
 void GaussianSplatNodeDebugHelper::set_show_tile_grid(bool p_show) {
@@ -657,8 +655,6 @@ void GaussianSplatNodeDebugHelper::set_show_performance_hud(bool p_show) {
     if (owner.show_performance_overlay) {
         owner.update_gizmos();
     }
-
-    owner._update_debug_hud_visibility();
 }
 
 void GaussianSplatNodeDebugHelper::set_show_lod_spheres(bool p_show) {
@@ -743,8 +739,6 @@ void GaussianSplatNodeDebugHelper::set_show_residency_hud(bool p_show) {
     if (owner.renderer.is_valid() && owner.renderer_helper.can_apply_renderer_settings()) {
         owner.renderer->set_debug_show_residency_hud(owner.show_residency_hud);
     }
-
-    owner._update_debug_hud_visibility();
 }
 
 void GaussianSplatNodeQualityHelper::apply_quality_preset() {

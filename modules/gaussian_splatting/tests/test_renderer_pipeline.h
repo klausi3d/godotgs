@@ -13,6 +13,7 @@
 
 #include "core/config/project_settings.h"
 #include "core/variant/variant.h"
+#include "main/performance.h"
 #include "../core/gaussian_data.h"
 #include "../core/gaussian_splat_manager.h"
 #include "../core/gaussian_streaming.h"
@@ -850,6 +851,16 @@ TEST_CASE("[GaussianSplatting] RenderSceneInstance supports forced CPU sorting")
     }
     renderer->initialize();
 
+    Performance *perf = Performance::get_singleton();
+    CHECK(perf != nullptr);
+    if (perf == nullptr) {
+        return;
+    }
+    CHECK_MESSAGE(perf->has_custom_monitor("gaussian_splatting/pipeline_sort_time_ms"),
+            "Expected pipeline sort monitor to be registered");
+    CHECK_MESSAGE(perf->has_custom_monitor("gaussian_splatting/pipeline_composite_time_ms"),
+            "Expected pipeline composite monitor to be registered");
+
     const uint32_t total_gaussians = GaussianStreamingSystem::CHUNK_SIZE * 2;
     LocalVector<Gaussian> gaussians;
     fill_gaussians(gaussians, total_gaussians);
@@ -916,6 +927,9 @@ TEST_CASE("[GaussianSplatting] RenderSceneInstance supports forced CPU sorting")
 			CHECK_MESSAGE(int64_t(empty_sort_metrics["elements"]) == 0, "Expected empty frame to report zero sorted elements");
 		}
 	}
+
+    CHECK_MESSAGE(float(perf->get_custom_monitor("gaussian_splatting/pipeline_sort_time_ms")) == 0.0f,
+            "Expected pipeline sort monitor to remain zero when CPU fallback is forced");
 
 	renderer.unref();
 }

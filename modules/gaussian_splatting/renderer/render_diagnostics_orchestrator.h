@@ -37,6 +37,7 @@ public:
 	Array get_sort_metrics_history_internal() const;
 	void record_sort_sample(const GaussianSplatRenderer::SortFrameMetrics &p_sample);
 	void finalize_frame_metrics(uint64_t p_frame_start_usec);
+	void build_diagnostics_snapshot();
 
 	Dictionary get_runtime_diagnostic_snapshot() const;
 

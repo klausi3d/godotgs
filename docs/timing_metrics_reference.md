@@ -7,13 +7,13 @@ This document defines how Gaussian Splatting timing monitors should be interpret
 The following custom monitors are exported under the `gaussian_splatting/` prefix:
 
 - `telemetry_active`: lifecycle flag (`1` when at least one Gaussian renderer is registered, `0` when telemetry is inactive).
-- `gpu_time_cull_ms`: cull stage duration from stage metrics (fallback: culling summary).
-- `gpu_time_sort_ms`: sort stage duration from stage metrics (fallback: frame sort time).
-- `gpu_time_binning_ms`: tile binning GPU timestamp duration.
-- `gpu_time_prefix_ms`: tile prefix/overlap-count GPU timestamp duration.
-- `gpu_time_raster_ms`: tile raster GPU timestamp duration.
-- `gpu_time_resolve_ms`: tile resolve GPU timestamp duration.
-- `gpu_time_frame_ms`: total GPU frame duration for the tile renderer path.
+- `pipeline_cull_time_ms`: cull stage duration from stage metrics (fallback: culling summary).
+- `pipeline_sort_time_ms`: sort stage duration from stage metrics (fallback: frame sort time).
+- `pipeline_binning_time_ms`: tile binning duration (CPU-observed).
+- `pipeline_prefix_time_ms`: tile prefix/overlap-count duration (CPU-observed).
+- `pipeline_raster_time_ms`: tile raster duration (CPU-observed).
+- `pipeline_resolve_time_ms`: tile resolve duration (CPU-observed).
+- `pipeline_frame_time_ms`: total frame duration for the tile renderer path (CPU-observed).
 - `route_uid`: active render-route UID for the current frame diagnostics.
 - `sort_route_uid`: active sort-route UID for the current frame diagnostics.
 

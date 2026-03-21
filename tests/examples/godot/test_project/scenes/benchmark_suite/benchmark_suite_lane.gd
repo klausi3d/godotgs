@@ -15,9 +15,9 @@ const INSTANCE_SINGLE_PASS_SETTING := "rendering/gaussian_splatting/instance_pip
 const INSTANCE_BENCH_SERIAL_MULTI_ASSET_SETTING := "rendering/gaussian_splatting/instance_pipeline/benchmark_allow_serial_multi_asset"
 
 const MONITOR_KEYS := [
-	"gpu_time_frame_ms",
-	"gpu_time_cull_ms",
-	"gpu_time_raster_ms",
+	"pipeline_frame_time_ms",
+	"pipeline_cull_time_ms",
+	"pipeline_raster_time_ms",
 	"visible_splats",
 	"overflow_tile_count",
 	"streaming_total_chunks",
@@ -780,14 +780,14 @@ func _build_report() -> Dictionary:
 		var gpu_frame_estimate := float(renderer_stats.get("gpu_frame_estimate_ms", 0.0))
 		if gpu_frame_ms <= 0.0 and gpu_frame_source == "stage_estimate":
 			gpu_frame_ms = gpu_frame_estimate
-		overall["gpu_time_frame_ms"] = gpu_frame_ms
-		overall["gpu_time_frame_estimate_ms"] = gpu_frame_estimate
-		overall["gpu_time_frame_source"] = gpu_frame_source
+		overall["pipeline_frame_time_ms"] = gpu_frame_ms
+		overall["pipeline_frame_time_estimate_ms"] = gpu_frame_estimate
+		overall["pipeline_frame_time_source"] = gpu_frame_source
 		overall["gpu_timing_available"] = bool(renderer_stats.get("gpu_timing_available", false))
 	if renderer_stats.has("stage_cull_time_ms"):
-		overall["gpu_time_cull_ms"] = float(renderer_stats.get("stage_cull_time_ms", 0.0))
+		overall["pipeline_cull_time_ms"] = float(renderer_stats.get("stage_cull_time_ms", 0.0))
 	if renderer_stats.has("gpu_tile_raster_time_ms"):
-		overall["gpu_time_raster_ms"] = float(renderer_stats.get("gpu_tile_raster_time_ms", 0.0))
+		overall["pipeline_raster_time_ms"] = float(renderer_stats.get("gpu_tile_raster_time_ms", 0.0))
 	if renderer_stats.has("instance_pipeline_execution_mode"):
 		overall["instance_pipeline_execution_mode"] = renderer_stats.get("instance_pipeline_execution_mode", "")
 	if renderer_stats.has("instance_pipeline_execution_path"):
@@ -892,8 +892,8 @@ func _print_headless_summary(report: Dictionary) -> void:
 		float(overall.get("p1_fps", 0.0)),
 		float(steady.get("p1_fps", 0.0)),
 		float(overall.get("p99_frame_ms", 0.0)),
-		float(overall.get("gpu_time_frame_ms", 0.0)),
-		str(overall.get("gpu_time_frame_source", "unavailable")),
+		float(overall.get("pipeline_frame_time_ms", 0.0)),
+		str(overall.get("pipeline_frame_time_source", "unavailable")),
 		int(report.get("warmup_frame_count", 0)),
 		int(report.get("steady_frame_count", 0)),
 		int(report.get("node_visible_splats_max", 0)),
