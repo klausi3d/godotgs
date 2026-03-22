@@ -1345,7 +1345,7 @@ bool TileRenderer::_is_main_rendering_device(RenderingDevice *p_device) {
 }
 
 TileRenderer::~TileRenderer() {
-    _clear_adaptive_overlap_budget_state(this);
+    clear_adaptive_overlap_budget_runtime_state();
     cleanup();
 }
 

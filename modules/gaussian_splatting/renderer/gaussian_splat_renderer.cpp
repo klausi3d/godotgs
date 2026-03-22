@@ -811,8 +811,6 @@ void GaussianSplatRenderer::publish_sorted_indices(const SortPublicationPayload 
 
     sorting_state.sorted_splat_count = available_splats;
     get_frame_state().visible_splat_count.store(available_splats, std::memory_order_release);
-    get_performance_state().metrics.rendered_splat_count =
-            get_frame_state().visible_splat_count.load(std::memory_order_acquire);
 }
 
 GaussianSplatRenderer::~GaussianSplatRenderer() {
