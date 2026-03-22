@@ -8,10 +8,10 @@
       
       
       
-        <link rel="prev" href="../release-channels/">
+        <link rel="prev" href="../render-pipeline/">
       
       
-        <link rel="next" href="../../features/animation/">
+        <link rel="next" href="../../contributor/onboarding/">
       
       
         
@@ -22,7 +22,7 @@
     
     
       
-        <title>Screenshot Capture Specification - Godot Gaussian Splatting Docs</title>
+        <title>Stage-First Ownership Inventory - Godot Gaussian Splatting Docs</title>
       
     
     
@@ -73,7 +73,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#screenshot-capture-specification" class="md-skip">
+        <a href="#stage-first-ownership-inventory" class="md-skip">
           Skip to content
         </a>
       
@@ -113,7 +113,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Screenshot Capture Specification
+              Stage-First Ownership Inventory
             
           </span>
         </div>
@@ -680,8 +680,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -692,11 +694,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5">
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked="">
         
           
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
@@ -717,7 +719,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -735,7 +737,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/lighting-system/" class="md-nav__link">
+      <a href="../lighting-system/" class="md-nav__link">
         
   
   
@@ -763,7 +765,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/overview/" class="md-nav__link">
+      <a href="../overview/" class="md-nav__link">
         
   
   
@@ -791,7 +793,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/render-pipeline/" class="md-nav__link">
+      <a href="../render-pipeline/" class="md-nav__link">
         
   
   
@@ -816,10 +818,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../architecture/stage-first-ownership-inventory/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stage-First Ownership Inventory
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -835,6 +864,142 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#ownership-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ownership Rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-ownership-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current Ownership Matrix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#subsystem-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subsystem Details
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Subsystem Details">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gaussianstreamingsystem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GaussianStreamingSystem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tilerenderer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TileRenderer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gpusortingpipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GPUSortingPipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gaussiansplatrenderer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GaussianSplatRenderer
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hidden-mutable-state-inventory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hidden Mutable State Inventory
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-this-means-for-decomposition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What This Means For Decomposition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related Docs
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -938,8 +1103,6 @@
       
   
   
-    
-  
   
   
     
@@ -952,11 +1115,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked="">
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7">
         
           
           <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
@@ -977,7 +1140,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
@@ -995,7 +1158,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../docs-site/" class="md-nav__link">
+      <a href="../../development/docs-site/" class="md-nav__link">
         
   
   
@@ -1023,7 +1186,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../release-channels/" class="md-nav__link">
+      <a href="../../development/release-channels/" class="md-nav__link">
         
   
   
@@ -1048,37 +1211,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Screenshot Capture Specification
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../development/screenshot-capture-spec/" class="md-nav__link">
         
   
   
@@ -1094,114 +1230,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
-      
-        <li class="md-nav__item">
-  <a href="#purpose" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Purpose
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#why-this-exists" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Why this exists
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#capture-baseline" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Capture baseline
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#file-naming-and-storage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        File naming and storage
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#per-shot-metadata-required" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Per-shot metadata (required)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#capture-workflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Capture workflow
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#quality-gates" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Quality gates
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#priority-pages-for-initial-capture-pass" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Priority pages for initial capture pass
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2958,10 +2986,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
-  <a href="#purpose" class="md-nav__link">
+  <a href="#ownership-rules" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Purpose
+        Ownership Rules
       
     </span>
   </a>
@@ -2969,10 +2997,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-this-exists" class="md-nav__link">
+  <a href="#current-ownership-matrix" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why this exists
+        Current Ownership Matrix
       
     </span>
   </a>
@@ -2980,10 +3008,71 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#capture-baseline" class="md-nav__link">
+  <a href="#subsystem-details" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Capture baseline
+        Subsystem Details
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Subsystem Details">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gaussianstreamingsystem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GaussianStreamingSystem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tilerenderer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TileRenderer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gpusortingpipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GPUSortingPipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gaussiansplatrenderer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GaussianSplatRenderer
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hidden-mutable-state-inventory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hidden Mutable State Inventory
       
     </span>
   </a>
@@ -2991,10 +3080,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#file-naming-and-storage" class="md-nav__link">
+  <a href="#what-this-means-for-decomposition" class="md-nav__link">
     <span class="md-ellipsis">
       
-        File naming and storage
+        What This Means For Decomposition
       
     </span>
   </a>
@@ -3002,43 +3091,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#per-shot-metadata-required" class="md-nav__link">
+  <a href="#related-docs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Per-shot metadata (required)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#capture-workflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Capture workflow
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#quality-gates" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Quality gates
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#priority-pages-for-initial-capture-pass" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Priority pages for initial capture pass
+        Related Docs
       
     </span>
   </a>
@@ -3065,58 +3121,233 @@
   
 
 
-<h1 id="screenshot-capture-specification">Screenshot Capture Specification<a class="headerlink" href="#screenshot-capture-specification" title="Permanent link">¶</a></h1>
-<h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">¶</a></h2>
-<p>Define a repeatable, human-executed process for capturing documentation screenshots from the editor.</p>
-<h2 id="why-this-exists">Why this exists<a class="headerlink" href="#why-this-exists" title="Permanent link">¶</a></h2>
-<p>Text-only automation cannot produce authoritative editor UI screenshots. Captures must be taken in a real editor session and reviewed for consistency.</p>
-<h2 id="capture-baseline">Capture baseline<a class="headerlink" href="#capture-baseline" title="Permanent link">¶</a></h2>
-<p>Use these defaults unless a page requires an explicit override:</p>
+<h1 id="stage-first-ownership-inventory">Stage-First Ownership Inventory<a class="headerlink" href="#stage-first-ownership-inventory" title="Permanent link">¶</a></h1>
+<p>W0.1 artifact for the stage-first decomposition plan.</p>
+<p>This document records the current ownership boundary, single-writer rules, and hidden mutable state for the four highest-value decomposition targets:</p>
 <ul>
-<li>Resolution: <code>1920x1080</code></li>
-<li>UI scale: default (<code>100%</code>)</li>
-<li>Theme: default editor theme</li>
-<li>Window state: maximized, no overlapping debug windows unless documented</li>
-<li>Scene state: deterministic camera pose and visible inspector selection</li>
+<li><code>GaussianStreamingSystem</code></li>
+<li><code>TileRenderer</code></li>
+<li><code>GPUSortingPipeline</code></li>
+<li><code>GaussianSplatRenderer</code></li>
 </ul>
-<h2 id="file-naming-and-storage">File naming and storage<a class="headerlink" href="#file-naming-and-storage" title="Permanent link">¶</a></h2>
+<p>The goal is to make the current implementation readable as an ownership map before code is moved. This is not the target end-state; it is the contract the refactor has to preserve while W1 and W2 land.</p>
+<h2 id="ownership-rules">Ownership Rules<a class="headerlink" href="#ownership-rules" title="Permanent link">¶</a></h2>
 <ul>
-<li>Store images in <code>docs/assets/images/</code>.</li>
-<li>Naming format: <code>&lt;topic&gt;-&lt;context&gt;-&lt;state&gt;.webp</code>.</li>
-<li>Example: <code>quickstart-node-inspector-initial.webp</code>.</li>
+<li>One subsystem owns each mutable state bucket.</li>
+<li>Worker threads may produce payloads, but they do not mutate renderer-owned state directly.</li>
+<li>Render-thread dispatch, async readback, and resource tracking must have a single authoritative owner.</li>
+<li>Hidden process-global caches are temporary debt unless they are explicitly assigned to an owner.</li>
 </ul>
-<h2 id="per-shot-metadata-required">Per-shot metadata (required)<a class="headerlink" href="#per-shot-metadata-required" title="Permanent link">¶</a></h2>
-<p>For each screenshot, record:</p>
-<ol>
-<li>Target docs page path.</li>
-<li>Scene/resource loaded.</li>
-<li>Exact interaction steps before capture.</li>
-<li>Expected visible UI elements to verify.</li>
-</ol>
-<h2 id="capture-workflow">Capture workflow<a class="headerlink" href="#capture-workflow" title="Permanent link">¶</a></h2>
-<ol>
-<li>Open target scene/resource.</li>
-<li>Apply deterministic state setup (camera, selection, toggles).</li>
-<li>Capture screenshot.</li>
-<li>Optimize image size and confirm readability.</li>
-<li>Insert image into target docs page with concise caption and alt text.</li>
-<li>Run docs media budget check:</li>
-<li><code>python3 scripts/check_docs_media_budget.py</code></li>
-</ol>
-<h2 id="quality-gates">Quality gates<a class="headerlink" href="#quality-gates" title="Permanent link">¶</a></h2>
+<h2 id="current-ownership-matrix">Current Ownership Matrix<a class="headerlink" href="#current-ownership-matrix" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th>System</th>
+<th>Current owner</th>
+<th>Mutable state buckets</th>
+<th>Single-writer rule</th>
+<th>Extraction risk</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GaussianStreamingSystem</code></td>
+<td><code>core/gaussian_streaming.*</code></td>
+<td><code>VisibilityState</code>, <code>EvictionState</code>, <code>SchedulerState</code>, <code>DiagnosticsState</code>, <code>GlobalAtlasState</code>, <code>ConfigOverrides</code>, <code>PackTelemetry</code>, <code>frame_data</code>, <code>uploads</code>, <code>budget</code>, <code>chunks</code>, <code>atlas_allocator</code>, quantization buffers, <code>memory_stream_proxy</code>, <code>last_upload_device</code></td>
+<td>Main streaming update path owns frame ordering, visibility, eviction, upload scheduling, and atlas sync. Pack workers only build payloads for queued jobs and do not own streaming state.</td>
+<td>High. Configuration overrides, frame ordering, and atlas sync are all coupled in <code>_run_streaming_frame_pipeline()</code> and <code>_apply_config_overrides()</code>.</td>
+</tr>
+<tr>
+<td><code>TileRenderer</code></td>
+<td><code>renderer/tile_renderer.*</code> plus its stage helpers</td>
+<td><code>render_settings</code>, <code>shader_resources</code>, <code>diagnostics</code>, <code>async_readback</code>, <code>tracked_device_manager</code>, tracked output RIDs, <code>adaptive_overlap_budget</code> runtime state, subgroup-support cache</td>
+<td>The renderer owns tile frame execution. Readback callbacks may update the readback state machine, but they must not take ownership of resource lifetime or output tracking.</td>
+<td>High. There are still process-global mutable caches keyed by renderer/device identity.</td>
+</tr>
+<tr>
+<td><code>GPUSortingPipeline</code></td>
+<td><code>interfaces/gpu_sorting_pipeline.*</code></td>
+<td>Sort buffer RIDs and capacities, depth compute RIDs, CPU byte buffers, <code>SortReadbackState</code>, <code>InstanceCountReadbackState</code>, <code>InstancePipelineInputs</code>, cached camera transforms, <code>last_compute_error</code></td>
+<td>The pipeline owns its sort buffers, depth resources, and readback generations. Renderer state must be reached through an explicit seam, not a raw pointer handoff.</td>
+<td>High. The current implementation still mutates renderer-owned state directly in <code>_apply_sorted_results()</code>.</td>
+</tr>
+<tr>
+<td><code>GaussianSplatRenderer</code></td>
+<td><code>renderer/gaussian_splat_renderer.*</code></td>
+<td><code>DeviceState</code>, <code>ResourceState</code>, <code>PerformanceState</code>, <code>PipelineState</code>, <code>FrameState</code>, <code>ViewState</code>, <code>SortingState</code>, <code>StreamingState</code>, <code>SceneState</code>, <code>SubsystemState</code>, <code>RenderFrameContextManager</code>, render-thread dispatch primitives, orchestrator pointers</td>
+<td>The renderer owns frame entry, orchestration, and Godot-facing API. Concrete subsystem mutation should happen through orchestrators or service objects, not through direct cross-subsystem writes.</td>
+<td>Medium. The facade is already partly decomposed, but it still owns render-thread dispatch and several mutable caches.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="subsystem-details">Subsystem Details<a class="headerlink" href="#subsystem-details" title="Permanent link">¶</a></h2>
+<h3 id="gaussianstreamingsystem">GaussianStreamingSystem<a class="headerlink" href="#gaussianstreamingsystem" title="Permanent link">¶</a></h3>
+<p>Current state is already split into named buckets in <code>core/gaussian_streaming.h</code>:</p>
 <ul>
-<li>No sensitive/local machine information in UI.</li>
-<li>Captions describe what decision/action the screenshot supports.</li>
-<li>Images remain legible at standard docs-site layout width.</li>
-<li>Media budget checks pass.</li>
+<li><code>VisibilityState</code> at <code>gaussian_streaming.h:215</code></li>
+<li><code>EvictionState</code> at <code>gaussian_streaming.h:264</code></li>
+<li><code>PackTelemetry</code> at <code>gaussian_streaming.h:294</code></li>
+<li><code>SchedulerState</code> at <code>gaussian_streaming.h:584</code></li>
+<li><code>DiagnosticsState</code> at <code>gaussian_streaming.h:642</code></li>
+<li>atlas and quantization state at <code>gaussian_streaming.h:706</code> through <code>gaussian_streaming.h:739</code></li>
 </ul>
-<h2 id="priority-pages-for-initial-capture-pass">Priority pages for initial capture pass<a class="headerlink" href="#priority-pages-for-initial-capture-pass" title="Permanent link">¶</a></h2>
+<p>Current write ownership:</p>
 <ul>
-<li><code>docs/getting-started/quick-start.md</code></li>
-<li><code>docs/workflows/importing.md</code></li>
-<li><code>docs/workflows/GSPLATWORLD_BAKE.md</code></li>
-<li><code>docs/features/color-grading-quick-start.md</code></li>
-<li><code>docs/troubleshooting/recurring-issues.md</code></li>
+<li><code>VisibilityState</code> is updated from the main streaming frame pipeline.</li>
+<li><code>EvictionState</code> is updated by eviction helpers only.</li>
+<li><code>SchedulerState</code> is updated by the per-frame orchestration path.</li>
+<li><code>GlobalAtlasState</code> and atlas RIDs are updated only at the end of the streaming frame pipeline.</li>
+<li>Pack workers only create or transform <code>PackJob</code> and <code>PendingChunkUpload</code> payloads, then hand results back to the system.</li>
+</ul>
+<p>Implementation anchors:</p>
+<ul>
+<li>Frame ordering is explicit in <code>_run_streaming_frame_pipeline()</code> and ends with <code>_sync_global_atlas_state()</code>.</li>
+<li>Runtime config overrides are applied in <code>_apply_config_overrides()</code>, where they touch <code>visibility</code>, <code>uploads</code>, and <code>budget</code> together.</li>
+</ul>
+<p>Refactor note:</p>
+<ul>
+<li>W1 and W2 should not split <code>VisibilityState</code>, <code>EvictionState</code>, or <code>SchedulerState</code> until the ownership matrix is stable and the frame-order tests are pinned.</li>
+</ul>
+<h3 id="tilerenderer">TileRenderer<a class="headerlink" href="#tilerenderer" title="Permanent link">¶</a></h3>
+<p>Current state is a mix of member-owned state and process-global caches:</p>
+<ul>
+<li>Adaptive overlap runtime state is currently kept in a static pointer-keyed map in <code>tile_renderer.cpp:139</code> through <code>tile_renderer.cpp:157</code></li>
+<li>Subgroup support is cached in a static device-id keyed cache in <code>tile_renderer.cpp:1927</code> through <code>tile_renderer.cpp:1947</code></li>
+<li>Resource ownership and tracking are handled by <code>_resolve_texture_owner()</code>, <code>track_output_resources()</code>, and <code>clear_output_resource_tracking()</code></li>
+</ul>
+<p>Current write ownership:</p>
+<ul>
+<li>The tile renderer owns the frame execution path and the tile stage helpers.</li>
+<li><code>adaptive_overlap_budget_runtime_states</code> is a temporary process-global cache keyed by <code>TileRenderer *</code>.</li>
+<li><code>subgroup_support_cache</code> is a temporary process-global cache keyed by rendering device ID.</li>
+<li>Output RID tracking belongs to the renderer instance and the <code>RenderDeviceManager</code>, not to the caller.</li>
+</ul>
+<p>Implementation anchors:</p>
+<ul>
+<li><code>track_output_resources()</code> and <code>clear_output_resource_tracking()</code> own the current output-RID lifecycle.</li>
+<li><code>_resolve_texture_owner()</code> is the contract gate for cross-device resource ownership.</li>
+</ul>
+<p>Refactor note:</p>
+<ul>
+<li>W1 should extract the tile resource controller before W2 expands the execution-path split.</li>
+<li>The current static caches are temporary debt and should not survive the W1/W2 migration.</li>
+</ul>
+<h3 id="gpusortingpipeline">GPUSortingPipeline<a class="headerlink" href="#gpusortingpipeline" title="Permanent link">¶</a></h3>
+<p>Current state in <code>interfaces/gpu_sorting_pipeline.h</code> is concentrated but still too coupled:</p>
+<ul>
+<li>Sort buffers and sort capacity live at <code>gpu_sorting_pipeline.h:132</code> through <code>gpu_sorting_pipeline.h:145</code></li>
+<li>Depth compute resources live at <code>gpu_sorting_pipeline.h:150</code> through <code>gpu_sorting_pipeline.h:176</code></li>
+<li>CPU-side sort and depth buffers live at <code>gpu_sorting_pipeline.h:178</code> through <code>gpu_sorting_pipeline.h:183</code></li>
+<li><code>SortReadbackState</code> and <code>InstanceCountReadbackState</code> live at <code>gpu_sorting_pipeline.h:197</code> through <code>gpu_sorting_pipeline.h:212</code></li>
+<li><code>pending_renderer</code> lives at <code>gpu_sorting_pipeline.h:213</code></li>
+</ul>
+<p>Current write ownership:</p>
+<ul>
+<li>The pipeline owns its RIDs, capacities, and readback generation counters.</li>
+<li><code>sort_readback_state</code> controls publication of sorted results.</li>
+<li><code>instance_count_readback_state</code> controls publication of instance count readbacks.</li>
+<li>Renderer-owned state is currently mutated inside <code>_apply_sorted_results()</code> and reached via <code>pending_renderer</code>.</li>
+</ul>
+<p>Implementation anchors:</p>
+<ul>
+<li><code>_apply_sorted_results()</code> writes through <code>GaussianSplatRenderer</code> state accessors and updates culler, sorting, frame, and performance state in one step.</li>
+<li><code>ensure_sort_buffers()</code> still takes a renderer pointer and reaches into renderer state to validate/size resources.</li>
+<li><code>clear_instance_pipeline_inputs()</code> and the readback reset path are the current state reset boundary for instance-pipeline work.</li>
+</ul>
+<p>Refactor note:</p>
+<ul>
+<li>W1 should replace the renderer pointer seam with <code>ISortResultSink</code> plus a minimal host context.</li>
+<li>W2 should extract the sort buffer, depth compute, execution, and validation stages only after the W1 seam exists.</li>
+</ul>
+<h3 id="gaussiansplatrenderer">GaussianSplatRenderer<a class="headerlink" href="#gaussiansplatrenderer" title="Permanent link">¶</a></h3>
+<p>Current state is spread across explicit sub-buckets and orchestrators:</p>
+<ul>
+<li>Frame and view state are grouped in <code>RenderFrameContextManager</code></li>
+<li><code>DeviceState</code> is the owner of the current render-device and scene-render handles</li>
+<li><code>ResourceState</code> owns buffer lifecycle and per-frame GPU resource state</li>
+<li><code>SubsystemState</code> owns orchestrator and interface handles</li>
+<li><code>render_thread_dispatch_mutex</code>, <code>render_thread_dispatch_semaphore</code>, and related dispatch counters own the render-thread synchronization path</li>
+</ul>
+<p>Implementation anchors:</p>
+<ul>
+<li><code>gaussian_splat_renderer.h:531</code> through <code>gaussian_splat_renderer.h:538</code> hold the render-thread dispatch state.</li>
+<li><code>gaussian_splat_renderer.h:518</code> through <code>gaussian_splat_renderer.h:529</code> hold the orchestrator graph.</li>
+<li><code>_dispatch_call_on_render_thread_blocking()</code> and <code>_safe_submit_sync()</code> are the current synchronization chokepoints.</li>
+<li><code>gaussian_splat_renderer.cpp:156</code> through <code>gaussian_splat_renderer.cpp:163</code> hold the frame-log settings cache.</li>
+</ul>
+<p>Current write ownership:</p>
+<ul>
+<li>The renderer owns Godot-facing API entry points, frame setup, orchestration, and cross-subsystem lifecycle.</li>
+<li>Orchestrators own the finer-grained subsystem work that has already been peeled out.</li>
+<li>Render-thread dispatch remains renderer-owned for now, but it should move behind a dedicated seam in W1.</li>
+</ul>
+<p>Refactor note:</p>
+<ul>
+<li>W1 should remove synchronization from the renderer facade.</li>
+<li>W2 should continue slimming the facade, but only after W1 has made ownership explicit.</li>
+</ul>
+<h2 id="hidden-mutable-state-inventory">Hidden Mutable State Inventory<a class="headerlink" href="#hidden-mutable-state-inventory" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th>Location</th>
+<th>Symbol / state</th>
+<th>Why it matters</th>
+<th>Current owner status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>renderer/gaussian_splat_renderer.cpp:156</code></td>
+<td><code>g_frame_log_settings</code></td>
+<td>Process-global cache for frame logging/debug behavior. It is updated from project settings and shared by all renderer instances.</td>
+<td>Temporary global cache, should become explicit renderer or process service state.</td>
+</tr>
+<tr>
+<td><code>renderer/tile_renderer.cpp:139</code></td>
+<td><code>adaptive_overlap_budget_runtime_states</code></td>
+<td>Process-global cache keyed by <code>TileRenderer *</code>. This is hidden instance state stored outside the instance.</td>
+<td>Temporary debt, should move into <code>TileRenderer</code> ownership or a dedicated controller.</td>
+</tr>
+<tr>
+<td><code>renderer/tile_renderer.cpp:1927</code></td>
+<td><code>subgroup_support_cache</code></td>
+<td>Process-global cache keyed by device ID. It affects shader path selection and must not be reinterpreted as per-instance state.</td>
+<td>Temporary cache, should be explicitly owned or documented as device capability cache.</td>
+</tr>
+<tr>
+<td><code>renderer/gaussian_splat_renderer.h:531</code> through <code>:538</code></td>
+<td>render-thread dispatch mutex, semaphore, request/completion counters, timeout</td>
+<td>Synchronization state is embedded in the renderer facade.</td>
+<td>Renderer-owned for now, but the W1 dispatcher seam should take it over.</td>
+</tr>
+<tr>
+<td><code>interfaces/gpu_sorting_pipeline.h:213</code></td>
+<td><code>pending_renderer</code></td>
+<td>Cross-object mutable handoff state. It makes the pipeline depend on renderer lifetime and shape.</td>
+<td>Temporary coupling, should be removed by W1.</td>
+</tr>
+<tr>
+<td><code>core/gaussian_streaming.cpp:2400</code></td>
+<td><code>debug_frame</code> static counter</td>
+<td>Telemetry pacing is process-global, not instance-owned.</td>
+<td>Benign but still hidden mutable state; keep the scope explicit.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-this-means-for-decomposition">What This Means For Decomposition<a class="headerlink" href="#what-this-means-for-decomposition" title="Permanent link">¶</a></h2>
+<ul>
+<li><code>W0</code> must stay stable: the ownership matrix and the characterization tests are the hard gate.</li>
+<li><code>W1</code> should cut concrete seams first: sort result sink, render-thread dispatcher, tile resource controller, and hidden-static cleanup.</li>
+<li><code>W2</code> should extract execution stages only after ownership is explicit.</li>
+<li><code>W3</code> should be cleanup only: remove the shims, slim the facades, and enforce the dependency rules.</li>
+</ul>
+<h2 id="related-docs">Related Docs<a class="headerlink" href="#related-docs" title="Permanent link">¶</a></h2>
+<ul>
+<li>Architecture overview: <a href="../overview/">overview.md</a></li>
+<li>Render pipeline details: <a href="../render-pipeline/">render-pipeline.md</a></li>
+<li>Module architecture map: <a href="https://github.com/klausi3D/godotGS/blob/e2e724f8c5d09653be6450238a40e012d2600692/modules/gaussian_splatting/ARCHITECTURE.md">../../modules/gaussian_splatting/ARCHITECTURE.md</a></li>
+<li>Memory and residency invariants: <a href="https://github.com/klausi3D/godotGS/blob/e2e724f8c5d09653be6450238a40e012d2600692/modules/gaussian_splatting/MEMORY_SUBSYSTEM.md">../../modules/gaussian_splatting/MEMORY_SUBSYSTEM.md</a></li>
 </ul>
 
 
@@ -3140,7 +3371,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 22, 2026 02:00:58 UTC">March 22, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 22, 2026 02:00:57 UTC">March 22, 2026</span>
   </span>
 
     
@@ -3150,7 +3381,7 @@
     <span class="md-icon" title="Created">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 22, 2026 02:00:58 UTC">March 22, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 22, 2026 02:00:57 UTC">March 22, 2026</span>
   </span>
 
     
