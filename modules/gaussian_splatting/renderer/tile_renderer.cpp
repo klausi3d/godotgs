@@ -117,6 +117,19 @@ RD::DataFormat _resolve_storage_compatible_color_format(RD::DataFormat p_format)
 	}
 }
 
+int _resolve_compute_raster_output_format_define(RD::DataFormat p_format) {
+	switch (p_format) {
+		case RD::DATA_FORMAT_R8G8B8A8_UNORM:
+			return 0;
+		case RD::DATA_FORMAT_R16G16B16A16_SFLOAT:
+			return 1;
+		case RD::DATA_FORMAT_R32G32B32A32_SFLOAT:
+			return 2;
+		default:
+			return 0;
+	}
+}
+
 uint64_t _hash_shader_defines(const Vector<String> &p_defines) {
 	String combined;
 	for (int i = 0; i < p_defines.size(); i++) {
@@ -343,11 +356,16 @@ private:
 
 		renderer.instance_pipeline_buffers.instance_buffer = params.instance_buffer;
 		renderer.instance_pipeline_buffers.splat_ref_buffer = params.splat_ref_buffer;
+		renderer.instance_pipeline_buffers.chunk_meta_buffer = params.chunk_meta_buffer;
 		renderer.instance_pipeline_buffers.quantization_buffer = params.quantization_buffer;
 		renderer.instance_pipeline_buffers.indirect_count_buffer = params.instance_indirect_count_buffer;
 		renderer.instance_pipeline_buffers.indirect_dispatch_buffer = params.instance_indirect_dispatch_buffer;
 
 		const bool quantization_required = g_quantization_config.per_chunk_quantization;
+		if (quantization_required && !renderer.instance_pipeline_buffers.chunk_meta_buffer.is_valid()) {
+			ERR_PRINT_ONCE("[TileRenderer] Quantized instance pipeline requires chunk_meta_buffer for per-chunk SH limits");
+			return false;
+		}
 		const GaussianSplatting::InstancePipelineContract::InvariantViolationReason invariant_reason =
 				GaussianSplatting::InstancePipelineContract::first_tile_runtime_violation(
 						renderer.instance_pipeline_buffers.instance_buffer,
@@ -1171,6 +1189,7 @@ GaussianSplatting::TileRenderParams::TileRenderParams() {
 	sorted_indices = RID();
 	instance_buffer = RID();
 	splat_ref_buffer = RID();
+	chunk_meta_buffer = RID();
 	quantization_buffer = RID();
 	instance_indirect_count_buffer = RID();
 	instance_indirect_dispatch_buffer = RID();
@@ -1588,21 +1607,16 @@ Error TileRenderer::_ensure_resources(const Vector2i &p_size, int p_tile_size, R
     // Check if viewport size actually changed (not just initial difference)
     bool size_changed = grid_state.viewport_size.x > 0 && grid_state.viewport_size.y > 0 && grid_state.viewport_size != p_size;
 
-    Error err = _compile_tile_shaders();
-    if (err != OK) {
-        return err;
-    }
-
-	bool recreate_buffers = tile_size_changed || format_changed || size_changed;
-	// Debug/diagnostic buffers are required in both modes.
-	recreate_buffers = recreate_buffers || !debug_stats.debug_counter_buffer.is_valid() ||
+    bool recreate_buffers = tile_size_changed || format_changed || size_changed;
+    // Debug/diagnostic buffers are required in both modes.
+    recreate_buffers = recreate_buffers || !debug_stats.debug_counter_buffer.is_valid() ||
             !debug_stats.overflow_statistics_buffer.is_valid() || !debug_stats.debug_splat_audit_buffer.is_valid();
 
-	if (recreate_buffers) {
-		projection_buffers.release(device);
-		debug_stats.free_buffers(device);
-		_destroy_output_textures();
-		render_targets.depth_texture_copy_compatible = false;
+    if (recreate_buffers) {
+        projection_buffers.release(device);
+        debug_stats.free_buffers(device);
+        _destroy_output_textures();
+        render_targets.depth_texture_copy_compatible = false;
 
         _update_tile_dimensions(p_size);
         if (!_validate_tile_grid("ensure_resources")) {
@@ -1611,7 +1625,7 @@ Error TileRenderer::_ensure_resources(const Vector2i &p_size, int p_tile_size, R
         _create_aux_buffers();
         _create_output_texture(p_size, config_state.desired_output_format);
 
-		bool allocation_failed = !render_targets.output_texture.is_valid() || !debug_stats.debug_counter_buffer.is_valid() ||
+        bool allocation_failed = !render_targets.output_texture.is_valid() || !debug_stats.debug_counter_buffer.is_valid() ||
                 !debug_stats.overflow_statistics_buffer.is_valid() || !debug_stats.debug_splat_audit_buffer.is_valid();
         if (allocation_failed && tile_size_changed) {
             GS_LOG_WARN_DEFAULT("[TileRenderer] Adaptive tile size allocation failed, reverting to previous tile size");
@@ -1624,6 +1638,11 @@ Error TileRenderer::_ensure_resources(const Vector2i &p_size, int p_tile_size, R
             _create_aux_buffers();
             _create_output_texture(p_size, config_state.desired_output_format);
         }
+    }
+
+    Error err = _compile_tile_shaders();
+    if (err != OK) {
+        return err;
     }
 
     return OK;
@@ -1888,6 +1907,9 @@ Vector<String> TileRenderer::_build_raster_shader_defines() const {
 	defines.push_back(vformat("#define GS_TILE_SPLAT_CAPACITY %d\n", MAX_SPLATS_PER_TILE));
 	const uint32_t raster_cap = CLAMP<uint32_t>(g_gpu_sorting_config.max_raster_splats_per_tile, 256u, 131072u);
 	defines.push_back(vformat("#define GS_MAX_RASTER_SPLATS_PER_TILE %d\n", raster_cap));
+	const RD::DataFormat storage_color_format = _resolve_storage_compatible_color_format(config_state.output_format);
+	defines.push_back(vformat("#define TILE_RASTER_OUTPUT_FORMAT %d\n",
+			_resolve_compute_raster_output_format_define(storage_color_format)));
 	if (render_settings.global_sort_enabled) {
 		defines.push_back("#define GS_TILE_GLOBAL_SORT 1\n");
 	}
@@ -2433,16 +2455,22 @@ TileRenderer::RasterDecision TileRenderer::_evaluate_raster_path(RenderingDevice
         return decision;
     }
 
-    if (actual_output_format != _resolve_storage_compatible_color_format(actual_output_format)) {
+    const RD::DataFormat storage_output_format = _resolve_storage_compatible_color_format(actual_output_format);
+    if (actual_output_format != storage_output_format) {
         decision.reason = vformat("Compute raster requires storage-compatible output format; actual format %d uses fragment path",
                 int(actual_output_format));
         return decision;
     }
 
-    if (actual_output_format != RD::DATA_FORMAT_R8G8B8A8_UNORM) {
-        decision.reason = vformat("Compute raster supports RGBA8 UNORM imageStore only; actual format %d uses fragment path",
-                int(actual_output_format));
-        return decision;
+    switch (storage_output_format) {
+        case RD::DATA_FORMAT_R8G8B8A8_UNORM:
+        case RD::DATA_FORMAT_R16G16B16A16_SFLOAT:
+        case RD::DATA_FORMAT_R32G32B32A32_SFLOAT:
+            break;
+        default:
+            decision.reason = vformat("Compute raster output format %d is unsupported by imageStore path; using fragment path",
+                    int(storage_output_format));
+            return decision;
     }
 
     const uint64_t max_workgroup_x = MAX<uint64_t>(1u, p_device->limit_get(RenderingDevice::LIMIT_MAX_COMPUTE_WORKGROUP_SIZE_X));
