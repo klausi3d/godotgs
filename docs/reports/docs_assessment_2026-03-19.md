@@ -103,7 +103,7 @@ The documentation corpus has strong foundations: task-oriented quickstarts, a we
 | 4 | `GaussianStreamingSystem` | Class | `:73` | None | None | 0 | **P1** |
 | 5 | `VRAMBudgetRegulator` | Class | `:74` | None | None | 0 | **P2** |
 | 6 | `GaussianSplatNode3D` | Node3D | `:77` | **Yes** (`api/gaussian_splat_node3d.md`) | None (should have) | **4** | Low |
-| 7 | `GaussianSplatDebugHUD` | Control | `:78` | None | None | 0 | **P1** |
+| 7 | `GaussianSplatDebugHUD` | Control | `:78` | N/A | N/A | N/A | Resolved (class deleted) |
 | 8 | `GaussianSplatContainer` | Node3D | `:79` | None | None | 1 | **P0** |
 | 9 | `GaussianSplatDynamicInstance3D` | Node3D | `:80` | None | None | 1 | **P0** |
 | 10 | `GaussianSplatWorld3D` | Node3D | `:81` | None | None | 1 | **P0** |

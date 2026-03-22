@@ -68,7 +68,6 @@ dedicated documentation):
 - `GaussianData`
 - `GaussianMemoryStream`
 - `GaussianSplatContainer`
-- `GaussianSplatDebugHUD`
 - `GaussianSplatDynamicInstance3D`
 - `GaussianSplatManager`
 - `GaussianSplatNode3D`

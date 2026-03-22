@@ -1,8 +1,19 @@
 # Issue Prioritization Roadmap
 
-**Date**: 2026-02-03  
-**Open Issues**: 64 (GitHub shows 64 open issues as of 2026-02-03; includes #808 which was not in the provided 63 list)  
+**Date**: 2026-02-03
+**Open Issues**: 64 (GitHub shows 64 open issues as of 2026-02-03; includes #808 which was not in the provided 63 list)
 **Analysis By**: Codex
+
+---
+
+## Status Update (2026-03-22)
+
+- **Sprint 1 (Stability Foundation)**: Completed.
+- **Sprint 2 (Performance Wins)**: Completed -- metrics consolidation (#653) landed as the DiagnosticsSnapshot architecture. `PerformanceMetrics` was replaced by `DataSourceInfo`, `GaussianSplatDebugHUD` was removed, and `DiagnosticsSnapshot` is now the single source of truth for per-frame stats.
+- **Sprint 3 (Render Quality)**: In progress.
+- **Sprint 4 (Polish & Integration)**: Upcoming.
+
+---
 
 ## Executive Summary
 The most impactful path is to fix correctness bugs and QA blockers first, then eliminate per-frame performance costs that affect every scene. In parallel, land a minimal metrics and testing foundation so larger refactors can proceed safely. Once stability and performance are predictable, depth integration and Mip-Splatting are the highest-visibility quality upgrades. Long-term artistic/editor features should remain in the backlog until the core pipeline is reliable and measurable.
