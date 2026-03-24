@@ -93,6 +93,32 @@
     },
     {
       "deletion_commit": null,
+      "display_path": "editor/scene/3d/node_3d_editor_plugin.cpp",
+      "last_touch_commit": "ec491bb7aa325e596a1813b77b454f4963097ab2",
+      "lines_added": 90,
+      "lines_deleted": 1,
+      "new_path": "editor/scene/3d/node_3d_editor_plugin.cpp",
+      "old_path": "editor/scene/3d/node_3d_editor_plugin.cpp",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": "editor",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
+      "display_path": "editor/scene/3d/node_3d_editor_plugin.h",
+      "last_touch_commit": "c6b0b1951f2621d10c035dd9ac47c2b192910eac",
+      "lines_added": 2,
+      "lines_deleted": 0,
+      "new_path": "editor/scene/3d/node_3d_editor_plugin.h",
+      "old_path": "editor/scene/3d/node_3d_editor_plugin.h",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": "editor",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
       "display_path": "main/main.cpp",
       "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
       "lines_added": 8,
@@ -419,9 +445,9 @@
   ],
   "engine_source_summary": {
     "deleted": 0,
-    "modified": 32,
+    "modified": 34,
     "renamed": 0,
-    "total_files": 32
+    "total_files": 34
   },
   "entries": [
     {
@@ -778,9 +804,9 @@
     {
       "deletion_commit": null,
       "display_path": "README.md",
-      "last_touch_commit": "d9f052c12dd437a39f748d4e8fa0b3b8674bdace",
-      "lines_added": 25,
-      "lines_deleted": 66,
+      "last_touch_commit": "ed9932c94fea2198da0cd3412949fa3f8c1b03fb",
+      "lines_added": 26,
+      "lines_deleted": 65,
       "new_path": "README.md",
       "old_path": "README.md",
       "pre_deletion_commit": null,
@@ -1030,6 +1056,32 @@
       "lines_deleted": 0,
       "new_path": "editor/docks/scene_tree_dock.h",
       "old_path": "editor/docks/scene_tree_dock.h",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": "editor",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
+      "display_path": "editor/scene/3d/node_3d_editor_plugin.cpp",
+      "last_touch_commit": "ec491bb7aa325e596a1813b77b454f4963097ab2",
+      "lines_added": 90,
+      "lines_deleted": 1,
+      "new_path": "editor/scene/3d/node_3d_editor_plugin.cpp",
+      "old_path": "editor/scene/3d/node_3d_editor_plugin.cpp",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": "editor",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
+      "display_path": "editor/scene/3d/node_3d_editor_plugin.h",
+      "last_touch_commit": "c6b0b1951f2621d10c035dd9ac47c2b192910eac",
+      "lines_added": 2,
+      "lines_deleted": 0,
+      "new_path": "editor/scene/3d/node_3d_editor_plugin.h",
+      "old_path": "editor/scene/3d/node_3d_editor_plugin.h",
       "pre_deletion_commit": null,
       "status": "M",
       "subsystem": "editor",
@@ -2196,7 +2248,7 @@
       ]
     },
     "fork_base_commit": "876b290332ec6f2e6d173d08162a02aa7e6ca46d",
-    "head_commit": "e2e724f8c5d09653be6450238a40e012d2600692",
+    "head_commit": "a9171684a9c4ba19cc5028b3238c96b586f782b6",
     "head_ref": "HEAD",
     "label": "Godot 4.5 stable fork-point commit",
     "rename_threshold": "70%",
@@ -2248,7 +2300,7 @@
       "name": "drivers"
     },
     {
-      "count": 18,
+      "count": 20,
       "name": "editor"
     },
     {
@@ -2302,9 +2354,9 @@
   ],
   "summary": {
     "deleted": 39,
-    "modified": 95,
+    "modified": 97,
     "renamed": 0,
-    "total_files": 134
+    "total_files": 136
   },
   "warnings": []
 }
