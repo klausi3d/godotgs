@@ -109,6 +109,33 @@ def is_source(path: str) -> bool:
     return Path(path).suffix.lower() in SOURCE_EXTENSIONS
 
 
+def read_github_event_sha_candidates() -> List[Tuple[str, str]]:
+    event_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()
+    if not event_path:
+        return []
+
+    try:
+        payload = json.loads(Path(event_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    candidates: List[Tuple[str, str]] = []
+
+    before_sha = str(payload.get("before", "")).strip()
+    if before_sha and before_sha != ZERO_SHA:
+        candidates.append((before_sha, "GITHUB_EVENT_PATH before"))
+
+    pull_request = payload.get("pull_request")
+    if isinstance(pull_request, dict):
+        base = pull_request.get("base")
+        if isinstance(base, dict):
+            base_sha = str(base.get("sha", "")).strip()
+            if base_sha and base_sha != ZERO_SHA:
+                candidates.append((base_sha, "GITHUB_EVENT_PATH pull_request.base.sha"))
+
+    return candidates
+
+
 def resolve_base_ref(repo_root: Path, explicit: Optional[str]) -> Tuple[str, str]:
     if explicit:
         return explicit, "explicit --base-ref"
@@ -121,6 +148,8 @@ def resolve_base_ref(repo_root: Path, explicit: Optional[str]) -> Tuple[str, str
         if base_ref:
             candidates.append((f"origin/{base_ref}", "GITHUB_BASE_REF"))
             candidates.append((base_ref, "GITHUB_BASE_REF"))
+
+    candidates.extend(read_github_event_sha_candidates())
 
     before_sha = env.get("GITHUB_EVENT_BEFORE", "").strip()
     if before_sha and before_sha != ZERO_SHA:
@@ -138,12 +167,12 @@ def resolve_base_ref(repo_root: Path, explicit: Optional[str]) -> Tuple[str, str
     candidates.extend(
         [
             ("@{upstream}", "local upstream"),
-            ("origin/HEAD", "origin default branch"),
+            ("HEAD~1", "previous commit"),
             ("origin/main", "origin/main"),
             ("origin/master", "origin/master"),
             ("main", "main"),
             ("master", "master"),
-            ("HEAD~1", "previous commit"),
+            ("origin/HEAD", "origin default branch"),
         ]
     )
 
