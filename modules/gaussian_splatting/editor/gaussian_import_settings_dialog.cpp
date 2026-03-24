@@ -227,6 +227,16 @@ GaussianImportSettingsDialog::GaussianImportSettingsDialog() {
 	_build_ui();
 }
 
+GaussianImportSettingsDialog::~GaussianImportSettingsDialog() {
+	if (settings_data) {
+		memdelete(settings_data);
+		settings_data = nullptr;
+	}
+	if (singleton == this) {
+		singleton = nullptr;
+	}
+}
+
 // ---------------------------------------------------------------------------
 // UI construction
 // ---------------------------------------------------------------------------
