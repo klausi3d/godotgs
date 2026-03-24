@@ -18,7 +18,7 @@ from typing import DefaultDict, Dict, Iterable, List, Optional, Sequence, Set, T
 
 EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 SOURCE_EXTENSIONS = {".c", ".cc", ".cpp", ".cxx", ".m", ".mm"}
-HEADER_EXTENSIONS = {".h", ".hh", ".hpp", ".hxx", ".inc"}
+HEADER_EXTENSIONS = {".h", ".hh", ".hpp", ".hxx", ".inc", ".inl", ".ipp"}
 RELEVANT_EXTENSIONS = SOURCE_EXTENSIONS | HEADER_EXTENSIONS
 ZERO_SHA = "0000000000000000000000000000000000000000"
 
