@@ -1,11 +1,17 @@
 Checks:
   - -*
+  - bugprone-*
+  - clang-analyzer-*
   - cppcoreguidelines-pro-type-member-init
   - modernize-deprecated-headers
   - modernize-redundant-void-arg
   - modernize-use-bool-literals
   - modernize-use-default-member-init
   - modernize-use-nullptr
+  - performance-for-range-copy
+  - performance-inefficient-string-concatenation
+  - performance-inefficient-vector-operation
+  - performance-move-const-arg
   - readability-braces-around-statements
   - readability-redundant-member-init
 HeaderFileExtensions: ["", h, hh, hpp, hxx, inc, glsl]

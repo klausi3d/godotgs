@@ -89,6 +89,77 @@ jobs:
         run: |
           python tests/ci/run_module_tests.py --guard-only
 
+  linux-minimum-guard:
+    name: Linux Minimum Guard (Headless C++ + GDScript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Verify Python on runner
+        run: python3 --version
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            scons \
+            pkg-config \
+            libx11-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libxi-dev \
+            libxrandr-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libudev-dev \
+            libvulkan-dev \
+            mesa-vulkan-drivers
+
+      - name: Build Linux editor with tests
+        run: |
+          scons platform=linuxbsd target=editor dev_build=yes tests=yes cache_path=.scons_cache cache_limit=10 -j"$(nproc)"
+
+      - name: Resolve Godot binary
+        id: godot_bin
+        run: |
+          set -euo pipefail
+          godot_bin="$(find bin -maxdepth 1 -type f -executable -name 'godot*linuxbsd*editor*' | sort | head -n 1)"
+          if [[ -z "${godot_bin}" ]]; then
+            echo "Could not locate built Linux editor binary in bin/"
+            ls -la bin || true
+            exit 1
+          fi
+          echo "path=${godot_bin}" >> "$GITHUB_OUTPUT"
+          echo "Using Linux guard binary: ${godot_bin}"
+
+      - name: Run guard-only module checks
+        run: |
+          python3 tests/ci/run_module_tests.py --guard-only
+
+      - name: Run headless runtime validation
+        run: |
+          python3 tests/runtime/run_runtime_validation.py \
+            --profile smoke \
+            --godot-binary "${{ steps.godot_bin.outputs.path }}" \
+            --gd-mode headless \
+            --fail-on-skip
+
+      - name: Upload Linux minimum guard runtime report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-minimum-guard-runtime-report
+          path: tests/runtime/runtime_validation_report.json
+          if-no-files-found: warn
+
   gpu-evidence-requirement:
     name: GPU Evidence Requirement
     runs-on: ubuntu-latest
