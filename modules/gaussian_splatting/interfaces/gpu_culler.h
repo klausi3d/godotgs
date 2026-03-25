@@ -12,6 +12,7 @@
 #include "../lod/hierarchical_splat_structure.h"
 #include "cluster_culler.h"
 #include "../renderer/batched_async_readback.h"
+#include <atomic>
 #include <cstdint>
 #include <memory>
 
@@ -320,6 +321,7 @@ private:
     // Cluster-level coarse culling
     Ref<ClusterCuller> cluster_culler;
     bool clusters_need_rebuild = true;
+    uint64_t cluster_source_data_instance_id = 0;
 
     // PERF (#634): Batched async readback to reduce CPU/GPU sync points
     Ref<BatchedAsyncReadback> batched_readback;
@@ -345,6 +347,12 @@ private:
             bool p_readback_importance);
     bool _gpu_frustum_cull_instance(const CullParams &p_params, const InstancePipelineInputs &p_inputs,
             uint64_t p_start_time_usec, CullingSummary &r_summary);
+    void _track_cluster_source_data(const Ref<GaussianData> &p_data);
+    void _on_cluster_source_data_changed();
+    void _mark_cluster_source_data_dirty_on_render_thread();
+
+    ObjectID cluster_source_data_object_id = ObjectID();
+    std::atomic<bool> cluster_source_change_dispatch_pending{ false };
 };
 
 #endif // GS_GPU_CULLER_H

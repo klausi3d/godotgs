@@ -142,6 +142,11 @@ public:
     ClusterCullStats get_stats() const { return last_stats; }
 
     /**
+     * @brief Gets the latest CPU-side cluster build data.
+     */
+    const GaussianSplatting::ClusterBuildResult &get_cluster_data() const { return cluster_data; }
+
+    /**
      * @brief Gets the most recent compute infrastructure error (if any).
      */
     String get_last_compute_error() const { return last_compute_error; }
