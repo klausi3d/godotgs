@@ -947,8 +947,7 @@ TileRendererRegressionTest::TestResult TileRendererRegressionTest::test_compute_
         return result;
     }
 
-    bool saw_fragment_fallback = false;
-    bool saw_compute = false;
+    bool saw_compute_fp16 = false;
     bool saw_valid_output = false;
     for (int frame = 0; frame < 8; frame++) {
         RID output = tile_renderer->render(p_rd, params);
@@ -959,8 +958,7 @@ TileRendererRegressionTest::TestResult TileRendererRegressionTest::test_compute_
         }
         saw_valid_output = true;
         const TileRenderer::RenderStats stats = tile_renderer->get_last_render_stats();
-        saw_compute = saw_compute || stats.last_raster_used_compute;
-        saw_fragment_fallback = saw_fragment_fallback || !stats.last_raster_used_compute;
+        saw_compute_fp16 = saw_compute_fp16 || stats.last_raster_used_compute;
     }
 
     if (!saw_valid_output) {
@@ -968,9 +966,29 @@ TileRendererRegressionTest::TestResult TileRendererRegressionTest::test_compute_
         result.error_message = "Compute format fallback test did not produce output";
         return result;
     }
-    if (baseline_compute_supported && (saw_compute || !saw_fragment_fallback)) {
+    if (baseline_compute_supported && !saw_compute_fp16) {
         cleanup();
-        result.error_message = "Expected non-RGBA8 output format to force compute->fragment fallback";
+        result.error_message = "Expected R16G16B16A16_SFLOAT output format to keep compute raster path";
+        return result;
+    }
+
+    // sRGB storage images are not supported in the compute raster path and
+    // should still use the fragment raster fallback.
+    tile_renderer->set_output_format(RD::DATA_FORMAT_R8G8B8A8_SRGB);
+    bool saw_fragment_srgb = false;
+    for (int frame = 0; frame < 4; frame++) {
+        RID output = tile_renderer->render(p_rd, params);
+        if (!output.is_valid()) {
+            cleanup();
+            result.error_message = "Render failed while validating sRGB fallback";
+            return result;
+        }
+        const TileRenderer::RenderStats stats = tile_renderer->get_last_render_stats();
+        saw_fragment_srgb = saw_fragment_srgb || !stats.last_raster_used_compute;
+    }
+    if (baseline_compute_supported && !saw_fragment_srgb) {
+        cleanup();
+        result.error_message = "Expected sRGB output format to use fragment fallback for compute raster";
         return result;
     }
 

@@ -112,7 +112,10 @@ GaussianImportSettingsDialog *GaussianImportSettingsDialog::get_singleton() {
 	return singleton;
 }
 
-void GaussianImportSettingsDialog::_bind_methods() {}
+void GaussianImportSettingsDialog::_bind_methods() {
+	ADD_SIGNAL(MethodInfo("reimport_requested", PropertyInfo(Variant::STRING, "source_path"),
+			PropertyInfo(Variant::DICTIONARY, "options")));
+}
 
 // ---------------------------------------------------------------------------
 // Theme
@@ -222,6 +225,16 @@ GaussianImportSettingsDialog::GaussianImportSettingsDialog() {
 	settings_data = memnew(GaussianImportSettingsData);
 
 	_build_ui();
+}
+
+GaussianImportSettingsDialog::~GaussianImportSettingsDialog() {
+	if (settings_data) {
+		memdelete(settings_data);
+		settings_data = nullptr;
+	}
+	if (singleton == this) {
+		singleton = nullptr;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -670,18 +683,8 @@ void GaussianImportSettingsDialog::_re_import() {
 		return;
 	}
 
-	String ext = source_path.get_extension().to_lower();
-	String importer_name;
-	if (ext == "ply") {
-		importer_name = "gaussian_splat_ply";
-	} else if (ext == "spz") {
-		importer_name = "gaussian_splat_spz";
-	} else {
-		importer_name = "";
-	}
-
 	// Gather all settings from the inspector data object.
-	HashMap<StringName, Variant> params;
+	Dictionary params;
 	if (settings_data) {
 		for (const KeyValue<StringName, Variant> &kv : settings_data->current) {
 			params[kv.key] = kv.value;
@@ -701,10 +704,7 @@ void GaussianImportSettingsDialog::_re_import() {
 
 	_clear_viewport_scene();
 	loaded_asset.unref();
-
-	if (!importer_name.is_empty()) {
-		EditorFileSystem::get_singleton()->reimport_file_with_custom_parameters(source_path, importer_name, params);
-	}
+	emit_signal(StringName("reimport_requested"), source_path, params);
 }
 
 // ---------------------------------------------------------------------------
