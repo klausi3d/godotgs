@@ -18,6 +18,7 @@
 #include "../compute/frustum_cull.glsl.gen.h"
 #include "../logger/gs_logger.h"
 #include "../logger/gs_debug_trace.h"
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 
@@ -1888,6 +1889,17 @@ GPUCuller::CullingSummary GPUCuller::cull_for_view(const Transform3D &p_cam_tran
 
         if (p_inputs.max_splats > 0 && candidate_indices.size() > p_inputs.max_splats) {
             const uint32_t previous_count = static_cast<uint32_t>(candidate_indices.size());
+
+            // Sort by distance to camera so we keep the closest splats, not arbitrary Morton-order ones.
+            std::partial_sort(
+                    candidate_indices.ptr(),
+                    candidate_indices.ptr() + p_inputs.max_splats,
+                    candidate_indices.ptr() + candidate_indices.size(),
+                    [&](uint32_t a, uint32_t b) {
+                        return (gaussians[a].position - camera_pos).length_squared() <
+                                (gaussians[b].position - camera_pos).length_squared();
+                    });
+
             candidate_indices.resize(p_inputs.max_splats);
             if (!candidate_weights.is_empty() && candidate_weights.size() > p_inputs.max_splats) {
                 candidate_weights.resize(p_inputs.max_splats);
