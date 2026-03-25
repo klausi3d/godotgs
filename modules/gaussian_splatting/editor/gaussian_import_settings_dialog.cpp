@@ -112,10 +112,7 @@ GaussianImportSettingsDialog *GaussianImportSettingsDialog::get_singleton() {
 	return singleton;
 }
 
-void GaussianImportSettingsDialog::_bind_methods() {
-	ADD_SIGNAL(MethodInfo("reimport_requested", PropertyInfo(Variant::STRING, "source_path"),
-			PropertyInfo(Variant::DICTIONARY, "options")));
-}
+void GaussianImportSettingsDialog::_bind_methods() {}
 
 // ---------------------------------------------------------------------------
 // Theme
@@ -198,6 +195,7 @@ void GaussianImportSettingsDialog::_on_inspector_property_edited(const String &p
 		int idx = gaussian_find_import_preset_index(preset_id);
 		if (idx >= 0) {
 			const GaussianImportPresetDefinition &preset = gaussian_get_import_preset_by_index(idx);
+			settings_data->current[StringName("general/asset_type")] = preset.default_asset_type;
 			settings_data->current[StringName("quality/max_splats")] = preset.max_splats;
 			settings_data->current[StringName("quality/density_multiplier")] = preset.density_multiplier;
 			settings_data->current[StringName("quality/enable_lod")] = preset.enable_lod;
@@ -228,13 +226,8 @@ GaussianImportSettingsDialog::GaussianImportSettingsDialog() {
 }
 
 GaussianImportSettingsDialog::~GaussianImportSettingsDialog() {
-	if (settings_data) {
-		memdelete(settings_data);
-		settings_data = nullptr;
-	}
-	if (singleton == this) {
-		singleton = nullptr;
-	}
+	singleton = nullptr;
+	memdelete(settings_data);
 }
 
 // ---------------------------------------------------------------------------
@@ -401,12 +394,23 @@ void GaussianImportSettingsDialog::_populate_settings_data() {
 	}
 
 	// Override with values from the .import sidecar.
+	// Legacy .import files may use unnamespaced keys (e.g. "asset_type" instead
+	// of "general/asset_type"). Map them to the current names so existing
+	// projects don't silently lose their settings on reimport.
+	static const HashMap<StringName, StringName> legacy_key_map = {
+		{ StringName("asset_type"), StringName("general/asset_type") },
+	};
+
 	if (!import_options.is_empty()) {
 		Array keys = import_options.keys();
 		for (int i = 0; i < keys.size(); i++) {
 			StringName key = keys[i];
-			if (settings_data->defaults.has(key)) {
-				settings_data->current[key] = import_options[keys[i]];
+			StringName mapped_key = key;
+			if (legacy_key_map.has(key)) {
+				mapped_key = legacy_key_map[key];
+			}
+			if (settings_data->defaults.has(mapped_key)) {
+				settings_data->current[mapped_key] = import_options[keys[i]];
 			}
 		}
 	}
@@ -579,8 +583,7 @@ void GaussianImportSettingsDialog::_update_stats() {
 	int count = loaded_asset->get_splat_count();
 	text += vformat(TTR("Splats: %s"), String::num_int64(count)) + "\n";
 
-	AABB b = _resolve_bounds();
-	text += vformat(TTR("Bounds: %.2f x %.2f x %.2f"), b.size.x, b.size.y, b.size.z) + "\n";
+	text += vformat(TTR("Bounds: %.2f x %.2f x %.2f"), asset_bounds.size.x, asset_bounds.size.y, asset_bounds.size.z) + "\n";
 
 	Dictionary meta = loaded_asset->get_import_metadata();
 	if (meta.has(StringName("memory_estimate_bytes"))) {
@@ -683,8 +686,19 @@ void GaussianImportSettingsDialog::_re_import() {
 		return;
 	}
 
+	String ext = source_path.get_extension().to_lower();
+	String importer_name;
+	if (ext == "ply") {
+		importer_name = "gaussian_splat_ply";
+	} else if (ext == "spz") {
+		importer_name = "gaussian_splat_spz";
+	} else {
+		WARN_PRINT(vformat("GaussianImportSettingsDialog: unknown file extension '%s' for '%s'.", ext, source_path));
+		return;
+	}
+
 	// Gather all settings from the inspector data object.
-	Dictionary params;
+	HashMap<StringName, Variant> params;
 	if (settings_data) {
 		for (const KeyValue<StringName, Variant> &kv : settings_data->current) {
 			params[kv.key] = kv.value;
@@ -704,7 +718,9 @@ void GaussianImportSettingsDialog::_re_import() {
 
 	_clear_viewport_scene();
 	loaded_asset.unref();
-	emit_signal(StringName("reimport_requested"), source_path, params);
+
+	ERR_FAIL_NULL(EditorFileSystem::get_singleton());
+	EditorFileSystem::get_singleton()->reimport_file_with_custom_parameters(source_path, importer_name, params);
 }
 
 // ---------------------------------------------------------------------------
@@ -734,6 +750,10 @@ void GaussianImportSettingsDialog::open_settings(const String &p_path) {
 
 	// Load the imported asset for preview.
 	_load_source_asset();
+
+	if (loaded_asset.is_null()) {
+		stats_label->set_text(TTR("Failed to load asset. Check the file format and path."));
+	}
 
 	// Populate the EditorInspector with import settings.
 	_populate_settings_data();

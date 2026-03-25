@@ -109,8 +109,6 @@ GaussianEditorPlugin::GaussianEditorPlugin() {
     // Advanced import settings dialog (opened by double-clicking .ply/.spz in filesystem).
     gaussian_import_settings_dialog = memnew(GaussianImportSettingsDialog);
     add_child(gaussian_import_settings_dialog);
-    gaussian_import_settings_dialog->connect(
-            "reimport_requested", callable_mp(this, &GaussianEditorPlugin::_on_import_settings_confirmed));
 
     editor_integration->setup(this, import_dialog);
 }
