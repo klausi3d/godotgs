@@ -211,7 +211,7 @@
     {
       "deletion_commit": null,
       "display_path": "servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
+      "last_touch_commit": "6d3b0da93ed8988241db94f6a581abc7e821f790",
       "lines_added": 252,
       "lines_deleted": 1,
       "new_path": "servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp",
@@ -250,8 +250,8 @@
     {
       "deletion_commit": null,
       "display_path": "servers/rendering/renderer_rd/renderer_scene_render_rd.cpp",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "lines_added": 119,
+      "last_touch_commit": "6d3b0da93ed8988241db94f6a581abc7e821f790",
+      "lines_added": 128,
       "lines_deleted": 9,
       "new_path": "servers/rendering/renderer_rd/renderer_scene_render_rd.cpp",
       "old_path": "servers/rendering/renderer_rd/renderer_scene_render_rd.cpp",
@@ -289,8 +289,8 @@
     {
       "deletion_commit": null,
       "display_path": "servers/rendering/renderer_rd/storage_rd/render_data_rd.h",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "lines_added": 17,
+      "last_touch_commit": "6d3b0da93ed8988241db94f6a581abc7e821f790",
+      "lines_added": 18,
       "lines_deleted": 3,
       "new_path": "servers/rendering/renderer_rd/storage_rd/render_data_rd.h",
       "old_path": "servers/rendering/renderer_rd/storage_rd/render_data_rd.h",
@@ -1909,7 +1909,7 @@
     {
       "deletion_commit": null,
       "display_path": "servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
+      "last_touch_commit": "6d3b0da93ed8988241db94f6a581abc7e821f790",
       "lines_added": 252,
       "lines_deleted": 1,
       "new_path": "servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp",
@@ -1948,8 +1948,8 @@
     {
       "deletion_commit": null,
       "display_path": "servers/rendering/renderer_rd/renderer_scene_render_rd.cpp",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "lines_added": 119,
+      "last_touch_commit": "6d3b0da93ed8988241db94f6a581abc7e821f790",
+      "lines_added": 128,
       "lines_deleted": 9,
       "new_path": "servers/rendering/renderer_rd/renderer_scene_render_rd.cpp",
       "old_path": "servers/rendering/renderer_rd/renderer_scene_render_rd.cpp",
@@ -1987,8 +1987,8 @@
     {
       "deletion_commit": null,
       "display_path": "servers/rendering/renderer_rd/storage_rd/render_data_rd.h",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "lines_added": 17,
+      "last_touch_commit": "6d3b0da93ed8988241db94f6a581abc7e821f790",
+      "lines_added": 18,
       "lines_deleted": 3,
       "new_path": "servers/rendering/renderer_rd/storage_rd/render_data_rd.h",
       "old_path": "servers/rendering/renderer_rd/storage_rd/render_data_rd.h",
@@ -2248,7 +2248,7 @@
       ]
     },
     "fork_base_commit": "876b290332ec6f2e6d173d08162a02aa7e6ca46d",
-    "head_commit": "2e2897f6b5494759919d8fa09c00bc083ad4493e",
+    "head_commit": "72697a4a049aaa1b65295423a628bbd7fabaf97c",
     "head_ref": "HEAD",
     "label": "Godot 4.5 stable fork-point commit",
     "rename_threshold": "70%",
