@@ -820,10 +820,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#runtime-and-lighting-check-workflow" class="md-nav__link">
+  <a href="#runtime-and-lighting-checks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Runtime and Lighting Check Workflow
+        Runtime and Lighting Checks
       
     </span>
   </a>
@@ -831,10 +831,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#bake-world-workflow" class="md-nav__link">
+  <a href="#bake-and-world-workflows" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bake / World Workflow
+        Bake and World Workflows
       
     </span>
   </a>
@@ -920,7 +920,7 @@
   <span class="md-ellipsis">
     
   
-    User Manual: Performance Presets
+    Performance Presets
   
 
     
@@ -948,7 +948,7 @@
   <span class="md-ellipsis">
     
   
-    User Manual: FAQ
+    FAQ
   
 
     
@@ -1736,10 +1736,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#runtime-and-lighting-check-workflow" class="md-nav__link">
+  <a href="#runtime-and-lighting-checks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Runtime and Lighting Check Workflow
+        Runtime and Lighting Checks
       
     </span>
   </a>
@@ -1747,10 +1747,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#bake-world-workflow" class="md-nav__link">
+  <a href="#bake-and-world-workflows" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bake / World Workflow
+        Bake and World Workflows
       
     </span>
   </a>
@@ -1784,44 +1784,39 @@
 
 
 <h1 id="workflow-details">Workflow Details<a class="headerlink" href="#workflow-details" title="Permanent link">¶</a></h1>
-<div class="admonition info">
-<p class="admonition-title">Scope</p>
-<p>For artists and integrators who already know which workflow family they need and want the next detailed page.
-This page covers secondary workflow groupings and supporting task pages.
-It complements the canonical <a href="../../quickstart/">Artist Workflow Overview</a>.</p>
-</div>
+<p>Use this page after <a href="../../quickstart/">Artist Workflow Overview</a> when you already know the job and need the next supporting page.</p>
 <h2 id="import-workflow">Import Workflow<a class="headerlink" href="#import-workflow" title="Permanent link">¶</a></h2>
 <ul>
-<li>Put source files under project <code>res://</code>.</li>
-<li>Assign file to <code>GaussianSplatNode3D</code>.</li>
-<li>Verify first render before tuning.</li>
+<li>Put source files inside the project.</li>
+<li>Assign the imported asset to <code>GaussianSplatNode3D</code>.</li>
+<li>Verify a first render before you tune quality or lighting.</li>
 </ul>
-<p>References:
-- <a href="../../../workflows/importing/">../../workflows/importing.md</a>
-- <a href="../../../features/ply-loader/">../../features/ply-loader.md</a></p>
+<p>Related pages:
+- <a href="../../../workflows/importing/">Import workflow</a>
+- <a href="../../../features/ply-loader/">PLY loader reference</a></p>
 <h2 id="tuning-workflow">Tuning Workflow<a class="headerlink" href="#tuning-workflow" title="Permanent link">¶</a></h2>
 <ul>
-<li>Start with balanced preset.</li>
-<li>Adjust render distance and max splat count.</li>
-<li>Validate visual quality and frame stability.</li>
+<li>Start with <code>Balanced</code>.</li>
+<li>Adjust render distance and max splat count only after the scene is visible.</li>
+<li>Validate image quality and frame stability before going deeper.</li>
 </ul>
-<p>References:
-- <a href="../../../features/artist_pipeline/">../../features/artist_pipeline.md</a>
-- <a href="../performance-presets/">performance-presets.md</a></p>
-<h2 id="runtime-and-lighting-check-workflow">Runtime and Lighting Check Workflow<a class="headerlink" href="#runtime-and-lighting-check-workflow" title="Permanent link">¶</a></h2>
+<p>Related pages:
+- <a href="../../../features/artist_pipeline/">Artist pipeline reference</a>
+- <a href="../performance-presets/">Performance presets</a></p>
+<h2 id="runtime-and-lighting-checks">Runtime and Lighting Checks<a class="headerlink" href="#runtime-and-lighting-checks" title="Permanent link">¶</a></h2>
 <ol>
-<li>Confirm base runtime stability first (camera movement and visibility).</li>
-<li>Tune global lighting controls for scene readability.</li>
-<li>Only then investigate advanced artifacts.</li>
+<li>Confirm base runtime stability first.</li>
+<li>Tune the lighting controls that change readability the most.</li>
+<li>Use troubleshooting only after the normal controls fail.</li>
 </ol>
-<p>References:
-- <a href="../runtime-behavior/">runtime-behavior.md</a>
-- <a href="../lighting-behavior/">lighting-behavior.md</a>
-- <a href="../../../troubleshooting/recurring-issues/">../../troubleshooting/recurring-issues.md</a></p>
-<h2 id="bake-world-workflow">Bake / World Workflow<a class="headerlink" href="#bake-world-workflow" title="Permanent link">¶</a></h2>
-<p>For merged world resources and bake operations:</p>
+<p>Related pages:
+- <a href="../runtime-behavior/">Runtime behavior</a>
+- <a href="../lighting-behavior/">Lighting behavior</a>
+- <a href="../../../troubleshooting/recurring-issues/">Recurring issues</a></p>
+<h2 id="bake-and-world-workflows">Bake and World Workflows<a class="headerlink" href="#bake-and-world-workflows" title="Permanent link">¶</a></h2>
+<p>Use the bake workflow when you want one merged runtime world resource instead of several source assets.</p>
 <ul>
-<li><a href="../../../workflows/GSPLATWORLD_BAKE/">../../workflows/GSPLATWORLD_BAKE.md</a></li>
+<li><a href="../../../workflows/GSPLATWORLD_BAKE/">Gaussian Splat World Bake Workflow</a></li>
 </ul>
 
 
@@ -1833,8 +1828,6 @@ It complements the canonical <a href="../../quickstart/">Artist Workflow Overvie
   
     
   
-  
-    
   
 
 
@@ -1845,19 +1838,10 @@ It complements the canonical <a href="../../quickstart/">Artist Workflow Overvie
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 30, 2026 11:33:17 UTC">March 30, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 30, 2026 12:41:24 UTC">March 30, 2026</span>
   </span>
 
     
-    
-      
-  <span class="md-source-file__fact">
-    <span class="md-icon" title="Created">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
-    </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 30, 2026 11:33:17 UTC">March 30, 2026</span>
-  </span>
-
     
     
     

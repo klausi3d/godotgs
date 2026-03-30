@@ -568,10 +568,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
-  <a href="#1-get-a-module-built-editor" class="md-nav__link">
+  <a href="#1-point-at-your-editor" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1) Get a Module-Built Editor
+        1. Point at Your Editor
       
     </span>
   </a>
@@ -582,7 +582,7 @@
   <a href="#2-generate-synthetic-starter-assets" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2) Generate Synthetic Starter Assets
+        2. Generate Synthetic Starter Assets
       
     </span>
   </a>
@@ -593,7 +593,7 @@
   <a href="#3-open-the-sample-project" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3) Open the Sample Project
+        3. Open the Sample Project
       
     </span>
   </a>
@@ -604,7 +604,7 @@
   <a href="#4-render-your-first-splat" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4) Render Your First Splat
+        4. Render Your First Splat
       
     </span>
   </a>
@@ -612,10 +612,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#need-help" class="md-nav__link">
+  <a href="#if-it-fails" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Need Help?
+        If It Fails
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#flow-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flow Reference
       
     </span>
   </a>
@@ -931,7 +942,7 @@
   <span class="md-ellipsis">
     
   
-    User Manual: Performance Presets
+    Performance Presets
   
 
     
@@ -959,7 +970,7 @@
   <span class="md-ellipsis">
     
   
-    User Manual: FAQ
+    FAQ
   
 
     
@@ -1725,10 +1736,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
-  <a href="#1-get-a-module-built-editor" class="md-nav__link">
+  <a href="#1-point-at-your-editor" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1) Get a Module-Built Editor
+        1. Point at Your Editor
       
     </span>
   </a>
@@ -1739,7 +1750,7 @@
   <a href="#2-generate-synthetic-starter-assets" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2) Generate Synthetic Starter Assets
+        2. Generate Synthetic Starter Assets
       
     </span>
   </a>
@@ -1750,7 +1761,7 @@
   <a href="#3-open-the-sample-project" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3) Open the Sample Project
+        3. Open the Sample Project
       
     </span>
   </a>
@@ -1761,7 +1772,7 @@
   <a href="#4-render-your-first-splat" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4) Render Your First Splat
+        4. Render Your First Splat
       
     </span>
   </a>
@@ -1769,10 +1780,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#need-help" class="md-nav__link">
+  <a href="#if-it-fails" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Need Help?
+        If It Fails
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#flow-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flow Reference
       
     </span>
   </a>
@@ -1806,70 +1828,55 @@
 
 
 <h1 id="first-run">First Run<a class="headerlink" href="#first-run" title="Permanent link">¶</a></h1>
-<p><em>Last updated: 2026-03-16</em></p>
-<div class="admonition tip">
-<p class="admonition-title">Canonical task page</p>
-<p>Use this page as the source of truth for install and first run.
-If you need prerequisite details or compiler setup, use <a href="../installation/">Installation</a> and <a href="../../BUILDING/">Build from Source</a>, then return here.</p>
-</div>
-<p>Purpose: first visible splat with minimal setup.</p>
-<figure>
-<p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../../assets/images/first-run-editor-path.svg" data-desc-position="bottom"><img alt="Diagram of the first-run path from a module-built editor to a visible sample splat" class="gs-diagram" src="../../assets/images/first-run-editor-path.svg"></a></p>
-<figcaption>The first-run path is a short proof loop: point at the module-built editor, seed the synthetic fixture asset, open the sample project, and confirm a visible splat in the benchmark_unified scene.</figcaption>
-</figure>
-<p>Run commands from repository root (<code>godotgs/</code>).</p>
-<h2 id="1-get-a-module-built-editor">1) Get a Module-Built Editor<a class="headerlink" href="#1-get-a-module-built-editor" title="Permanent link">¶</a></h2>
-<p>Already built one? Set it directly:</p>
+<p>Use this page after <a href="../installation/">Installation</a> when you want the shortest path to a visible splat.</p>
+<p>Real editor screenshots for this flow are still pending, so this page stays text-first for now and keeps the diagram as a technical reference at the end.</p>
+<h2 id="1-point-at-your-editor">1. Point at Your Editor<a class="headerlink" href="#1-point-at-your-editor" title="Permanent link">¶</a></h2>
+<p>If you already have an editor built from this fork, set it directly:</p>
 <div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">GODOT_BINARY</span><span class="o">=</span>/absolute/path/to/your/godot-editor
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><span class="nv">$env:GODOT_BINARY</span><span class="p">=</span><span class="s2">"C:\absolute\path\to\your\godot-editor.exe"</span>
 </code></pre></div>
-<p>Need to build one now?</p>
-<ul>
-<li>Review prerequisites in <a href="../installation/">Installation</a>.</li>
-<li>Run the platform build commands in <a href="../../BUILDING/">Build from Source</a>.</li>
-<li>Then return here and set <code>GODOT_BINARY</code> to the binary you built.</li>
-</ul>
-<p>After a successful build:</p>
+<p>Need to build one first? Use <a href="../../BUILDING/">Build from Source</a>, then come back here and set <code>GODOT_BINARY</code> to the binary you built.</p>
+<p>After a successful build, point <code>GODOT_BINARY</code> at the editor in <code>bin/</code>:</p>
 <div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">GODOT_BINARY</span><span class="o">=</span>./bin/&lt;your-editor-binary&gt;
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><span class="nv">$env:GODOT_BINARY</span><span class="p">=</span><span class="s2">".\bin\&lt;your-editor-binary&gt;.exe"</span>
 </code></pre></div>
-<p>You should see:
-- an editor binary in <code>bin/</code>
-- the binary was built from this fork root and includes <code>modules/gaussian_splatting</code></p>
-<h2 id="2-generate-synthetic-starter-assets">2) Generate Synthetic Starter Assets<a class="headerlink" href="#2-generate-synthetic-starter-assets" title="Permanent link">¶</a></h2>
+<p>You should see an editor binary in <code>bin/</code>.</p>
+<h2 id="2-generate-synthetic-starter-assets">2. Generate Synthetic Starter Assets<a class="headerlink" href="#2-generate-synthetic-starter-assets" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code>python3<span class="w"> </span>tests/runtime/prepare_synthetic_assets.py<span class="w"> </span>--quiet
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><span class="n">python</span> <span class="p">.\</span><span class="n">tests</span><span class="p">\</span><span class="n">runtime</span><span class="p">\</span><span class="n">prepare_synthetic_assets</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-quiet</span>
 </code></pre></div>
 <p>You should see:
-- <code>tests/examples/godot/test_project/tests/fixtures/test_splats.ply</code> in the project</p>
-<h2 id="3-open-the-sample-project">3) Open the Sample Project<a class="headerlink" href="#3-open-the-sample-project" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code><span class="c1"># Bash (Linux/macOS)</span>
-<span class="nv">$GODOT_BINARY</span><span class="w"> </span>--path<span class="w"> </span>tests/examples/godot/test_project
+- the synthetic starter asset in the sample project fixture set</p>
+<h2 id="3-open-the-sample-project">3. Open the Sample Project<a class="headerlink" href="#3-open-the-sample-project" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><span class="nv">$GODOT_BINARY</span><span class="w"> </span>--path<span class="w"> </span>tests/examples/godot/test_project
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><span class="c"># PowerShell (Windows)</span>
-<span class="p">&amp;</span> <span class="nv">$env:GODOT_BINARY</span> <span class="p">-</span><span class="n">-path</span> <span class="p">.\</span><span class="n">tests</span><span class="p">\</span><span class="n">examples</span><span class="p">\</span><span class="n">godot</span><span class="p">\</span><span class="n">test_project</span>
+<div class="highlight"><pre><span></span><code><span class="p">&amp;</span> <span class="nv">$env:GODOT_BINARY</span> <span class="p">-</span><span class="n">-path</span> <span class="p">.\</span><span class="n">tests</span><span class="p">\</span><span class="n">examples</span><span class="p">\</span><span class="n">godot</span><span class="p">\</span><span class="n">test_project</span>
 </code></pre></div>
-<p>You should see:
-- Godot editor running with <code>tests/examples/godot/test_project</code></p>
-<h2 id="4-render-your-first-splat">4) Render Your First Splat<a class="headerlink" href="#4-render-your-first-splat" title="Permanent link">¶</a></h2>
+<p>You should see the sample project open in the editor.</p>
+<h2 id="4-render-your-first-splat">4. Render Your First Splat<a class="headerlink" href="#4-render-your-first-splat" title="Permanent link">¶</a></h2>
 <ol>
 <li>Open <code>res://scenes/benchmark_unified.tscn</code>.</li>
-<li>If needed, add <code>GaussianSplatNode3D</code>.</li>
+<li>If needed, add the splat node the sample scene expects.</li>
 <li>Set <code>PLY File Path</code> to <code>res://tests/fixtures/test_splats.ply</code>.</li>
-<li>Press <code>F6</code> (Play Scene).</li>
+<li>Press <code>F6</code> to play the scene.</li>
 </ol>
 <p>You should see:
 - a visible splat in the viewport</p>
-<h2 id="need-help">Need Help?<a class="headerlink" href="#need-help" title="Permanent link">¶</a></h2>
+<h2 id="if-it-fails">If It Fails<a class="headerlink" href="#if-it-fails" title="Permanent link">¶</a></h2>
 <ul>
-<li>Artist workflow overview: <a href="../../user/quickstart/">../user/quickstart.md</a></li>
-<li>Installation details: <a href="../installation/">installation.md</a></li>
-<li>Build from source: <a href="../../BUILDING/">../BUILDING.md</a></li>
-<li>Recurring fixes: <a href="../../troubleshooting/recurring-issues/">../troubleshooting/recurring-issues.md</a></li>
+<li><a href="../../user/quickstart/">Artist workflow overview</a></li>
+<li><a href="../installation/">Installation</a></li>
+<li><a href="../../BUILDING/">Build from Source</a></li>
+<li><a href="../../troubleshooting/recurring-issues/">Recurring issues</a></li>
 </ul>
+<h2 id="flow-reference">Flow Reference<a class="headerlink" href="#flow-reference" title="Permanent link">¶</a></h2>
+<figure>
+<p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../../assets/images/first-run-editor-path.svg" data-desc-position="bottom"><img alt="Diagram of the first-run path from a fork-built editor to a visible sample splat" class="gs-diagram" src="../../assets/images/first-run-editor-path.svg"></a></p>
+<figcaption>The first-run path is a short proof loop: point at your editor, seed the synthetic fixture asset, open the sample project, and confirm a visible splat in the benchmark_unified scene.</figcaption>
+</figure>
 
 
 
@@ -1880,8 +1887,6 @@ If you need prerequisite details or compiler setup, use <a href="../installation
   
     
   
-  
-    
   
 
 
@@ -1892,19 +1897,10 @@ If you need prerequisite details or compiler setup, use <a href="../installation
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 30, 2026 11:33:10 UTC">March 30, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 30, 2026 12:41:17 UTC">March 30, 2026</span>
   </span>
 
     
-    
-      
-  <span class="md-source-file__fact">
-    <span class="md-icon" title="Created">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
-    </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 30, 2026 11:33:10 UTC">March 30, 2026</span>
-  </span>
-
     
     
     

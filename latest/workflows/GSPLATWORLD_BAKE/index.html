@@ -818,7 +818,7 @@
   <span class="md-ellipsis">
     
   
-    User Manual: Performance Presets
+    Performance Presets
   
 
     
@@ -846,7 +846,7 @@
   <span class="md-ellipsis">
     
   
-    User Manual: FAQ
+    FAQ
   
 
     
@@ -1612,10 +1612,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
-  <a href="#purpose" class="md-nav__link">
+  <a href="#choose-a-bake-mode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Purpose
+        Choose a Bake Mode
       
     </span>
   </a>
@@ -1623,10 +1623,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#usage" class="md-nav__link">
+  <a href="#required-options" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Usage
+        Required Options
       
     </span>
   </a>
@@ -1634,10 +1634,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#api" class="md-nav__link">
+  <a href="#practical-order" class="md-nav__link">
     <span class="md-ellipsis">
       
-        API
+        Practical Order
       
     </span>
   </a>
@@ -1645,10 +1645,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#examples" class="md-nav__link">
+  <a href="#common-failure-modes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Examples
+        Common Failure Modes
       
     </span>
   </a>
@@ -1656,21 +1656,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
+  <a href="#related-pages" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See also
+        Related Pages
       
     </span>
   </a>
@@ -1704,13 +1693,12 @@
 
 
 <h1 id="gaussian-splat-world-bake-workflow">Gaussian Splat World Bake Workflow<a class="headerlink" href="#gaussian-splat-world-bake-workflow" title="Permanent link">¶</a></h1>
-<h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">¶</a></h2>
-<p>Bake many Gaussian splat assets into one <code>GaussianSplatWorld</code> resource to remove runtime parsing overhead for source files.</p>
+<p>Use this workflow when you want to merge multiple Gaussian splat assets into one <code>GaussianSplatWorld</code> resource for faster runtime loading.</p>
 <figure>
 <p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../../assets/images/bake-world-workflow.svg" data-desc-position="bottom"><img alt="Diagram of the bake workflow joining scene mode and input-list mode into one GaussianSplatWorld output" class="gs-diagram" src="../../assets/images/bake-world-workflow.svg"></a></p>
-<figcaption>Scene mode preserves node transforms, input-list mode does not, but both bake paths end at the same gsplatworld runtime resource.</figcaption>
+<figcaption>Scene mode preserves node transforms, while input-list mode does not. Both end in the same baked world resource.</figcaption>
 </figure>
-<h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">¶</a></h2>
+<h2 id="choose-a-bake-mode">Choose a Bake Mode<a class="headerlink" href="#choose-a-bake-mode" title="Permanent link">¶</a></h2>
 <table>
 <thead>
 <tr>
@@ -1718,170 +1706,109 @@
 <th>Required input</th>
 <th>Transform behavior</th>
 <th>Output</th>
-<th>Implementation</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Scene mode</td>
 <td><code>--scene=res://...</code></td>
-<td>Uses each child <code>GaussianSplatNode3D</code> global transform during merge.</td>
-<td><code>.gsplatworld</code> file from merged data and chunk metadata.</td>
-<td><code>scripts/bake_gsplatworld.gd:26</code>, <code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:201</code></td>
+<td>Preserves each child node transform during merge</td>
+<td><code>.gsplatworld</code> file</td>
 </tr>
 <tr>
-<td>Input list mode</td>
+<td>Input-list mode</td>
 <td><code>--inputs=res://a.ply,res://b.spz</code> or <code>--input=...</code></td>
-<td>Uses identity transforms for every input because nodes are created without transforms.</td>
-<td><code>.gsplatworld</code> file from merged data and chunk metadata.</td>
-<td><code>scripts/bake_gsplatworld.gd:28</code>, <code>scripts/bake_gsplatworld.gd:112</code></td>
+<td>Uses identity transforms for each input</td>
+<td><code>.gsplatworld</code> file</td>
 </tr>
 </tbody>
 </table>
-<h2 id="api">API<a class="headerlink" href="#api" title="Permanent link">¶</a></h2>
+<h2 id="required-options">Required Options<a class="headerlink" href="#required-options" title="Permanent link">¶</a></h2>
 <table>
 <thead>
 <tr>
 <th>Option</th>
-<th>Required</th>
-<th>Behavior</th>
-<th>Implementation</th>
+<th>When you need it</th>
+<th>Notes</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>--output</code></td>
-<td>Yes</td>
-<td>Fails when missing.</td>
-<td><code>scripts/bake_gsplatworld.gd:19</code></td>
-</tr>
-<tr>
-<td><code>--output=*.gsplatworld</code></td>
-<td>Yes</td>
-<td>Rejects non-<code>.gsplatworld</code> extensions.</td>
-<td><code>scripts/bake_gsplatworld.gd:42</code></td>
+<td>Always</td>
+<td>Must end with <code>.gsplatworld</code></td>
 </tr>
 <tr>
 <td><code>--scene</code></td>
-<td>One of <code>--scene</code> or <code>--inputs</code>/<code>--input</code></td>
-<td>Loads a <code>PackedScene</code>, finds a <code>GaussianSplatContainer</code>, merges children, and exports world data.</td>
-<td><code>scripts/bake_gsplatworld.gd:62</code>, <code>scripts/bake_gsplatworld.gd:78</code>, <code>scripts/bake_gsplatworld.gd:84</code>, <code>scripts/bake_gsplatworld.gd:86</code></td>
+<td>Scene mode</td>
+<td>Use this when the scene already contains the splat nodes</td>
 </tr>
 <tr>
 <td><code>--container</code></td>
-<td>No</td>
-<td>Disambiguates container lookup when the scene has multiple containers.</td>
-<td><code>scripts/bake_gsplatworld.gd:75</code>, <code>scripts/bake_gsplatworld.gd:138</code></td>
+<td>Scene mode with multiple containers</td>
+<td>Selects the container to bake</td>
 </tr>
 <tr>
 <td><code>--inputs</code> or <code>--input</code></td>
-<td>One of <code>--scene</code> or <code>--inputs</code>/<code>--input</code></td>
-<td>Splits comma-separated paths and loads each asset before merge.</td>
-<td><code>scripts/bake_gsplatworld.gd:91</code>, <code>scripts/bake_gsplatworld.gd:98</code>, <code>scripts/bake_gsplatworld.gd:107</code></td>
-</tr>
-<tr>
-<td>Input file extensions</td>
-<td>No</td>
-<td>Accepts <code>.ply</code>, <code>.spz</code>, <code>.tres</code>, and <code>.res</code>.</td>
-<td><code>scripts/bake_gsplatworld.gd:160</code>, <code>scripts/bake_gsplatworld.gd:168</code></td>
+<td>Input-list mode</td>
+<td>Use this when you want to merge assets directly</td>
 </tr>
 <tr>
 <td><code>--chunk_size</code></td>
-<td>No</td>
-<td>Applies positive values to container chunking and clamps container value to at least <code>0.1</code>.</td>
-<td><code>scripts/bake_gsplatworld.gd:180</code>, <code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:55</code></td>
+<td>Optional</td>
+<td>Adjusts chunking in the baked world</td>
 </tr>
 </tbody>
 </table>
-<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">¶</a></h2>
-<table>
-<thead>
-<tr>
-<th>Scenario</th>
-<th>Settings</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Scene bake with transforms</td>
-<td>Use <code>--scene</code>, optional <code>--container</code>, required <code>--output</code>, and optional <code>--chunk_size</code>.</td>
-</tr>
-<tr>
-<td>Input list bake</td>
-<td>Use <code>--inputs</code> or <code>--input</code>, required <code>--output</code>, and optional <code>--chunk_size</code>.</td>
-</tr>
-<tr>
-<td>Runtime world usage</td>
-<td>Set <code>GaussianSplatWorld3D.world</code> and keep the node transform at identity before apply.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">¶</a></h2>
+<h2 id="practical-order">Practical Order<a class="headerlink" href="#practical-order" title="Permanent link">¶</a></h2>
+<ol>
+<li>Choose scene mode if you need the existing scene transforms.</li>
+<li>Choose input-list mode if you want a direct asset merge.</li>
+<li>Set the output path first.</li>
+<li>Run the bake once, then validate the baked world in a clean scene.</li>
+</ol>
+<h2 id="common-failure-modes">Common Failure Modes<a class="headerlink" href="#common-failure-modes" title="Permanent link">¶</a></h2>
 <table>
 <thead>
 <tr>
 <th>Symptom</th>
-<th>Cause</th>
-<th>Action</th>
-<th>Implementation</th>
+<th>Likely cause</th>
+<th>What to do</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>Missing --scene or --inputs.</code></td>
-<td>Neither mode selector was provided.</td>
-<td>Pass exactly one bake mode selector and keep <code>--output</code>.</td>
-<td><code>scripts/bake_gsplatworld.gd:31</code></td>
+<td>No bake mode was selected</td>
+<td>Pass exactly one mode selector and keep <code>--output</code></td>
 </tr>
 <tr>
 <td><code>No GaussianSplatContainer found in scene.</code></td>
-<td>The scene has no matching container node.</td>
-<td>Add a container or pass a valid <code>--container</code> path.</td>
-<td><code>scripts/bake_gsplatworld.gd:135</code></td>
+<td>The scene does not contain a matching container</td>
+<td>Add one or pass a valid <code>--container</code> path</td>
 </tr>
 <tr>
 <td><code>Multiple GaussianSplatContainer nodes found...</code></td>
-<td>Auto-discovery is ambiguous.</td>
-<td>Pass <code>--container=&lt;nodepath&gt;</code>.</td>
-<td><code>scripts/bake_gsplatworld.gd:138</code></td>
+<td>Auto-discovery is ambiguous</td>
+<td>Pass <code>--container=&lt;nodepath&gt;</code></td>
 </tr>
 <tr>
 <td><code>Output must end with .gsplatworld</code></td>
-<td>Output path extension is unsupported.</td>
-<td>Rename output to <code>*.gsplatworld</code>.</td>
-<td><code>scripts/bake_gsplatworld.gd:42</code></td>
+<td>Output extension is unsupported</td>
+<td>Rename the output file</td>
 </tr>
 <tr>
 <td>Misaligned runtime world</td>
-<td>World-space merged data is applied to a transformed world node.</td>
-<td>Reset <code>GaussianSplatWorld3D</code> transform to identity before applying world data.</td>
-<td><code>modules/gaussian_splatting/nodes/gaussian_splat_world_3d.cpp:323</code></td>
+<td>The baked world is applied to a transformed runtime node</td>
+<td>Reset <code>GaussianSplatWorld3D</code> to identity before applying the world data</td>
 </tr>
 </tbody>
 </table>
-<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">¶</a></h2>
-<table>
-<thead>
-<tr>
-<th>Topic</th>
-<th>Path</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Import workflow</td>
-<td><code>docs/workflows/importing.md</code></td>
-</tr>
-<tr>
-<td>World node behavior</td>
-<td><code>modules/gaussian_splatting/nodes/gaussian_splat_world_3d.cpp</code></td>
-</tr>
-<tr>
-<td>Bake script</td>
-<td><code>scripts/bake_gsplatworld.gd</code></td>
-</tr>
-</tbody>
-</table>
+<h2 id="related-pages">Related Pages<a class="headerlink" href="#related-pages" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="../importing/">Import workflow</a></li>
+<li><a href="../../troubleshooting/recurring-issues/">Recurring issues</a></li>
+</ul>
 
 
 
@@ -1892,8 +1819,6 @@
   
     
   
-  
-    
   
 
 
@@ -1904,19 +1829,10 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 30, 2026 11:33:17 UTC">March 30, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 30, 2026 12:41:25 UTC">March 30, 2026</span>
   </span>
 
     
-    
-      
-  <span class="md-source-file__fact">
-    <span class="md-icon" title="Created">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
-    </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 30, 2026 11:33:17 UTC">March 30, 2026</span>
-  </span>
-
     
     
     
