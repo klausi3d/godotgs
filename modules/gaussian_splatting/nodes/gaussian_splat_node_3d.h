@@ -320,7 +320,6 @@ private:
 #ifdef TOOLS_ENABLED
     void _notification_editor_post_save();
 #endif
-    String _get_asset_source_path() const;
     bool _has_inconsistent_dual_source_configuration(String *r_asset_source_path = nullptr) const;
 
     void _ensure_gaussian_base();

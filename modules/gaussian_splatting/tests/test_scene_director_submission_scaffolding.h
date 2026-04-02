@@ -145,7 +145,6 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] World submission scaffo
 	GaussianSplatSceneDirector::SubmissionCounts counts = director->get_submission_counts();
 	CHECK(counts.instance_submissions == baseline_counts.instance_submissions);
 	CHECK(counts.world_submissions == baseline_counts.world_submissions + 1);
-	CHECK(counts.preview_submissions == baseline_counts.preview_submissions);
 
 	GaussianSplatSceneDirector::WorldSubmission submission_b;
 	submission_b.owner_id = ObjectID(uint64_t(202));
@@ -170,7 +169,6 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] World submission scaffo
 	counts = director->get_submission_counts();
 	CHECK(counts.instance_submissions == baseline_counts.instance_submissions);
 	CHECK(counts.world_submissions == baseline_counts.world_submissions);
-	CHECK(counts.preview_submissions == baseline_counts.preview_submissions);
 
 	if (owns_director) {
 		memdelete(director);
@@ -235,7 +233,6 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] World submission entryp
 	GaussianSplatSceneDirector::SubmissionCounts counts = director->get_submission_counts();
 	CHECK(counts.instance_submissions == baseline_counts.instance_submissions);
 	CHECK(counts.world_submissions == baseline_counts.world_submissions + 1);
-	CHECK(counts.preview_submissions == baseline_counts.preview_submissions);
 
 	director->release_world_submission(submission_a.owner_id);
 	CHECK_FALSE(director->get_world_submission(submission_a.owner_id, &queried_submission));
@@ -250,7 +247,6 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] World submission entryp
 	counts = director->get_submission_counts();
 	CHECK(counts.instance_submissions == baseline_counts.instance_submissions);
 	CHECK(counts.world_submissions == baseline_counts.world_submissions);
-	CHECK(counts.preview_submissions == baseline_counts.preview_submissions);
 
 	root->remove_child(owner_b);
 	root->remove_child(owner_a);
@@ -630,51 +626,6 @@ TEST_CASE("[GaussianSplatting][World][SceneTree] World node preserves prior rend
 	}
 }
 
-TEST_CASE("[GaussianSplatting][SceneDirector] Preview submission scaffolding round-trips and unregisters cleanly") {
-	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
-	const bool owns_director = (director == nullptr);
-	if (!director) {
-		director = memnew(GaussianSplatSceneDirector);
-	}
-	REQUIRE(director != nullptr);
-	const GaussianSplatSceneDirector::SubmissionCounts baseline_counts = director->get_submission_counts();
-
-	GaussianSplatSceneDirector::PreviewSubmission preview_submission;
-	preview_submission.owner_id = ObjectID(uint64_t(303));
-	preview_submission.gaussian_data = stage1a_make_submission_test_data(4, 20.0f);
-	preview_submission.metadata[StringName("label")] = String("preview");
-	preview_submission.source_label = "editor_preview";
-	preview_submission.has_desired_residency_hint = true;
-	preview_submission.desired_residency_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING;
-
-	CHECK(director->upsert_preview_submission(preview_submission));
-
-	GaussianSplatSceneDirector::PreviewSubmission queried_preview;
-	CHECK(director->get_preview_submission(preview_submission.owner_id, &queried_preview));
-	CHECK(queried_preview.owner_id == preview_submission.owner_id);
-	CHECK(queried_preview.gaussian_data == preview_submission.gaussian_data);
-	CHECK(queried_preview.metadata[StringName("label")] == String("preview"));
-	CHECK(queried_preview.source_label == String("editor_preview"));
-	CHECK(queried_preview.has_desired_residency_hint);
-	CHECK(queried_preview.desired_residency_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING);
-
-	GaussianSplatSceneDirector::SubmissionCounts counts = director->get_submission_counts();
-	CHECK(counts.instance_submissions == baseline_counts.instance_submissions);
-	CHECK(counts.world_submissions == baseline_counts.world_submissions);
-	CHECK(counts.preview_submissions == baseline_counts.preview_submissions + 1);
-
-	director->unregister_preview_submission(preview_submission.owner_id);
-	CHECK_FALSE(director->get_preview_submission(preview_submission.owner_id, &queried_preview));
-	counts = director->get_submission_counts();
-	CHECK(counts.instance_submissions == baseline_counts.instance_submissions);
-	CHECK(counts.world_submissions == baseline_counts.world_submissions);
-	CHECK(counts.preview_submissions == baseline_counts.preview_submissions);
-
-	if (owns_director) {
-		memdelete(director);
-	}
-}
-
 TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Instance submission query mirrors live node registration") {
 	SceneTree *tree = SceneTree::get_singleton();
 	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
@@ -713,7 +664,6 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Instance submission que
 	GaussianSplatSceneDirector::SubmissionCounts counts = director->get_submission_counts();
 	CHECK(counts.instance_submissions == baseline_counts.instance_submissions + 1);
 	CHECK(counts.world_submissions == baseline_counts.world_submissions);
-	CHECK(counts.preview_submissions == baseline_counts.preview_submissions);
 
 	root->remove_child(node);
 	memdelete(node);
@@ -723,7 +673,6 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Instance submission que
 	counts = director->get_submission_counts();
 	CHECK(counts.instance_submissions == baseline_counts.instance_submissions);
 	CHECK(counts.world_submissions == baseline_counts.world_submissions);
-	CHECK(counts.preview_submissions == baseline_counts.preview_submissions);
 
 	if (owns_director) {
 		memdelete(director);
@@ -811,7 +760,6 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Explicit instance submi
 	GaussianSplatSceneDirector::SubmissionCounts counts = director->get_submission_counts();
 	CHECK(counts.instance_submissions == baseline_counts.instance_submissions + 1);
 	CHECK(counts.world_submissions == baseline_counts.world_submissions);
-	CHECK(counts.preview_submissions == baseline_counts.preview_submissions);
 
 	director->unregister_instance_submission(node->get_instance_id());
 	CHECK_FALSE(director->get_instance_submission(node->get_instance_id(), &submission));
@@ -823,7 +771,6 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Explicit instance submi
 	counts = director->get_submission_counts();
 	CHECK(counts.instance_submissions == baseline_counts.instance_submissions);
 	CHECK(counts.world_submissions == baseline_counts.world_submissions);
-	CHECK(counts.preview_submissions == baseline_counts.preview_submissions);
 
 	if (owns_director) {
 		memdelete(director);
