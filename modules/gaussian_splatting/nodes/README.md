@@ -72,7 +72,7 @@ add_child(dynamic)
 Properties:
 - `splat_asset`: GaussianSplatAsset used by the instance registry (required for rendering).
 - `gaussian_data`: Optional GaussianData resource for authoring; must be converted to an asset for runtime rendering.
-- `ply_file_path`: Optional file path to load into GaussianData.
+- `ply_file_path`: Deprecated compatibility path that loads directly into GaussianData. Prefer `splat_asset` or explicit `gaussian_data`.
 - `auto_load`: Load asset/path on enter tree when true.
 
 Methods:

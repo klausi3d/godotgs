@@ -47,8 +47,8 @@ That means the remaining cleanup work is concentrated in compatibility seams, no
 
 | Surface | Current role | Category | Recommended action | Earliest bucket |
 | --- | --- | --- | --- | --- |
-| `rendering/gaussian_splatting/streaming/enabled` | Legacy compatibility translation into route policy | Runtime settings compatibility | Deprecate, migrate tests/projects, then remove | Bucket B |
-| `upsert_world_submission()` / `unregister_world_submission()` | Test-only scaffolding with no renderer side effects | Test compatibility API | Keep behind tools/test-only compilation until tests migrate | Bucket A |
+| `rendering/gaussian_splatting/streaming/enabled` | Removed legacy compatibility toggle | Removed in Bucket B | Route policy is now the sole supported backend-policy setting | Complete |
+| `upsert_world_submission()` / `unregister_world_submission()` | Scaffolding with no renderer side effects | Tools/test compatibility API | Keep behind tools/test-only compilation until tests migrate off the editor-tools build surface | Bucket B |
 | Editor preview direct `renderer->set_gaussian_data()` | Editor-only bypass of canonical submission path | Editor compatibility route | Keep as the single accepted editor-only preview exception | Bucket A |
 | `GaussianSplatNode3D::ply_file_path` | Raw file load, auto-load, drag/drop, validation | Runtime and editor compatibility route | Demote from editor-primary path first; later decide whether runtime raw-load survives | Bucket C |
 | `GaussianSplatDynamicInstance3D::ply_file_path` | Raw file to `GaussianData` bypass | Runtime compatibility route | Deprecate earlier than normal node path; require `splat_asset` or explicit `GaussianData` later | Bucket B/C |
@@ -71,7 +71,7 @@ These changes are low-risk and should not change user-visible behavior.
 
 These changes are structurally safe but require test and project migration.
 
-- Remove legacy `streaming/enabled` compatibility once projects/tests stop depending on it.
+- Remove legacy `streaming/enabled` compatibility once projects/tests stop depending on it. Completed in Bucket B.
 - Remove world-submission scaffolding APIs once tests stop relying on them.
 - Deprecate `GaussianSplatDynamicInstance3D::ply_file_path`.
 
@@ -95,26 +95,15 @@ Canonical files:
 
 Current state:
 
-- Renderer/orchestrator code already consumes the resolved enum from `gs::settings::get_streaming_route_policy()`.
-- The old boolean still exists as a compatibility translation boundary.
+- Renderer/orchestrator code consumes the resolved enum from `gs::settings::get_streaming_route_policy()`.
+- `rendering/gaussian_splatting/streaming/enabled` has been removed from module settings registration and no longer participates in route resolution.
 
-Why it still exists:
+Bucket B result:
 
-- Persisted projects and tests still encode the old semantics: `streaming/enabled=false` forces resident regardless of `route_policy`.
-
-Blockers:
-
-- Tests in [test_renderer_pipeline.h](../../modules/gaussian_splatting/tests/test_renderer_pipeline.h) still assert the compatibility translation.
-- Diagnostics surfaces still expose `requested_route_policy_source = legacy_streaming_enabled_forced_resident`.
-
-Removal plan:
-
-1. Mark `streaming/enabled` as deprecated in docs/comments.
-2. Migrate tests to assert enum `route_policy` behavior directly.
-3. Add one project migration note explaining the old bool is ignored/removed.
-4. Remove the bool from project settings registration.
-5. Simplify `get_streaming_route_policy()` and `get_streaming_route_policy_source()`.
-6. Remove compatibility labels tied only to the legacy bool.
+1. Tests now assert enum `route_policy` behavior directly.
+2. The bool has been removed from project settings registration.
+3. `get_streaming_route_policy()` and `get_streaming_route_policy_source()` no longer translate or label a legacy bool path.
+4. Diagnostics no longer expose `legacy_streaming_enabled_forced_resident`.
 
 Deletion criteria:
 
@@ -133,7 +122,7 @@ Current state:
 
 - `submit_world_submission()` / `release_world_submission()` are the runtime path.
 - `upsert_*` / `unregister_*` are scaffolding-only storage helpers with no renderer side effects.
-- They are now compiled only for tools/test builds.
+- They remain compiled only for tools/test builds.
 
 Why they still exist:
 
@@ -149,6 +138,7 @@ Removal plan:
    - runtime-path tests using `submit_*` / `release_*`
    - pure record-copy tests using a private/internal helper if still needed
 2. Keep them behind tools/test-only compilation while tests still need direct storage/query coverage.
+   Current blocker: the module doctest umbrella still compiles these helpers through the editor/tools build surface, so `TESTS_ENABLED` alone is not sufficient yet.
 3. Remove them entirely once no test still calls them directly.
 
 Deletion criteria:
@@ -193,6 +183,7 @@ Current state:
 
 - This class can still load raw file data directly into `GaussianData`.
 - It then converges on instance registration, but it bypasses imported assets entirely.
+- Bucket B marks the path as deprecated in runtime/docs while keeping it functional.
 
 Why it is a better early deprecation target than the normal node path:
 
@@ -208,7 +199,7 @@ Blockers:
 Removal plan:
 
 1. Deprecate `ply_file_path` in docs and class comments.
-2. Add warnings when used in editor contexts.
+2. Emit a deprecation warning when the property is set.
 3. Keep `set_gaussian_data()` and `set_splat_asset()` as supported alternatives.
 4. Remove `_load_from_file()` and the `ply_file_path` property once tests/docs migrate.
 
@@ -378,8 +369,6 @@ The current test suite still locks in several compatibility surfaces:
 
 - `upsert_world_submission()` / `unregister_world_submission()`:
   [test_scene_director_submission_scaffolding.h](../../modules/gaussian_splatting/tests/test_scene_director_submission_scaffolding.h)
-- `streaming/enabled` compatibility:
-  [test_renderer_pipeline.h](../../modules/gaussian_splatting/tests/test_renderer_pipeline.h)
 - `ply_file_path` as a supported node workflow:
   [test_gaussian_splat_node.h](../../modules/gaussian_splatting/tests/test_gaussian_splat_node.h)
 - diagnostic chaining and mixed-hint behavior:
@@ -400,6 +389,8 @@ This is useful: it tells us exactly what must migrate before deletion is honest 
 
 - remove legacy `streaming/enabled` after settings/test migration
 - update docs and diagnostics labels accordingly
+- narrow world scaffolding to test-only compilation
+- deprecate `GaussianSplatDynamicInstance3D::ply_file_path`
 
 ### Pass 3: Product Workflow Deprecation
 

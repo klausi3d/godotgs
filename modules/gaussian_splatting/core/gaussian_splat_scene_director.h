@@ -123,7 +123,8 @@ public:
     void release_world_submission(ObjectID p_owner_id);
 #if defined(TESTS_ENABLED) || defined(TOOLS_ENABLED)
     // Scaffolding/introspection helper. Stores or replaces the director-owned world submission
-    // record without mutating renderer state. Kept public for tests and migration probes only.
+    // record without mutating renderer state. Kept public only for tools/test builds because
+    // the current doctest umbrella still compiles against the editor/tools build surface.
     bool upsert_world_submission(const WorldSubmission &p_submission);
     // Scaffolding/introspection inverse of upsert_world_submission(). Removes only the stored
     // world submission record and intentionally leaves renderer state untouched.

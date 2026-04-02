@@ -37,7 +37,7 @@ const MONITOR_KEYS := [
 ]
 
 const PROJECT_SETTING_KEYS := [
-	"rendering/gaussian_splatting/streaming/enabled",
+	"rendering/gaussian_splatting/streaming/route_policy",
 	"rendering/gaussian_splatting/instance_pipeline/enabled",
 	INSTANCE_SINGLE_PASS_SETTING,
 	INSTANCE_BENCH_SERIAL_MULTI_ASSET_SETTING,
@@ -918,7 +918,7 @@ func _setting_snapshot_value_or_default(key: String, fallback):
 	return fallback
 
 func _apply_lane_project_settings(config: Dictionary) -> void:
-	_set_project_setting("rendering/gaussian_splatting/streaming/enabled", true)
+	_set_project_setting("rendering/gaussian_splatting/streaming/route_policy", 1)
 	_set_project_setting("rendering/gaussian_splatting/instance_pipeline/enabled", true)
 	var bench_serial_multi_asset_default := bool(_setting_snapshot_value_or_default(INSTANCE_BENCH_SERIAL_MULTI_ASSET_SETTING, false))
 	_set_project_setting(INSTANCE_BENCH_SERIAL_MULTI_ASSET_SETTING, bench_serial_multi_asset_default)

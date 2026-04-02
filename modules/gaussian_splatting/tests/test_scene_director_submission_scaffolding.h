@@ -389,11 +389,9 @@ TEST_CASE("[GaussianSplatting][World][SceneTree][RequiresGPU] World submission r
 	ProjectSettings *project_settings = ProjectSettings::get_singleton();
 	REQUIRE(project_settings != nullptr);
 	ProjectSettingGuard route_guard(project_settings, "rendering/gaussian_splatting/streaming/route_policy");
-	ProjectSettingGuard streaming_guard(project_settings, "rendering/gaussian_splatting/streaming/enabled");
 	ProjectSettingGuard instance_guard(project_settings, "rendering/gaussian_splatting/instance_pipeline/enabled");
 	project_settings->set_setting("rendering/gaussian_splatting/streaming/route_policy",
 			int64_t(gs::settings::GS_ROUTE_STREAMING));
-	project_settings->set_setting("rendering/gaussian_splatting/streaming/enabled", true);
 	project_settings->set_setting("rendering/gaussian_splatting/instance_pipeline/enabled", true);
 	project_settings->emit_signal("settings_changed");
 
@@ -469,11 +467,9 @@ TEST_CASE("[GaussianSplatting][World][SceneTree][RequiresGPU] Resident rejection
 	ProjectSettings *project_settings = ProjectSettings::get_singleton();
 	REQUIRE(project_settings != nullptr);
 	ProjectSettingGuard route_guard(project_settings, "rendering/gaussian_splatting/streaming/route_policy");
-	ProjectSettingGuard streaming_guard(project_settings, "rendering/gaussian_splatting/streaming/enabled");
 	ProjectSettingGuard instance_guard(project_settings, "rendering/gaussian_splatting/instance_pipeline/enabled");
 	project_settings->set_setting("rendering/gaussian_splatting/streaming/route_policy",
 			int64_t(gs::settings::GS_ROUTE_STREAMING));
-	project_settings->set_setting("rendering/gaussian_splatting/streaming/enabled", true);
 	project_settings->set_setting("rendering/gaussian_splatting/instance_pipeline/enabled", true);
 	project_settings->emit_signal("settings_changed");
 
@@ -536,6 +532,102 @@ TEST_CASE("[GaussianSplatting][World][SceneTree][RequiresGPU] Resident rejection
 			"quantized resident data cannot publish the resident instance contract") != -1);
 	CHECK(String(stats.get("backend_selection_reason_label", String())).find(
 			"published the streaming instance contract") != -1);
+
+	root->remove_child(node);
+	memdelete(node);
+	tree->process(0.0);
+	g_quantization_config = saved_quantization_config;
+}
+
+TEST_CASE("[GaussianSplatting][World][SceneTree][RequiresGPU] Explicit resident quantization rejection falls back to the legacy resident path") {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (rs == nullptr) {
+		MESSAGE("Skipping test - Rendering server unavailable");
+		return;
+	}
+
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	ProjectSettings *project_settings = ProjectSettings::get_singleton();
+	REQUIRE(project_settings != nullptr);
+	ProjectSettingGuard route_guard(project_settings, "rendering/gaussian_splatting/streaming/route_policy");
+	ProjectSettingGuard instance_guard(project_settings, "rendering/gaussian_splatting/instance_pipeline/enabled");
+	project_settings->set_setting("rendering/gaussian_splatting/streaming/route_policy",
+			int64_t(gs::settings::GS_ROUTE_RESIDENT));
+	project_settings->set_setting("rendering/gaussian_splatting/instance_pipeline/enabled", true);
+	project_settings->emit_signal("settings_changed");
+
+	const QuantizationConfig saved_quantization_config = g_quantization_config;
+	g_quantization_config.per_chunk_quantization = true;
+	g_quantization_config.position_bits = 16;
+	g_quantization_config.scale_bits = 12;
+	g_quantization_config.quantize_scales = false;
+
+	Ref<GaussianSplatWorld> world_resource;
+	world_resource.instantiate();
+	Ref<GaussianData> data = stage1a_make_submission_test_data(32, 20.0f);
+	world_resource->set_gaussian_data(data);
+	Vector<GaussianSplatRenderer::StaticChunk> chunks;
+	chunks.push_back(stage1a_make_submission_test_chunk(0));
+	world_resource->set_static_chunks(chunks);
+
+	GaussianSplatWorld3D *node = memnew(GaussianSplatWorld3D);
+	REQUIRE(node != nullptr);
+	node->set_auto_apply_on_ready(false);
+	node->set_world(world_resource);
+	root->add_child(node);
+	tree->process(0.0);
+	node->apply_world();
+
+	Ref<GaussianSplatRenderer> renderer = node->get_renderer();
+	if (!renderer.is_valid()) {
+		MESSAGE("Skipping test - renderer unavailable");
+		root->remove_child(node);
+		memdelete(node);
+		tree->process(0.0);
+		g_quantization_config = saved_quantization_config;
+		return;
+	}
+
+	renderer->get_debug_state().show_performance_hud = true;
+	renderer->test_release_current_streaming_system();
+	CHECK_FALSE(renderer->test_has_current_streaming_system());
+
+	RenderSceneDataRD scene_data;
+	scene_data.cam_transform = Transform3D(Basis(), Vector3(0.0f, 0.0f, 5.0f));
+	scene_data.cam_projection.set_perspective(70.0f, 1.0f, 0.1f, 100.0f);
+
+	RenderDataRD render_data;
+	render_data.scene_data = &scene_data;
+	render_data.render_buffers = Ref<RenderSceneBuffersRD>();
+
+	renderer->render_scene_instance(&render_data);
+
+	CHECK_FALSE(renderer->test_has_current_streaming_system());
+	CHECK_FALSE(renderer->has_instance_pipeline_buffers());
+	CHECK_FALSE(renderer->has_instance_asset_remap());
+	CHECK(renderer->get_instance_backend_policy() == GaussianRenderPipeline::InstanceBackendPolicy::RESIDENT);
+	CHECK_FALSE(renderer->is_instance_contract_ready());
+	CHECK(renderer->has_rendered_content());
+	CHECK(renderer->get_visible_splat_count() > 0);
+
+	const Dictionary stats = renderer->get_render_stats();
+	CHECK(stats.get("requested_route_policy", String()) == String("resident"));
+	CHECK(stats.get("instance_backend_policy", String()) == String("resident"));
+	CHECK(stats.get("backend_selection_reason", String()) == String("requested_resident_policy"));
+	CHECK(stats.get("backend_selection_reason_label", String()) == String("Resident was requested by the route policy"));
+	CHECK_FALSE(bool(stats.get("instance_contract_ready", true)));
+	CHECK(stats.get("route_uid", String()) != String("INSTANCE.RESIDENT"));
+	CHECK(stats.get("route_uid", String()) != String("INSTANCE.STREAMING"));
+
+	// Direct assertions stop at "resident was requested, no streaming system was used, and no
+	// resident instance contract/remap survived publication." The current renderer diagnostics do
+	// not expose a dedicated legacy-resident route token, so the final legacy-resident path is
+	// proven indirectly by the successful render under those conditions.
 
 	root->remove_child(node);
 	memdelete(node);
