@@ -198,6 +198,16 @@ var _orchestrated := false
 func apply_benchmark_contract(contract: Dictionary) -> void:
 	_pending_contract = contract.duplicate(true)
 
+func _load_scene_asset(path: String) -> GaussianSplatAsset:
+	var imported := load(path)
+	if imported is GaussianSplatAsset:
+		return imported as GaussianSplatAsset
+
+	var asset := GaussianSplatAsset.new()
+	if asset.load_from_file(path) != OK:
+		return null
+	return asset
+
 func _ready() -> void:
 	_apply_contract()
 	_setup_runtime_state()
@@ -545,12 +555,16 @@ func _build_instances(config: Dictionary) -> void:
 	var lod_bias := float(config.get("lod_bias", 1.1))
 	var max_render_distance := float(config.get("lod_max_distance", 400.0))
 	var asset_path := _resolved_asset_path()
+	var splat_asset := _load_scene_asset(asset_path)
+	if splat_asset == null:
+		push_error("[BENCH-LANE] Failed to load %s as GaussianSplatAsset" % asset_path)
+		return
 
 	for row in range(rows):
 		for col in range(cols):
 			var node := GaussianSplatNode3D.new()
 			node.name = "Lane_%02d_%02d" % [row, col]
-			node.ply_file_path = asset_path
+			node.splat_asset = splat_asset
 			node.position = Vector3(
 				(float(col) - float(cols - 1) * 0.5) * spacing,
 				0.0,

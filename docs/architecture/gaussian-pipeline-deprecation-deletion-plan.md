@@ -53,6 +53,7 @@ That means the remaining cleanup work is concentrated in compatibility seams, no
 | `GaussianSplatNode3D::ply_file_path` | Raw file load, auto-load, drag/drop, validation | Runtime and editor compatibility route | Demote from editor-primary path first; later decide whether runtime raw-load survives | Bucket C |
 | `GaussianSplatDynamicInstance3D::ply_file_path` | Raw file to `GaussianData` bypass | Runtime compatibility route | Deprecate earlier than normal node path; require `splat_asset` or explicit `GaussianData` later | Bucket B/C |
 | `GaussianSplatRenderer::set_gaussian_data()` | Low-level renderer/test/tool hook | Public low-level API | Keep for now, narrow usage contract, remove only after replacements exist | Bucket C |
+| `GaussianSplatContainer::apply_to_renderer()` | Container-level direct renderer bypass | Low-level convenience API | Demote in README/API docs now; keep only while the direct raw-data renderer route still exists | Bucket C |
 | Duplicated source-path resolution helpers | Same logic in node/editor code | Internal duplication | Consolidate into one shared helper | Bucket A |
 | Explicit-resident legacy resident fallback | Accepted runtime fallback when resident atlas publish is infeasible | Runtime compatibility behavior | Keep until resident atlas covers explicit-resident edge cases or the fallback is intentionally retired | Bucket C |
 
@@ -220,10 +221,10 @@ Current state:
 
 - `ply_file_path` is still a real public runtime and editor route.
 - It still powers:
-  - raw drag-and-drop
   - auto-load on enter tree
   - direct runtime loading
   - validation/warnings
+- Raw drag-and-drop now prefers asset-backed assignment and only falls back to `ply_file_path` if the asset-backed load fails.
 
 Why it cannot simply be deleted now:
 
@@ -233,7 +234,7 @@ Why it cannot simply be deleted now:
 Recommended deprecation sequence:
 
 1. Remove editor-primary behaviors first:
-   - stop raw drag-and-drop from setting `ply_file_path`
+   - keep drag-and-drop asset-first and avoid reintroducing `ply_file_path` as the primary editor assignment path
    - steer users toward imported assets or explicit import tools
 2. Keep runtime/script loading temporarily.
 3. Introduce a clearer external-file workflow if runtime direct loading remains important.
@@ -294,6 +295,7 @@ Recommended action:
 - Do not delete it yet.
 - Narrow its contract instead:
   - document `set_gaussian_data()` as a low-level/test/tool/editor-preview API, not the canonical high-level scene path
+  - demote `GaussianSplatContainer::apply_to_renderer()` in README/API docs to legacy low-level convenience usage
   - migrate or explicitly bless editor preview
   - retire container-level convenience usage
   - keep high-level scene code off it
@@ -355,7 +357,7 @@ Why it is not a deletion target yet:
 Recommended action:
 
 - Keep it for now.
-- Add the deferred explicit-resident quantization fallback test.
+- Keep the explicit-resident quantization fallback test as baseline coverage.
 - Revisit only after resident atlas coverage is wider and the legacy resident path is truly redundant.
 
 Deletion criteria:

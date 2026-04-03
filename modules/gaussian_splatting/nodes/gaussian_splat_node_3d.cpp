@@ -2216,7 +2216,20 @@ void GaussianSplatNode3D::_drop_data_fw(const Point2 &p_point, const Variant &p_
     if (!files.is_empty()) {
         const String file_lower = files[0].to_lower();
         if (file_lower.ends_with(".ply") || file_lower.ends_with(".spz")) {
-            set_ply_file_path(files[0]);
+            const String file_path = files[0];
+            Ref<GaussianSplatAsset> dropped_asset = ResourceLoader::load(file_path, "GaussianSplatAsset");
+            if (dropped_asset.is_null()) {
+                dropped_asset.instantiate();
+                if (dropped_asset->load_from_file(file_path) != OK) {
+                    set_ply_file_path(file_path);
+                    return;
+                }
+            }
+
+            if (!ply_file_path.is_empty()) {
+                set_ply_file_path(String());
+            }
+            set_splat_asset(dropped_asset);
         }
     }
 }

@@ -59,6 +59,16 @@ var _orchestrated := false
 func apply_benchmark_contract(contract: Dictionary) -> void:
 	_pending_contract = contract.duplicate(true)
 
+func _load_scene_asset(path: String) -> GaussianSplatAsset:
+	var imported := load(path)
+	if imported is GaussianSplatAsset:
+		return imported as GaussianSplatAsset
+
+	var asset := GaussianSplatAsset.new()
+	if asset.load_from_file(path) != OK:
+		return null
+	return asset
+
 func _ready() -> void:
 	_apply_contract()
 	_setup_runtime_state()
@@ -130,11 +140,15 @@ func _build_instance_grid() -> void:
 		child.queue_free()
 
 	_primary_renderer_owner = null
+	var splat_asset := _load_scene_asset(baseline_asset_path)
+	if splat_asset == null:
+		push_error("[BENCH-SMALL] Failed to load %s as GaussianSplatAsset" % baseline_asset_path)
+		return
 	for row in range(GRID_ROWS):
 		for col in range(GRID_COLS):
 			var node := GaussianSplatNode3D.new()
 			node.name = "Baseline_%02d_%02d" % [row, col]
-			node.ply_file_path = baseline_asset_path
+			node.splat_asset = splat_asset
 			node.position = Vector3(
 				(float(col) - float(GRID_COLS - 1) * 0.5) * GRID_SPACING,
 				0.0,

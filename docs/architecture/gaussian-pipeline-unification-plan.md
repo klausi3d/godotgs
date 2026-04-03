@@ -323,9 +323,9 @@ This stage is intentionally deferred.
 - remove `upsert_world_submission()` — this is now a tests-only scaffolding entrypoint and should be retired once all coverage uses the ownership-aware submission path
 - collapse the duplicated source-path resolution logic between `GaussianSplatNode3D::_get_asset_source_path()` and the editor plugin's `_get_asset_source_path()` into a single shared function
 
-### Deferred Validation
+### Validation Status
 
-- add an explicit test for the resident-plus-quantization-rejection fallback path: verify that when `ResidentInstanceContractPublisher::publish()` rejects per-chunk quantization (`resident_quantization_unsupported`), the renderer correctly falls back to streaming publication for streaming-capable routes and to the legacy resident path for explicit-resident requests; this is currently covered only by diagnostic reason strings, not by a dedicated test case
+- The explicit resident-plus-quantization-rejection fallback path now has dedicated coverage in `modules/gaussian_splatting/tests/test_scene_director_submission_scaffolding.h`. Keep that test as baseline coverage while the legacy explicit-resident fallback remains supported.
 
 ### Important Constraint
 
