@@ -7,7 +7,7 @@
       
       
       
-        <link rel="canonical" href="https://klausi3d.github.io/godotGS/latest/architecture/stage-first-ownership-inventory/">
+        <link rel="canonical" href="https://klausi3d.github.io/godotGS/latest/architecture/gaussian-pipeline-deprecation-deletion-plan/">
       
       
       
@@ -20,7 +20,7 @@
     
     
       
-        <title>Stage-First Ownership Inventory - Godot Gaussian Splatting Docs</title>
+        <title>Gaussian Pipeline Deprecation And Deletion Plan - Godot Gaussian Splatting Docs</title>
       
     
     
@@ -81,7 +81,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#stage-first-ownership-inventory" class="md-skip">
+        <a href="#gaussian-pipeline-deprecation-and-deletion-plan" class="md-skip">
           Skip to content
         </a>
       
@@ -120,7 +120,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Stage-First Ownership Inventory
+              Gaussian Pipeline Deprecation And Deletion Plan
             
           </span>
         </div>
@@ -1612,10 +1612,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
-  <a href="#ownership-rules" class="md-nav__link">
+  <a href="#purpose" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Ownership Rules
+        Purpose
       
     </span>
   </a>
@@ -1623,10 +1623,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#current-ownership-matrix" class="md-nav__link">
+  <a href="#what-the-refactor-already-consolidated" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Current Ownership Matrix
+        What The Refactor Already Consolidated
       
     </span>
   </a>
@@ -1634,22 +1634,44 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#subsystem-details" class="md-nav__link">
+  <a href="#cleanup-principles" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Subsystem Details
+        Cleanup Principles
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Subsystem Details">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inventory-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inventory Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deletion-buckets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deletion Buckets
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deletion Buckets">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#gaussianstreamingsystem" class="md-nav__link">
+  <a href="#bucket-a-safe-cleanup-and-narrowing" class="md-nav__link">
     <span class="md-ellipsis">
       
-        GaussianStreamingSystem
+        Bucket A: Safe Cleanup And Narrowing
       
     </span>
   </a>
@@ -1657,10 +1679,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#tilerenderer" class="md-nav__link">
+  <a href="#bucket-b-compatibility-surface-removal" class="md-nav__link">
     <span class="md-ellipsis">
       
-        TileRenderer
+        Bucket B: Compatibility Surface Removal
       
     </span>
   </a>
@@ -1668,21 +1690,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#gpusortingpipeline" class="md-nav__link">
+  <a href="#bucket-c-product-workflow-deprecation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        GPUSortingPipeline
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#gaussiansplatrenderer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        GaussianSplatRenderer
+        Bucket C: Product Workflow Deprecation
       
     </span>
   </a>
@@ -1695,10 +1706,115 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#hidden-mutable-state-inventory" class="md-nav__link">
+  <a href="#detailed-surfaces" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Hidden Mutable State Inventory
+        Detailed Surfaces
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Detailed Surfaces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-legacy-streamingenabled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Legacy streaming/enabled
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-upsert_world_submission-unregister_world_submission" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. upsert_world_submission() / unregister_world_submission()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-editor-preview-direct-upload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Editor Preview Direct Upload
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-gaussiansplatdynamicinstance3dply_file_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. GaussianSplatDynamicInstance3D::ply_file_path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-gaussiansplatnode3dply_file_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. GaussianSplatNode3D::ply_file_path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-gaussiansplatrendererset_gaussian_data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. GaussianSplatRenderer::set_gaussian_data()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-duplicated-source-path-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Duplicated Source-Path Resolution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-explicit-resident-legacy-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Explicit-Resident Legacy Fallback
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tests-that-currently-block-deletion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tests That Currently Block Deletion
       
     </span>
   </a>
@@ -1706,10 +1822,71 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-this-means-for-decomposition" class="md-nav__link">
+  <a href="#recommended-execution-order" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What This Means For Decomposition
+        Recommended Execution Order
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Recommended Execution Order">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pass-1-safe-consolidation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pass 1: Safe Consolidation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pass-2-remove-easy-compatibility-debt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pass 2: Remove Easy Compatibility Debt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pass-3-product-workflow-deprecation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pass 3: Product Workflow Deprecation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pass-4-optional-further-narrowing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pass 4: Optional Further Narrowing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#completion-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Completion Criteria
       
     </span>
   </a>
@@ -1717,10 +1894,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#related-docs" class="md-nav__link">
+  <a href="#relationship-to-existing-docs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Related Docs
+        Relationship To Existing Docs
       
     </span>
   </a>
@@ -1753,234 +1930,469 @@
   
 
 
-<h1 id="stage-first-ownership-inventory">Stage-First Ownership Inventory<a class="headerlink" href="#stage-first-ownership-inventory" title="Permanent link">¶</a></h1>
-<p>W0.1 artifact for the stage-first decomposition plan.</p>
-<p>This document records the current ownership boundary, single-writer rules, and hidden mutable state for the four highest-value decomposition targets:</p>
+<h1 id="gaussian-pipeline-deprecation-and-deletion-plan">Gaussian Pipeline Deprecation And Deletion Plan<a class="headerlink" href="#gaussian-pipeline-deprecation-and-deletion-plan" title="Permanent link">¶</a></h1>
+<p>Status: living post-refactor cleanup plan<br>
+Scope: compatibility removal, route consolidation, and API narrowing after Stages 0-3<br>
+Audience: rendering, tools, editor, and test engineers</p>
+<h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">¶</a></h2>
+<p>The refactor achieved the main architectural goal:</p>
+<p><code>source asset or baked world -&gt; shared renderer contract -&gt; resident or streaming backend -&gt; sort/render</code></p>
+<p>But it did not finish the aggressive cleanup pass.</p>
+<p>This document tracks what still exists only for compatibility, migration, tests, or editor convenience, and defines what should be:</p>
 <ul>
-<li><code>GaussianStreamingSystem</code></li>
-<li><code>TileRenderer</code></li>
-<li><code>GPUSortingPipeline</code></li>
-<li><code>GaussianSplatRenderer</code></li>
+<li>kept as a supported feature</li>
+<li>narrowed and explicitly marked low-level</li>
+<li>deprecated with a replacement workflow</li>
+<li>deleted once preconditions are met</li>
 </ul>
-<p>The goal is to make the current implementation readable as an ownership map before code is moved. This is not the target end-state; it is the contract the refactor has to preserve while W1 and W2 land.</p>
-<h2 id="ownership-rules">Ownership Rules<a class="headerlink" href="#ownership-rules" title="Permanent link">¶</a></h2>
+<p>This is not a new architecture proposal. It is the closeout plan for code and route consolidation that the refactor intentionally deferred.</p>
+<h2 id="what-the-refactor-already-consolidated">What The Refactor Already Consolidated<a class="headerlink" href="#what-the-refactor-already-consolidated" title="Permanent link">¶</a></h2>
+<p>The main structural split is already fixed:</p>
 <ul>
-<li>One subsystem owns each mutable state bucket.</li>
-<li>Worker threads may produce payloads, but they do not mutate renderer-owned state directly.</li>
-<li>Render-thread dispatch, async readback, and resource tracking must have a single authoritative owner.</li>
-<li>Hidden process-global caches are temporary debt unless they are explicitly assigned to an owner.</li>
+<li><code>GaussianSplatWorld3D</code> no longer owns the runtime render route. It submits through the director in <a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/nodes/gaussian_splat_world_3d.cpp">gaussian_splat_world_3d.cpp</a>.</li>
+<li>The shared instance renderer can now run resident data without a <code>GaussianStreamingSystem</code>, with backend choice resolved through <a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/core/gs_project_settings.h">gs_project_settings.h</a> and the resident atlas publisher.</li>
+<li>Route/debug/effective-settings surfaces now explain the active path and provenance through existing HUD/editor/diagnostics surfaces.</li>
+<li>The editor no longer dual-writes <code>splat_asset</code> and <code>ply_file_path</code> during normal import flows.</li>
 </ul>
-<h2 id="current-ownership-matrix">Current Ownership Matrix<a class="headerlink" href="#current-ownership-matrix" title="Permanent link">¶</a></h2>
+<p>That means the remaining cleanup work is concentrated in compatibility seams, not the core render architecture.</p>
+<h2 id="cleanup-principles">Cleanup Principles<a class="headerlink" href="#cleanup-principles" title="Permanent link">¶</a></h2>
+<ol>
+<li>Do not reopen the accepted architecture.</li>
+<li>Do not delete real runtime features until replacement workflows exist.</li>
+<li>Prefer narrowing a surface before deleting it outright.</li>
+<li>Migrate tests before removing the hook they rely on.</li>
+<li>Keep one canonical editor workflow:
+   imported <code>GaussianSplatAsset</code> -&gt; shared renderer registration.</li>
+<li>Keep one canonical backend policy surface:
+   resolved <code>route_policy</code>, not overlapping booleans.</li>
+</ol>
+<h2 id="inventory-summary">Inventory Summary<a class="headerlink" href="#inventory-summary" title="Permanent link">¶</a></h2>
 <table>
 <thead>
 <tr>
-<th>System</th>
-<th>Current owner</th>
-<th>Mutable state buckets</th>
-<th>Single-writer rule</th>
-<th>Extraction risk</th>
+<th>Surface</th>
+<th>Current role</th>
+<th>Category</th>
+<th>Recommended action</th>
+<th>Earliest bucket</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>GaussianStreamingSystem</code></td>
-<td><code>core/gaussian_streaming.*</code></td>
-<td><code>VisibilityState</code>, <code>EvictionState</code>, <code>SchedulerState</code>, <code>DiagnosticsState</code>, <code>GlobalAtlasState</code>, <code>ConfigOverrides</code>, <code>PackTelemetry</code>, <code>frame_data</code>, <code>uploads</code>, <code>budget</code>, <code>chunks</code>, <code>atlas_allocator</code>, quantization buffers, <code>memory_stream_proxy</code>, <code>last_upload_device</code></td>
-<td>Main streaming update path owns frame ordering, visibility, eviction, upload scheduling, and atlas sync. Pack workers only build payloads for queued jobs and do not own streaming state.</td>
-<td>High. Configuration overrides, frame ordering, and atlas sync are all coupled in <code>_run_streaming_frame_pipeline()</code> and <code>_apply_config_overrides()</code>.</td>
+<td><code>rendering/gaussian_splatting/streaming/enabled</code></td>
+<td>Removed legacy compatibility toggle</td>
+<td>Removed in Bucket B</td>
+<td>Route policy is now the sole supported backend-policy setting</td>
+<td>Complete</td>
 </tr>
 <tr>
-<td><code>TileRenderer</code></td>
-<td><code>renderer/tile_renderer.*</code> plus its stage helpers</td>
-<td><code>render_settings</code>, <code>shader_resources</code>, <code>diagnostics</code>, <code>async_readback</code>, <code>tracked_device_manager</code>, tracked output RIDs, <code>adaptive_overlap_budget</code> runtime state, subgroup-support cache</td>
-<td>The renderer owns tile frame execution. Readback callbacks may update the readback state machine, but they must not take ownership of resource lifetime or output tracking.</td>
-<td>High. There are still process-global mutable caches keyed by renderer/device identity.</td>
+<td><code>upsert_world_submission()</code> / <code>unregister_world_submission()</code></td>
+<td>Scaffolding with no renderer side effects</td>
+<td>Tools/test compatibility API</td>
+<td>Keep behind tools/test-only compilation until tests migrate off the editor-tools build surface</td>
+<td>Bucket B</td>
 </tr>
 <tr>
-<td><code>GPUSortingPipeline</code></td>
-<td><code>interfaces/gpu_sorting_pipeline.*</code></td>
-<td>Sort buffer RIDs and capacities, depth compute RIDs, CPU byte buffers, <code>SortReadbackState</code>, <code>InstanceCountReadbackState</code>, <code>InstancePipelineInputs</code>, cached camera transforms, <code>last_compute_error</code></td>
-<td>The pipeline owns its sort buffers, depth resources, and readback generations. Renderer state must be reached through an explicit seam, not a raw pointer handoff.</td>
-<td>High. The current implementation still mutates renderer-owned state directly in <code>_apply_sorted_results()</code>.</td>
+<td>Editor preview direct <code>renderer-&gt;set_gaussian_data()</code></td>
+<td>Editor-only bypass of canonical submission path</td>
+<td>Editor compatibility route</td>
+<td>Keep as the single accepted editor-only preview exception</td>
+<td>Bucket A</td>
 </tr>
 <tr>
-<td><code>GaussianSplatRenderer</code></td>
-<td><code>renderer/gaussian_splat_renderer.*</code></td>
-<td><code>DeviceState</code>, <code>ResourceState</code>, <code>PerformanceState</code>, <code>PipelineState</code>, <code>FrameState</code>, <code>ViewState</code>, <code>SortingState</code>, <code>StreamingState</code>, <code>SceneState</code>, <code>SubsystemState</code>, <code>RenderFrameContextManager</code>, render-thread dispatch primitives, orchestrator pointers</td>
-<td>The renderer owns frame entry, orchestration, and Godot-facing API. Concrete subsystem mutation should happen through orchestrators or service objects, not through direct cross-subsystem writes.</td>
-<td>Medium. The facade is already partly decomposed, but it still owns render-thread dispatch and several mutable caches.</td>
+<td><code>GaussianSplatNode3D::ply_file_path</code></td>
+<td>Raw file load, auto-load, drag/drop, validation</td>
+<td>Runtime and editor compatibility route</td>
+<td>Demote from editor-primary path first; later decide whether runtime raw-load survives</td>
+<td>Bucket C</td>
+</tr>
+<tr>
+<td><code>GaussianSplatDynamicInstance3D::ply_file_path</code></td>
+<td>Raw file to <code>GaussianData</code> bypass</td>
+<td>Runtime compatibility route</td>
+<td>Deprecate earlier than normal node path; require <code>splat_asset</code> or explicit <code>GaussianData</code> later</td>
+<td>Bucket B/C</td>
+</tr>
+<tr>
+<td><code>GaussianSplatRenderer::set_gaussian_data()</code></td>
+<td>Low-level renderer/test/tool hook</td>
+<td>Public low-level API</td>
+<td>Keep for now, narrow usage contract, remove only after replacements exist</td>
+<td>Bucket C</td>
+</tr>
+<tr>
+<td><code>GaussianSplatContainer::apply_to_renderer()</code></td>
+<td>Container-level direct renderer bypass</td>
+<td>Low-level convenience API</td>
+<td>Demote in README/API docs now; keep only while the direct raw-data renderer route still exists</td>
+<td>Bucket C</td>
+</tr>
+<tr>
+<td>Duplicated source-path resolution helpers</td>
+<td>Same logic in node/editor code</td>
+<td>Internal duplication</td>
+<td>Consolidate into one shared helper</td>
+<td>Bucket A</td>
+</tr>
+<tr>
+<td>Explicit-resident legacy resident fallback</td>
+<td>Accepted runtime fallback when resident atlas publish is infeasible</td>
+<td>Runtime compatibility behavior</td>
+<td>Keep until resident atlas covers explicit-resident edge cases or the fallback is intentionally retired</td>
+<td>Bucket C</td>
 </tr>
 </tbody>
 </table>
-<h2 id="subsystem-details">Subsystem Details<a class="headerlink" href="#subsystem-details" title="Permanent link">¶</a></h2>
-<h3 id="gaussianstreamingsystem">GaussianStreamingSystem<a class="headerlink" href="#gaussianstreamingsystem" title="Permanent link">¶</a></h3>
-<p>Current state is already split into named buckets in <code>core/gaussian_streaming.h</code>:</p>
+<h2 id="deletion-buckets">Deletion Buckets<a class="headerlink" href="#deletion-buckets" title="Permanent link">¶</a></h2>
+<h3 id="bucket-a-safe-cleanup-and-narrowing">Bucket A: Safe Cleanup And Narrowing<a class="headerlink" href="#bucket-a-safe-cleanup-and-narrowing" title="Permanent link">¶</a></h3>
+<p>These changes are low-risk and should not change user-visible behavior.</p>
 <ul>
-<li><code>VisibilityState</code> at <code>gaussian_streaming.h:215</code></li>
-<li><code>EvictionState</code> at <code>gaussian_streaming.h:264</code></li>
-<li><code>PackTelemetry</code> at <code>gaussian_streaming.h:294</code></li>
-<li><code>SchedulerState</code> at <code>gaussian_streaming.h:584</code></li>
-<li><code>DiagnosticsState</code> at <code>gaussian_streaming.h:642</code></li>
-<li>atlas and quantization state at <code>gaussian_streaming.h:706</code> through <code>gaussian_streaming.h:739</code></li>
+<li>Clarify public-vs-scaffolding API boundaries in the director.</li>
+<li>Consolidate duplicated source-path helper logic.</li>
+<li>Keep the direct preview upload as the single accepted editor-only exception.</li>
+<li>Remove dead preview-submission scaffolding.</li>
 </ul>
-<p>Current write ownership:</p>
+<h3 id="bucket-b-compatibility-surface-removal">Bucket B: Compatibility Surface Removal<a class="headerlink" href="#bucket-b-compatibility-surface-removal" title="Permanent link">¶</a></h3>
+<p>These changes are structurally safe but require test and project migration.</p>
 <ul>
-<li><code>VisibilityState</code> is updated from the main streaming frame pipeline.</li>
-<li><code>EvictionState</code> is updated by eviction helpers only.</li>
-<li><code>SchedulerState</code> is updated by the per-frame orchestration path.</li>
-<li><code>GlobalAtlasState</code> and atlas RIDs are updated only at the end of the streaming frame pipeline.</li>
-<li>Pack workers only create or transform <code>PackJob</code> and <code>PendingChunkUpload</code> payloads, then hand results back to the system.</li>
+<li>Remove legacy <code>streaming/enabled</code> compatibility once projects/tests stop depending on it. Completed in Bucket B.</li>
+<li>Remove world-submission scaffolding APIs once tests stop relying on them.</li>
+<li>Deprecate <code>GaussianSplatDynamicInstance3D::ply_file_path</code>.</li>
 </ul>
-<p>Implementation anchors:</p>
+<h3 id="bucket-c-product-workflow-deprecation">Bucket C: Product Workflow Deprecation<a class="headerlink" href="#bucket-c-product-workflow-deprecation" title="Permanent link">¶</a></h3>
+<p>These are the risky removals because they still back real workflows.</p>
 <ul>
-<li>Frame ordering is explicit in <code>_run_streaming_frame_pipeline()</code> and ends with <code>_sync_global_atlas_state()</code>.</li>
-<li>Runtime config overrides are applied in <code>_apply_config_overrides()</code>, where they touch <code>visibility</code>, <code>uploads</code>, and <code>budget</code> together.</li>
+<li>Demote or remove <code>GaussianSplatNode3D::ply_file_path</code> as an editor-primary route.</li>
+<li>Decide the long-term fate of <code>GaussianSplatRenderer::set_gaussian_data()</code>.</li>
+<li>Decide whether explicit-resident legacy fallback should remain supported.</li>
 </ul>
-<p>Refactor note:</p>
+<h2 id="detailed-surfaces">Detailed Surfaces<a class="headerlink" href="#detailed-surfaces" title="Permanent link">¶</a></h2>
+<h3 id="1-legacy-streamingenabled">1. Legacy <code>streaming/enabled</code><a class="headerlink" href="#1-legacy-streamingenabled" title="Permanent link">¶</a></h3>
+<p>Canonical files:</p>
 <ul>
-<li>W1 and W2 should not split <code>VisibilityState</code>, <code>EvictionState</code>, or <code>SchedulerState</code> until the ownership matrix is stable and the frame-order tests are pinned.</li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/core/gs_project_settings.h">gs_project_settings.h</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/core/gaussian_splat_manager.cpp">gaussian_splat_manager.cpp</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/core/effective_config_snapshot.h">effective_config_snapshot.h</a></li>
 </ul>
-<h3 id="tilerenderer">TileRenderer<a class="headerlink" href="#tilerenderer" title="Permanent link">¶</a></h3>
-<p>Current state is a mix of member-owned state and process-global caches:</p>
+<p>Current state:</p>
 <ul>
-<li>Adaptive overlap runtime state is currently kept in a static pointer-keyed map in <code>tile_renderer.cpp:139</code> through <code>tile_renderer.cpp:157</code></li>
-<li>Subgroup support is cached in a static device-id keyed cache in <code>tile_renderer.cpp:1927</code> through <code>tile_renderer.cpp:1947</code></li>
-<li>Resource ownership and tracking are handled by <code>_resolve_texture_owner()</code>, <code>track_output_resources()</code>, and <code>clear_output_resource_tracking()</code></li>
+<li>Renderer/orchestrator code consumes the resolved enum from <code>gs::settings::get_streaming_route_policy()</code>.</li>
+<li><code>rendering/gaussian_splatting/streaming/enabled</code> has been removed from module settings registration and no longer participates in route resolution.</li>
 </ul>
-<p>Current write ownership:</p>
+<p>Bucket B result:</p>
+<ol>
+<li>Tests now assert enum <code>route_policy</code> behavior directly.</li>
+<li>The bool has been removed from project settings registration.</li>
+<li><code>get_streaming_route_policy()</code> and <code>get_streaming_route_policy_source()</code> no longer translate or label a legacy bool path.</li>
+<li>Diagnostics no longer expose <code>legacy_streaming_enabled_forced_resident</code>.</li>
+</ol>
+<p>Deletion criteria:</p>
 <ul>
-<li>The tile renderer owns the frame execution path and the tile stage helpers.</li>
-<li><code>adaptive_overlap_budget_runtime_states</code> is a temporary process-global cache keyed by <code>TileRenderer *</code>.</li>
-<li><code>subgroup_support_cache</code> is a temporary process-global cache keyed by rendering device ID.</li>
-<li>Output RID tracking belongs to the renderer instance and the <code>RenderDeviceManager</code>, not to the caller.</li>
+<li>No tests rely on <code>streaming/enabled</code>.</li>
+<li>No shipped project configs rely on the bool.</li>
+<li>Diagnostics no longer need to distinguish the legacy source.</li>
 </ul>
-<p>Implementation anchors:</p>
+<h3 id="2-upsert_world_submission-unregister_world_submission">2. <code>upsert_world_submission()</code> / <code>unregister_world_submission()</code><a class="headerlink" href="#2-upsert_world_submission-unregister_world_submission" title="Permanent link">¶</a></h3>
+<p>Canonical files:</p>
 <ul>
-<li><code>track_output_resources()</code> and <code>clear_output_resource_tracking()</code> own the current output-RID lifecycle.</li>
-<li><code>_resolve_texture_owner()</code> is the contract gate for cross-device resource ownership.</li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/core/gaussian_splat_scene_director.h">gaussian_splat_scene_director.h</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/core/gaussian_splat_scene_director.cpp">gaussian_splat_scene_director.cpp</a></li>
 </ul>
-<p>Refactor note:</p>
+<p>Current state:</p>
 <ul>
-<li>W1 should extract the tile resource controller before W2 expands the execution-path split.</li>
-<li>The current static caches are temporary debt and should not survive the W1/W2 migration.</li>
+<li><code>submit_world_submission()</code> / <code>release_world_submission()</code> are the runtime path.</li>
+<li><code>upsert_*</code> / <code>unregister_*</code> are scaffolding-only storage helpers with no renderer side effects.</li>
+<li>They remain compiled only for tools/test builds.</li>
 </ul>
-<h3 id="gpusortingpipeline">GPUSortingPipeline<a class="headerlink" href="#gpusortingpipeline" title="Permanent link">¶</a></h3>
-<p>Current state in <code>interfaces/gpu_sorting_pipeline.h</code> is concentrated but still too coupled:</p>
+<p>Why they still exist:</p>
 <ul>
-<li>Sort buffers and sort capacity live at <code>gpu_sorting_pipeline.h:132</code> through <code>gpu_sorting_pipeline.h:145</code></li>
-<li>Depth compute resources live at <code>gpu_sorting_pipeline.h:150</code> through <code>gpu_sorting_pipeline.h:176</code></li>
-<li>CPU-side sort and depth buffers live at <code>gpu_sorting_pipeline.h:178</code> through <code>gpu_sorting_pipeline.h:183</code></li>
-<li><code>SortReadbackState</code> and <code>InstanceCountReadbackState</code> live at <code>gpu_sorting_pipeline.h:197</code> through <code>gpu_sorting_pipeline.h:212</code></li>
-<li><code>pending_renderer</code> lives at <code>gpu_sorting_pipeline.h:213</code></li>
+<li>Tests use them for storage/query coverage without exercising ownership or renderer mutation.</li>
 </ul>
-<p>Current write ownership:</p>
+<p>Blockers:</p>
 <ul>
-<li>The pipeline owns its RIDs, capacities, and readback generation counters.</li>
-<li><code>sort_readback_state</code> controls publication of sorted results.</li>
-<li><code>instance_count_readback_state</code> controls publication of instance count readbacks.</li>
-<li>Renderer-owned state is currently mutated inside <code>_apply_sorted_results()</code> and reached via <code>pending_renderer</code>.</li>
+<li>Scaffolding tests in <a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/tests/test_scene_director_submission_scaffolding.h">test_scene_director_submission_scaffolding.h</a> still call them directly.</li>
 </ul>
-<p>Implementation anchors:</p>
+<p>Removal plan:</p>
+<ol>
+<li>Split tests into:</li>
+<li>runtime-path tests using <code>submit_*</code> / <code>release_*</code></li>
+<li>pure record-copy tests using a private/internal helper if still needed</li>
+<li>Keep them behind tools/test-only compilation while tests still need direct storage/query coverage.
+   Current blocker: the module doctest umbrella still compiles these helpers through the editor/tools build surface, so <code>TESTS_ENABLED</code> alone is not sufficient yet.</li>
+<li>Remove them entirely once no test still calls them directly.</li>
+</ol>
+<p>Deletion criteria:</p>
 <ul>
-<li><code>_apply_sorted_results()</code> writes through <code>GaussianSplatRenderer</code> state accessors and updates culler, sorting, frame, and performance state in one step.</li>
-<li><code>ensure_sort_buffers()</code> still takes a renderer pointer and reaches into renderer state to validate/size resources.</li>
-<li><code>clear_instance_pipeline_inputs()</code> and the readback reset path are the current state reset boundary for instance-pipeline work.</li>
+<li>No public code calls <code>upsert_world_submission()</code> or <code>unregister_world_submission()</code>.</li>
+<li>Equivalent coverage exists for runtime world submission and record-copy behavior.</li>
 </ul>
-<p>Refactor note:</p>
+<h3 id="3-editor-preview-direct-upload">3. Editor Preview Direct Upload<a class="headerlink" href="#3-editor-preview-direct-upload" title="Permanent link">¶</a></h3>
+<p>Canonical files:</p>
 <ul>
-<li>W1 should replace the renderer pointer seam with <code>ISortResultSink</code> plus a minimal host context.</li>
-<li>W2 should extract the sort buffer, depth compute, execution, and validation stages only after the W1 seam exists.</li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/editor/gaussian_editor_plugin.cpp">gaussian_editor_plugin.cpp</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/core/gaussian_splat_scene_director.h">gaussian_splat_scene_director.h</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/core/gaussian_splat_scene_director.cpp">gaussian_splat_scene_director.cpp</a></li>
 </ul>
-<h3 id="gaussiansplatrenderer">GaussianSplatRenderer<a class="headerlink" href="#gaussiansplatrenderer" title="Permanent link">¶</a></h3>
-<p>Current state is spread across explicit sub-buckets and orchestrators:</p>
+<p>Current state:</p>
 <ul>
-<li>Frame and view state are grouped in <code>RenderFrameContextManager</code></li>
-<li><code>DeviceState</code> is the owner of the current render-device and scene-render handles</li>
-<li><code>ResourceState</code> owns buffer lifecycle and per-frame GPU resource state</li>
-<li><code>SubsystemState</code> owns orchestrator and interface handles</li>
-<li><code>render_thread_dispatch_mutex</code>, <code>render_thread_dispatch_semaphore</code>, and related dispatch counters own the render-thread synchronization path</li>
+<li>Editor preview still does direct bare-renderer upload through <code>current_renderer-&gt;set_gaussian_data(...)</code>.</li>
+<li>The unused director preview-submission scaffolding has been removed.</li>
 </ul>
-<p>Implementation anchors:</p>
+<p>Decision:</p>
 <ul>
-<li><code>gaussian_splat_renderer.h:531</code> through <code>gaussian_splat_renderer.h:538</code> hold the render-thread dispatch state.</li>
-<li><code>gaussian_splat_renderer.h:518</code> through <code>gaussian_splat_renderer.h:529</code> hold the orchestrator graph.</li>
-<li><code>_dispatch_call_on_render_thread_blocking()</code> and <code>_safe_submit_sync()</code> are the current synchronization chokepoints.</li>
-<li><code>gaussian_splat_renderer.cpp:156</code> through <code>gaussian_splat_renderer.cpp:163</code> hold the frame-log settings cache.</li>
+<li>Direct preview upload remains the single supported preview path.</li>
 </ul>
-<p>Current write ownership:</p>
+<p>Rationale:</p>
 <ul>
-<li>The renderer owns Godot-facing API entry points, frame setup, orchestration, and cross-subsystem lifecycle.</li>
-<li>Orchestrators own the finer-grained subsystem work that has already been peeled out.</li>
-<li>Render-thread dispatch remains renderer-owned for now, but it should move behind a dedicated seam in W1.</li>
+<li>No runtime bug currently requires preview migration.</li>
+<li>Preview-submission scaffolding had no production caller and only added a second competing preview path.</li>
 </ul>
-<p>Refactor note:</p>
+<p>Future reconsideration:</p>
 <ul>
-<li>W1 should remove synchronization from the renderer facade.</li>
-<li>W2 should continue slimming the facade, but only after W1 has made ownership explicit.</li>
+<li>If preview ever moves into the director, it should be introduced as a dedicated runtime preview path rather than by reviving the old scaffolding API unchanged.</li>
 </ul>
-<h2 id="hidden-mutable-state-inventory">Hidden Mutable State Inventory<a class="headerlink" href="#hidden-mutable-state-inventory" title="Permanent link">¶</a></h2>
-<table>
-<thead>
-<tr>
-<th>Location</th>
-<th>Symbol / state</th>
-<th>Why it matters</th>
-<th>Current owner status</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>renderer/gaussian_splat_renderer.cpp:156</code></td>
-<td><code>g_frame_log_settings</code></td>
-<td>Process-global cache for frame logging/debug behavior. It is updated from project settings and shared by all renderer instances.</td>
-<td>Temporary global cache, should become explicit renderer or process service state.</td>
-</tr>
-<tr>
-<td><code>renderer/tile_renderer.cpp:139</code></td>
-<td><code>adaptive_overlap_budget_runtime_states</code></td>
-<td>Process-global cache keyed by <code>TileRenderer *</code>. This is hidden instance state stored outside the instance.</td>
-<td>Temporary debt, should move into <code>TileRenderer</code> ownership or a dedicated controller.</td>
-</tr>
-<tr>
-<td><code>renderer/tile_renderer.cpp:1927</code></td>
-<td><code>subgroup_support_cache</code></td>
-<td>Process-global cache keyed by device ID. It affects shader path selection and must not be reinterpreted as per-instance state.</td>
-<td>Temporary cache, should be explicitly owned or documented as device capability cache.</td>
-</tr>
-<tr>
-<td><code>renderer/gaussian_splat_renderer.h:531</code> through <code>:538</code></td>
-<td>render-thread dispatch mutex, semaphore, request/completion counters, timeout</td>
-<td>Synchronization state is embedded in the renderer facade.</td>
-<td>Renderer-owned for now, but the W1 dispatcher seam should take it over.</td>
-</tr>
-<tr>
-<td><code>interfaces/gpu_sorting_pipeline.h:213</code></td>
-<td><code>pending_renderer</code></td>
-<td>Cross-object mutable handoff state. It makes the pipeline depend on renderer lifetime and shape.</td>
-<td>Temporary coupling, should be removed by W1.</td>
-</tr>
-<tr>
-<td><code>core/gaussian_streaming.cpp:2400</code></td>
-<td><code>debug_frame</code> static counter</td>
-<td>Telemetry pacing is process-global, not instance-owned.</td>
-<td>Benign but still hidden mutable state; keep the scope explicit.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="what-this-means-for-decomposition">What This Means For Decomposition<a class="headerlink" href="#what-this-means-for-decomposition" title="Permanent link">¶</a></h2>
+<h3 id="4-gaussiansplatdynamicinstance3dply_file_path">4. <code>GaussianSplatDynamicInstance3D::ply_file_path</code><a class="headerlink" href="#4-gaussiansplatdynamicinstance3dply_file_path" title="Permanent link">¶</a></h3>
+<p>Canonical files:</p>
 <ul>
-<li><code>W0</code> must stay stable: the ownership matrix and the characterization tests are the hard gate.</li>
-<li><code>W1</code> should cut concrete seams first: sort result sink, render-thread dispatcher, tile resource controller, and hidden-static cleanup.</li>
-<li><code>W2</code> should extract execution stages only after ownership is explicit.</li>
-<li><code>W3</code> should be cleanup only: remove the shims, slim the facades, and enforce the dependency rules.</li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/nodes/gaussian_splat_dynamic_instance_3d.h">gaussian_splat_dynamic_instance_3d.h</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/nodes/gaussian_splat_dynamic_instance_3d.cpp">gaussian_splat_dynamic_instance_3d.cpp</a></li>
 </ul>
-<h2 id="related-docs">Related Docs<a class="headerlink" href="#related-docs" title="Permanent link">¶</a></h2>
+<p>Current state:</p>
 <ul>
-<li><a href="../overview/">Architecture overview</a></li>
-<li><a href="../render-pipeline/">Render pipeline details</a></li>
-<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/ARCHITECTURE.md">Module architecture map</a></li>
-<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/MEMORY_SUBSYSTEM.md">Memory and residency invariants</a></li>
+<li>This class can still load raw file data directly into <code>GaussianData</code>.</li>
+<li>It then converges on instance registration, but it bypasses imported assets entirely.</li>
+<li>Bucket B marks the path as deprecated in runtime/docs while keeping it functional.</li>
 </ul>
+<p>Why it is a better early deprecation target than the normal node path:</p>
+<ul>
+<li>It is less editor-facing.</li>
+<li>It already supports <code>splat_asset</code> and explicit <code>gaussian_data</code>.</li>
+<li>It is a stronger bypass of the canonical asset model than the main node.</li>
+</ul>
+<p>Blockers:</p>
+<ul>
+<li>Public API and class docs still expose <code>ply_file_path</code>.</li>
+<li>Tests still cover direct data / direct file behavior.</li>
+</ul>
+<p>Removal plan:</p>
+<ol>
+<li>Deprecate <code>ply_file_path</code> in docs and class comments.</li>
+<li>Emit a deprecation warning when the property is set.</li>
+<li>Keep <code>set_gaussian_data()</code> and <code>set_splat_asset()</code> as supported alternatives.</li>
+<li>Remove <code>_load_from_file()</code> and the <code>ply_file_path</code> property once tests/docs migrate.</li>
+</ol>
+<p>Deletion criteria:</p>
+<ul>
+<li>All supported workflows can use <code>splat_asset</code> or explicit <code>gaussian_data</code>.</li>
+<li>No product flow depends on dynamic-instance raw file loading.</li>
+</ul>
+<h3 id="5-gaussiansplatnode3dply_file_path">5. <code>GaussianSplatNode3D::ply_file_path</code><a class="headerlink" href="#5-gaussiansplatnode3dply_file_path" title="Permanent link">¶</a></h3>
+<p>Canonical files:</p>
+<ul>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/nodes/gaussian_splat_node_3d.h">gaussian_splat_node_3d.h</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp">gaussian_splat_node_3d.cpp</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/nodes/gaussian_splat_node_helpers.cpp">gaussian_splat_node_helpers.cpp</a></li>
+</ul>
+<p>Current state:</p>
+<ul>
+<li><code>ply_file_path</code> is still a real public runtime and editor route.</li>
+<li>It still powers:</li>
+<li>auto-load on enter tree</li>
+<li>direct runtime loading</li>
+<li>validation/warnings</li>
+<li>Raw drag-and-drop now prefers asset-backed assignment and only falls back to <code>ply_file_path</code> if the asset-backed load fails.</li>
+</ul>
+<p>Why it cannot simply be deleted now:</p>
+<ul>
+<li>The replacement workflow is not fully designed.</li>
+<li>The accepted refactor plan explicitly deferred this until replacements exist.</li>
+</ul>
+<p>Recommended deprecation sequence:</p>
+<ol>
+<li>Remove editor-primary behaviors first:</li>
+<li>keep drag-and-drop asset-first and avoid reintroducing <code>ply_file_path</code> as the primary editor assignment path</li>
+<li>steer users toward imported assets or explicit import tools</li>
+<li>Keep runtime/script loading temporarily.</li>
+<li>Introduce a clearer external-file workflow if runtime direct loading remains important.</li>
+<li>Only then decide whether <code>ply_file_path</code> becomes:</li>
+<li>metadata only, or</li>
+<li>a supported runtime-only escape hatch</li>
+</ol>
+<p>Blockers:</p>
+<ul>
+<li>Tests in <a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/tests/test_gaussian_splat_node.h">test_gaussian_splat_node.h</a> still treat it as supported behavior.</li>
+<li>Class docs and examples still show <code>ply_file_path</code>.</li>
+</ul>
+<p>Deletion criteria:</p>
+<ul>
+<li>Drag/drop, runtime load, auto-load, and validation all have replacement workflows.</li>
+<li>Class docs no longer present <code>ply_file_path</code> as the normal workflow.</li>
+<li>Tests are migrated away from direct-file-as-primary-authoring-path assumptions.</li>
+</ul>
+<h3 id="6-gaussiansplatrendererset_gaussian_data">6. <code>GaussianSplatRenderer::set_gaussian_data()</code><a class="headerlink" href="#6-gaussiansplatrendererset_gaussian_data" title="Permanent link">¶</a></h3>
+<p>Canonical files:</p>
+<ul>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/renderer/gaussian_splat_renderer.h">gaussian_splat_renderer.h</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/renderer/render_data_orchestrator.cpp">render_data_orchestrator.cpp</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/core/gaussian_splat_scene_director.cpp">gaussian_splat_scene_director.cpp</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/renderer/render_streaming_orchestrator.cpp">render_streaming_orchestrator.cpp</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/interfaces/gpu_culler.cpp">gpu_culler.cpp</a></li>
+</ul>
+<p>Current state:</p>
+<ul>
+<li>The public low-level setter still exists and is still used by tests, tools, helpers, and editor preview.</li>
+<li>The underlying non-instance <code>gaussian_data</code> route is also still load-bearing in production runtime flows.</li>
+</ul>
+<p>Investigation result:</p>
+<ul>
+<li>Do not remove the direct non-instance <code>gaussian_data</code> route yet.</li>
+<li>The correct near-term action is to narrow callers and document the remaining blockers, not to delete the route.</li>
+</ul>
+<p>Verified blockers:</p>
+<ul>
+<li>World-backed runtime still realizes submissions through primary scene data and static chunks in the director.</li>
+<li>Streaming bootstrap for world/static/no-instance scenes still depends on primary <code>scene_state.gaussian_data</code>.</li>
+<li>The accepted explicit-resident legacy fallback still depends on the legacy primary-data route when resident atlas publication is rejected.</li>
+<li>The legacy non-instance cull/sort path is therefore still live in <code>GPUCuller</code> and sorting, even though normal node and dynamic-instance flows already use the shared instance/director path.</li>
+</ul>
+<p>Secondary callers that should not drive the keep/remove decision by themselves:</p>
+<ul>
+<li>Editor preview direct upload in <a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/editor/gaussian_editor_plugin.cpp">gaussian_editor_plugin.cpp</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/nodes/gaussian_splat_container.cpp">GaussianSplatContainer::apply_to_renderer()</a></li>
+</ul>
+<p>Why it still exists:</p>
+<ul>
+<li>It is still required by real runtime behavior, not just tests.</li>
+<li>It remains useful for focused low-level validation while the runtime route still exists.</li>
+</ul>
+<p>Recommended action:</p>
+<ul>
+<li>Do not delete it yet.</li>
+<li>Narrow its contract instead:</li>
+<li>document <code>set_gaussian_data()</code> as a low-level/test/tool/editor-preview API, not the canonical high-level scene path</li>
+<li>demote <code>GaussianSplatContainer::apply_to_renderer()</code> in README/API docs to legacy low-level convenience usage</li>
+<li>migrate or explicitly bless editor preview</li>
+<li>retire container-level convenience usage</li>
+<li>keep high-level scene code off it</li>
+<li>remove the underlying runtime route only after world submission realization, streaming bootstrap, and explicit-resident fallback no longer depend on primary <code>gaussian_data</code></li>
+</ul>
+<p>Longer-term options:</p>
+<ul>
+<li>keep it permanently as the renderer's low-level data hook, or</li>
+<li>replace it with a more explicitly named test/tool upload API later</li>
+</ul>
+<p>Deletion criteria:</p>
+<ul>
+<li>World-backed runtime no longer realizes submissions through primary <code>gaussian_data</code>.</li>
+<li>Streaming bootstrap no longer depends on primary raw scene data or synthetic primary fallback instances.</li>
+<li>Explicit-resident fallback no longer needs the legacy non-instance route.</li>
+<li>Editor preview no longer depends on it directly.</li>
+<li>Low-level tests have replacement helpers or intentionally keep this as a supported low-level API.</li>
+</ul>
+<h3 id="7-duplicated-source-path-resolution">7. Duplicated Source-Path Resolution<a class="headerlink" href="#7-duplicated-source-path-resolution" title="Permanent link">¶</a></h3>
+<p>Canonical files:</p>
+<ul>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/editor/gaussian_editor_plugin.cpp">gaussian_editor_plugin.cpp</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp">gaussian_splat_node_3d.cpp</a></li>
+</ul>
+<p>Current state:</p>
+<ul>
+<li>Source-path resolution logic exists in more than one place.</li>
+<li>The accepted plan already tracked this as a consolidation candidate.</li>
+</ul>
+<p>Recommended action:</p>
+<ul>
+<li>Extract one shared helper for:</li>
+<li>asset source metadata lookup</li>
+<li>node source selection precedence</li>
+</ul>
+<p>Deletion criteria:</p>
+<ul>
+<li>One helper owns source-path precedence.</li>
+<li>Editor and node warnings/origin labels share the same rules.</li>
+</ul>
+<h3 id="8-explicit-resident-legacy-fallback">8. Explicit-Resident Legacy Fallback<a class="headerlink" href="#8-explicit-resident-legacy-fallback" title="Permanent link">¶</a></h3>
+<p>Canonical files:</p>
+<ul>
+<li><a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp">gaussian_splat_renderer.cpp</a></li>
+<li><a href="../gaussian-resident-instanced-contract/">gaussian-resident-instanced-contract.md</a></li>
+</ul>
+<p>Current state:</p>
+<ul>
+<li>If resident atlas publication is rejected for explicit-resident requests, the renderer may still fall back to the legacy resident path.</li>
+<li>This is accepted current behavior, not a bug.</li>
+</ul>
+<p>Why it is not a deletion target yet:</p>
+<ul>
+<li>Removing it would change runtime behavior for explicit resident requests.</li>
+<li>The resident atlas publisher still intentionally rejects some cases, including per-chunk quantization.</li>
+</ul>
+<p>Recommended action:</p>
+<ul>
+<li>Keep it for now.</li>
+<li>Keep the explicit-resident quantization fallback test as baseline coverage.</li>
+<li>Revisit only after resident atlas coverage is wider and the legacy resident path is truly redundant.</li>
+</ul>
+<p>Deletion criteria:</p>
+<ul>
+<li>Explicit-resident use cases no longer need the fallback.</li>
+<li>The fallback has dedicated coverage proving it is safe to remove or intentionally preserve.</li>
+</ul>
+<h2 id="tests-that-currently-block-deletion">Tests That Currently Block Deletion<a class="headerlink" href="#tests-that-currently-block-deletion" title="Permanent link">¶</a></h2>
+<p>The current test suite still locks in several compatibility surfaces:</p>
+<ul>
+<li><code>upsert_world_submission()</code> / <code>unregister_world_submission()</code>:
+  <a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/tests/test_scene_director_submission_scaffolding.h">test_scene_director_submission_scaffolding.h</a></li>
+<li><code>ply_file_path</code> as a supported node workflow:
+  <a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/tests/test_gaussian_splat_node.h">test_gaussian_splat_node.h</a></li>
+<li>diagnostic chaining and mixed-hint behavior:
+  <a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/tests/test_integration.cpp">test_integration.cpp</a>,
+  <a href="https://github.com/klausi3D/godotGS/blob/b24ffd60008982acdf2e4bac85df2ee25f735e2d/modules/gaussian_splatting/tests/test_scene_director_submission_scaffolding.h">test_scene_director_submission_scaffolding.h</a></li>
+</ul>
+<p>This is useful: it tells us exactly what must migrate before deletion is honest rather than accidental.</p>
+<h2 id="recommended-execution-order">Recommended Execution Order<a class="headerlink" href="#recommended-execution-order" title="Permanent link">¶</a></h2>
+<h3 id="pass-1-safe-consolidation">Pass 1: Safe Consolidation<a class="headerlink" href="#pass-1-safe-consolidation" title="Permanent link">¶</a></h3>
+<ul>
+<li>consolidate source-path helper logic</li>
+<li>keep world scaffolding APIs behind tools/test-only compilation</li>
+<li>keep direct preview as the documented editor-only exception</li>
+</ul>
+<h3 id="pass-2-remove-easy-compatibility-debt">Pass 2: Remove Easy Compatibility Debt<a class="headerlink" href="#pass-2-remove-easy-compatibility-debt" title="Permanent link">¶</a></h3>
+<ul>
+<li>remove legacy <code>streaming/enabled</code> after settings/test migration</li>
+<li>update docs and diagnostics labels accordingly</li>
+<li>narrow world scaffolding to test-only compilation</li>
+<li>deprecate <code>GaussianSplatDynamicInstance3D::ply_file_path</code></li>
+</ul>
+<h3 id="pass-3-product-workflow-deprecation">Pass 3: Product Workflow Deprecation<a class="headerlink" href="#pass-3-product-workflow-deprecation" title="Permanent link">¶</a></h3>
+<ul>
+<li>deprecate <code>GaussianSplatDynamicInstance3D::ply_file_path</code></li>
+<li>demote <code>GaussianSplatNode3D::ply_file_path</code> from editor-primary path</li>
+<li>remove raw drag-and-drop to <code>ply_file_path</code></li>
+<li>decide whether runtime raw loading remains supported or is replaced</li>
+</ul>
+<h3 id="pass-4-optional-further-narrowing">Pass 4: Optional Further Narrowing<a class="headerlink" href="#pass-4-optional-further-narrowing" title="Permanent link">¶</a></h3>
+<ul>
+<li>decide whether <code>GaussianSplatRenderer::set_gaussian_data()</code> stays as a supported low-level API</li>
+<li>decide whether explicit-resident legacy fallback remains a supported compatibility behavior</li>
+</ul>
+<h2 id="completion-criteria">Completion Criteria<a class="headerlink" href="#completion-criteria" title="Permanent link">¶</a></h2>
+<p>The original consolidation goal should be considered complete only when:</p>
+<ul>
+<li>no legacy boolean and enum route knobs overlap</li>
+<li>no public scaffolding APIs remain in the director without a real runtime purpose</li>
+<li>editor preview has exactly one intentional submission path</li>
+<li>imported assets are the only normal editor authoring route</li>
+<li>raw-file workflows are either explicitly runtime-only or fully replaced</li>
+<li>the low-level renderer upload surface is either intentionally kept or intentionally removed</li>
+</ul>
+<h2 id="relationship-to-existing-docs">Relationship To Existing Docs<a class="headerlink" href="#relationship-to-existing-docs" title="Permanent link">¶</a></h2>
+<p>This document is the concrete closeout companion to:</p>
+<ul>
+<li><a href="../gaussian-pipeline-unification-plan/">Unified Gaussian pipeline refactor plan</a></li>
+<li><a href="../gaussian-resident-instanced-contract/">Resident-instanced renderer contract</a></li>
+</ul>
+<p>Those documents explain how the architecture was unified. This document explains how the remaining compatibility seams should be retired.</p>
 
 
 
@@ -2001,7 +2413,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 3, 2026 07:24:24 UTC">April 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 3, 2026 07:24:23 UTC">April 3, 2026</span>
   </span>
 
     
