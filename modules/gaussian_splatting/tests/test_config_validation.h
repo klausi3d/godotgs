@@ -11,6 +11,7 @@
 
 #include "tests/test_macros.h"
 #include "core/config/project_settings.h"
+#include "gs_test_setting_guard.h"
 #include "../renderer/gpu_sorting_config.h"
 #include "../renderer/pipeline_feature_set.h"
 #include "../renderer/sorting_config.h"
@@ -76,6 +77,69 @@ TEST_CASE("[GaussianSplatting][Config] GPUSortingConfig rejects invalid target_s
 	SUBCASE("Just above threshold is valid") {
 		config.target_sort_time_ms = 0.11f;
 		CHECK(config.validate());
+	}
+}
+
+TEST_CASE("[GaussianSplatting][Config] Sorting target_sort_time_ms follows the canonical project setting") {
+	ProjectSettings *project_settings = ProjectSettings::get_singleton();
+	REQUIRE(project_settings != nullptr);
+
+	const String canonical_path = "rendering/gaussian_splatting/sorting/target_sort_time_ms";
+	const String legacy_path = "rendering/gaussian_splatting/gpu_sorting/target_sort_time_ms";
+	ProjectSettingGuard canonical_guard(project_settings, canonical_path);
+	ProjectSettingGuard legacy_guard(project_settings, legacy_path);
+
+	SUBCASE("Canonical key wins over the legacy alias for both loaders") {
+		project_settings->set_setting(canonical_path, 3.5f);
+		project_settings->set_setting(legacy_path, 1.25f);
+		initialize_gpu_sorting_config();
+		project_settings->emit_signal("settings_changed");
+
+		g_gpu_sorting_config.load_from_project_settings();
+		const SortingStrategyConfig strategy_config = SortingStrategyConfig::load_from_project_settings();
+
+		CHECK(g_gpu_sorting_config.target_sort_time_ms == doctest::Approx(3.5f));
+		CHECK(strategy_config.target_sort_time_ms == doctest::Approx(3.5f));
+	}
+
+	SUBCASE("Explicit canonical default still wins over the legacy alias") {
+		project_settings->set_setting(canonical_path, 2.0f);
+		project_settings->set_setting(legacy_path, 1.25f);
+		initialize_gpu_sorting_config();
+		project_settings->emit_signal("settings_changed");
+
+		g_gpu_sorting_config.load_from_project_settings();
+		const SortingStrategyConfig strategy_config = SortingStrategyConfig::load_from_project_settings();
+
+		CHECK(g_gpu_sorting_config.target_sort_time_ms == doctest::Approx(2.0f));
+		CHECK(strategy_config.target_sort_time_ms == doctest::Approx(2.0f));
+	}
+
+	SUBCASE("Runtime canonical edits override legacy alias after startup") {
+		project_settings->clear(canonical_path);
+		project_settings->set_setting(legacy_path, 1.25f);
+		initialize_gpu_sorting_config();
+		project_settings->set_setting(canonical_path, 4.0f);
+		project_settings->emit_signal("settings_changed");
+
+		g_gpu_sorting_config.load_from_project_settings();
+		const SortingStrategyConfig strategy_config = SortingStrategyConfig::load_from_project_settings();
+
+		CHECK(g_gpu_sorting_config.target_sort_time_ms == doctest::Approx(4.0f));
+		CHECK(strategy_config.target_sort_time_ms == doctest::Approx(4.0f));
+	}
+
+	SUBCASE("Legacy alias fallback stays aligned until projects migrate") {
+		project_settings->clear(canonical_path);
+		project_settings->set_setting(legacy_path, 1.75f);
+		initialize_gpu_sorting_config();
+		project_settings->emit_signal("settings_changed");
+
+		g_gpu_sorting_config.load_from_project_settings();
+		const SortingStrategyConfig strategy_config = SortingStrategyConfig::load_from_project_settings();
+
+		CHECK(g_gpu_sorting_config.target_sort_time_ms == doctest::Approx(1.75f));
+		CHECK(strategy_config.target_sort_time_ms == doctest::Approx(1.75f));
 	}
 }
 
