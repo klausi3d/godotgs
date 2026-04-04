@@ -19,11 +19,21 @@ static inline const StringName &legacy_gpu_target_sort_time_path() {
 	return path;
 }
 
+static inline bool has_explicit_target_sort_time_override(ProjectSettings *p_ps) {
+	if (!p_ps || !p_ps->has_setting(String(target_sort_time_path()))) {
+		return false;
+	}
+	if (!p_ps->property_can_revert(target_sort_time_path())) {
+		return true;
+	}
+	return p_ps->get_setting_with_override(target_sort_time_path()) != p_ps->property_get_revert(target_sort_time_path());
+}
+
 static inline float get_target_sort_time_ms(ProjectSettings *p_ps, float p_fallback) {
 	if (!p_ps) {
 		return p_fallback;
 	}
-	if (p_ps->has_setting(target_sort_time_path())) {
+	if (has_explicit_target_sort_time_override(p_ps)) {
 		return gs::settings::get_float(p_ps, target_sort_time_path(), p_fallback);
 	}
 	if (p_ps->has_setting(legacy_gpu_target_sort_time_path())) {
@@ -31,6 +41,9 @@ static inline float get_target_sort_time_ms(ProjectSettings *p_ps, float p_fallb
 				String(legacy_gpu_target_sort_time_path()),
 				String(target_sort_time_path())));
 		return gs::settings::get_float(p_ps, legacy_gpu_target_sort_time_path(), p_fallback);
+	}
+	if (p_ps->has_setting(String(target_sort_time_path()))) {
+		return gs::settings::get_float(p_ps, target_sort_time_path(), p_fallback);
 	}
 	return p_fallback;
 }
