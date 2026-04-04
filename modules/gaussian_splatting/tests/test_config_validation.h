@@ -131,8 +131,7 @@ TEST_CASE("[GaussianSplatting][Config] Sorting target_sort_time_ms follows the c
 
 	SUBCASE("Legacy alias fallback stays aligned until projects migrate") {
 		REQUIRE(project_settings->has_setting(canonical_path));
-		REQUIRE(project_settings->property_can_revert(canonical_path));
-		project_settings->set_setting(canonical_path, project_settings->property_get_revert(canonical_path));
+		project_settings->clear(canonical_path);
 		project_settings->set_setting(legacy_path, 1.75f);
 		initialize_gpu_sorting_config();
 		project_settings->emit_signal("settings_changed");

@@ -1135,7 +1135,10 @@ void GaussianSplatManager::initialize_module() {
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/hybrid_batch_size", (int)sorting_hybrid_batch);
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/history_size", (int)sorting_history_size);
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/log_interval_frames", (int)sorting_log_interval);
-    GLOBAL_DEF("rendering/gaussian_splatting/sorting/target_sort_time_ms", sorting_target_ms);
+    // Keep the canonical sort-time setting registered against its stable code
+    // default so explicit project overrides remain distinguishable from builtin
+    // defaults during compatibility fallback resolution.
+    GLOBAL_DEF("rendering/gaussian_splatting/sorting/target_sort_time_ms", 2.0f);
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/log_metrics", sorting_log_metrics);
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/force_algorithm", 0);
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/force_cpu_sort", false);
