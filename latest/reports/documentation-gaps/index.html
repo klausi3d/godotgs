@@ -2602,10 +2602,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrenderersort_fallback_policyh" class="md-nav__link">
+  <a href="#modulesgaussian_splattingnodesgaussian_splat_node_helperscpp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        modules/gaussian_splatting/renderer/sort_fallback_policy.h
+        modules/gaussian_splatting/nodes/gaussian_splat_node_helpers.cpp
       
     </span>
   </a>
@@ -2613,10 +2613,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingnodesgaussian_splat_node_helperscpp" class="md-nav__link">
+  <a href="#modulesgaussian_splattingrenderersort_fallback_policyh" class="md-nav__link">
     <span class="md-ellipsis">
       
-        modules/gaussian_splatting/nodes/gaussian_splat_node_helpers.cpp
+        modules/gaussian_splatting/renderer/sort_fallback_policy.h
       
     </span>
   </a>
@@ -3603,10 +3603,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrendererrendering_diagnosticscpp" class="md-nav__link">
+  <a href="#modulesgaussian_splattingrenderertile_render_prefix_scancpp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        modules/gaussian_splatting/renderer/rendering_diagnostics.cpp
+        modules/gaussian_splatting/renderer/tile_render_prefix_scan.cpp
       
     </span>
   </a>
@@ -3614,10 +3614,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrenderertile_render_prefix_scancpp" class="md-nav__link">
+  <a href="#modulesgaussian_splattingrendererrendering_diagnosticscpp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        modules/gaussian_splatting/renderer/tile_render_prefix_scan.cpp
+        modules/gaussian_splatting/renderer/rendering_diagnostics.cpp
       
     </span>
   </a>
@@ -3790,17 +3790,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrenderergpu_memory_streamcpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/renderer/gpu_memory_stream.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingrenderergpu_sorting_configcpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3816,6 +3805,17 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/renderer/gaussian_gpu_layout.cpp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingrenderergpu_memory_streamcpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/renderer/gpu_memory_stream.cpp
       
     </span>
   </a>
@@ -6487,11 +6487,6 @@
 <li>line 1445: Dictionary GaussianSplatRenderer::get_runtime_diagnostic_sna...</li>
 <li>line 1449: GaussianSplatRenderer::MonitorStreamingSnapshot GaussianSpla...</li>
 </ul>
-<h2 id="modulesgaussian_splattingrenderersort_fallback_policyh">modules/gaussian_splatting/renderer/sort_fallback_policy.h<a class="headerlink" href="#modulesgaussian_splattingrenderersort_fallback_policyh" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 32: static inline bool allow_unsorted_fallback_publication(bool ...</li>
-<li>line 46: static inline bool allow_unsorted_cpu_fallback_in_orchestrat...</li>
-</ul>
 <h2 id="modulesgaussian_splattingnodesgaussian_splat_node_helperscpp">modules/gaussian_splatting/nodes/gaussian_splat_node_helpers.cpp<a class="headerlink" href="#modulesgaussian_splattingnodesgaussian_splat_node_helperscpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 36: static bool _settings_owner_is_live(ObjectID p_owner_id) {...</li>
@@ -6525,18 +6520,23 @@
 <li>line 756: void GaussianSplatNodeDebugHelper::set_show_residency_hud(bo...</li>
 <li>line 772: void GaussianSplatNodeQualityHelper::apply_quality_preset() ...</li>
 <li>line 796: void GaussianSplatNodeQualityHelper::update_quality_settings...</li>
-<li>line 1083: void GaussianSplatNodeQualityHelper::fill_preset_config(int ...</li>
-<li>line 1209: void GaussianSplatNodeVisibilityHelper::clear_parent_visibil...</li>
-<li>line 1226: void GaussianSplatNodeVisibilityHelper::update_parent_visibi...</li>
-<li>line 1268: void GaussianSplatNodeVisibilityHelper::update_parent_visibi...</li>
-<li>line 1281: void GaussianSplatNodeVisibilityHelper::on_parent_visibility...</li>
+<li>line 1088: void GaussianSplatNodeQualityHelper::fill_preset_config(int ...</li>
+<li>line 1214: void GaussianSplatNodeVisibilityHelper::clear_parent_visibil...</li>
+<li>line 1231: void GaussianSplatNodeVisibilityHelper::update_parent_visibi...</li>
+<li>line 1273: void GaussianSplatNodeVisibilityHelper::update_parent_visibi...</li>
 <li>line 1286: void GaussianSplatNodeVisibilityHelper::on_parent_visibility...</li>
-<li>line 1294: bool GaussianSplatNodeRendererHelper::can_apply_renderer_set...</li>
-<li>line 1328: void GaussianSplatNodeRendererHelper::release_renderer_setti...</li>
-<li>line 1337: void GaussianSplatNodeRendererHelper::ensure_renderer() {...</li>
-<li>line 1357: void GaussianSplatNodeRendererHelper::apply_renderer_setting...</li>
-<li>line 1424: void GaussianSplatNodeRendererHelper::upload_asset_to_render...</li>
-<li>line 1459: void GaussianSplatNodeRendererHelper::mark_render_state_dirt...</li>
+<li>line 1291: void GaussianSplatNodeVisibilityHelper::on_parent_visibility...</li>
+<li>line 1299: bool GaussianSplatNodeRendererHelper::can_apply_renderer_set...</li>
+<li>line 1333: void GaussianSplatNodeRendererHelper::release_renderer_setti...</li>
+<li>line 1342: void GaussianSplatNodeRendererHelper::ensure_renderer() {...</li>
+<li>line 1362: void GaussianSplatNodeRendererHelper::apply_renderer_setting...</li>
+<li>line 1429: void GaussianSplatNodeRendererHelper::upload_asset_to_render...</li>
+<li>line 1464: void GaussianSplatNodeRendererHelper::mark_render_state_dirt...</li>
+</ul>
+<h2 id="modulesgaussian_splattingrenderersort_fallback_policyh">modules/gaussian_splatting/renderer/sort_fallback_policy.h<a class="headerlink" href="#modulesgaussian_splattingrenderersort_fallback_policyh" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 32: static inline bool allow_unsorted_fallback_publication(bool ...</li>
+<li>line 46: static inline bool allow_unsorted_cpu_fallback_in_orchestrat...</li>
 </ul>
 <h2 id="testsexamplesgodottest_projectscenesqaqa_stream_chunk_loadinggd">tests/examples/godot/test_project/scenes/qa/qa_stream_chunk_loading.gd<a class="headerlink" href="#testsexamplesgodottest_projectscenesqaqa_stream_chunk_loadinggd" title="Permanent link">¶</a></h2>
 <ul>
@@ -7208,16 +7208,16 @@
 </ul>
 <h2 id="modulesgaussian_splattingcoregaussian_splat_asseth">modules/gaussian_splatting/core/gaussian_splat_asset.h<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_splat_asseth" title="Permanent link">¶</a></h2>
 <ul>
-<li>line 73: bool is_loaded() const { return splat_count &gt; 0; }...</li>
-<li>line 76: AssetType get_asset_type() const { return asset_type; }...</li>
-<li>line 79: uint32_t get_splat_count() const { return splat_count; }...</li>
-<li>line 107: uint32_t get_sh_first_order_terms() const { return sh_first_...</li>
-<li>line 108: uint32_t get_sh_high_order_terms() const { return sh_high_or...</li>
-<li>line 127: static uint32_t get_instance_count() { return instance_count...</li>
-<li>line 130: Dictionary get_import_metadata() const { return import_metad...</li>
-<li>line 133: String get_import_quality_preset() const { return import_qua...</li>
-<li>line 136: uint32_t get_compression_flags() const { return compression_...</li>
-<li>line 139: Ref<texture2d> get_thumbnail() const { return thumbnail; }...</texture2d></li>
+<li>line 75: bool is_loaded() const { return splat_count &gt; 0; }...</li>
+<li>line 78: AssetType get_asset_type() const { return asset_type; }...</li>
+<li>line 81: uint32_t get_splat_count() const { return splat_count; }...</li>
+<li>line 109: uint32_t get_sh_first_order_terms() const { return sh_first_...</li>
+<li>line 110: uint32_t get_sh_high_order_terms() const { return sh_high_or...</li>
+<li>line 129: static uint32_t get_instance_count() { return instance_count...</li>
+<li>line 132: Dictionary get_import_metadata() const { return import_metad...</li>
+<li>line 135: String get_import_quality_preset() const { return import_qua...</li>
+<li>line 138: uint32_t get_compression_flags() const { return compression_...</li>
+<li>line 141: Ref<texture2d> get_thumbnail() const { return thumbnail; }...</texture2d></li>
 </ul>
 <h2 id="modulesgaussian_splattingrenderertile_render_resolvecpp">modules/gaussian_splatting/renderer/tile_render_resolve.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderertile_render_resolvecpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -8583,6 +8583,17 @@
 <li>line 1563: float GaussianSplattingPerformanceMonitors::_get_sh_compress...</li>
 <li>line 1573: float GaussianSplattingPerformanceMonitors::_get_sh_compress...</li>
 </ul>
+<h2 id="modulesgaussian_splattingrenderertile_render_prefix_scancpp">modules/gaussian_splatting/renderer/tile_render_prefix_scan.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderertile_render_prefix_scancpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 50: static void _release_uniform_set(RenderingDevice *p_device, ...</li>
+<li>line 61: static bool _readback_typed_buffer(RenderingDevice *p_device...</li>
+<li>line 75: TileRenderer::TilePrefixScanStage::PrefixParams TileRenderer...</li>
+<li>line 95: bool TileRenderer::TilePrefixScanStage::dispatch_pass1(const...</li>
+<li>line 131: bool TileRenderer::TilePrefixScanStage::dispatch_pass2_hiera...</li>
+<li>line 175: bool TileRenderer::TilePrefixScanStage::dispatch_pass3(const...</li>
+<li>line 190: RID TileRenderer::TilePrefixScanStage::create_prefix_param_u...</li>
+<li>line 695: RID TileRenderer::TilePrefixScanStage::acquire_prefix_unifor...</li>
+</ul>
 <h2 id="modulesgaussian_splattingrendererrendering_diagnosticscpp">modules/gaussian_splatting/renderer/rendering_diagnostics.cpp<a class="headerlink" href="#modulesgaussian_splattingrendererrendering_diagnosticscpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 17: void GaussianRenderingDiagnostics::ensure_singleton() {...</li>
@@ -8597,17 +8608,6 @@
 <li>line 111: void GaussianRenderingDiagnostics::_emit_report_if_ready() {...</li>
 <li>line 131: void GaussianRenderingDiagnostics::_emit_report() {...</li>
 <li>line 164: void GaussianRenderingDiagnostics::_record_error_dictionary(...</li>
-</ul>
-<h2 id="modulesgaussian_splattingrenderertile_render_prefix_scancpp">modules/gaussian_splatting/renderer/tile_render_prefix_scan.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderertile_render_prefix_scancpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 50: static void _release_uniform_set(RenderingDevice *p_device, ...</li>
-<li>line 61: static bool _readback_typed_buffer(RenderingDevice *p_device...</li>
-<li>line 75: TileRenderer::TilePrefixScanStage::PrefixParams TileRenderer...</li>
-<li>line 95: bool TileRenderer::TilePrefixScanStage::dispatch_pass1(const...</li>
-<li>line 131: bool TileRenderer::TilePrefixScanStage::dispatch_pass2_hiera...</li>
-<li>line 175: bool TileRenderer::TilePrefixScanStage::dispatch_pass3(const...</li>
-<li>line 190: RID TileRenderer::TilePrefixScanStage::create_prefix_param_u...</li>
-<li>line 690: RID TileRenderer::TilePrefixScanStage::acquire_prefix_unifor...</li>
 </ul>
 <h2 id="modulesgaussian_splattingrenderertile_rendererh">modules/gaussian_splatting/renderer/tile_renderer.h<a class="headerlink" href="#modulesgaussian_splattingrenderertile_rendererh" title="Permanent link">¶</a></h2>
 <ul>
@@ -8858,55 +8858,6 @@
 <li>line 288: func _is_streaming_active() -&gt; bool:...</li>
 <li>line 295: func _refresh() -&gt; void:...</li>
 </ul>
-<h2 id="modulesgaussian_splattingrenderergpu_memory_streamcpp">modules/gaussian_splatting/renderer/gpu_memory_stream.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderergpu_memory_streamcpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 24: uint32_t _get_frame_fence_delay(RenderingDevice *p_device) {...</li>
-<li>line 32: void _advance_completed_timeline(std::atomic<uint64_t> &amp;p_ti...</uint64_t></li>
-<li>line 67: void GaussianMemoryStream::set_device_manager(const Ref&lt;Rend...</li>
-<li>line 89: void GaussianMemoryStream::_bind_methods() {...</li>
-<li>line 105: Error GaussianMemoryStream::initialize(RenderingDevice *p_rd...</li>
-<li>line 164: void GaussianMemoryStream::shutdown() {...</li>
-<li>line 183: void GaussianMemoryStream::_create_buffer(StreamBuffer &amp;buff...</li>
-<li>line 244: void GaussianMemoryStream::_destroy_buffer(StreamBuffer &amp;buf...</li>
-<li>line 284: int GaussianMemoryStream::_get_next_write_buffer() {...</li>
-<li>line 344: int GaussianMemoryStream::_get_current_read_buffer() const {...</li>
-<li>line 467: void GaussianMemoryStream::_upload_buffer_async(int buffer_i...</li>
-<li>line 505: void GaussianMemoryStream::_upload_buffer_coalesced(int buff...</li>
-<li>line 579: void GaussianMemoryStream::_validate_and_copy_gaussians(cons...</li>
-<li>line 609: float GaussianMemoryStream::_measure_transfer_bandwidth(uint...</li>
-<li>line 624: void GaussianMemoryStream::_update_bandwidth_stats(int buffe...</li>
-<li>line 641: void GaussianMemoryStream::wait_for_all_uploads() {...</li>
-<li>line 647: bool GaussianMemoryStream::is_upload_complete() const {...</li>
-<li>line 656: void GaussianMemoryStream::_poll_uploads() {...</li>
-<li>line 662: void GaussianMemoryStream::_wait_for_buffer_complete(int buf...</li>
-<li>line 728: bool GaussianMemoryStream::_wait_for_upload_fence_value(uint...</li>
-<li>line 742: RID GaussianMemoryStream::get_current_gpu_buffer() {...</li>
-<li>line 778: void GaussianMemoryStream::swap_buffers() {...</li>
-<li>line 788: void GaussianMemoryStream::compact_memory() {...</li>
-<li>line 808: void GaussianMemoryStream::defragment_if_needed() {...</li>
-<li>line 825: uint32_t GaussianMemoryStream::get_allocated_memory_mb() con...</li>
-<li>line 833: uint32_t GaussianMemoryStream::get_used_memory_mb() const {...</li>
-<li>line 841: float GaussianMemoryStream::get_memory_efficiency() const {...</li>
-<li>line 849: Dictionary GaussianMemoryStream::get_task_debug_state() cons...</li>
-<li>line 863: void GaussianMemoryStream::begin_frame(uint64_t frame_number...</li>
-<li>line 869: void GaussianMemoryStream::end_frame() {...</li>
-<li>line 923: RID GaussianMemoryStream::_allocate_from_pool(RenderingDevic...</li>
-<li>line 948: uint32_t GaussianMemoryStream::MemoryPool::allocate(uint32_t...</li>
-<li>line 984: void GaussianMemoryStream::MemoryPool::deallocate(uint32_t o...</li>
-<li>line 994: void GaussianMemoryStream::MemoryPool::defragment() {...</li>
-<li>line 1001: float GaussianMemoryStream::MemoryPool::get_fragmentation_ra...</li>
-<li>line 1035: void StreamingPipeline::_bind_methods() {...</li>
-<li>line 1050: Error StreamingPipeline::initialize(Ref&lt;GaussianMemoryStream...</li>
-<li>line 1062: void StreamingPipeline::shutdown() {...</li>
-<li>line 1073: void StreamingPipeline::start_streaming() {...</li>
-<li>line 1098: void StreamingPipeline::stop_streaming() {...</li>
-<li>line 1115: void StreamingPipeline::set_lod_level(uint32_t p_lod) {...</li>
-<li>line 1137: void StreamingPipeline::_streaming_thread_func() {...</li>
-<li>line 1180: void StreamingPipeline::_streaming_thread_entry(void *p_user...</li>
-<li>line 1187: void StreamingPipeline::update_visible_range(uint32_t start,...</li>
-<li>line 1208: uint32_t StreamingPipeline::get_current_lod() const {...</li>
-<li>line 1213: Dictionary StreamingPipeline::get_streaming_stats() const {...</li>
-</ul>
 <h2 id="modulesgaussian_splattingrenderergpu_sorting_configcpp">modules/gaussian_splatting/renderer/gpu_sorting_config.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderergpu_sorting_configcpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 8: static void _apply_instance_pipeline_overrides(GPUSortingCon...</li>
@@ -8936,6 +8887,55 @@
 <li>line 281: void PackedSphericalHarmonicsF16::clear() {...</li>
 <li>line 493: bool is_float16_storage_enabled() {...</li>
 <li>line 497: uint32_t get_packed_gaussian_size() {...</li>
+</ul>
+<h2 id="modulesgaussian_splattingrenderergpu_memory_streamcpp">modules/gaussian_splatting/renderer/gpu_memory_stream.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderergpu_memory_streamcpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 24: uint32_t _get_frame_fence_delay(RenderingDevice *p_device) {...</li>
+<li>line 32: void _advance_completed_timeline(std::atomic<uint64_t> &amp;p_ti...</uint64_t></li>
+<li>line 67: void GaussianMemoryStream::set_device_manager(const Ref&lt;Rend...</li>
+<li>line 89: void GaussianMemoryStream::_bind_methods() {...</li>
+<li>line 105: Error GaussianMemoryStream::initialize(RenderingDevice *p_rd...</li>
+<li>line 164: void GaussianMemoryStream::shutdown() {...</li>
+<li>line 183: void GaussianMemoryStream::_create_buffer(StreamBuffer &amp;buff...</li>
+<li>line 244: void GaussianMemoryStream::_destroy_buffer(StreamBuffer &amp;buf...</li>
+<li>line 284: int GaussianMemoryStream::_get_next_write_buffer() {...</li>
+<li>line 344: int GaussianMemoryStream::_get_current_read_buffer() const {...</li>
+<li>line 467: void GaussianMemoryStream::_upload_buffer_async(int buffer_i...</li>
+<li>line 505: void GaussianMemoryStream::_upload_buffer_coalesced(int buff...</li>
+<li>line 579: void GaussianMemoryStream::_validate_and_copy_gaussians(cons...</li>
+<li>line 609: float GaussianMemoryStream::_measure_transfer_bandwidth(uint...</li>
+<li>line 624: void GaussianMemoryStream::_update_bandwidth_stats(int buffe...</li>
+<li>line 641: void GaussianMemoryStream::wait_for_all_uploads() {...</li>
+<li>line 647: bool GaussianMemoryStream::is_upload_complete() const {...</li>
+<li>line 656: void GaussianMemoryStream::_poll_uploads() {...</li>
+<li>line 662: void GaussianMemoryStream::_wait_for_buffer_complete(int buf...</li>
+<li>line 728: bool GaussianMemoryStream::_wait_for_upload_fence_value(uint...</li>
+<li>line 742: RID GaussianMemoryStream::get_current_gpu_buffer() {...</li>
+<li>line 786: void GaussianMemoryStream::swap_buffers() {...</li>
+<li>line 799: void GaussianMemoryStream::compact_memory() {...</li>
+<li>line 819: void GaussianMemoryStream::defragment_if_needed() {...</li>
+<li>line 836: uint32_t GaussianMemoryStream::get_allocated_memory_mb() con...</li>
+<li>line 844: uint32_t GaussianMemoryStream::get_used_memory_mb() const {...</li>
+<li>line 852: float GaussianMemoryStream::get_memory_efficiency() const {...</li>
+<li>line 860: Dictionary GaussianMemoryStream::get_task_debug_state() cons...</li>
+<li>line 874: void GaussianMemoryStream::begin_frame(uint64_t frame_number...</li>
+<li>line 880: void GaussianMemoryStream::end_frame() {...</li>
+<li>line 934: RID GaussianMemoryStream::_allocate_from_pool(RenderingDevic...</li>
+<li>line 959: uint32_t GaussianMemoryStream::MemoryPool::allocate(uint32_t...</li>
+<li>line 995: void GaussianMemoryStream::MemoryPool::deallocate(uint32_t o...</li>
+<li>line 1005: void GaussianMemoryStream::MemoryPool::defragment() {...</li>
+<li>line 1012: float GaussianMemoryStream::MemoryPool::get_fragmentation_ra...</li>
+<li>line 1046: void StreamingPipeline::_bind_methods() {...</li>
+<li>line 1061: Error StreamingPipeline::initialize(Ref&lt;GaussianMemoryStream...</li>
+<li>line 1073: void StreamingPipeline::shutdown() {...</li>
+<li>line 1084: void StreamingPipeline::start_streaming() {...</li>
+<li>line 1109: void StreamingPipeline::stop_streaming() {...</li>
+<li>line 1126: void StreamingPipeline::set_lod_level(uint32_t p_lod) {...</li>
+<li>line 1148: void StreamingPipeline::_streaming_thread_func() {...</li>
+<li>line 1191: void StreamingPipeline::_streaming_thread_entry(void *p_user...</li>
+<li>line 1198: void StreamingPipeline::update_visible_range(uint32_t start,...</li>
+<li>line 1219: uint32_t StreamingPipeline::get_current_lod() const {...</li>
+<li>line 1224: Dictionary StreamingPipeline::get_streaming_stats() const {...</li>
 </ul>
 <h2 id="modulesgaussian_splattingioply_loadercpp">modules/gaussian_splatting/io/ply_loader.cpp<a class="headerlink" href="#modulesgaussian_splattingioply_loadercpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -9779,18 +9779,18 @@
 </ul>
 <h2 id="modulesgaussian_splattingrenderergpu_memory_streamh">modules/gaussian_splatting/renderer/gpu_memory_stream.h<a class="headerlink" href="#modulesgaussian_splattingrenderergpu_memory_streamh" title="Permanent link">¶</a></h2>
 <ul>
-<li>line 205: StreamingStats get_stats() const { return stats; }...</li>
-<li>line 206: void reset_stats() { stats = StreamingStats(); }...</li>
-<li>line 213: void set_max_gaussians(uint32_t count) { max_gaussians = cou...</li>
-<li>line 214: uint32_t get_max_gaussians() const { return max_gaussians; }...</li>
-<li>line 215: void set_async_upload(bool enabled) { enable_async_upload = ...</li>
-<li>line 216: bool get_async_upload() const { return enable_async_upload; ...</li>
-<li>line 217: void set_sh_coefficient_limit(uint32_t limit) {...</li>
-<li>line 220: uint32_t get_sh_coefficient_limit() const { return sh_coeffi...</li>
-<li>line 288: void set_prefetch_distance(uint32_t distance) { prefetch.pre...</li>
-<li>line 291: void compact_memory() { if (memory_stream.is_valid()) memory...</li>
-<li>line 292: void force_defragment() { if (memory_stream.is_valid()) memo...</li>
-<li>line 295: RID get_current_buffer() { return memory_stream.is_valid() ?...</li>
+<li>line 206: StreamingStats get_stats() const { return stats; }...</li>
+<li>line 207: void reset_stats() { stats = StreamingStats(); }...</li>
+<li>line 214: void set_max_gaussians(uint32_t count) { max_gaussians = cou...</li>
+<li>line 215: uint32_t get_max_gaussians() const { return max_gaussians; }...</li>
+<li>line 216: void set_async_upload(bool enabled) { enable_async_upload = ...</li>
+<li>line 217: bool get_async_upload() const { return enable_async_upload; ...</li>
+<li>line 218: void set_sh_coefficient_limit(uint32_t limit) {...</li>
+<li>line 221: uint32_t get_sh_coefficient_limit() const { return sh_coeffi...</li>
+<li>line 289: void set_prefetch_distance(uint32_t distance) { prefetch.pre...</li>
+<li>line 292: void compact_memory() { if (memory_stream.is_valid()) memory...</li>
+<li>line 293: void force_defragment() { if (memory_stream.is_valid()) memo...</li>
+<li>line 296: RID get_current_buffer() { return memory_stream.is_valid() ?...</li>
 </ul>
 <h2 id="modulesgaussian_splattingteststest_phase1_integrationh">modules/gaussian_splatting/tests/test_phase1_integration.h<a class="headerlink" href="#modulesgaussian_splattingteststest_phase1_integrationh" title="Permanent link">¶</a></h2>
 <ul>
@@ -10241,7 +10241,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 3, 2026 08:27:35 UTC">April 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 4, 2026 13:33:01 UTC">April 4, 2026</span>
   </span>
 
     
