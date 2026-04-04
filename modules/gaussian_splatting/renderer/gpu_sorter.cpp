@@ -789,9 +789,14 @@ Error BitonicSort::sort(RID keys_buffer, RID values_buffer, uint32_t count) {
 
     // Begin compute list
     ComputeListID compute_list = compute_rd->compute_list_begin();
+    if (compute_list == RD::INVALID_ID) {
+        WARN_PRINT_ONCE("[BitonicSort] Failed to begin compute list; sort skipped.");
+        is_sorting = false;
+        return ERR_CANT_CREATE;
+    }
     compute_rd->compute_list_bind_compute_pipeline(compute_list, bitonic_pipeline);
     compute_rd->compute_list_bind_uniform_set(compute_list, uniform_set, 0);
-    
+
     // Bitonic sort stages
     uint32_t num_stages = 0;
     uint32_t temp = padded_count;
@@ -1345,7 +1350,8 @@ uint64_t RadixSort::_sort_async_internal(RID keys_buffer, RID values_buffer, uin
         return 0;
     }
 
-    auto record_commands = [this, variant, pass_uniform_sets, num_passes, workgroups](RenderingDevice *command_rd, ComputeListID compute_list) {
+    // Returns true on success, false if the even-pass invariant is violated.
+    auto record_commands = [this, variant, pass_uniform_sets, num_passes, workgroups](RenderingDevice *command_rd, ComputeListID compute_list) -> bool {
 	    for (uint32_t pass = 0; pass < num_passes; ++pass) {
 	        bool use_primary = (pass & 1) == 0;
             RID histogram_set = use_primary ? pass_uniform_sets.histogram_even : pass_uniform_sets.histogram_odd;
@@ -1399,16 +1405,36 @@ uint64_t RadixSort::_sort_async_internal(RID keys_buffer, RID values_buffer, uin
             }
         }
 
-        ERR_FAIL_COND_MSG((num_passes & 1) != 0,
-                "RadixSort::sort_async assumes an even number of passes so results stay in the source buffer.");
+        if ((num_passes & 1) != 0) {
+            WARN_PRINT_ONCE("[RadixSort] Odd number of passes detected; sort results may be in the wrong buffer. Sort skipped.");
+            return false;
+        }
+        return true;
     };
 
     uint64_t submit_start = OS::get_singleton()->get_ticks_usec();
 
     ScopedGpuMarkerEx sort_marker(compute_rd, "GS_RadixSort", PassColors::SORTING);
     ComputeListID compute_list = compute_rd->compute_list_begin();
-    record_commands(compute_rd, compute_list);
+    if (compute_list == RD::INVALID_ID) {
+        WARN_PRINT_ONCE("[RadixSort] Failed to begin compute list for sort_async; sort skipped.");
+        _free_uniform_sets_safe(uniform_owner, uniform_owner_generation, resource_rd, uniform_sets);
+        uniform_owner = nullptr;
+        uniform_owner_generation = 0;
+        is_sorting = false;
+        return 0;
+    }
+    bool commands_ok = record_commands(compute_rd, compute_list);
     compute_rd->compute_list_end();
+    if (!commands_ok) {
+        // Command recording failed (odd-pass invariant violated). The compute
+        // list was already ended above; skip submission to avoid broken GPU work.
+        _free_uniform_sets_safe(uniform_owner, uniform_owner_generation, resource_rd, uniform_sets);
+        uniform_owner = nullptr;
+        uniform_owner_generation = 0;
+        is_sorting = false;
+        return 0;
+    }
     gs_device_utils::safe_submit(compute_rd);
 
     current_sort_value = ++timeline_value;
@@ -2451,8 +2477,9 @@ uint64_t RadixSort::_sort_indirect_internal(RID keys_buffer, RID values_buffer, 
         }
     }
 
+    // Returns true on success, false if the even-pass invariant is violated.
     auto record_commands = [this, variant, pass_uniform_sets, num_passes, workgroups,
-            use_indirect_dispatch, dispatch_args_buffer](RenderingDevice *command_rd, ComputeListID compute_list) {
+            use_indirect_dispatch, dispatch_args_buffer](RenderingDevice *command_rd, ComputeListID compute_list) -> bool {
         for (uint32_t pass = 0; pass < num_passes; ++pass) {
             bool use_primary = (pass & 1) == 0;
             RID histogram_set = use_primary ? pass_uniform_sets.histogram_even : pass_uniform_sets.histogram_odd;
@@ -2509,16 +2536,36 @@ uint64_t RadixSort::_sort_indirect_internal(RID keys_buffer, RID values_buffer, 
             }
         }
 
-        ERR_FAIL_COND_MSG((num_passes & 1) != 0,
-                "RadixSort assumes an even number of passes so results stay in the source buffer.");
+        if ((num_passes & 1) != 0) {
+            WARN_PRINT_ONCE("[RadixSort] Odd number of passes detected in sort_indirect; sort results may be in the wrong buffer. Sort skipped.");
+            return false;
+        }
+        return true;
     };
 
     uint64_t submit_start = OS::get_singleton()->get_ticks_usec();
 
     ScopedGpuMarkerEx sort_marker(compute_rd, "GS_RadixSort64", PassColors::SORTING);
     ComputeListID compute_list = compute_rd->compute_list_begin();
-    record_commands(compute_rd, compute_list);
+    if (compute_list == RD::INVALID_ID) {
+        WARN_PRINT_ONCE("[RadixSort] Failed to begin compute list for sort_indirect; sort skipped.");
+        _free_uniform_sets_safe(uniform_owner, uniform_owner_generation, resource_rd, uniform_sets);
+        uniform_owner = nullptr;
+        uniform_owner_generation = 0;
+        is_sorting = false;
+        return 0;
+    }
+    bool commands_ok = record_commands(compute_rd, compute_list);
     compute_rd->compute_list_end();
+    if (!commands_ok) {
+        // Command recording failed (odd-pass invariant violated). The compute
+        // list was already ended above; skip submission to avoid broken GPU work.
+        _free_uniform_sets_safe(uniform_owner, uniform_owner_generation, resource_rd, uniform_sets);
+        uniform_owner = nullptr;
+        uniform_owner_generation = 0;
+        is_sorting = false;
+        return 0;
+    }
     // PERF: Use safe_submit without sync - GPU barriers ensure correct ordering.
     // Blocking sync here was causing 15 FPS cap.
     gs_device_utils::safe_submit(compute_rd);
@@ -3134,6 +3181,11 @@ Error OneSweepSort::sort(RID keys_buffer, RID values_buffer, uint32_t count) {
         }
 
         ComputeListID compute_list = compute_rd->compute_list_begin();
+        if (compute_list == RD::INVALID_ID) {
+            WARN_PRINT_ONCE("[OneSweepSort] Failed to begin compute list; sort skipped.");
+            is_sorting = false;
+            return ERR_CANT_CREATE;
+        }
 
         // Phase 1: Global histogram
         compute_rd->compute_list_bind_compute_pipeline(compute_list, global_histogram_pipeline);
