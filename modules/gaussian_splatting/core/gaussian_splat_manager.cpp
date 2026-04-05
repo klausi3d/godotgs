@@ -279,7 +279,7 @@ GaussianSplatManager::GaussianSplatManager() {
     sorting_hybrid_batch = _get_uint_setting(ps, "rendering/gaussian_splatting/sorting/hybrid_batch_size", sorting_hybrid_batch);
     sorting_history_size = _get_uint_setting(ps, "rendering/gaussian_splatting/sorting/history_size", sorting_history_size);
     sorting_log_interval = _get_uint_setting(ps, "rendering/gaussian_splatting/sorting/log_interval_frames", sorting_log_interval);
-    sorting_target_ms = MAX(0.0f, _get_float_setting(ps, "rendering/gaussian_splatting/sorting/target_sort_time_ms", sorting_target_ms));
+    sorting_target_ms = MAX(0.0f, gs::sorting_settings::get_target_sort_time_ms(ps, sorting_target_ms));
     sorting_log_metrics = _get_bool_setting(ps, "rendering/gaussian_splatting/sorting/log_metrics", sorting_log_metrics);
     sorting_force_algorithm = CLAMP(_get_int_setting(ps, "rendering/gaussian_splatting/sorting/force_algorithm", sorting_force_algorithm), 0, 3);
     sorting_force_cpu_sort = _get_bool_setting(ps, "rendering/gaussian_splatting/sorting/force_cpu_sort", sorting_force_cpu_sort);
@@ -1141,7 +1141,8 @@ void GaussianSplatManager::initialize_module() {
     // default, but preserve preloaded project-file precedence so explicit
     // canonical values that match the builtin default do not lose to the
     // deprecated legacy alias on the full startup path.
-    gs::sorting_settings::register_canonical_target_sort_time_setting(ps, 2.0f);
+	gs::sorting_settings::register_canonical_target_sort_time_setting(ps, 2.0f, true);
+	sorting_target_ms = MAX(0.0f, gs::sorting_settings::get_target_sort_time_ms(ps, sorting_target_ms));
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/log_metrics", sorting_log_metrics);
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/force_algorithm", 0);
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/force_cpu_sort", false);
