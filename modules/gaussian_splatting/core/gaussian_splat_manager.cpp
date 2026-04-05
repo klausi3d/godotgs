@@ -1141,7 +1141,7 @@ void GaussianSplatManager::initialize_module() {
     // default, but preserve preloaded project-file precedence so explicit
     // canonical values that match the builtin default do not lose to the
     // deprecated legacy alias on the full startup path.
-	gs::sorting_settings::register_canonical_target_sort_time_setting(ps, 2.0f, true);
+	gs::sorting_settings::register_canonical_target_sort_time_setting(ps, 2.0f);
 	sorting_target_ms = MAX(0.0f, gs::sorting_settings::get_target_sort_time_ms(ps, sorting_target_ms));
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/log_metrics", sorting_log_metrics);
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/force_algorithm", 0);

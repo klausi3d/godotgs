@@ -158,6 +158,22 @@ TEST_CASE("[GaussianSplatting][Config] Sorting target_sort_time_ms follows the c
 		CHECK(manager_target_sort_time_ms == doctest::Approx(4.0f));
 	}
 
+	SUBCASE("Runtime canonical default write overrides the legacy alias immediately") {
+		project_settings->clear(canonical_path);
+		project_settings->set_setting(legacy_path, 1.25f);
+		initialize_gpu_sorting_config();
+		project_settings->set_setting(canonical_path, 2.0f);
+		const float manager_target_sort_time_ms = _reload_manager_sorting_target_ms();
+		project_settings->emit_signal("settings_changed");
+
+		g_gpu_sorting_config.load_from_project_settings();
+		const SortingStrategyConfig strategy_config = SortingStrategyConfig::load_from_project_settings();
+
+		CHECK(g_gpu_sorting_config.target_sort_time_ms == doctest::Approx(2.0f));
+		CHECK(strategy_config.target_sort_time_ms == doctest::Approx(2.0f));
+		CHECK(manager_target_sort_time_ms == doctest::Approx(2.0f));
+	}
+
 	SUBCASE("Runtime canonical edits back to the default still override the legacy alias") {
 		project_settings->clear(canonical_path);
 		project_settings->set_setting(legacy_path, 1.25f);
