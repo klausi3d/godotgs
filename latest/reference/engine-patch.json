@@ -28,6 +28,19 @@
     },
     {
       "deletion_commit": null,
+      "display_path": "core/config/project_settings.cpp",
+      "last_touch_commit": "e79de592c1d1dc6a883899f96638b1d98e2b6fd0",
+      "lines_added": 10,
+      "lines_deleted": 5,
+      "new_path": "core/config/project_settings.cpp",
+      "old_path": "core/config/project_settings.cpp",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": "core",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
       "display_path": "drivers/gles3/rasterizer_gles3.h",
       "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
       "lines_added": 5,
@@ -445,9 +458,9 @@
   ],
   "engine_source_summary": {
     "deleted": 0,
-    "modified": 34,
+    "modified": 35,
     "renamed": 0,
-    "total_files": 34
+    "total_files": 35
   },
   "entries": [
     {
@@ -835,6 +848,19 @@
       "lines_deleted": 5,
       "new_path": "core/config/engine.h",
       "old_path": "core/config/engine.h",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": "core",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
+      "display_path": "core/config/project_settings.cpp",
+      "last_touch_commit": "e79de592c1d1dc6a883899f96638b1d98e2b6fd0",
+      "lines_added": 10,
+      "lines_deleted": 5,
+      "new_path": "core/config/project_settings.cpp",
+      "old_path": "core/config/project_settings.cpp",
       "pre_deletion_commit": null,
       "status": "M",
       "subsystem": "core",
@@ -2248,7 +2274,7 @@
       ]
     },
     "fork_base_commit": "876b290332ec6f2e6d173d08162a02aa7e6ca46d",
-    "head_commit": "15f61fb8e770b13aeddb3959d055a9f495c34857",
+    "head_commit": "e79de592c1d1dc6a883899f96638b1d98e2b6fd0",
     "head_ref": "HEAD",
     "label": "Godot 4.5 stable fork-point commit",
     "rename_threshold": "70%",
@@ -2288,7 +2314,7 @@
       "name": "README.md"
     },
     {
-      "count": 2,
+      "count": 3,
       "name": "core"
     },
     {
@@ -2354,9 +2380,9 @@
   ],
   "summary": {
     "deleted": 39,
-    "modified": 97,
+    "modified": 98,
     "renamed": 0,
-    "total_files": 136
+    "total_files": 137
   },
   "warnings": []
 }
