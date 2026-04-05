@@ -87,8 +87,13 @@ TEST_CASE("[GaussianSplatting][Config] Sorting target_sort_time_ms follows the c
 
 	const String canonical_path = "rendering/gaussian_splatting/sorting/target_sort_time_ms";
 	const String legacy_path = "rendering/gaussian_splatting/gpu_sorting/target_sort_time_ms";
+	const String preset_path = GPUSortingConfig::GPU_PRESET_PATH;
 	ProjectSettingGuard canonical_guard(project_settings, canonical_path);
 	ProjectSettingGuard legacy_guard(project_settings, legacy_path);
+	ProjectSettingGuard preset_guard(project_settings, preset_path);
+	// Force the manual config path so GPUSortingConfig reads target_sort_time_ms
+	// instead of short-circuiting through the default "high" preset.
+	project_settings->set_setting(preset_path, "custom");
 
 	SUBCASE("Canonical key wins over the legacy alias for both loaders") {
 		project_settings->set_setting(canonical_path, 3.5f);
