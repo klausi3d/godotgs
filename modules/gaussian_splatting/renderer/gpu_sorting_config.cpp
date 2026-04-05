@@ -542,9 +542,19 @@ String GPUSortingConfig::get_current_preset_name() const {
 }
 
 void initialize_gpu_sorting_config() {
+	ProjectSettings *ps = ProjectSettings::get_singleton();
+	const bool had_project_target_override = ps && ps->has_setting(GPUSortingConfig::TARGET_TIME_PATH) &&
+			!ps->is_builtin_setting(GPUSortingConfig::TARGET_TIME_PATH);
+	const int prior_target_order = had_project_target_override ? ps->get_order(GPUSortingConfig::TARGET_TIME_PATH) : -1;
+
 	// Register settings with GLOBAL_DEF so they can be read from project.godot
 	GLOBAL_DEF(GPUSortingConfig::GPU_PRESET_PATH, "high");
 	GLOBAL_DEF(GPUSortingConfig::TARGET_TIME_PATH, 2.0f);
+	if (had_project_target_override) {
+		// Preserve preloaded project-file precedence, including explicit canonical
+		// values that happen to equal the builtin default.
+		ps->set_order(GPUSortingConfig::TARGET_TIME_PATH, prior_target_order);
+	}
 	GLOBAL_DEF(GPUSortingConfig::MAX_ELEMENTS_PATH, 50000000);
     GLOBAL_DEF(GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH, 100000000);
     GLOBAL_DEF(GPUSortingConfig::MAX_RASTER_SPLATS_PER_TILE_PATH, 8192);
