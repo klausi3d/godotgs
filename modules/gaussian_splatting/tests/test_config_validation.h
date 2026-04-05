@@ -106,6 +106,7 @@ TEST_CASE("[GaussianSplatting][Config] Sorting target_sort_time_ms follows the c
 		project_settings->set_setting(canonical_path, 2.0f);
 		project_settings->set_setting(legacy_path, 1.25f);
 		initialize_gpu_sorting_config();
+		GLOBAL_DEF(canonical_path, 2.0f);
 		project_settings->emit_signal("settings_changed");
 
 		g_gpu_sorting_config.load_from_project_settings();
