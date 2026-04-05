@@ -240,10 +240,11 @@ public:
     int reimport_request_count = 0;
     String last_importer_name;
     HashMap<StringName, Variant> last_reimport_params;
+    mutable Vector<String> loaded_import_option_paths;
 
 protected:
     Dictionary _load_import_options_for_path(const String &p_path) const override {
-        (void)p_path;
+        loaded_import_option_paths.push_back(p_path);
         return current_import_options;
     }
 
@@ -1926,6 +1927,8 @@ TEST_CASE("[GaussianSplatting][Editor] Advanced import settings reimport refresh
 
     dialog->open_settings(source_path);
 
+    CHECK(dialog->loaded_import_option_paths.size() == 1);
+    CHECK(dialog->loaded_import_option_paths[0] == source_path);
     CHECK(String(dialog->_test_get_setting_value(StringName("quality/preset"))) == String("desktop"));
     CHECK(int(dialog->_test_get_setting_value(StringName("quality/max_splats"))) == 12345);
     REQUIRE_MESSAGE(dialog->_test_get_loaded_asset().is_valid(), "Import settings dialog should load the initial asset.");
@@ -1945,6 +1948,8 @@ TEST_CASE("[GaussianSplatting][Editor] Advanced import settings reimport refresh
 
     dialog->_test_reimport_now();
 
+    CHECK(dialog->loaded_import_option_paths.size() == 2);
+    CHECK(dialog->loaded_import_option_paths[1] == source_path);
     CHECK(dialog->reimport_request_count == 1);
     CHECK(dialog->last_importer_name == "gaussian_splat_ply");
     REQUIRE_MESSAGE(dialog->last_reimport_params.has(StringName("quality/max_splats")),
@@ -1996,6 +2001,23 @@ TEST_CASE("[GaussianSplatting][Editor] Hot reload fans one watched source path o
     memdelete(node_c);
     memdelete(node_b);
     memdelete(node_a);
+    memdelete(plugin);
+}
+
+TEST_CASE("[GaussianSplatting][Editor] Hot reload prunes stale watches after tracked nodes are freed") {
+    const String source_path = "user://hot_reload_stale_watch_fixture.ply";
+
+    GaussianEditorPlugin *plugin = memnew(GaussianEditorPlugin);
+    GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
+
+    plugin->_test_track_hot_reload_source(source_path, Dictionary(), node->get_instance_id());
+    CHECK(plugin->_test_has_hot_reload_watch(source_path));
+
+    memdelete(node);
+    plugin->_test_run_hot_reload_timer_now();
+
+    CHECK_FALSE(plugin->_test_has_hot_reload_watch(source_path));
+
     memdelete(plugin);
 }
 

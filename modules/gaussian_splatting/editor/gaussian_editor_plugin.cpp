@@ -664,6 +664,9 @@ void GaussianEditorPlugin::_track_hot_reload_source(const String &p_path, const 
 
     HotReloadWatch *existing = hot_reload_watches.getptr(p_path);
     if (existing) {
+        // A reload pass can retrack the same source while applying refreshed data.
+        // Refresh the stored timestamp in place so the current file change is not
+        // processed again on the next poll tick.
         existing->last_modified = _get_file_timestamp(p_path);
         if (!p_options.is_empty()) {
             existing->import_options = p_options;
@@ -717,13 +720,13 @@ void GaussianEditorPlugin::_on_hot_reload_timer_timeout() {
     }
     PackedStringArray stale_paths;
     for (KeyValue<String, HotReloadWatch> &E : hot_reload_watches) {
-        _collect_live_hot_reload_nodes(E.value.node_ids);
+        Vector<GaussianSplatNode3D *> watched_nodes = _collect_live_hot_reload_nodes(E.value.node_ids);
         if (E.value.node_ids.is_empty() && current_source_path != E.key &&
                 (!active_asset.is_valid() || active_asset->get_path() != E.key)) {
             stale_paths.push_back(E.key);
             continue;
         }
-        _process_hot_reload_for_watch(E.key, E.value);
+        _process_hot_reload_for_watch(E.key, E.value, watched_nodes);
     }
     for (int i = 0; i < stale_paths.size(); i++) {
         hot_reload_watches.erase(stale_paths[i]);
@@ -731,7 +734,8 @@ void GaussianEditorPlugin::_on_hot_reload_timer_timeout() {
     _schedule_hot_reload_poll();
 }
 
-void GaussianEditorPlugin::_process_hot_reload_for_watch(const String &p_path, HotReloadWatch &p_watch) {
+void GaussianEditorPlugin::_process_hot_reload_for_watch(const String &p_path, HotReloadWatch &p_watch,
+        const Vector<GaussianSplatNode3D *> &p_watched_nodes) {
     uint64_t current_stamp = _get_file_timestamp(p_path);
     if (current_stamp == 0 || current_stamp <= p_watch.last_modified) {
         return;
@@ -739,8 +743,7 @@ void GaussianEditorPlugin::_process_hot_reload_for_watch(const String &p_path, H
 
     p_watch.last_modified = current_stamp;
 
-    Vector<GaussianSplatNode3D *> watched_nodes = _collect_live_hot_reload_nodes(p_watch.node_ids);
-    GaussianSplatNode3D *target_node = watched_nodes.is_empty() ? nullptr : watched_nodes[0];
+    GaussianSplatNode3D *target_node = p_watched_nodes.is_empty() ? nullptr : p_watched_nodes[0];
 
     GaussianSplatNode3D *previous_node = current_node;
     Ref<GaussianSplatRenderer> previous_renderer = current_renderer;
@@ -772,8 +775,8 @@ void GaussianEditorPlugin::_process_hot_reload_for_watch(const String &p_path, H
     if (source_extension == "ply" || source_extension == "spz") {
         Dictionary options = p_watch.import_options;
         if (options.is_empty()) {
-            for (int i = 0; i < watched_nodes.size(); i++) {
-                Ref<GaussianSplatAsset> target_asset = watched_nodes[i]->get_splat_asset();
+            for (int i = 0; i < p_watched_nodes.size(); i++) {
+                Ref<GaussianSplatAsset> target_asset = p_watched_nodes[i]->get_splat_asset();
                 if (target_asset.is_valid()) {
                     Dictionary asset_metadata = target_asset->get_import_metadata();
                     if (asset_metadata.has(StringName("options"))) {
@@ -811,11 +814,11 @@ void GaussianEditorPlugin::_process_hot_reload_for_watch(const String &p_path, H
     }
 
     Ref<GaussianSplatAsset> refreshed_asset = active_asset;
-    _apply_hot_reload_asset_to_nodes(p_path, watched_nodes, refreshed_asset);
-    if (watched_nodes.is_empty() && current_node) {
+    _apply_hot_reload_asset_to_nodes(p_path, p_watched_nodes, refreshed_asset);
+    if (p_watched_nodes.is_empty() && current_node) {
         current_node->force_update();
     }
-    if (!watched_nodes.is_empty() && (current_source_path == p_path ||
+    if (!p_watched_nodes.is_empty() && (current_source_path == p_path ||
             (active_asset.is_valid() && active_asset->get_path() == p_path))) {
         _refresh_active_asset_metadata(true);
     }
