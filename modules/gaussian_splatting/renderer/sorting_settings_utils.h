@@ -20,8 +20,14 @@ static inline const StringName &legacy_gpu_target_sort_time_path() {
 }
 
 static inline bool has_explicit_target_sort_time_override(ProjectSettings *p_ps) {
-	if (!p_ps || !p_ps->has_setting(String(target_sort_time_path()))) {
+	if (!p_ps) {
 		return false;
+	}
+	if (!p_ps->has_setting(String(target_sort_time_path()))) {
+		return false;
+	}
+	if (!p_ps->is_builtin_setting(String(target_sort_time_path()))) {
+		return true;
 	}
 	if (!p_ps->property_can_revert(target_sort_time_path())) {
 		return true;

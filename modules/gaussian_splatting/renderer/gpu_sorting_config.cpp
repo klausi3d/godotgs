@@ -542,10 +542,10 @@ String GPUSortingConfig::get_current_preset_name() const {
 }
 
 void initialize_gpu_sorting_config() {
-    // Register settings with GLOBAL_DEF so they can be read from project.godot
-    GLOBAL_DEF(GPUSortingConfig::GPU_PRESET_PATH, "high");
-    GLOBAL_DEF(GPUSortingConfig::TARGET_TIME_PATH, 2.0f);
-    GLOBAL_DEF(GPUSortingConfig::MAX_ELEMENTS_PATH, 50000000);
+	// Register settings with GLOBAL_DEF so they can be read from project.godot
+	GLOBAL_DEF(GPUSortingConfig::GPU_PRESET_PATH, "high");
+	GLOBAL_DEF(GPUSortingConfig::TARGET_TIME_PATH, 2.0f);
+	GLOBAL_DEF(GPUSortingConfig::MAX_ELEMENTS_PATH, 50000000);
     GLOBAL_DEF(GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH, 100000000);
     GLOBAL_DEF(GPUSortingConfig::MAX_RASTER_SPLATS_PER_TILE_PATH, 8192);
     GLOBAL_DEF(GPUSortingConfig::RADIX_BITS_PATH, GPUSortingConstants::DEFAULT_RADIX_BITS);
