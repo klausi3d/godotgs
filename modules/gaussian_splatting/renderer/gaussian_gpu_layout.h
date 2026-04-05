@@ -383,8 +383,7 @@ struct alignas(16) TileRenderParamsGPU {
     // x=sh_bands (0-3), y=amortization_divisor, z=amortization_phase, w=force_full_update
     // sh_bands: 0=DC only, 1=1st order, 2=2nd order, 3=3rd order (full)
     float sh_config[4];
-    // SH decode configuration:
-    // x=dc_logit (1.0=decode DC with sigmoid), yzw=reserved
+    // SH decode configuration is reserved; runtime decode now comes from per-gaussian metadata.
     float sh_decode_config[4];
     // Opacity-aware culling (FlashGS): x=enabled (bool), y=visibility_threshold (tau), z=reserved, w=reserved
     // When enabled, splat radii are calculated as: r = sqrt(2 * ln(alpha/tau) * lambda_max)

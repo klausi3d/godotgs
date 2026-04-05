@@ -1205,7 +1205,6 @@ GaussianSplatting::TileRenderParams::TileRenderParams() {
 	direct_light_scale = 0.5f;
 	indirect_sh_scale = 1.0f;
 	shadow_strength = 1.0f;
-	sh_dc_logit = false;
 	shadow_receiver_bias_scale = 0.2f;
 	shadow_receiver_bias_min = 0.0f;
 	shadow_receiver_bias_max = 0.0f;
@@ -1803,9 +1802,6 @@ Vector<String> TileRenderer::_build_common_shader_defines(bool p_include_dispatc
 	}
 	if (g_quantization_config.per_chunk_quantization) {
 		defines.push_back("#define USE_QUANTIZED_GAUSSIANS 1\n");
-	}
-	if (g_sh_config.dc_is_logit) {
-		defines.push_back("#define GS_DC_LOGIT 1\n");
 	}
 	RendererRD::LightStorage *light_storage = RendererRD::LightStorage::get_singleton();
 	uint32_t max_directional_lights = light_storage ? light_storage->get_max_directional_lights() : 1u;
