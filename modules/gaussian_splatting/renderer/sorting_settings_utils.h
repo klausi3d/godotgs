@@ -1,6 +1,7 @@
 #ifndef GS_SORTING_SETTINGS_UTILS_H
 #define GS_SORTING_SETTINGS_UTILS_H
 
+#include "core/config/project_settings.h"
 #include "../core/gs_project_settings.h"
 
 #include "core/error/error_macros.h"
@@ -33,6 +34,16 @@ static inline bool has_explicit_target_sort_time_override(ProjectSettings *p_ps)
 		return true;
 	}
 	return p_ps->get_setting_with_override(target_sort_time_path()) != p_ps->property_get_revert(target_sort_time_path());
+}
+
+static inline void register_canonical_target_sort_time_setting(ProjectSettings *p_ps, float p_default_value) {
+	const bool had_project_target_override = p_ps && p_ps->has_setting(String(target_sort_time_path())) &&
+			!p_ps->is_builtin_setting(String(target_sort_time_path()));
+	const int prior_target_order = had_project_target_override ? p_ps->get_order(target_sort_time_path()) : -1;
+	GLOBAL_DEF(String(target_sort_time_path()), p_default_value);
+	if (had_project_target_override) {
+		p_ps->set_order(target_sort_time_path(), prior_target_order);
+	}
 }
 
 static inline float get_target_sort_time_ms(ProjectSettings *p_ps, float p_fallback) {

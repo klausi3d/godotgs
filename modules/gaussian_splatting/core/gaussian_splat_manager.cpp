@@ -8,6 +8,7 @@
 #include "gaussian_data.h"
 #include "gs_project_settings.h"
 #include "quality_tier_config.h"
+#include "../renderer/sorting_settings_utils.h"
 #include "../nodes/gaussian_splat_node_3d.h"
 #include "../logger/gs_logger.h"
 #include "../interfaces/sync_policy.h"
@@ -969,6 +970,7 @@ Dictionary GaussianSplatManager::get_sorting_config() const {
 }
 
 void GaussianSplatManager::initialize_module() {
+	ProjectSettings *ps = ProjectSettings::get_singleton();
 	// Register project settings
 	GLOBAL_DEF("rendering/gaussian_splatting/gpu_sorting_enabled", true);
 	GLOBAL_DEF("rendering/gaussian_splatting/shared_submission_device_enabled", false);
@@ -1135,18 +1137,11 @@ void GaussianSplatManager::initialize_module() {
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/hybrid_batch_size", (int)sorting_hybrid_batch);
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/history_size", (int)sorting_history_size);
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/log_interval_frames", (int)sorting_log_interval);
-    const String target_sort_time_path = "rendering/gaussian_splatting/sorting/target_sort_time_ms";
-    const bool had_project_target_override = ps && ps->has_setting(target_sort_time_path) &&
-            !ps->is_builtin_setting(target_sort_time_path);
-    const int prior_target_order = had_project_target_override ? ps->get_order(target_sort_time_path) : -1;
     // Keep the canonical sort-time setting registered against its stable code
     // default, but preserve preloaded project-file precedence so explicit
     // canonical values that match the builtin default do not lose to the
     // deprecated legacy alias on the full startup path.
-    GLOBAL_DEF(target_sort_time_path, 2.0f);
-    if (had_project_target_override) {
-        ps->set_order(target_sort_time_path, prior_target_order);
-    }
+    gs::sorting_settings::register_canonical_target_sort_time_setting(ps, 2.0f);
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/log_metrics", sorting_log_metrics);
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/force_algorithm", 0);
     GLOBAL_DEF("rendering/gaussian_splatting/sorting/force_cpu_sort", false);
