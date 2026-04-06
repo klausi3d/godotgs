@@ -143,6 +143,23 @@ vec3 reconstruct_view_pos(mat4 inv_proj, vec2 screen_uv, float linear_depth, flo
     return view_far_pos * scale;
 }
 
+// Convert a GS resolve depth sample into scene-view space for lighting/shadow queries.
+vec3 reconstruct_scene_view_pos(vec2 screen_uv, float linear_depth, bool gs_is_ortho) {
+    vec3 view_pos_gs = reconstruct_view_pos(params.inv_projection_matrix, screen_uv, linear_depth, params.near_plane, params.far_plane, gs_is_ortho);
+    vec4 world_pos = params.inv_view_matrix * vec4(view_pos_gs, 1.0);
+    return (scene_data_block.data.view_matrix * world_pos).xyz;
+}
+
+// Resolve-mode directional shadows do not have a per-splat radius, so they use the
+// configured fixed receiver-bias floor only.
+float resolve_shadow_receiver_bias() {
+    float receiver_bias = params.shadow_bias_config.y;
+    if (params.shadow_bias_config.z > 0.0) {
+        receiver_bias = min(receiver_bias, params.shadow_bias_config.z);
+    }
+    return receiver_bias;
+}
+
 // Overlay tile boundaries when tile debug visualization is enabled.
 vec4 apply_tile_debug_overlay(vec4 color, ivec2 coord) {
     if (resolve_params.debug_visualize_tiles == 0) {
@@ -181,16 +198,17 @@ void main() {
     // Shadow debug overlay (debug_overlay_flags.x == 2).
     // Shows shadow factor per light type: R=dir shadow, G=omni shadow, B=spot shadow
     // Bright = lit (shadow=1), Dark = shadowed (shadow=0)
-    if (params.debug_overlay_flags.x > 1.5 && lighting_depth < 1.0 && color.a > 0.001) {
+    if (params.debug_overlay_flags.x > 1.5 && depth < 1.0 && color.a > 0.001) {
         bool gs_is_ortho = abs(params.projection_matrix[2][3]) < 0.5;
-        vec3 view_pos_gs = reconstruct_view_pos(params.inv_projection_matrix, uv, lighting_depth, params.near_plane, params.far_plane, gs_is_ortho);
-        vec3 view_pos = (scene_data_block.data.view_matrix * params.inv_view_matrix * vec4(view_pos_gs, 1.0)).xyz;
+        vec3 shadow_view_pos = reconstruct_scene_view_pos(uv, depth, gs_is_ortho);
+        vec3 view_pos = reconstruct_scene_view_pos(uv, lighting_depth, gs_is_ortho);
 
         vec3 normal = normal_sample.rgb;
         if (length(normal) < 0.001) {
             normal = vec3(0.0, 0.0, 1.0);
         }
         normal = normalize(normal);
+        float receiver_bias = resolve_shadow_receiver_bias();
 
         uint dir_count = min(scene_data_block.data.directional_light_count, uint(MAX_DIRECTIONAL_LIGHT_DATA_STRUCTS));
         uint omni_count = params.light_counts.x;
@@ -205,8 +223,7 @@ void main() {
         for (uint i = 0u; i < dir_count; ++i) {
             if (directional_lights.data[i].shadow_opacity > 0.001) {
                 has_dir = true;
-                float receiver_bias = params.shadow_bias_config.x;
-                float s = gs_directional_shadow(i, view_pos, normal, scene_data_block.data.taa_frame_count, receiver_bias);
+                float s = gs_directional_shadow(i, shadow_view_pos, normal, scene_data_block.data.taa_frame_count, receiver_bias);
                 dir_shadow = min(dir_shadow, s);
             }
         }
@@ -265,13 +282,11 @@ void main() {
     float sh_occlusion = 0.0;
 
     // Apply lighting to pixels with valid depth and non-zero alpha
-    if (params.lighting_config.z > 0.5 && resolve_direct && lighting_depth < 1.0 && color.a > 0.001) {
+    if (params.lighting_config.z > 0.5 && resolve_direct && depth < 1.0 && color.a > 0.001) {
         bool gs_is_ortho = abs(params.projection_matrix[2][3]) < 0.5;
         bool scene_is_ortho = abs(scene_data_block.data.projection_matrix[2][3]) < 0.5;
-        vec3 view_pos_gs = reconstruct_view_pos(params.inv_projection_matrix, uv, lighting_depth, params.near_plane, params.far_plane, gs_is_ortho);
-        // Convert GS view-space position to scene view-space so light positions match.
-        vec4 world_pos = params.inv_view_matrix * vec4(view_pos_gs, 1.0);
-        vec3 view_pos = (scene_data_block.data.view_matrix * world_pos).xyz;
+        vec3 shadow_view_pos = reconstruct_scene_view_pos(uv, depth, gs_is_ortho);
+        vec3 view_pos = reconstruct_scene_view_pos(uv, lighting_depth, gs_is_ortho);
 
         // DEBUG: Shadow opacity visualization (F7 + F9 together)
         // SOLID MAGENTA = debug triggered, then encode shadow_opacity
@@ -299,6 +314,7 @@ void main() {
         if (params.debug_overlay_flags.z > 0.5) {
             vec3 view_pos_scene = reconstruct_view_pos(scene_data_block.data.inv_projection_matrix, uv, lighting_depth,
                     params.near_plane, params.far_plane, scene_is_ortho);
+            vec3 view_pos_gs = reconstruct_view_pos(params.inv_projection_matrix, uv, lighting_depth, params.near_plane, params.far_plane, gs_is_ortho);
             float diff = abs(view_pos_gs.z - view_pos_scene.z);
             float range = max(params.far_plane - params.near_plane, 0.01);
             float t = clamp(diff / range, 0.0, 1.0);
@@ -308,9 +324,14 @@ void main() {
             return;
         }
         vec3 view_dir = normalize(-view_pos);
+        vec3 shadow_view_dir = normalize(-shadow_view_pos);
         vec3 normal = view_dir;
         if (dot(normal_sample.rgb, normal_sample.rgb) > 1e-6) {
             normal = normalize(normal_sample.rgb);
+        }
+        vec3 shadow_normal = normal;
+        if (dot(shadow_normal, shadow_normal) <= 1e-6) {
+            shadow_normal = shadow_view_dir;
         }
 
         hvec3 h_normal_base = hvec3(normal);
@@ -329,13 +350,10 @@ void main() {
         hvec3 specular_light = hvec3(0.0);
         half alpha = half(color.a);
         hvec3 energy_compensation = hvec3(1.0);
-        float receiver_bias = params.shadow_bias_config.y;
-        if (params.shadow_bias_config.z > 0.0) {
-            receiver_bias = min(receiver_bias, params.shadow_bias_config.z);
-        }
+        float receiver_bias = resolve_shadow_receiver_bias();
 
         uint light_mask = params.light_counts.w;
-        gs_accumulate_directional_lights(view_pos, normal, receiver_bias, shadow_sampling_enabled,
+        gs_accumulate_directional_lights(shadow_view_pos, shadow_normal, receiver_bias, shadow_sampling_enabled,
                 light_mask, h_normal_base, h_view, h_albedo, roughness, metallic, f0, alpha, uv,
                 energy_compensation, diffuse_light, specular_light, sh_occlusion);
 
