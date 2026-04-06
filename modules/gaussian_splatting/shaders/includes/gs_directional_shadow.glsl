@@ -51,6 +51,14 @@ float gs_directional_shadow(uint idx, vec3 vertex, vec3 geo_normal, float taa_fr
 
     pssm_coord /= pssm_coord.w;
 
+    // Guard: if the shadow coordinate falls outside the valid [0,1] depth range
+    // (e.g. vertex is beyond the cascade far plane), treat as unshadowed.
+    // Per-splat evaluation makes out-of-range artefacts far more visible than
+    // per-pixel mesh rendering, so this explicit check is necessary.
+    if (pssm_coord.z < 0.0 || pssm_coord.z > 1.0) {
+        return 1.0;
+    }
+
     float shadow = sample_directional_pcf_shadow(
             directional_shadow_atlas,
             scene_data_block.data.directional_shadow_pixel_size * directional_lights.data[idx].soft_shadow_scale *
