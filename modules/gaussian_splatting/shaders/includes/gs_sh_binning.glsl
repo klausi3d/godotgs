@@ -33,6 +33,10 @@ uint gaussian_get_sh_encoding(uint meta) {
     return (meta & SH_METADATA_ENCODING_MASK) >> 24u;
 }
 
+bool gaussian_get_dc_is_linear_rgb(uint meta) {
+    return (meta & SH_METADATA_DC_ENCODING_MASK) != 0u;
+}
+
 // Decode one RGB9E5-packed SH coefficient triplet to linear RGB.
 vec3 decode_rgb9e5(uint packed) {
     uint exponent = (packed >> 27u) & 0x1Fu;
