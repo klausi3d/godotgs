@@ -1742,7 +1742,10 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 	render_params.shadow_receiver_bias_max = MAX(0.0f, shadow_receiver_bias_max);
 	render_params.enable_direct_lighting = true;
 	render_params.normal_mode = 0;
-	render_params.direct_lighting_mode = 1;
+	// Use resolve-mode lighting so directional shadows are evaluated per pixel.
+	// Per-splat directional shadowing causes whole splats to step across PSSM
+	// cascade seams as the camera moves.
+	render_params.direct_lighting_mode = 0;
 	render_params.wind_enabled = wind_enabled;
 	render_params.wind_direction = wind_direction;
 	render_params.wind_strength = MAX(0.0f, wind_strength);
