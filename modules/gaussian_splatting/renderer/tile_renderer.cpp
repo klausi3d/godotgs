@@ -9,6 +9,7 @@
 #include "core/object/callable_method_pointer.h"
 #include "core/config/project_settings.h"
 #include "servers/rendering/rendering_device.h"
+#include "servers/rendering/renderer_rd/renderer_scene_render_rd.h"
 #include "servers/rendering/renderer_rd/storage_rd/light_storage.h"
 #include "core/templates/hash_map.h"
 #include "core/templates/hashfuncs.h"
@@ -1193,6 +1194,7 @@ GaussianSplatting::TileRenderParams::TileRenderParams() {
 	directional_light_buffer = RID();
 	cluster_buffer = RID();
 	shadow_atlas = RID();
+	radiance_texture = RID();
 	total_gaussians = 0;
 	frame_serial = 0;
 	omni_light_count = 0;
@@ -1823,6 +1825,13 @@ Vector<String> TileRenderer::_build_common_shader_defines(bool p_include_dispatc
 	uint32_t max_directional_lights = light_storage ? light_storage->get_max_directional_lights() : 1u;
 	if (max_directional_lights == 0u) {
 		max_directional_lights = 1u;
+	}
+	RendererSceneRenderRD *scene_render = RendererSceneRenderRD::get_singleton();
+	int roughness_layers = scene_render ? scene_render->get_roughness_layers() : 1;
+	roughness_layers = MAX(roughness_layers, 1);
+	defines.push_back(vformat("#define MAX_ROUGHNESS_LOD %d.0\n", roughness_layers - 1));
+	if (scene_render && scene_render->is_using_radiance_cubemap_array()) {
+		defines.push_back("#define USE_RADIANCE_CUBEMAP_ARRAY\n");
 	}
 	defines.push_back(vformat("#define MAX_DIRECTIONAL_LIGHT_DATA_STRUCTS %d\n", max_directional_lights));
 	defines.push_back(vformat("#define GS_MAX_OMNI_LIGHTS %d\n", uint32_t(MAX_OMNI_LIGHTS)));

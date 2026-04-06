@@ -291,6 +291,7 @@ struct TileRenderParams {
 	RID directional_light_buffer;
 	RID cluster_buffer;
 	RID shadow_atlas;
+	RID radiance_texture;
 	uint32_t total_gaussians = 0;
 	uint32_t splat_count = 0;
 	// Maximum visible splats the GPU instance pipeline can produce.

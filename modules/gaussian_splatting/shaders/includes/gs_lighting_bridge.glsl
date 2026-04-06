@@ -121,6 +121,11 @@ layout(set = 2, binding = 10) uniform sampler shadow_sampler;
 layout(set = 2, binding = 11) uniform texture2D shadow_atlas;
 layout(set = 2, binding = 12) uniform texture2D directional_shadow_atlas;
 layout(set = 2, binding = 13) uniform sampler SAMPLER_LINEAR_CLAMP;
+#ifdef USE_RADIANCE_CUBEMAP_ARRAY
+layout(set = 2, binding = 14) uniform textureCubeArray radiance_cubemap;
+#else
+layout(set = 2, binding = 14) uniform textureCube radiance_cubemap;
+#endif
 
 #include "../../../../servers/rendering/renderer_rd/shaders/scene_forward_lights_inc.glsl"
 

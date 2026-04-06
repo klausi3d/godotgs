@@ -20,6 +20,7 @@
 #include "core/math/math_funcs.h"
 #include "core/object/callable_method_pointer.h"
 #include "servers/rendering/rendering_device.h"
+#include "servers/rendering/renderer_rd/renderer_scene_render_rd.h"
 #include "core/templates/hash_map.h"
 #include "servers/rendering/renderer_rd/storage_rd/light_storage.h"
 #include "servers/rendering/renderer_rd/storage_rd/texture_storage.h"
@@ -814,20 +815,28 @@ RID TileRenderer::TileResolveStage::create_lighting_uniform_set(RenderingDevice 
         cluster_buffer = fallback_cluster_buffer;
     }
 
-    RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
-    RID decal_texture;
-    RID reflection_texture;
-    RID shadow_atlas_texture;
-    RID directional_shadow_texture;
-    RID default_depth_texture;
-    if (texture_storage) {
-        decal_texture = texture_storage->decal_atlas_get_texture_srgb();
-        if (!decal_texture.is_valid()) {
-            decal_texture = texture_storage->texture_rd_get_default(RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_BLACK);
-        }
-        reflection_texture = texture_storage->texture_rd_get_default(RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_CUBEMAP_ARRAY_BLACK);
-        default_depth_texture = texture_storage->texture_rd_get_default(RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_DEPTH);
-    }
+	RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
+	RendererSceneRenderRD *scene_render = RendererSceneRenderRD::get_singleton();
+	const bool use_radiance_cubemap_array = scene_render && scene_render->is_using_radiance_cubemap_array();
+	RID decal_texture;
+	RID reflection_texture;
+	RID shadow_atlas_texture;
+	RID directional_shadow_texture;
+	RID default_depth_texture;
+	RID radiance_texture = p_params.radiance_texture;
+	if (texture_storage) {
+		decal_texture = texture_storage->decal_atlas_get_texture_srgb();
+		if (!decal_texture.is_valid()) {
+			decal_texture = texture_storage->texture_rd_get_default(RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_BLACK);
+		}
+		reflection_texture = texture_storage->texture_rd_get_default(RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_CUBEMAP_ARRAY_BLACK);
+		if (!radiance_texture.is_valid()) {
+			radiance_texture = texture_storage->texture_rd_get_default(use_radiance_cubemap_array
+					? RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_CUBEMAP_ARRAY_BLACK
+					: RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_CUBEMAP_BLACK);
+		}
+		default_depth_texture = texture_storage->texture_rd_get_default(RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_DEPTH);
+	}
 
     if (light_storage && p_params.shadow_atlas.is_valid()) {
         shadow_atlas_texture = light_storage->shadow_atlas_get_texture(p_params.shadow_atlas);
@@ -849,16 +858,22 @@ RID TileRenderer::TileResolveStage::create_lighting_uniform_set(RenderingDevice 
         decal_texture = fallback_decal_texture;
     }
 
-    if (!reflection_texture.is_valid() || !p_device->texture_is_valid(reflection_texture)) {
-        if (!ensure_fallback_lighting_buffers(p_device)) {
-            return RID();
-        }
-        reflection_texture = fallback_reflection_texture;
-    }
+	if (!reflection_texture.is_valid() || !p_device->texture_is_valid(reflection_texture)) {
+		if (!ensure_fallback_lighting_buffers(p_device)) {
+			return RID();
+		}
+		reflection_texture = fallback_reflection_texture;
+	}
+	if ((!radiance_texture.is_valid() || !p_device->texture_is_valid(radiance_texture)) && texture_storage) {
+		radiance_texture = texture_storage->texture_rd_get_default(use_radiance_cubemap_array
+				? RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_CUBEMAP_ARRAY_BLACK
+				: RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_CUBEMAP_BLACK);
+	}
+	ERR_FAIL_COND_V(!radiance_texture.is_valid(), RID());
 
-    if (!shadow_atlas_texture.is_valid() || !p_device->texture_is_valid(shadow_atlas_texture)) {
-        if (!ensure_fallback_lighting_buffers(p_device)) {
-            return RID();
+	if (!shadow_atlas_texture.is_valid() || !p_device->texture_is_valid(shadow_atlas_texture)) {
+		if (!ensure_fallback_lighting_buffers(p_device)) {
+			return RID();
         }
         shadow_atlas_texture = fallback_shadow_texture;
     }
@@ -949,11 +964,17 @@ RID TileRenderer::TileResolveStage::create_lighting_uniform_set(RenderingDevice 
     directional_shadow_uniform.append_id(directional_shadow_texture);
     uniforms.push_back(directional_shadow_uniform);
 
-    RD::Uniform linear_clamp_uniform;
-    linear_clamp_uniform.uniform_type = RD::UNIFORM_TYPE_SAMPLER;
-    linear_clamp_uniform.binding = 13;
-    linear_clamp_uniform.append_id(resolve_sampler);
-    uniforms.push_back(linear_clamp_uniform);
+	RD::Uniform linear_clamp_uniform;
+	linear_clamp_uniform.uniform_type = RD::UNIFORM_TYPE_SAMPLER;
+	linear_clamp_uniform.binding = 13;
+	linear_clamp_uniform.append_id(resolve_sampler);
+	uniforms.push_back(linear_clamp_uniform);
+
+	RD::Uniform radiance_uniform;
+	radiance_uniform.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
+	radiance_uniform.binding = 14;
+	radiance_uniform.append_id(radiance_texture);
+	uniforms.push_back(radiance_uniform);
 
     RID lighting_uniform_set = p_device->uniform_set_create(uniforms, owner.shader_resources.tile_resolve_shader, 2);
     if (!lighting_uniform_set.is_valid()) {
@@ -1040,14 +1061,20 @@ RID TileRenderer::TileResolveStage::create_lighting_uniform_set(RenderingDevice 
         fallback_directional_shadow_uniform.append_id(fallback_directional_shadow_texture);
         uniforms.push_back(fallback_directional_shadow_uniform);
 
-        RD::Uniform fallback_linear_clamp_uniform;
-        fallback_linear_clamp_uniform.uniform_type = RD::UNIFORM_TYPE_SAMPLER;
-        fallback_linear_clamp_uniform.binding = 13;
-        fallback_linear_clamp_uniform.append_id(resolve_sampler);
-        uniforms.push_back(fallback_linear_clamp_uniform);
+	        RD::Uniform fallback_linear_clamp_uniform;
+	        fallback_linear_clamp_uniform.uniform_type = RD::UNIFORM_TYPE_SAMPLER;
+	        fallback_linear_clamp_uniform.binding = 13;
+	        fallback_linear_clamp_uniform.append_id(resolve_sampler);
+	        uniforms.push_back(fallback_linear_clamp_uniform);
 
-        lighting_uniform_set = p_device->uniform_set_create(uniforms, owner.shader_resources.tile_resolve_shader, 2);
-    }
+	        RD::Uniform fallback_radiance_uniform;
+	        fallback_radiance_uniform.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
+	        fallback_radiance_uniform.binding = 14;
+	        fallback_radiance_uniform.append_id(radiance_texture);
+	        uniforms.push_back(fallback_radiance_uniform);
+
+	        lighting_uniform_set = p_device->uniform_set_create(uniforms, owner.shader_resources.tile_resolve_shader, 2);
+	    }
     if (lighting_uniform_set.is_valid()) {
         p_device->set_resource_name(lighting_uniform_set, "GS_TileRenderer_ResolveLightingSet");
     }

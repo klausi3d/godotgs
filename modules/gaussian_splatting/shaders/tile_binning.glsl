@@ -1193,6 +1193,7 @@ void main() {
                 final_color *= sh_factor;
             }
 
+            final_color += gs_compute_environment_ambient(normal_view) * sh_albedo;
             // Match Godot's forward path: diffuse light is multiplied by albedo at the end.
             diffuse_light *= h_albedo;
             diffuse_light *= (half(1.0) - metallic);

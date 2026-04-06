@@ -27,6 +27,7 @@
 #include "gpu_sorting_config.h"
 #include "instance_pipeline_contract.h"
 #include "pipeline_feature_set.h"
+#include "servers/rendering/renderer_rd/renderer_scene_render_rd.h"
 #include "servers/rendering/renderer_rd/storage_rd/render_data_rd.h"
 #include "servers/rendering/renderer_rd/storage_rd/render_scene_buffers_rd.h"
 #include "servers/rendering/renderer_rd/storage_rd/light_storage.h"
@@ -1657,6 +1658,7 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 	render_params.directional_light_buffer = RID();
 	render_params.cluster_buffer = RID();
 	render_params.shadow_atlas = RID();
+	render_params.radiance_texture = RID();
 	render_params.omni_light_count = 0;
 	render_params.spot_light_count = 0;
 	render_params.cluster_size = 0;
@@ -1799,6 +1801,12 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 	}
 	if (p_render_data) {
 		render_params.shadow_atlas = p_render_data->shadow_atlas;
+		if (RendererSceneRenderRD *scene_render = RendererSceneRenderRD::get_singleton()) {
+			const RID sky_rid = scene_render->environment_get_sky(p_render_data->environment);
+			if (sky_rid.is_valid()) {
+				render_params.radiance_texture = scene_render->get_sky()->sky_get_radiance_texture_rd(sky_rid);
+			}
+		}
 	}
 	if (p_render_data && p_render_data->cluster_buffer.is_valid()) {
 		render_params.cluster_buffer = p_render_data->cluster_buffer;

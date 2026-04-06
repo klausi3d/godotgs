@@ -22,6 +22,28 @@ bool gs_use_clustered_lights() {
     return (params.light_counts.z != 0u) && (params.cluster_config.z != 0u);
 }
 
+vec3 gs_compute_environment_ambient(vec3 normal) {
+    if (!bool(scene_data_block.data.flags & SCENE_DATA_FLAGS_USE_AMBIENT_LIGHT)) {
+        return vec3(0.0);
+    }
+
+    vec3 ambient_light = scene_data_block.data.ambient_light_color_energy.rgb;
+    if (bool(scene_data_block.data.flags & SCENE_DATA_FLAGS_USE_AMBIENT_CUBEMAP)) {
+        vec3 ambient_dir = scene_data_block.data.radiance_inverse_xform * normalize(normal);
+#ifdef USE_RADIANCE_CUBEMAP_ARRAY
+        vec3 cubemap_ambient = texture(samplerCubeArray(radiance_cubemap, DEFAULT_SAMPLER_LINEAR_WITH_MIPMAPS_CLAMP),
+                vec4(ambient_dir, MAX_ROUGHNESS_LOD)).rgb;
+#else
+        vec3 cubemap_ambient = textureLod(samplerCube(radiance_cubemap, DEFAULT_SAMPLER_LINEAR_WITH_MIPMAPS_CLAMP),
+                ambient_dir, MAX_ROUGHNESS_LOD).rgb;
+#endif
+        cubemap_ambient *= scene_data_block.data.IBL_exposure_normalization;
+        ambient_light = mix(ambient_light, cubemap_ambient * scene_data_block.data.ambient_light_color_energy.a,
+                scene_data_block.data.ambient_color_sky_mix);
+    }
+    return ambient_light;
+}
+
 void gs_get_cluster_params(vec2 pixel_pos, vec3 view_pos, out uint cluster_offset, out uint cluster_z,
         out uint cluster_type_size, out uint max_cluster_element_count_div_32) {
     uint cluster_shift = params.cluster_config.x;
