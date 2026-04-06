@@ -341,12 +341,24 @@ private:
 			return false;
 		}
 
+		const bool instance_buffers_changed =
+				renderer.instance_pipeline_buffers.instance_buffer != params.instance_buffer ||
+				renderer.instance_pipeline_buffers.splat_ref_buffer != params.splat_ref_buffer ||
+				renderer.instance_pipeline_buffers.chunk_meta_buffer != params.chunk_meta_buffer ||
+				renderer.instance_pipeline_buffers.quantization_buffer != params.quantization_buffer ||
+				renderer.instance_pipeline_buffers.indirect_count_buffer != params.instance_indirect_count_buffer ||
+				renderer.instance_pipeline_buffers.indirect_dispatch_buffer != params.instance_indirect_dispatch_buffer;
+
 		renderer.instance_pipeline_buffers.instance_buffer = params.instance_buffer;
 		renderer.instance_pipeline_buffers.splat_ref_buffer = params.splat_ref_buffer;
 		renderer.instance_pipeline_buffers.chunk_meta_buffer = params.chunk_meta_buffer;
 		renderer.instance_pipeline_buffers.quantization_buffer = params.quantization_buffer;
 		renderer.instance_pipeline_buffers.indirect_count_buffer = params.instance_indirect_count_buffer;
 		renderer.instance_pipeline_buffers.indirect_dispatch_buffer = params.instance_indirect_dispatch_buffer;
+
+		if (instance_buffers_changed) {
+			renderer._invalidate_descriptor_cache();
+		}
 
 		const bool quantization_required = g_quantization_config.per_chunk_quantization;
 		const GaussianSplatting::InstancePipelineContract::InvariantViolationReason invariant_reason =

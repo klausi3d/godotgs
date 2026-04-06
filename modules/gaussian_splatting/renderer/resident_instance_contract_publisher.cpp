@@ -282,6 +282,13 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 		asset_meta.lod_count = 1;
 		asset_meta.sh_degree = asset.data->get_sh_degree();
 		asset_meta.flags = asset.data->get_2d_mode() ? GS_INSTANCE_FLAG_IS_2D : 0u;
+		{
+			const LocalVector<Gaussian> &asset_gaussians = asset.data->get_gaussian_storage();
+			if (!asset_gaussians.is_empty() &&
+					gaussian_get_dc_encoding(asset_gaussians[0].render_meta) == GAUSSIAN_DC_ENCODING_LINEAR_RGB) {
+				asset_meta.flags |= GS_CHUNK_FLAG_DC_LINEAR_RGB;
+			}
+		}
 		const AABB asset_bounds = asset.data->get_aabb();
 		const Vector3 asset_center = asset_bounds.get_center();
 		const Vector3 asset_half = asset_bounds.size * 0.5f;

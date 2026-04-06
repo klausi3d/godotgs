@@ -1398,6 +1398,10 @@ struct RenderPipelineStages::RasterCompositeStage {
 			const bool require_scene_depth = _is_scene_depth_composite_expected(raster_input.render_data);
 			if (require_scene_depth && !r_raster_output.depth.is_valid()) {
 				output_compositor->invalidate_cached_render();
+			} else if (raster_input.sorted_splat_count == 0) {
+				// Don't cache renders produced while streaming is still loading (0 visible splats).
+				// The blank texture would be reused indefinitely once the cache key matches.
+				output_compositor->invalidate_cached_render();
 			} else {
 				output_compositor->update_render_cache_signature(raster_input.world_to_camera_transform,
 						raster_input.projection, raster_input.viewport_size, r_raster_output.painterly_active,

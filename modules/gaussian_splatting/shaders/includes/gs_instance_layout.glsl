@@ -24,6 +24,9 @@ const uint GS_INSTANCE_FLAG_ROTATION_IDENTITY = 1u << 1u;
 const uint GS_INSTANCE_FLAG_SCALE_IDENTITY = 1u << 2u;
 const uint GS_INSTANCE_FLAG_TRANSLATION_ZERO = 1u << 3u;
 
+// Chunk/asset flag bits (ChunkMetaGPU.flags / AssetMetaGPU.flags).
+const uint GS_CHUNK_FLAG_DC_LINEAR_RGB = 1u << 4u;
+
 // Instance wind override modes (params.w).
 #ifndef GS_INSTANCE_WIND_MODE_INHERIT
 #define GS_INSTANCE_WIND_MODE_INHERIT 0u

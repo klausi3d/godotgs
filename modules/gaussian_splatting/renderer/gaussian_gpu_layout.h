@@ -68,6 +68,7 @@ struct alignas(16) InstanceDataGPU {
 static constexpr uint32_t GS_INSTANCE_FLAG_IS_2D = 1u << 0;
 static constexpr uint32_t GS_INSTANCE_FLAG_ROTATION_IDENTITY = 1u << 1;
 static constexpr uint32_t GS_INSTANCE_FLAG_SCALE_IDENTITY = 1u << 2;
+static constexpr uint32_t GS_CHUNK_FLAG_DC_LINEAR_RGB = 1u << 4;
 static constexpr uint32_t GS_INSTANCE_FLAG_TRANSLATION_ZERO = 1u << 3;
 
 // Instance wind override modes (InstanceDataGPU.params.w).

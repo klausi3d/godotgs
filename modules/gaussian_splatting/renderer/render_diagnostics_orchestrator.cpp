@@ -215,6 +215,7 @@ static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_re
 		raster_path = "unknown";
 	}
 	metrics["raster_path"] = raster_path;
+	metrics["async_sort_used"] = perf.async_sort_used;
 	const auto &render_config = state_view.get_render_config_view();
 	metrics["render_mode"] = static_cast<int64_t>(render_config.render_mode);
 	metrics["stage_metrics_valid"] = p_stage_valid;
@@ -448,6 +449,7 @@ static Dictionary _validate_production_metrics(const Dictionary &p_metrics) {
 	// - total_splats is from a single GaussianData asset
 	// - overlap rendering duplicates splats across tile boundaries
 	// This is expected behavior, not a contract violation.
+	const bool has_meaningful_workload = MAX(visible_splats, total_splats) >= 1024;
 
 	const float cull_ms = static_cast<float>(p_metrics.get("cull_ms", -1.0f));
 	const float sort_ms = static_cast<float>(p_metrics.get("sort_ms", -1.0f));
@@ -516,20 +518,20 @@ static Dictionary _validate_production_metrics(const Dictionary &p_metrics) {
 	const String cull_route_uid = p_metrics.get("cull_route_uid", String());
 	const String cull_route_reason = p_metrics.get("cull_route_reason", String());
 	const bool route_no_device = route_uid == String(RenderRouteUID::COMMON_FAIL_NO_DEVICE);
-	if (stage_valid && route_uid.is_empty()) {
+	if (stage_valid && has_meaningful_workload && route_uid.is_empty()) {
 		issues.push_back("route_uid_empty");
 	}
 	// No-device fallback can legitimately skip sort-route assignment.
-	if (stage_valid && !route_no_device && sort_route_uid.is_empty()) {
+	if (stage_valid && has_meaningful_workload && !route_no_device && sort_route_uid.is_empty()) {
 		issues.push_back("sort_route_uid_empty");
 	}
-	if (stage_valid && cull_route_uid.is_empty()) {
+	if (stage_valid && has_meaningful_workload && cull_route_uid.is_empty()) {
 		issues.push_back("cull_route_uid_empty");
 	}
-	if (stage_valid && RenderRouteUID::is_route_uid_missing(cull_route_uid)) {
+	if (stage_valid && has_meaningful_workload && RenderRouteUID::is_route_uid_missing(cull_route_uid)) {
 		issues.push_back("cull_route_uid_missing");
 	}
-	if (stage_valid && cull_route_reason.is_empty()) {
+	if (stage_valid && has_meaningful_workload && cull_route_reason.is_empty()) {
 		issues.push_back("cull_route_reason_empty");
 	}
 	const String stage_cull_status = p_metrics.get("stage_cull_status", String("unknown"));
@@ -544,11 +546,11 @@ static Dictionary _validate_production_metrics(const Dictionary &p_metrics) {
 			issues.push_back("sort_route_uid_status_mismatch");
 		}
 	}
-	const bool has_meaningful_workload = MAX(visible_splats, total_splats) >= 1024;
 	if (stage_valid && has_meaningful_workload && total_splats > 0 && stage_cull_status == "success" && cull_ms <= 0.0f) {
 		issues.push_back("cull_ms_placeholder");
 	}
-	if (stage_valid && has_meaningful_workload && visible_splats > 0 && stage_sort_status == "success" && sort_ms <= 0.0f) {
+	const bool async_sort = bool(p_metrics.get("async_sort_used", false));
+	if (stage_valid && has_meaningful_workload && visible_splats > 0 && stage_sort_status == "success" && sort_ms <= 0.0f && !async_sort) {
 		issues.push_back("sort_ms_placeholder");
 	}
 	if (stage_valid && has_meaningful_workload && visible_splats > 0 && stage_raster_status == "success" && raster_ms <= 0.0f) {

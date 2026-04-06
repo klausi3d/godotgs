@@ -19,7 +19,7 @@ using GaussianSplatting::ScopedGpuMarker;
 
 namespace {
 constexpr char GS_COMPOSITE_DEPTH_TEST_SETTING[] = "rendering/gaussian_splatting/composite/depth_test";
-constexpr bool GS_COMPOSITE_DEPTH_TEST_DEFAULT = true;
+constexpr bool GS_COMPOSITE_DEPTH_TEST_DEFAULT = false;
 constexpr char GS_SCENE_COMPOSITE_DEPTH_POLICY_SETTING[] = "rendering/gaussian_splatting/composite/scene_depth_policy";
 
 enum GSSceneCompositeDepthPolicy {
@@ -27,7 +27,7 @@ enum GSSceneCompositeDepthPolicy {
     GS_SCENE_COMPOSITE_DEPTH_POLICY_RELAXED = 1,
 };
 
-constexpr GSSceneCompositeDepthPolicy GS_SCENE_COMPOSITE_DEPTH_POLICY_DEFAULT = GS_SCENE_COMPOSITE_DEPTH_POLICY_STRICT;
+constexpr GSSceneCompositeDepthPolicy GS_SCENE_COMPOSITE_DEPTH_POLICY_DEFAULT = GS_SCENE_COMPOSITE_DEPTH_POLICY_RELAXED;
 
 bool gs_get_composite_depth_test_enabled() {
     ProjectSettings *project_settings = ProjectSettings::get_singleton();

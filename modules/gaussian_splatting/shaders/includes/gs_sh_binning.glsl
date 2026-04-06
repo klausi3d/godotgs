@@ -1,7 +1,7 @@
 // gs_sh_binning.glsl — Spherical harmonics evaluation for tile binning.
 //
-// Requires: Gaussian struct, gs_is_dc_logit_enabled() (from gs_render_params.glsl)
-// to be defined before inclusion.
+// Requires: Gaussian struct to be defined before inclusion.
+// DC encoding is read per-gaussian from sh_metadata bit 31.
 
 #ifndef GS_SH_BINNING_GLSL_INCLUDED
 #define GS_SH_BINNING_GLSL_INCLUDED
@@ -9,7 +9,8 @@
 const uint SH_METADATA_FIRST_ORDER_MASK = 0x000000FFu;
 const uint SH_METADATA_HIGH_ORDER_MASK = 0x0000FF00u;
 const uint SH_METADATA_ENCODED_COUNT_MASK = 0x00FF0000u;
-const uint SH_METADATA_ENCODING_MASK = 0xFF000000u;
+const uint SH_METADATA_ENCODING_MASK = 0x7F000000u;  // bits 24-30 (7 bits)
+const uint SH_METADATA_DC_LINEAR_RGB = 0x80000000u;   // bit 31: DC is linear RGB (not logit)
 const uint SH_ENCODING_RGB9E5 = 1u;
 
 // Read the number of first-order SH coefficients encoded in metadata.
@@ -128,15 +129,15 @@ void compute_sh_basis_1st_order(vec3 dir, out float basis[4]) {
 // Evaluate SH color with configurable band level
 // sh_band_level: 0=DC only, 1=1st order, 2=2nd order, 3=3rd order
 vec3 evaluate_sh_with_bands(Gaussian g, vec3 view_dir, uint sh_band_level) {
-    // Decode DC term. Some datasets store DC in logit space (original 3DGS),
-    // others store linear coefficients (SPZ/converted assets).
-    bool dc_logit = gs_is_dc_logit_enabled();
+    // Decode DC term based on per-gaussian encoding in sh_metadata bit 31.
+    // Bit 31 set   = LINEAR_RGB: sh_dc is already a linear color (SPZ/converted).
+    // Bit 31 clear = LEGACY_BIAS: sh_dc is SH_C0 * f_dc, needs +0.5 bias (standard 3DGS PLY).
+    bool dc_is_linear_rgb = (g.sh_metadata & SH_METADATA_DC_LINEAR_RGB) != 0u;
     vec3 color;
-    if (dc_logit) {
-        vec3 dc_logit_val = g.sh_dc.rgb;
-        color = 1.5 * (1.0 / (1.0 + exp(-dc_logit_val))) - 0.25;
+    if (dc_is_linear_rgb) {
+        color = g.sh_dc.rgb;
     } else {
-        // Standard 3DGS: DC already linear (scaled by SH_C0 in source).
+        // Legacy bias: DC stored as SH_C0 * f_dc, add 0.5 to shift to [0,1].
         color = g.sh_dc.rgb + 0.5;
     }
 
