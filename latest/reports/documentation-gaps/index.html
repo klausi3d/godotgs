@@ -2811,10 +2811,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingcoregaussian_streamingcpp" class="md-nav__link">
+  <a href="#modulesgaussian_splattingteststest_gpu_streamingcpp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        modules/gaussian_splatting/core/gaussian_streaming.cpp
+        modules/gaussian_splatting/tests/test_gpu_streaming.cpp
       
     </span>
   </a>
@@ -2822,10 +2822,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingteststest_gpu_streamingcpp" class="md-nav__link">
+  <a href="#modulesgaussian_splattingcoregaussian_streamingcpp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        modules/gaussian_splatting/tests/test_gpu_streaming.cpp
+        modules/gaussian_splatting/core/gaussian_streaming.cpp
       
     </span>
   </a>
@@ -3031,17 +3031,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrenderershader_compilation_helpercpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/renderer/shader_compilation_helper.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingtestssynthetic_surface_generatorcpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3145,6 +3134,17 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/persistence/gaussian_scene_serializer.cpp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingrenderershader_compilation_helpercpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/renderer/shader_compilation_helper.cpp
       
     </span>
   </a>
@@ -4351,17 +4351,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrenderersh_configcpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/renderer/sh_config.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#modulesgaussian_splattinganimationkeyframe_interpolatorh" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4377,6 +4366,17 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/renderer/gpu_debug_utils.h
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingrenderersh_configcpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/renderer/sh_config.cpp
       
     </span>
   </a>
@@ -4582,6 +4582,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingrenderertile_render_stagescpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/renderer/tile_render_stages.cpp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#testscitest_ply_pipeline_cigd" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4597,17 +4608,6 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/interfaces/interactive_state_manager.h
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrenderertile_render_stagescpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/renderer/tile_render_stages.cpp
       
     </span>
   </a>
@@ -4894,6 +4894,17 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/renderer/batched_async_readback.h
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingshadersincludesgs_sh_binningglsl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/shaders/includes/gs_sh_binning.glsl
       
     </span>
   </a>
@@ -6385,14 +6396,16 @@
 <ul>
 <li>line 19: bool _is_streaming_debug_enabled() {...</li>
 <li>line 33: void _clear_dirty_flags(LocalVector<uint8_t> &amp;flags) {...</uint8_t></li>
-<li>line 39: bool _ensure_placeholder_buffer(RenderingDevice *p_rd, RID &amp;...</li>
-<li>line 60: uint64_t StreamingGlobalAtlasRegistry::get_auxiliary_vram_ov...</li>
-<li>line 66: void StreamingGlobalAtlasRegistry::cleanup(RenderingDevice *...</li>
-<li>line 106: void StreamingGlobalAtlasRegistry::build_cpu_state(GaussianS...</li>
-<li>line 242: void StreamingGlobalAtlasRegistry::update_chunk_meta_entry(G...</li>
-<li>line 302: void StreamingGlobalAtlasRegistry::mark_chunk_meta_dirty(Gau...</li>
-<li>line 306: void StreamingGlobalAtlasRegistry::mark_chunk_meta_dirty(Gau...</li>
-<li>line 334: void StreamingGlobalAtlasRegistry::sync_to_gpu(GaussianStrea...</li>
+<li>line 39: GaussianDCEncoding _resolve_data_dc_encoding(const Ref&lt;Gauss...</li>
+<li>line 46: uint32_t _pack_data_gpu_flags(const Ref<gaussiandata> &amp;p_dat...</gaussiandata></li>
+<li>line 51: bool _ensure_placeholder_buffer(RenderingDevice *p_rd, RID &amp;...</li>
+<li>line 72: uint64_t StreamingGlobalAtlasRegistry::get_auxiliary_vram_ov...</li>
+<li>line 78: void StreamingGlobalAtlasRegistry::cleanup(RenderingDevice *...</li>
+<li>line 118: void StreamingGlobalAtlasRegistry::build_cpu_state(GaussianS...</li>
+<li>line 254: void StreamingGlobalAtlasRegistry::update_chunk_meta_entry(G...</li>
+<li>line 314: void StreamingGlobalAtlasRegistry::mark_chunk_meta_dirty(Gau...</li>
+<li>line 318: void StreamingGlobalAtlasRegistry::mark_chunk_meta_dirty(Gau...</li>
+<li>line 346: void StreamingGlobalAtlasRegistry::sync_to_gpu(GaussianStrea...</li>
 </ul>
 <h2 id="modulesgaussian_splattingrendererrender_data_orchestratorcpp">modules/gaussian_splatting/renderer/render_data_orchestrator.cpp<a class="headerlink" href="#modulesgaussian_splattingrendererrender_data_orchestratorcpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -6848,127 +6861,6 @@
 <li>line 42: func _on_test_frame(_delta: float):...</li>
 <li>line 56: func _on_test_complete():...</li>
 </ul>
-<h2 id="modulesgaussian_splattingcoregaussian_streamingcpp">modules/gaussian_splatting/core/gaussian_streaming.cpp<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_streamingcpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 33: static uint32_t _packed_gaussian_payload_checksum(const Vect...</li>
-<li>line 42: uint64_t _streaming_chunk_slot_bytes() {...</li>
-<li>line 46: uint32_t _streaming_addressable_chunk_limit() {...</li>
-<li>line 136: uint64_t _layout_hint_state_key(const GaussianStreamingSyste...</li>
-<li>line 154: void _layout_hint_reset_state(const GaussianStreamingSystem ...</li>
-<li>line 158: bool _layout_hint_strict_validation_enabled() {...</li>
-<li>line 217: LayoutHintFailureCategory _layout_hint_reason_category(Layou...</li>
-<li>line 264: String _layout_hint_failure_detail(const LayoutHintValidatio...</li>
-<li>line 286: void _layout_hint_clear_last_failure(const GaussianStreaming...</li>
-<li>line 297: LayoutHintValidationFailure _layout_hint_get_last_failure(co...</li>
-<li>line 358: Dictionary _layout_hint_build_snapshot(const GaussianStreami...</li>
-<li>line 576: void _validate_queue_pressure_latched_state(bool &amp;r_active, ...</li>
-<li>line 587: void _release_chunk_slot_if_matches(GaussianAtlasAllocator &amp;...</li>
-<li>line 598: bool _chunk_slot_matches_allocator(const GaussianAtlasAlloca...</li>
-<li>line 607: bool _is_finite_transform3d(const Transform3D &amp;p_transform) ...</li>
-<li>line 623: bool _is_finite_projection(const Projection &amp;p_projection) {...</li>
-<li>line 634: uint32_t _expand_morton_bits_10(uint32_t p_value) {...</li>
-<li>line 643: uint32_t _compute_morton_code_10(const Vector3 &amp;p_position, ...</li>
-<li>line 675: void GaussianStreamingSystem::_connect_project_settings() {...</li>
-<li>line 690: void GaussianStreamingSystem::_on_project_settings_changed()...</li>
-<li>line 717: void GaussianStreamingSystem::_release_persistent_buffer(Ren...</li>
-<li>line 740: void GaussianStreamingSystem::_bind_methods() {...</li>
-<li>line 778: void GaussianStreamingSystem::initialize(Ref&lt;::GaussianData&gt;...</li>
-<li>line 931: void GaussianStreamingSystem::initialize_with_device(Ref&lt;::G...</li>
-<li>line 939: void GaussianStreamingSystem::initialize_empty(RenderingDevi...</li>
-<li>line 1061: void GaussianStreamingSystem::update_primary_asset_data(Ref&lt;...</li>
-<li>line 1137: void GaussianStreamingSystem::attach_memory_stream(const Ref...</li>
-<li>line 1142: void GaussianStreamingSystem::set_config_overrides(const Con...</li>
-<li>line 1148: void GaussianStreamingSystem::clear_config_overrides() {...</li>
-<li>line 1154: void GaussianStreamingSystem::set_io_chunk_layout_hints(cons...</li>
-<li>line 1166: void GaussianStreamingSystem::set_primary_chunk_layout(const...</li>
-<li>line 1212: void GaussianStreamingSystem::begin_residency_requests() {...</li>
-<li>line 1228: void GaussianStreamingSystem::request_chunk_residency(uint32...</li>
-<li>line 1254: void GaussianStreamingSystem::request_asset_residency(uint32...</li>
-<li>line 1275: void GaussianStreamingSystem::finalize_residency_requests() ...</li>
-<li>line 1280: void GaussianStreamingSystem::register_asset(uint32_t asset_...</li>
-<li>line 1386: void GaussianStreamingSystem::unregister_asset(uint32_t asse...</li>
-<li>line 1438: uint32_t GaussianStreamingSystem::get_dense_asset_id(uint32_...</li>
-<li>line 1445: bool GaussianStreamingSystem::remap_instance_asset_ids(Local...</li>
-<li>line 1493: bool GaussianStreamingSystem::_create_chunks() {...</li>
-<li>line 1654: void GaussianStreamingSystem::_build_chunks_for_data(const R...</li>
-<li>line 1931: void GaussianStreamingSystem::<em>refresh_primary_chunk_layout</em>...</li>
-<li>line 1984: void GaussianStreamingSystem::_register_primary_asset() {...</li>
-<li>line 2014: uint32_t GaussianStreamingSystem::_advance_asset_generation(...</li>
-<li>line 2026: uint32_t GaussianStreamingSystem::_alloc_dense_id(uint32_t a...</li>
-<li>line 2052: void GaussianStreamingSystem::_release_dense_id(uint32_t den...</li>
-<li>line 2063: uint32_t GaussianStreamingSystem::_get_dense_generation(uint...</li>
-<li>line 2086: uint64_t GaussianStreamingSystem::_make_chunk_key(uint32_t a...</li>
-<li>line 2090: void GaussianStreamingSystem::set_chunk_radius_multiplier(fl...</li>
-<li>line 2097: void GaussianStreamingSystem::update_streaming(const Transfo...</li>
-<li>line 2255: void GaussianStreamingSystem::_log_streaming_telemetry() {...</li>
-<li>line 2297: void GaussianStreamingSystem::_reload_config_if_dirty() {...</li>
-<li>line 2317: float GaussianStreamingSystem::_resolve_frame_delta_seconds(...</li>
-<li>line 2343: uint32_t GaussianStreamingSystem::_compute_runtime_chunk_cap...</li>
-<li>line 2355: uint64_t GaussianStreamingSystem::_get_auxiliary_vram_overhe...</li>
-<li>line 2360: uint64_t GaussianStreamingSystem::_get_total_vram_usage_byte...</li>
-<li>line 2364: void GaussianStreamingSystem::_load_zero_visible_recovery_co...</li>
-<li>line 2368: void GaussianStreamingSystem::_update_camera_tracking(const ...</li>
-<li>line 2372: void GaussianStreamingSystem::_handle_zero_visible_chunk_rec...</li>
-<li>line 2376: void GaussianStreamingSystem::_reset_per_frame_counters() {...</li>
-<li>line 2411: void GaussianStreamingSystem::<em>evict_for_vram_budget(uint32</em>...</li>
-<li>line 2449: void GaussianStreamingSystem::_load_visible_chunks(uint32_t ...</li>
-<li>line 2616: void GaussianStreamingSystem::_build_visible_chunk_list() {...</li>
-<li>line 2642: void GaussianStreamingSystem::_handle_predictive_prefetch(co...</li>
-<li>line 2736: void GaussianStreamingSystem::_update_vram_regulator() {...</li>
-<li>line 2746: void GaussianStreamingSystem::_log_streaming_frame_stats(uin...</li>
-<li>line 2776: void GaussianStreamingSystem::_update_chunk_visibility(const...</li>
-<li>line 2780: void GaussianStreamingSystem::_load_chunk(uint32_t chunk_idx...</li>
-<li>line 2907: void GaussianStreamingSystem::_load_chunk(uint32_t asset_id,...</li>
-<li>line 3089: void GaussianStreamingSystem::_log_chunk_load_metrics(uint32...</li>
-<li>line 3165: void GaussianStreamingSystem::_complete_chunk_load_common(ui...</li>
-<li>line 3176: void GaussianStreamingSystem::_unload_chunk(uint32_t chunk_i...</li>
-<li>line 3180: void GaussianStreamingSystem::_unload_chunk(uint32_t asset_i...</li>
-<li>line 3209: GaussianStreamingSystem::EvictionResult GaussianStreamingSys...</li>
-<li>line 3213: bool GaussianStreamingSystem::_evict_non_primary_lru() {...</li>
-<li>line 3217: bool GaussianStreamingSystem::_ensure_atlas_slot_available(u...</li>
-<li>line 3221: void GaussianStreamingSystem::begin_frame() {...</li>
-<li>line 3231: void GaussianStreamingSystem::end_frame() {...</li>
-<li>line 3818: RID GaussianStreamingSystem::get_frame_buffer() const {...</li>
-<li>line 3822: uint64_t GaussianStreamingSystem::get_vram_usage() const {...</li>
-<li>line 3826: uint32_t GaussianStreamingSystem::get_pending_pack_jobs() {...</li>
-<li>line 3830: uint32_t GaussianStreamingSystem::get_pending_upload_jobs() ...</li>
-<li>line 3834: uint32_t GaussianStreamingSystem::get_visible_count() const ...</li>
-<li>line 3846: LocalVector<gaussian> GaussianStreamingSystem::get_visible_g...</gaussian></li>
-<li>line 3882: LocalVector<uint32_t> GaussianStreamingSystem::get_visible_i...</uint32_t></li>
-<li>line 3910: Dictionary GaussianStreamingSystem::get_task_debug_state() c...</li>
-<li>line 3917: Dictionary GaussianStreamingSystem::get_streaming_analytics(...</li>
-<li>line 3921: bool GaussianStreamingSystem::is_runtime_capacity_zero() con...</li>
-<li>line 3931: bool GaussianStreamingSystem::is_persistent_buffer_invalid()...</li>
-<li>line 3935: bool GaussianStreamingSystem::is_runtime_ready(String *r_rea...</li>
-<li>line 3963: uint32_t GaussianStreamingSystem::get_registered_asset_count...</li>
-<li>line 3973: bool GaussianStreamingSystem::_is_chunk_in_frustum(const AAB...</li>
-<li>line 3977: void GaussianStreamingSystem::_update_culling_config_from_pr...</li>
-<li>line 3981: void GaussianStreamingSystem::<em>load_streaming_tuning_config</em>...</li>
-<li>line 3986: void GaussianStreamingSystem::_reload_debug_logging_config()...</li>
-<li>line 4000: void GaussianStreamingSystem::_start_pack_threads() {...</li>
-<li>line 4004: void GaussianStreamingSystem::_stop_pack_threads() {...</li>
-<li>line 4052: uint32_t GaussianStreamingSystem::_get_sync_fallback_queue_d...</li>
-<li>line 4058: void GaussianStreamingSystem::_compact_sync_fallback_queue()...</li>
-<li>line 4078: bool GaussianStreamingSystem::_enqueue_sync_fallback_chunk_l...</li>
-<li>line 4302: bool GaussianStreamingSystem::_queue_chunk_load(uint32_t chu...</li>
-<li>line 4306: bool GaussianStreamingSystem::_queue_chunk_load(uint32_t ass...</li>
-<li>line 4310: void GaussianStreamingSystem::_process_upload_queue() {...</li>
-<li>line 4314: void GaussianStreamingSystem::_clear_pending_uploads() {...</li>
-<li>line 4318: void GaussianStreamingSystem::_apply_config_overrides() {...</li>
-<li>line 4368: Dictionary GaussianStreamingSystem::get_chunk_culling_stats(...</li>
-<li>line 4421: void GaussianStreamingSystem::_load_prefetch_config_from_pro...</li>
-<li>line 4430: Dictionary GaussianStreamingSystem::get_vram_debug_stats() c...</li>
-<li>line 4434: bool GaussianStreamingSystem::is_vram_budget_warning_active(...</li>
-<li>line 4438: uint32_t GaussianStreamingSystem::get_effective_max_chunks()...</li>
-<li>line 4450: Dictionary GaussianStreamingTypes::BudgetState::get_vram_deb...</li>
-<li>line 4457: bool GaussianStreamingTypes::BudgetState::is_vram_budget_war...</li>
-<li>line 4464: uint32_t GaussianStreamingTypes::BudgetState::get_effective_...</li>
-<li>line 4471: float GaussianStreamingSystem::get_visible_count_change_rati...</li>
-<li>line 4475: float GaussianStreamingSystem::get_visible_chunk_change_rati...</li>
-<li>line 4480: float GaussianStreamingSystem::get_effective_count_change_ra...</li>
-<li>line 4484: uint32_t GaussianStreamingSystem::get_buffer_capacity_splats...</li>
-<li>line 4488: bool GaussianStreamingSystem::map_buffer_index_to_source(uin...</li>
-</ul>
 <h2 id="modulesgaussian_splattingteststest_gpu_streamingcpp">modules/gaussian_splatting/tests/test_gpu_streaming.cpp<a class="headerlink" href="#modulesgaussian_splattingteststest_gpu_streamingcpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 23: LocalVector<gaussian> create_test_gaussians(uint32_t count) ...</gaussian></li>
@@ -6992,6 +6884,129 @@
 <li>line 415: Vector3 <em>full_high_order_for_index(uint32_t p_index, uint32</em>...</li>
 <li>line 423: void _snapshot_sh_writer_thread(void *p_userdata) {...</li>
 <li>line 443: void _snapshot_sh_reader_thread(void *p_userdata) {...</li>
+</ul>
+<h2 id="modulesgaussian_splattingcoregaussian_streamingcpp">modules/gaussian_splatting/core/gaussian_streaming.cpp<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_streamingcpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 33: static uint32_t _packed_gaussian_payload_checksum(const Vect...</li>
+<li>line 42: uint64_t _streaming_chunk_slot_bytes() {...</li>
+<li>line 46: uint32_t _streaming_addressable_chunk_limit() {...</li>
+<li>line 54: bool _data_has_uniform_dc_encoding(const Ref<gaussiandata> &amp;...</gaussiandata></li>
+<li>line 150: uint64_t _layout_hint_state_key(const GaussianStreamingSyste...</li>
+<li>line 168: void _layout_hint_reset_state(const GaussianStreamingSystem ...</li>
+<li>line 172: bool _layout_hint_strict_validation_enabled() {...</li>
+<li>line 231: LayoutHintFailureCategory _layout_hint_reason_category(Layou...</li>
+<li>line 278: String _layout_hint_failure_detail(const LayoutHintValidatio...</li>
+<li>line 300: void _layout_hint_clear_last_failure(const GaussianStreaming...</li>
+<li>line 311: LayoutHintValidationFailure _layout_hint_get_last_failure(co...</li>
+<li>line 372: Dictionary _layout_hint_build_snapshot(const GaussianStreami...</li>
+<li>line 590: void _validate_queue_pressure_latched_state(bool &amp;r_active, ...</li>
+<li>line 601: void _release_chunk_slot_if_matches(GaussianAtlasAllocator &amp;...</li>
+<li>line 612: bool _chunk_slot_matches_allocator(const GaussianAtlasAlloca...</li>
+<li>line 621: bool _is_finite_transform3d(const Transform3D &amp;p_transform) ...</li>
+<li>line 637: bool _is_finite_projection(const Projection &amp;p_projection) {...</li>
+<li>line 648: uint32_t _expand_morton_bits_10(uint32_t p_value) {...</li>
+<li>line 657: uint32_t _compute_morton_code_10(const Vector3 &amp;p_position, ...</li>
+<li>line 689: void GaussianStreamingSystem::_connect_project_settings() {...</li>
+<li>line 704: void GaussianStreamingSystem::_on_project_settings_changed()...</li>
+<li>line 731: void GaussianStreamingSystem::_release_persistent_buffer(Ren...</li>
+<li>line 754: void GaussianStreamingSystem::_bind_methods() {...</li>
+<li>line 792: void GaussianStreamingSystem::initialize(Ref&lt;::GaussianData&gt;...</li>
+<li>line 947: void GaussianStreamingSystem::initialize_with_device(Ref&lt;::G...</li>
+<li>line 955: void GaussianStreamingSystem::initialize_empty(RenderingDevi...</li>
+<li>line 1079: void GaussianStreamingSystem::update_primary_asset_data(Ref&lt;...</li>
+<li>line 1156: void GaussianStreamingSystem::attach_memory_stream(const Ref...</li>
+<li>line 1161: void GaussianStreamingSystem::set_config_overrides(const Con...</li>
+<li>line 1167: void GaussianStreamingSystem::clear_config_overrides() {...</li>
+<li>line 1173: void GaussianStreamingSystem::set_io_chunk_layout_hints(cons...</li>
+<li>line 1185: void GaussianStreamingSystem::set_primary_chunk_layout(const...</li>
+<li>line 1231: void GaussianStreamingSystem::begin_residency_requests() {...</li>
+<li>line 1247: void GaussianStreamingSystem::request_chunk_residency(uint32...</li>
+<li>line 1273: void GaussianStreamingSystem::request_asset_residency(uint32...</li>
+<li>line 1294: void GaussianStreamingSystem::finalize_residency_requests() ...</li>
+<li>line 1299: void GaussianStreamingSystem::register_asset(uint32_t asset_...</li>
+<li>line 1406: void GaussianStreamingSystem::unregister_asset(uint32_t asse...</li>
+<li>line 1459: void GaussianStreamingSystem::_refresh_quantization_dc_compa...</li>
+<li>line 1481: uint32_t GaussianStreamingSystem::get_dense_asset_id(uint32_...</li>
+<li>line 1488: bool GaussianStreamingSystem::remap_instance_asset_ids(Local...</li>
+<li>line 1536: bool GaussianStreamingSystem::_create_chunks() {...</li>
+<li>line 1697: void GaussianStreamingSystem::_build_chunks_for_data(const R...</li>
+<li>line 1974: void GaussianStreamingSystem::<em>refresh_primary_chunk_layout</em>...</li>
+<li>line 2027: void GaussianStreamingSystem::_register_primary_asset() {...</li>
+<li>line 2057: uint32_t GaussianStreamingSystem::_advance_asset_generation(...</li>
+<li>line 2069: uint32_t GaussianStreamingSystem::_alloc_dense_id(uint32_t a...</li>
+<li>line 2095: void GaussianStreamingSystem::_release_dense_id(uint32_t den...</li>
+<li>line 2106: uint32_t GaussianStreamingSystem::_get_dense_generation(uint...</li>
+<li>line 2129: uint64_t GaussianStreamingSystem::_make_chunk_key(uint32_t a...</li>
+<li>line 2133: void GaussianStreamingSystem::set_chunk_radius_multiplier(fl...</li>
+<li>line 2140: void GaussianStreamingSystem::update_streaming(const Transfo...</li>
+<li>line 2298: void GaussianStreamingSystem::_log_streaming_telemetry() {...</li>
+<li>line 2340: void GaussianStreamingSystem::_reload_config_if_dirty() {...</li>
+<li>line 2360: float GaussianStreamingSystem::_resolve_frame_delta_seconds(...</li>
+<li>line 2386: uint32_t GaussianStreamingSystem::_compute_runtime_chunk_cap...</li>
+<li>line 2398: uint64_t GaussianStreamingSystem::_get_auxiliary_vram_overhe...</li>
+<li>line 2403: uint64_t GaussianStreamingSystem::_get_total_vram_usage_byte...</li>
+<li>line 2407: void GaussianStreamingSystem::_load_zero_visible_recovery_co...</li>
+<li>line 2411: void GaussianStreamingSystem::_update_camera_tracking(const ...</li>
+<li>line 2415: void GaussianStreamingSystem::_handle_zero_visible_chunk_rec...</li>
+<li>line 2419: void GaussianStreamingSystem::_reset_per_frame_counters() {...</li>
+<li>line 2454: void GaussianStreamingSystem::<em>evict_for_vram_budget(uint32</em>...</li>
+<li>line 2492: void GaussianStreamingSystem::_load_visible_chunks(uint32_t ...</li>
+<li>line 2659: void GaussianStreamingSystem::_build_visible_chunk_list() {...</li>
+<li>line 2685: void GaussianStreamingSystem::_handle_predictive_prefetch(co...</li>
+<li>line 2779: void GaussianStreamingSystem::_update_vram_regulator() {...</li>
+<li>line 2789: void GaussianStreamingSystem::_log_streaming_frame_stats(uin...</li>
+<li>line 2819: void GaussianStreamingSystem::_update_chunk_visibility(const...</li>
+<li>line 2823: void GaussianStreamingSystem::_load_chunk(uint32_t chunk_idx...</li>
+<li>line 2950: void GaussianStreamingSystem::_load_chunk(uint32_t asset_id,...</li>
+<li>line 3132: void GaussianStreamingSystem::_log_chunk_load_metrics(uint32...</li>
+<li>line 3208: void GaussianStreamingSystem::_complete_chunk_load_common(ui...</li>
+<li>line 3219: void GaussianStreamingSystem::_unload_chunk(uint32_t chunk_i...</li>
+<li>line 3223: void GaussianStreamingSystem::_unload_chunk(uint32_t asset_i...</li>
+<li>line 3252: GaussianStreamingSystem::EvictionResult GaussianStreamingSys...</li>
+<li>line 3256: bool GaussianStreamingSystem::_evict_non_primary_lru() {...</li>
+<li>line 3260: bool GaussianStreamingSystem::_ensure_atlas_slot_available(u...</li>
+<li>line 3264: void GaussianStreamingSystem::begin_frame() {...</li>
+<li>line 3274: void GaussianStreamingSystem::end_frame() {...</li>
+<li>line 3861: RID GaussianStreamingSystem::get_frame_buffer() const {...</li>
+<li>line 3865: uint64_t GaussianStreamingSystem::get_vram_usage() const {...</li>
+<li>line 3869: uint32_t GaussianStreamingSystem::get_pending_pack_jobs() {...</li>
+<li>line 3873: uint32_t GaussianStreamingSystem::get_pending_upload_jobs() ...</li>
+<li>line 3877: uint32_t GaussianStreamingSystem::get_visible_count() const ...</li>
+<li>line 3889: LocalVector<gaussian> GaussianStreamingSystem::get_visible_g...</gaussian></li>
+<li>line 3925: LocalVector<uint32_t> GaussianStreamingSystem::get_visible_i...</uint32_t></li>
+<li>line 3953: Dictionary GaussianStreamingSystem::get_task_debug_state() c...</li>
+<li>line 3960: Dictionary GaussianStreamingSystem::get_streaming_analytics(...</li>
+<li>line 3964: bool GaussianStreamingSystem::is_runtime_capacity_zero() con...</li>
+<li>line 3974: bool GaussianStreamingSystem::is_persistent_buffer_invalid()...</li>
+<li>line 3978: bool GaussianStreamingSystem::is_runtime_ready(String *r_rea...</li>
+<li>line 4006: uint32_t GaussianStreamingSystem::get_registered_asset_count...</li>
+<li>line 4016: bool GaussianStreamingSystem::_is_chunk_in_frustum(const AAB...</li>
+<li>line 4020: void GaussianStreamingSystem::_update_culling_config_from_pr...</li>
+<li>line 4024: void GaussianStreamingSystem::<em>load_streaming_tuning_config</em>...</li>
+<li>line 4029: void GaussianStreamingSystem::_reload_debug_logging_config()...</li>
+<li>line 4043: void GaussianStreamingSystem::_start_pack_threads() {...</li>
+<li>line 4047: void GaussianStreamingSystem::_stop_pack_threads() {...</li>
+<li>line 4095: uint32_t GaussianStreamingSystem::_get_sync_fallback_queue_d...</li>
+<li>line 4101: void GaussianStreamingSystem::_compact_sync_fallback_queue()...</li>
+<li>line 4121: bool GaussianStreamingSystem::_enqueue_sync_fallback_chunk_l...</li>
+<li>line 4345: bool GaussianStreamingSystem::_queue_chunk_load(uint32_t chu...</li>
+<li>line 4349: bool GaussianStreamingSystem::_queue_chunk_load(uint32_t ass...</li>
+<li>line 4353: void GaussianStreamingSystem::_process_upload_queue() {...</li>
+<li>line 4357: void GaussianStreamingSystem::_clear_pending_uploads() {...</li>
+<li>line 4361: void GaussianStreamingSystem::_apply_config_overrides() {...</li>
+<li>line 4411: Dictionary GaussianStreamingSystem::get_chunk_culling_stats(...</li>
+<li>line 4464: void GaussianStreamingSystem::_load_prefetch_config_from_pro...</li>
+<li>line 4473: Dictionary GaussianStreamingSystem::get_vram_debug_stats() c...</li>
+<li>line 4477: bool GaussianStreamingSystem::is_vram_budget_warning_active(...</li>
+<li>line 4481: uint32_t GaussianStreamingSystem::get_effective_max_chunks()...</li>
+<li>line 4493: Dictionary GaussianStreamingTypes::BudgetState::get_vram_deb...</li>
+<li>line 4500: bool GaussianStreamingTypes::BudgetState::is_vram_budget_war...</li>
+<li>line 4507: uint32_t GaussianStreamingTypes::BudgetState::get_effective_...</li>
+<li>line 4514: float GaussianStreamingSystem::get_visible_count_change_rati...</li>
+<li>line 4518: float GaussianStreamingSystem::get_visible_chunk_change_rati...</li>
+<li>line 4523: float GaussianStreamingSystem::get_effective_count_change_ra...</li>
+<li>line 4527: uint32_t GaussianStreamingSystem::get_buffer_capacity_splats...</li>
+<li>line 4531: bool GaussianStreamingSystem::map_buffer_index_to_source(uin...</li>
 </ul>
 <h2 id="modulesgaussian_splattingcoregaussian_splat_assetcpp">modules/gaussian_splatting/core/gaussian_splat_asset.cpp<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_splat_assetcpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -7075,15 +7090,15 @@
 <li>line 252: static uint64_t _hash_color(const Color &amp;p_color, uint64_t p...</li>
 <li>line 260: static uint64_t _compute_color_grading_signature(const Gauss...</li>
 <li>line 282: static uint64_t _compute_lighting_signature(const RenderData...</li>
-<li>line 1448: void RenderPipelineStages::set_debug_state_orchestrator(Rend...</li>
-<li>line 1452: void RenderPipelineStages::set_diagnostics_orchestrator(Rend...</li>
-<li>line 1480: void RenderPipelineStages::reset_debug_overlay_metrics(float...</li>
-<li>line 1485: void RenderPipelineStages::store_stage_metrics(const Gaussia...</li>
-<li>line 1490: void RenderPipelineStages::clear_stage_metrics() {...</li>
-<li>line 1495: void RenderPipelineStages::increment_frame_counter() {...</li>
-<li>line 1500: void RenderPipelineStages::finalize_frame_metrics(uint64_t p...</li>
-<li>line 2265: void RenderPipelineStages::render_sorted_splats_with_context...</li>
-<li>line 2496: void RenderPipelineStages::log_stage_result(const char *p_st...</li>
+<li>line 1444: void RenderPipelineStages::set_debug_state_orchestrator(Rend...</li>
+<li>line 1448: void RenderPipelineStages::set_diagnostics_orchestrator(Rend...</li>
+<li>line 1476: void RenderPipelineStages::reset_debug_overlay_metrics(float...</li>
+<li>line 1481: void RenderPipelineStages::store_stage_metrics(const Gaussia...</li>
+<li>line 1486: void RenderPipelineStages::clear_stage_metrics() {...</li>
+<li>line 1491: void RenderPipelineStages::increment_frame_counter() {...</li>
+<li>line 1496: void RenderPipelineStages::finalize_frame_metrics(uint64_t p...</li>
+<li>line 2257: void RenderPipelineStages::render_sorted_splats_with_context...</li>
+<li>line 2488: void RenderPipelineStages::log_stage_result(const char *p_st...</li>
 </ul>
 <h2 id="modulesgaussian_splattingteststest_gaussian_splat_containerh">modules/gaussian_splatting/tests/test_gaussian_splat_container.h<a class="headerlink" href="#modulesgaussian_splattingteststest_gaussian_splat_containerh" title="Permanent link">¶</a></h2>
 <ul>
@@ -7373,20 +7388,6 @@
 <li>line 922: void GaussianImportDialog::ok_pressed() {...</li>
 <li>line 983: Dictionary GaussianImportDialog::get_selected_options() cons...</li>
 </ul>
-<h2 id="modulesgaussian_splattingrenderershader_compilation_helpercpp">modules/gaussian_splatting/renderer/shader_compilation_helper.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderershader_compilation_helpercpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 17: static String _build_source_preview(const String &amp;p_source, ...</li>
-<li>line 50: static void _log_shader_failure(const String &amp;p_shader_name,...</li>
-<li>line 57: static String _process_shader_source(const String &amp;p_glsl_so...</li>
-<li>line 299: Error ShaderCompilationManager::compile_all_shaders(Renderin...</li>
-<li>line 341: Error ShaderCompilationManager::compile_binning_shaders(Rend...</li>
-<li>line 379: Error ShaderCompilationManager::compile_prefix_shaders(Rende...</li>
-<li>line 431: Error ShaderCompilationManager::compile_raster_shaders(Rende...</li>
-<li>line 514: Vector<string> ShaderCompilationManager::_build_prefix_defin...</string></li>
-<li>line 532: Vector<string> ShaderCompilationManager::_build_binning_coun...</string></li>
-<li>line 560: String ShaderCompilationManager::_get_first_n_lines(const St...</li>
-<li>line 588: String ShaderCompilationManager::_format_shader_define_list(...</li>
-</ul>
 <h2 id="modulesgaussian_splattingtestssynthetic_surface_generatorcpp">modules/gaussian_splatting/tests/synthetic_surface_generator.cpp<a class="headerlink" href="#modulesgaussian_splattingtestssynthetic_surface_generatorcpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 11: Dictionary SurfaceSplatGenerator::Config::to_dict() const {...</li>
@@ -7537,6 +7538,20 @@
 <li>line 1037: bool GaussianSceneSerializer::is_gaussian_scene_file(const S...</li>
 <li>line 1045: Array GaussianSceneSerializer::get_supported_compression_typ...</li>
 <li>line 1053: PackedByteArray GaussianSceneSerializer::_migrate_chunk_v1_t...</li>
+</ul>
+<h2 id="modulesgaussian_splattingrenderershader_compilation_helpercpp">modules/gaussian_splatting/renderer/shader_compilation_helper.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderershader_compilation_helpercpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 17: static String _build_source_preview(const String &amp;p_source, ...</li>
+<li>line 50: static void _log_shader_failure(const String &amp;p_shader_name,...</li>
+<li>line 57: static String _process_shader_source(const String &amp;p_glsl_so...</li>
+<li>line 299: Error ShaderCompilationManager::compile_all_shaders(Renderin...</li>
+<li>line 344: Error ShaderCompilationManager::compile_binning_shaders(Rend...</li>
+<li>line 382: Error ShaderCompilationManager::compile_prefix_shaders(Rende...</li>
+<li>line 434: Error ShaderCompilationManager::compile_raster_shaders(Rende...</li>
+<li>line 517: Vector<string> ShaderCompilationManager::_build_prefix_defin...</string></li>
+<li>line 535: Vector<string> ShaderCompilationManager::_build_binning_coun...</string></li>
+<li>line 563: String ShaderCompilationManager::_get_first_n_lines(const St...</li>
+<li>line 591: String ShaderCompilationManager::_format_shader_define_list(...</li>
 </ul>
 <h2 id="modulesgaussian_splattinginterfacesrender_device_managercpp">modules/gaussian_splatting/interfaces/render_device_manager.cpp<a class="headerlink" href="#modulesgaussian_splattinginterfacesrender_device_managercpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -7871,79 +7886,79 @@
 <li>line 99: static int _get_int_setting(ProjectSettings *ps, const Strin...</li>
 <li>line 104: static uint8_t _sh_band_to_coeff_limit(int p_band) {...</li>
 <li>line 110: static void _initialize_lighting_project_settings_defaults()...</li>
-<li>line 167: void ensure_initialized() {...</li>
-<li>line 183: bool is_frame_log_enabled() {...</li>
-<li>line 188: int get_frame_log_frequency() {...</li>
-<li>line 194: static void _on_project_settings_changed() {...</li>
-<li>line 198: void refresh() {...</li>
-<li>line 222: static bool _is_frame_log_enabled() {...</li>
-<li>line 238: static int _get_frame_log_frequency() {...</li>
-<li>line 242: static bool _should_log_frame(uint64_t p_frame) {...</li>
-<li>line 253: static void _trace_render_path(bool p_enabled, uint64_t p_fr...</li>
-<li>line 263: static String _streaming_not_ready_route_uid(const char *p_s...</li>
-<li>line 267: static bool _is_typed_streaming_not_ready_route(const String...</li>
-<li>line 271: static String _streaming_not_ready_reason_code(const String ...</li>
-<li>line 283: static bool _has_primary_resident_render_data(const Gaussian...</li>
-<li>line 296: static bool _projection_nearly_equal(const Projection &amp;p_a, ...</li>
-<li>line 432: Projection GaussianSplatRenderer::build_cull_projection(Rend...</li>
-<li>line 455: void GaussianSplatRenderer::_forget_tile_renderer_outputs() ...</li>
-<li>line 464: void GaussianSplatRenderer::_warn_tile_depth_copy_incompatib...</li>
-<li>line 711: void GaussianSplatRenderer::_notify_render_thread_dispatch_c...</li>
-<li>line 939: bool GaussianSplatRenderer::ensure_sort_rendering_device(con...</li>
-<li>line 947: SortExternalBufferState GaussianSplatRenderer::get_sort_exte...</li>
-<li>line 968: bool GaussianSplatRenderer::resize_sort_state_byte_vectors(u...</li>
-<li>line 1004: void GaussianSplatRenderer::clear_sort_buffer_binding_state(...</li>
-<li>line 1017: void GaussianSplatRenderer::publish_sorted_indices(const Sor...</li>
-<li>line 1075: void GaussianSplatRenderer::_teardown_resources() {...</li>
-<li>line 1208: void GaussianSplatRenderer::_teardown_on_render_thread(uint6...</li>
-<li>line 1213: void GaussianSplatRenderer::_release_shared_dynamic_asset() ...</li>
-<li>line 1229: void GaussianSplatRenderer::_notification(int p_what) {...</li>
-<li>line 1234: void GaussianSplatRenderer::initialize() {...</li>
-<li>line 1291: void GaussianSplatRenderer::_initialize_on_render_thread(uin...</li>
-<li>line 1296: void GaussianSplatRenderer::set_painterly_material(const Ref...</li>
-<li>line 1315: Ref<painterlymaterial> GaussianSplatRenderer::get_painterly_...</painterlymaterial></li>
-<li>line 1322: void GaussianSplatRenderer::update_depth_range(float p_near,...</li>
-<li>line 1329: void GaussianRenderFacadeState::ShadowBlitState::clear(Rende...</li>
-<li>line 1350: bool GaussianSplatRenderer::_ensure_shadow_output_compositor...</li>
-<li>line 1372: bool GaussianSplatRenderer::_ensure_shadow_blit_resources(Re...</li>
-<li>line 1447: bool GaussianSplatRenderer::<em>blit_shadow_depth(RID p_source</em>...</li>
-<li>line 1594: void GaussianSplatRenderer::_on_painterly_material_changed()...</li>
-<li>line 1611: RID GaussianSplatRenderer::_get_painterly_depth_texture() co...</li>
-<li>line 1656: RID GaussianSplatRenderer::_get_viewport_color_target(Render...</li>
-<li>line 1691: void GaussianSplatRenderer::_check_dual_state_sync(const cha...</li>
-<li>line 1705: void GaussianSplatRenderer::_set_manual_viewport_format(RD::...</li>
-<li>line 1710: void GaussianSplatRenderer::_set_active_viewport_format(RD::...</li>
-<li>line 1753: void GaussianSplatRenderer::_reset_legacy_streaming_data_pat...</li>
-<li>line 1865: void GaussianSplatRenderer::render_scene_instance(RenderData...</li>
-<li>line 2127: void GaussianSplatRenderer::tick_streaming_only(const Transf...</li>
-<li>line 2145: void GaussianSplatRenderer::render_gaussians(RenderDataRD *p...</li>
-<li>line 2189: RID GaussianSplatRenderer::get_final_texture() const {...</li>
-<li>line 2196: bool GaussianSplatRenderer::has_rendered_content() const {...</li>
-<li>line 2204: AABB GaussianSplatRenderer::get_aabb() const {...</li>
-<li>line 2343: bool GaussianSplatRenderer::get_submission_residency_hint(in...</li>
-<li>line 2357: bool GaussianSplatRenderer::should_prefer_resident_backend(i...</li>
-<li>line 2392: void GaussianSplatRenderer::_set_route_policy_diagnostics(in...</li>
-<li>line 2440: void GaussianSplatRenderer::set_instance_pipeline_buffers(co...</li>
-<li>line 2445: void GaussianSplatRenderer::clear_instance_pipeline_buffers(...</li>
-<li>line 2454: bool GaussianSplatRenderer::update_instance_buffer(LocalVect...</li>
-<li>line 2537: void GaussianSplatRenderer::_test_dispatch_noop_callback(uin...</li>
-<li>line 2541: void GaussianSplatRenderer::test_force_disable_streaming() {...</li>
-<li>line 2565: void GaussianSplatRenderer::test_release_current_streaming_s...</li>
-<li>line 2573: bool GaussianSplatRenderer::test_has_current_streaming_syste...</li>
-<li>line 2577: bool GaussianSplatRenderer::test_has_output_compositor() con...</li>
-<li>line 2581: RID GaussianSplatRenderer::test_get_cached_render_depth() co...</li>
-<li>line 2586: uint32_t GaussianSplatRenderer::test_get_output_blit_variant...</li>
-<li>line 2591: void GaussianSplatRenderer::test_clear_output_viewport_blit_...</li>
-<li>line 2598: void GaussianSplatRenderer::test_reset_output_viewport_copy_...</li>
-<li>line 2615: void GaussianSplatRenderer::test_set_test_splats(const Vecto...</li>
-<li>line 2649: void GaussianSplatRenderer::test_disable_gpu_culler() {...</li>
-<li>line 2653: void GaussianSplatRenderer::test_disable_rasterizer() {...</li>
-<li>line 2662: void GaussianSplatRenderer::test_set_render_thread_dispatch_...</li>
-<li>line 2668: uint64_t GaussianSplatRenderer::test_get_render_thread_dispa...</li>
-<li>line 2672: bool GaussianSplatRenderer::test_dispatch_call_on_render_thr...</li>
-<li>line 2676: bool GaussianSplatRenderer::test_dispatch_call_on_render_thr...</li>
-<li>line 2680: void GaussianSplatRenderer::test_notify_render_thread_dispat...</li>
-<li>line 2684: uint64_t GaussianSplatRenderer::test_get_render_thread_dispa...</li>
+<li>line 161: void ensure_initialized() {...</li>
+<li>line 177: bool is_frame_log_enabled() {...</li>
+<li>line 182: int get_frame_log_frequency() {...</li>
+<li>line 188: static void _on_project_settings_changed() {...</li>
+<li>line 192: void refresh() {...</li>
+<li>line 216: static bool _is_frame_log_enabled() {...</li>
+<li>line 232: static int _get_frame_log_frequency() {...</li>
+<li>line 236: static bool _should_log_frame(uint64_t p_frame) {...</li>
+<li>line 247: static void _trace_render_path(bool p_enabled, uint64_t p_fr...</li>
+<li>line 257: static String _streaming_not_ready_route_uid(const char *p_s...</li>
+<li>line 261: static bool _is_typed_streaming_not_ready_route(const String...</li>
+<li>line 265: static String _streaming_not_ready_reason_code(const String ...</li>
+<li>line 277: static bool _has_primary_resident_render_data(const Gaussian...</li>
+<li>line 290: static bool _projection_nearly_equal(const Projection &amp;p_a, ...</li>
+<li>line 426: Projection GaussianSplatRenderer::build_cull_projection(Rend...</li>
+<li>line 449: void GaussianSplatRenderer::_forget_tile_renderer_outputs() ...</li>
+<li>line 458: void GaussianSplatRenderer::_warn_tile_depth_copy_incompatib...</li>
+<li>line 705: void GaussianSplatRenderer::_notify_render_thread_dispatch_c...</li>
+<li>line 933: bool GaussianSplatRenderer::ensure_sort_rendering_device(con...</li>
+<li>line 941: SortExternalBufferState GaussianSplatRenderer::get_sort_exte...</li>
+<li>line 962: bool GaussianSplatRenderer::resize_sort_state_byte_vectors(u...</li>
+<li>line 998: void GaussianSplatRenderer::clear_sort_buffer_binding_state(...</li>
+<li>line 1011: void GaussianSplatRenderer::publish_sorted_indices(const Sor...</li>
+<li>line 1069: void GaussianSplatRenderer::_teardown_resources() {...</li>
+<li>line 1202: void GaussianSplatRenderer::_teardown_on_render_thread(uint6...</li>
+<li>line 1207: void GaussianSplatRenderer::_release_shared_dynamic_asset() ...</li>
+<li>line 1223: void GaussianSplatRenderer::_notification(int p_what) {...</li>
+<li>line 1228: void GaussianSplatRenderer::initialize() {...</li>
+<li>line 1285: void GaussianSplatRenderer::_initialize_on_render_thread(uin...</li>
+<li>line 1290: void GaussianSplatRenderer::set_painterly_material(const Ref...</li>
+<li>line 1309: Ref<painterlymaterial> GaussianSplatRenderer::get_painterly_...</painterlymaterial></li>
+<li>line 1316: void GaussianSplatRenderer::update_depth_range(float p_near,...</li>
+<li>line 1323: void GaussianRenderFacadeState::ShadowBlitState::clear(Rende...</li>
+<li>line 1344: bool GaussianSplatRenderer::_ensure_shadow_output_compositor...</li>
+<li>line 1366: bool GaussianSplatRenderer::_ensure_shadow_blit_resources(Re...</li>
+<li>line 1441: bool GaussianSplatRenderer::<em>blit_shadow_depth(RID p_source</em>...</li>
+<li>line 1588: void GaussianSplatRenderer::_on_painterly_material_changed()...</li>
+<li>line 1605: RID GaussianSplatRenderer::_get_painterly_depth_texture() co...</li>
+<li>line 1650: RID GaussianSplatRenderer::_get_viewport_color_target(Render...</li>
+<li>line 1685: void GaussianSplatRenderer::_check_dual_state_sync(const cha...</li>
+<li>line 1699: void GaussianSplatRenderer::_set_manual_viewport_format(RD::...</li>
+<li>line 1704: void GaussianSplatRenderer::_set_active_viewport_format(RD::...</li>
+<li>line 1747: void GaussianSplatRenderer::_reset_legacy_streaming_data_pat...</li>
+<li>line 1859: void GaussianSplatRenderer::render_scene_instance(RenderData...</li>
+<li>line 2121: void GaussianSplatRenderer::tick_streaming_only(const Transf...</li>
+<li>line 2139: void GaussianSplatRenderer::render_gaussians(RenderDataRD *p...</li>
+<li>line 2183: RID GaussianSplatRenderer::get_final_texture() const {...</li>
+<li>line 2190: bool GaussianSplatRenderer::has_rendered_content() const {...</li>
+<li>line 2198: AABB GaussianSplatRenderer::get_aabb() const {...</li>
+<li>line 2337: bool GaussianSplatRenderer::get_submission_residency_hint(in...</li>
+<li>line 2351: bool GaussianSplatRenderer::should_prefer_resident_backend(i...</li>
+<li>line 2386: void GaussianSplatRenderer::_set_route_policy_diagnostics(in...</li>
+<li>line 2434: void GaussianSplatRenderer::set_instance_pipeline_buffers(co...</li>
+<li>line 2439: void GaussianSplatRenderer::clear_instance_pipeline_buffers(...</li>
+<li>line 2448: bool GaussianSplatRenderer::update_instance_buffer(LocalVect...</li>
+<li>line 2531: void GaussianSplatRenderer::_test_dispatch_noop_callback(uin...</li>
+<li>line 2535: void GaussianSplatRenderer::test_force_disable_streaming() {...</li>
+<li>line 2559: void GaussianSplatRenderer::test_release_current_streaming_s...</li>
+<li>line 2567: bool GaussianSplatRenderer::test_has_current_streaming_syste...</li>
+<li>line 2571: bool GaussianSplatRenderer::test_has_output_compositor() con...</li>
+<li>line 2575: RID GaussianSplatRenderer::test_get_cached_render_depth() co...</li>
+<li>line 2580: uint32_t GaussianSplatRenderer::test_get_output_blit_variant...</li>
+<li>line 2585: void GaussianSplatRenderer::test_clear_output_viewport_blit_...</li>
+<li>line 2592: void GaussianSplatRenderer::test_reset_output_viewport_copy_...</li>
+<li>line 2609: void GaussianSplatRenderer::test_set_test_splats(const Vecto...</li>
+<li>line 2643: void GaussianSplatRenderer::test_disable_gpu_culler() {...</li>
+<li>line 2647: void GaussianSplatRenderer::test_disable_rasterizer() {...</li>
+<li>line 2656: void GaussianSplatRenderer::test_set_render_thread_dispatch_...</li>
+<li>line 2662: uint64_t GaussianSplatRenderer::test_get_render_thread_dispa...</li>
+<li>line 2666: bool GaussianSplatRenderer::test_dispatch_call_on_render_thr...</li>
+<li>line 2670: bool GaussianSplatRenderer::test_dispatch_call_on_render_thr...</li>
+<li>line 2674: void GaussianSplatRenderer::test_notify_render_thread_dispat...</li>
+<li>line 2678: uint64_t GaussianSplatRenderer::test_get_render_thread_dispa...</li>
 </ul>
 <h2 id="modulesgaussian_splattingrenderertile_render_adaptive_controllerh">modules/gaussian_splatting/renderer/tile_render_adaptive_controller.h<a class="headerlink" href="#modulesgaussian_splattingrenderertile_render_adaptive_controllerh" title="Permanent link">¶</a></h2>
 <ul>
@@ -8106,7 +8121,8 @@
 <ul>
 <li>line 36: static uint64_t _mix_generation(uint64_t p_accum, uint64_t p...</li>
 <li>line 42: static AABB _compute_contiguous_chunk_bounds(const LocalVect...</li>
-<li>line 148: bool publish(GaussianSplatRenderer *p_renderer, bool p_allow...</li>
+<li>line 66: static GaussianDCEncoding _resolve_data_dc_encoding(const Re...</li>
+<li>line 155: bool publish(GaussianSplatRenderer *p_renderer, bool p_allow...</li>
 </ul>
 <h2 id="modulesgaussian_splattingtestsgenerate_synthetic_ply_fixturesh">modules/gaussian_splatting/tests/generate_synthetic_ply_fixtures.h<a class="headerlink" href="#modulesgaussian_splattingtestsgenerate_synthetic_ply_fixturesh" title="Permanent link">¶</a></h2>
 <ul>
@@ -8218,17 +8234,17 @@
 <li>line 315: bool _has_dispatch_work() const {...</li>
 <li>line 322: void _prepare_next_tile_counts_if_needed() {...</li>
 <li>line 333: bool _validate_and_configure_settings() {...</li>
-<li>line 477: void _setup_frame_timestamps() {...</li>
-<li>line 499: uint32_t _resolve_effective_visible_splats() {...</li>
-<li>line 512: bool _validate_viewport_and_resources() {...</li>
-<li>line 581: void _setup_diagnostics_state() {...</li>
-<li>line 609: bool _upload_param_buffer(float p_overlap_keep_ratio) {...</li>
-<li>line 640: bool _build_and_upload_params() {...</li>
-<li>line 666: bool _setup_diagnostics_and_params() {...</li>
-<li>line 671: bool _execute_global_sort_pipeline() {...</li>
-<li>line 948: bool _select_and_prepare_raster_path() {...</li>
-<li>line 996: void _dispatch_rasterization() {...</li>
-<li>line 1022: RID _finalize_frame() {...</li>
+<li>line 478: void _setup_frame_timestamps() {...</li>
+<li>line 500: uint32_t _resolve_effective_visible_splats() {...</li>
+<li>line 513: bool _validate_viewport_and_resources() {...</li>
+<li>line 582: void _setup_diagnostics_state() {...</li>
+<li>line 610: bool _upload_param_buffer(float p_overlap_keep_ratio) {...</li>
+<li>line 641: bool _build_and_upload_params() {...</li>
+<li>line 667: bool _setup_diagnostics_and_params() {...</li>
+<li>line 672: bool _execute_global_sort_pipeline() {...</li>
+<li>line 949: bool _select_and_prepare_raster_path() {...</li>
+<li>line 997: void _dispatch_rasterization() {...</li>
+<li>line 1023: RID _finalize_frame() {...</li>
 <li>line 1254: void TileRenderer::_bind_methods() {...</li>
 <li>line 1266: void TileRenderer::set_debug_log_resolve(bool p_enabled) {...</li>
 <li>line 1273: void TileRenderer::set_resolve_debug_visualize_tiles(bool p_...</li>
@@ -8257,55 +8273,55 @@
 <li>line 1766: void TileRenderer::_destroy_output_textures() {...</li>
 <li>line 1774: void TileRenderer::<em>create_output_texture(const Vector2i &amp;p</em>...</li>
 <li>line 1778: Vector<string> TileRenderer::_build_common_shader_defines(bo...</string></li>
-<li>line 1821: static uint32_t _required_tile_bits(uint32_t p_total_tiles) ...</li>
-<li>line 1834: SortKeyConfig TileRenderer::_get_effective_sort_key_config()...</li>
-<li>line 1868: Vector<string> TileRenderer::_build_binning_shader_defines()...</string></li>
-<li>line 1888: Vector<string> TileRenderer::_build_raster_shader_defines() ...</string></li>
-<li>line 1912: void TileRenderer::_detect_subgroup_support(RenderingDevice ...</li>
-<li>line 1948: bool TileRenderer::_check_pipeline_validity(RenderingDevice ...</li>
-<li>line 1967: void TileRenderer::_initialize_shader_sources() {...</li>
-<li>line 1999: void TileRenderer::_free_existing_pipelines(RenderingDevice ...</li>
-<li>line 2087: Error TileRenderer::_compile_binning_shaders(RenderingDevice...</li>
-<li>line 2092: Error TileRenderer::_compile_prefix_shaders(RenderingDevice ...</li>
-<li>line 2097: Error TileRenderer::_compile_raster_shaders(RenderingDevice ...</li>
-<li>line 2102: Error TileRenderer::_compile_tile_shaders() {...</li>
-<li>line 2107: uint64_t TileRenderer::_compute_shader_defines_hash() const ...</li>
-<li>line 2116: void TileRenderer::_clear_debug_counters() {...</li>
-<li>line 2120: void TileRenderer::_update_splat_audit_buffer(const RenderPa...</li>
-<li>line 2124: uint32_t TileRenderer::_get_projection_stride() const {...</li>
-<li>line 2128: uint64_t TileRenderer::_compute_projection_buffer_bytes(uint...</li>
-<li>line 2143: void TileRenderer::_ensure_global_projection_buffer(uint32_t...</li>
-<li>line 2147: void TileRenderer::<em>ensure_global_sort_resources(uint32_t p</em>...</li>
-<li>line 2156: void TileRenderer::_reset_timestamp_tracking() {...</li>
-<li>line 2176: void TileRenderer::_resolve_timestamp_range(TimestampRange &amp;...</li>
-<li>line 2278: TileRenderer::GpuTimestampDurations TileRenderer::_compute_s...</li>
-<li>line 2323: void TileRenderer::_update_timing_metrics(const GpuTimestamp...</li>
-<li>line 2340: void TileRenderer::resolve_gpu_timestamps_async() {...</li>
-<li>line 2378: RID TileRenderer::render(RenderingDevice *p_rendering_device...</li>
-<li>line 2398: TileRenderer::RasterDecision TileRenderer::<em>evaluate_raster</em>...</li>
-<li>line 2475: void TileRenderer::_log_raster_path_decision(const RasterDec...</li>
-<li>line 2510: void TileRenderer::_queue_submission(RenderingDevice *p_devi...</li>
-<li>line 2533: void TileRenderer::_flush_pending_submission(bool p_block) {...</li>
-<li>line 2579: void TileRenderer::_invalidate_descriptor_cache() {...</li>
-<li>line 2646: bool TileRenderer::_ensure_param_uniform_buffer(RenderingDev...</li>
-<li>line 2650: RID TileRenderer::_get_default_state_uniform(RenderingDevice...</li>
-<li>line 2654: bool TileRenderer::_ensure_prefix_param_buffer(RenderingDevi...</li>
-<li>line 2658: uint32_t TileRenderer::_clamp_overlap_record_budget(uint32_t...</li>
-<li>line 2667: uint32_t TileRenderer::_get_effective_overlap_capacity(uint3...</li>
-<li>line 2675: void TileRenderer::_issue_async_tile_count_readback(Renderin...</li>
-<li>line 2749: TileRenderer::RenderStats TileRenderer::<em>build_render_stats</em>...</li>
-<li>line 2782: void TileRenderer::_collect_render_statistics() {...</li>
-<li>line 2865: void TileRenderer::_dump_gpu_debug_counters(const RenderPara...</li>
-<li>line 2869: float TileRenderer::get_projection_success_rate_pct() const ...</li>
-<li>line 2877: float TileRenderer::get_sh_cache_hit_rate_pct() const {...</li>
-<li>line 2887: void TileRenderer::_update_adaptive_state(const RenderStats ...</li>
-<li>line 2891: SortingMetrics TileRenderer::get_sorter_metrics() const {...</li>
-<li>line 2898: TileRenderer::DebugCounterSnapshot TileRenderer::get_debug_c...</li>
-<li>line 2903: TileRenderer::OverflowStatsSnapshot TileRenderer::get_overfl...</li>
-<li>line 2908: TileRenderer::SplatAuditSnapshot TileRenderer::get_splat_aud...</li>
-<li>line 2920: void TileRenderer::set_device_manager(RenderDeviceManager *p...</li>
-<li>line 2929: void TileRenderer::clear_output_resource_tracking() {...</li>
-<li>line 2933: TileRenderer::RenderResult TileRenderer::render_with_contrac...</li>
+<li>line 1818: static uint32_t _required_tile_bits(uint32_t p_total_tiles) ...</li>
+<li>line 1831: SortKeyConfig TileRenderer::_get_effective_sort_key_config()...</li>
+<li>line 1865: Vector<string> TileRenderer::_build_binning_shader_defines()...</string></li>
+<li>line 1885: Vector<string> TileRenderer::_build_raster_shader_defines() ...</string></li>
+<li>line 1909: void TileRenderer::_detect_subgroup_support(RenderingDevice ...</li>
+<li>line 1945: bool TileRenderer::_check_pipeline_validity(RenderingDevice ...</li>
+<li>line 1964: void TileRenderer::_initialize_shader_sources() {...</li>
+<li>line 1996: void TileRenderer::_free_existing_pipelines(RenderingDevice ...</li>
+<li>line 2084: Error TileRenderer::_compile_binning_shaders(RenderingDevice...</li>
+<li>line 2089: Error TileRenderer::_compile_prefix_shaders(RenderingDevice ...</li>
+<li>line 2094: Error TileRenderer::_compile_raster_shaders(RenderingDevice ...</li>
+<li>line 2099: Error TileRenderer::_compile_tile_shaders() {...</li>
+<li>line 2104: uint64_t TileRenderer::_compute_shader_defines_hash() const ...</li>
+<li>line 2113: void TileRenderer::_clear_debug_counters() {...</li>
+<li>line 2117: void TileRenderer::_update_splat_audit_buffer(const RenderPa...</li>
+<li>line 2121: uint32_t TileRenderer::_get_projection_stride() const {...</li>
+<li>line 2125: uint64_t TileRenderer::_compute_projection_buffer_bytes(uint...</li>
+<li>line 2140: void TileRenderer::_ensure_global_projection_buffer(uint32_t...</li>
+<li>line 2144: void TileRenderer::<em>ensure_global_sort_resources(uint32_t p</em>...</li>
+<li>line 2153: void TileRenderer::_reset_timestamp_tracking() {...</li>
+<li>line 2173: void TileRenderer::_resolve_timestamp_range(TimestampRange &amp;...</li>
+<li>line 2275: TileRenderer::GpuTimestampDurations TileRenderer::_compute_s...</li>
+<li>line 2320: void TileRenderer::_update_timing_metrics(const GpuTimestamp...</li>
+<li>line 2337: void TileRenderer::resolve_gpu_timestamps_async() {...</li>
+<li>line 2375: RID TileRenderer::render(RenderingDevice *p_rendering_device...</li>
+<li>line 2395: TileRenderer::RasterDecision TileRenderer::<em>evaluate_raster</em>...</li>
+<li>line 2472: void TileRenderer::_log_raster_path_decision(const RasterDec...</li>
+<li>line 2507: void TileRenderer::_queue_submission(RenderingDevice *p_devi...</li>
+<li>line 2530: void TileRenderer::_flush_pending_submission(bool p_block) {...</li>
+<li>line 2576: void TileRenderer::_invalidate_descriptor_cache() {...</li>
+<li>line 2643: bool TileRenderer::_ensure_param_uniform_buffer(RenderingDev...</li>
+<li>line 2647: RID TileRenderer::_get_default_state_uniform(RenderingDevice...</li>
+<li>line 2651: bool TileRenderer::_ensure_prefix_param_buffer(RenderingDevi...</li>
+<li>line 2655: uint32_t TileRenderer::_clamp_overlap_record_budget(uint32_t...</li>
+<li>line 2664: uint32_t TileRenderer::_get_effective_overlap_capacity(uint3...</li>
+<li>line 2672: void TileRenderer::_issue_async_tile_count_readback(Renderin...</li>
+<li>line 2746: TileRenderer::RenderStats TileRenderer::<em>build_render_stats</em>...</li>
+<li>line 2779: void TileRenderer::_collect_render_statistics() {...</li>
+<li>line 2862: void TileRenderer::_dump_gpu_debug_counters(const RenderPara...</li>
+<li>line 2866: float TileRenderer::get_projection_success_rate_pct() const ...</li>
+<li>line 2874: float TileRenderer::get_sh_cache_hit_rate_pct() const {...</li>
+<li>line 2884: void TileRenderer::_update_adaptive_state(const RenderStats ...</li>
+<li>line 2888: SortingMetrics TileRenderer::get_sorter_metrics() const {...</li>
+<li>line 2895: TileRenderer::DebugCounterSnapshot TileRenderer::get_debug_c...</li>
+<li>line 2900: TileRenderer::OverflowStatsSnapshot TileRenderer::get_overfl...</li>
+<li>line 2905: TileRenderer::SplatAuditSnapshot TileRenderer::get_splat_aud...</li>
+<li>line 2917: void TileRenderer::set_device_manager(RenderDeviceManager *p...</li>
+<li>line 2926: void TileRenderer::clear_output_resource_tracking() {...</li>
+<li>line 2930: TileRenderer::RenderResult TileRenderer::render_with_contrac...</li>
 </ul>
 <h2 id="modulesgaussian_splattingcoregaussian_data_editscpp">modules/gaussian_splatting/core/gaussian_data_edits.cpp<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_data_editscpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -8868,9 +8884,9 @@
 <ul>
 <li>line 195: void reset() {...</li>
 <li>line 201: bool is_valid() const {...</li>
-<li>line 393: void set(RenderingDevice *p_device) {...</li>
-<li>line 398: void clear() {...</li>
-<li>line 403: bool matches(RenderingDevice *p_device) const {...</li>
+<li>line 392: void set(RenderingDevice *p_device) {...</li>
+<li>line 397: void clear() {...</li>
+<li>line 402: bool matches(RenderingDevice *p_device) const {...</li>
 </ul>
 <h2 id="modulesgaussian_splattingrenderergaussian_gpu_layoutcpp">modules/gaussian_splatting/renderer/gaussian_gpu_layout.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderergaussian_gpu_layoutcpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -9402,42 +9418,42 @@
 </ul>
 <h2 id="modulesgaussian_splattingcoregaussian_streamingh">modules/gaussian_splatting/core/gaussian_streaming.h<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_streamingh" title="Permanent link">¶</a></h2>
 <ul>
-<li>line 169: bool has_config_overrides() const { return config_overrides_...</li>
-<li>line 194: uint32_t get_loaded_chunks() const { return budget.loaded_ch...</li>
-<li>line 197: SHCompressionMetrics get_total_sh_metrics() const { return t...</li>
-<li>line 206: void set_chunk_frustum_culling_enabled(bool p_enabled) { vis...</li>
-<li>line 207: bool is_chunk_frustum_culling_enabled() const { return visib...</li>
-<li>line 208: void set_chunk_frustum_padding(float p_padding) { visibility...</li>
-<li>line 209: float get_chunk_frustum_padding() const { return visibility....</li>
-<li>line 211: float get_chunk_radius_multiplier() const { return visibilit...</li>
-<li>line 217: Ref<vrambudgetregulator> get_vram_regulator() const { return...</vrambudgetregulator></li>
-<li>line 221: uint32_t get_max_chunk_count_per_asset() const { return glob...</li>
-<li>line 222: uint32_t get_max_chunk_splats() const { return global_atlas_...</li>
-<li>line 224: float get_global_lod_blend_factor() const { return visibilit...</li>
-<li>line 225: void set_lod_blend_enabled(bool p_enabled) { visibility.lod_...</li>
-<li>line 226: bool is_lod_blend_enabled() const { return visibility.lod_bl...</li>
-<li>line 227: void set_lod_blend_distance(float p_distance) { visibility.l...</li>
-<li>line 228: float get_lod_blend_distance() const { return visibility.lod...</li>
-<li>line 229: float get_lod_hysteresis_zone() const { return visibility.lo...</li>
-<li>line 233: int get_global_sh_band_level() const { return visibility.glo...</li>
-<li>line 234: void set_global_sh_band_level(int p_level) { visibility.glob...</li>
-<li>line 238: uint32_t get_chunks_loaded_this_frame() const { return budge...</li>
-<li>line 239: uint32_t get_chunks_evicted_this_frame() const { return evic...</li>
-<li>line 240: uint32_t get_visible_chunks_evicted_this_frame() const { ret...</li>
-<li>line 248: bool is_asset_registered(uint32_t asset_id) const { return a...</li>
-<li>line 251: bool is_per_chunk_quantization_enabled() const { return per_...</li>
-<li>line 252: RID get_quantization_buffer() const { return quantization_bu...</li>
-<li>line 253: uint32_t get_quantization_position_bits() const { return qua...</li>
-<li>line 254: uint32_t get_quantization_scale_bits() const { return quanti...</li>
-<li>line 255: bool is_quantization_scales_enabled() const { return quantiz...</li>
-<li>line 261: bool has_asset(uint32_t asset_id) const { return asset_regis...</li>
-<li>line 267: RID get_atlas_gaussian_buffer() const { return global_atlas_...</li>
-<li>line 268: uint32_t get_atlas_gaussian_count() const { return global_at...</li>
-<li>line 269: RID get_asset_meta_buffer() const { return global_atlas_regi...</li>
-<li>line 270: RID get_chunk_meta_buffer() const { return global_atlas_regi...</li>
-<li>line 271: RID get_asset_chunk_index_buffer() const { return global_atl...</li>
-<li>line 272: RID get_atlas_quantization_buffer() const { return global_at...</li>
-<li>line 273: uint64_t get_atlas_generation() const { return global_atlas_...</li>
+<li>line 170: bool has_config_overrides() const { return config_overrides_...</li>
+<li>line 195: uint32_t get_loaded_chunks() const { return budget.loaded_ch...</li>
+<li>line 198: SHCompressionMetrics get_total_sh_metrics() const { return t...</li>
+<li>line 207: void set_chunk_frustum_culling_enabled(bool p_enabled) { vis...</li>
+<li>line 208: bool is_chunk_frustum_culling_enabled() const { return visib...</li>
+<li>line 209: void set_chunk_frustum_padding(float p_padding) { visibility...</li>
+<li>line 210: float get_chunk_frustum_padding() const { return visibility....</li>
+<li>line 212: float get_chunk_radius_multiplier() const { return visibilit...</li>
+<li>line 218: Ref<vrambudgetregulator> get_vram_regulator() const { return...</vrambudgetregulator></li>
+<li>line 222: uint32_t get_max_chunk_count_per_asset() const { return glob...</li>
+<li>line 223: uint32_t get_max_chunk_splats() const { return global_atlas_...</li>
+<li>line 225: float get_global_lod_blend_factor() const { return visibilit...</li>
+<li>line 226: void set_lod_blend_enabled(bool p_enabled) { visibility.lod_...</li>
+<li>line 227: bool is_lod_blend_enabled() const { return visibility.lod_bl...</li>
+<li>line 228: void set_lod_blend_distance(float p_distance) { visibility.l...</li>
+<li>line 229: float get_lod_blend_distance() const { return visibility.lod...</li>
+<li>line 230: float get_lod_hysteresis_zone() const { return visibility.lo...</li>
+<li>line 234: int get_global_sh_band_level() const { return visibility.glo...</li>
+<li>line 235: void set_global_sh_band_level(int p_level) { visibility.glob...</li>
+<li>line 239: uint32_t get_chunks_loaded_this_frame() const { return budge...</li>
+<li>line 240: uint32_t get_chunks_evicted_this_frame() const { return evic...</li>
+<li>line 241: uint32_t get_visible_chunks_evicted_this_frame() const { ret...</li>
+<li>line 249: bool is_asset_registered(uint32_t asset_id) const { return a...</li>
+<li>line 252: bool is_per_chunk_quantization_enabled() const { return per_...</li>
+<li>line 253: RID get_quantization_buffer() const { return quantization_bu...</li>
+<li>line 254: uint32_t get_quantization_position_bits() const { return qua...</li>
+<li>line 255: uint32_t get_quantization_scale_bits() const { return quanti...</li>
+<li>line 256: bool is_quantization_scales_enabled() const { return quantiz...</li>
+<li>line 262: bool has_asset(uint32_t asset_id) const { return asset_regis...</li>
+<li>line 268: RID get_atlas_gaussian_buffer() const { return global_atlas_...</li>
+<li>line 269: uint32_t get_atlas_gaussian_count() const { return global_at...</li>
+<li>line 270: RID get_asset_meta_buffer() const { return global_atlas_regi...</li>
+<li>line 271: RID get_chunk_meta_buffer() const { return global_atlas_regi...</li>
+<li>line 272: RID get_asset_chunk_index_buffer() const { return global_atl...</li>
+<li>line 273: RID get_atlas_quantization_buffer() const { return global_at...</li>
+<li>line 274: uint64_t get_atlas_generation() const { return global_atlas_...</li>
 </ul>
 <h2 id="testsexamplesgodottest_projectsceneslighting_testgd">tests/examples/godot/test_project/scenes/lighting_test.gd<a class="headerlink" href="#testsexamplesgodottest_projectsceneslighting_testgd" title="Permanent link">¶</a></h2>
 <ul>
@@ -9691,20 +9707,6 @@
 <li>line 175: void set_incremental_saver(const Ref&lt;GaussianIncrementalSave...</li>
 <li>line 176: Ref<gaussianincrementalsaver> get_incremental_saver() const ...</gaussianincrementalsaver></li>
 </ul>
-<h2 id="modulesgaussian_splattingrenderersh_configcpp">modules/gaussian_splatting/renderer/sh_config.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderersh_configcpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 17: void SHConfig::load_from_project_settings() {...</li>
-<li>line 55: void SHConfig::save_to_project_settings() const {...</li>
-<li>line 70: void SHConfig::reset_to_defaults() {...</li>
-<li>line 78: bool SHConfig::validate() const {...</li>
-<li>line 82: int SHConfig::get_coefficient_count(SHBandLevel level) {...</li>
-<li>line 97: int SHConfig::get_float_count(SHBandLevel level) {...</li>
-<li>line 102: const char* SHConfig::get_band_name(SHBandLevel level) {...</li>
-<li>line 112: float SHConfig::get_memory_multiplier(SHBandLevel level) {...</li>
-<li>line 120: void SHConfig::print_config_summary() const {...</li>
-<li>line 133: Dictionary SHConfig::get_effective_config_snapshot() const {...</li>
-<li>line 144: void initialize_sh_config() {...</li>
-</ul>
 <h2 id="modulesgaussian_splattinganimationkeyframe_interpolatorh">modules/gaussian_splatting/animation/keyframe_interpolator.h<a class="headerlink" href="#modulesgaussian_splattinganimationkeyframe_interpolatorh" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 32: : time(p_time), value(p_value), interpolation(p_interp) {}...</li>
@@ -9717,6 +9719,20 @@
 <li>line 51: static inline bool is_debug_frame_logging_enabled() {...</li>
 <li>line 65: static inline bool is_debug_resource_logging_enabled() {...</li>
 <li>line 69: static inline bool is_debug_force_unclustered_lights_enabled...</li>
+</ul>
+<h2 id="modulesgaussian_splattingrenderersh_configcpp">modules/gaussian_splatting/renderer/sh_config.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderersh_configcpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 16: void SHConfig::load_from_project_settings() {...</li>
+<li>line 51: void SHConfig::save_to_project_settings() const {...</li>
+<li>line 65: void SHConfig::reset_to_defaults() {...</li>
+<li>line 72: bool SHConfig::validate() const {...</li>
+<li>line 76: int SHConfig::get_coefficient_count(SHBandLevel level) {...</li>
+<li>line 91: int SHConfig::get_float_count(SHBandLevel level) {...</li>
+<li>line 96: const char* SHConfig::get_band_name(SHBandLevel level) {...</li>
+<li>line 106: float SHConfig::get_memory_multiplier(SHBandLevel level) {...</li>
+<li>line 114: void SHConfig::print_config_summary() const {...</li>
+<li>line 125: Dictionary SHConfig::get_effective_config_snapshot() const {...</li>
+<li>line 136: void initialize_sh_config() {...</li>
 </ul>
 <h2 id="modulesgaussian_splattingteststest_memory_leak_detectionh">modules/gaussian_splatting/tests/test_memory_leak_detection.h<a class="headerlink" href="#modulesgaussian_splattingteststest_memory_leak_detectionh" title="Permanent link">¶</a></h2>
 <ul>
@@ -9884,6 +9900,10 @@
 <li>line 38: func _is_gpu_required_ci_mode() -&gt; bool:...</li>
 <li>line 58: func _apply_suite_gates():...</li>
 </ul>
+<h2 id="modulesgaussian_splattingrenderertile_render_stagescpp">modules/gaussian_splatting/renderer/tile_render_stages.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderertile_render_stagescpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 29: static uint32_t _get_shift_from_power_of_2(uint32_t p_value)...</li>
+</ul>
 <h2 id="testscitest_ply_pipeline_cigd">tests/ci/test_ply_pipeline_ci.gd<a class="headerlink" href="#testscitest_ply_pipeline_cigd" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 25: func _env_flag(name: String, default_value: bool) -&gt; bool:...</li>
@@ -9899,10 +9919,6 @@
 <li>line 73: Color get_highlight_color() const { return highlight_color; ...</li>
 <li>line 74: Color get_outline_color() const { return outline_color; }...</li>
 <li>line 75: float get_outline_width() const { return outline_width; }...</li>
-</ul>
-<h2 id="modulesgaussian_splattingrenderertile_render_stagescpp">modules/gaussian_splatting/renderer/tile_render_stages.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderertile_render_stagescpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 29: static uint32_t _get_shift_from_power_of_2(uint32_t p_value)...</li>
 </ul>
 <h2 id="modulesgaussian_splattingtestsperformance_benchmarkh">modules/gaussian_splatting/tests/performance_benchmark.h<a class="headerlink" href="#modulesgaussian_splattingtestsperformance_benchmarkh" title="Permanent link">¶</a></h2>
 <ul>
@@ -10105,8 +10121,9 @@
 </ul>
 <h2 id="modulesgaussian_splattingrenderergaussian_gpu_layouth">modules/gaussian_splatting/renderer/gaussian_gpu_layout.h<a class="headerlink" href="#modulesgaussian_splattingrenderergaussian_gpu_layouth" title="Permanent link">¶</a></h2>
 <ul>
-<li>line 34: inline uint32_t gs_get_sh_encoding(uint32_t p_metadata) {...</li>
-<li>line 38: inline GaussianDCEncoding gs_get_dc_encoding(uint32_t p_meta...</li>
+<li>line 36: inline uint32_t gs_get_sh_encoding(uint32_t p_metadata) {...</li>
+<li>line 40: inline GaussianDCEncoding gs_get_dc_encoding(uint32_t p_meta...</li>
+<li>line 46: inline uint32_t gs_pack_asset_gpu_flags(bool p_is_2d, Gaussi...</li>
 </ul>
 <h2 id="modulesgaussian_splattingcoregaussian_data_color_gradingcpp">modules/gaussian_splatting/core/gaussian_data_color_grading.cpp<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_data_color_gradingcpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -10125,6 +10142,10 @@
 <li>line 71: uint32_t get_total_batches_completed() const { return total_...</li>
 <li>line 72: uint32_t get_total_requests_processed() const { return total...</li>
 <li>line 73: uint32_t get_total_failed_requests() const { return total_fa...</li>
+</ul>
+<h2 id="modulesgaussian_splattingshadersincludesgs_sh_binningglsl">modules/gaussian_splatting/shaders/includes/gs_sh_binning.glsl<a class="headerlink" href="#modulesgaussian_splattingshadersincludesgs_sh_binningglsl" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 36: bool gaussian_get_dc_is_linear_rgb(uint meta) {...</li>
 </ul>
 <h2 id="modulesgaussian_splattingteststest_view_transformh">modules/gaussian_splatting/tests/test_view_transform.h<a class="headerlink" href="#modulesgaussian_splattingteststest_view_transformh" title="Permanent link">¶</a></h2>
 <ul>
@@ -10306,7 +10327,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 6, 2026 06:45:52 UTC">April 6, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 6, 2026 06:59:58 UTC">April 6, 2026</span>
   </span>
 
     
