@@ -203,11 +203,7 @@ void main() {
         vec3 shadow_view_pos = reconstruct_scene_view_pos(uv, depth, gs_is_ortho);
         vec3 view_pos = reconstruct_scene_view_pos(uv, lighting_depth, gs_is_ortho);
 
-        vec3 normal = normal_sample.rgb;
-        if (length(normal) < 0.001) {
-            normal = vec3(0.0, 0.0, 1.0);
-        }
-        normal = normalize(normal);
+        const vec3 debug_shadow_normal = vec3(0.0);
         float receiver_bias = resolve_shadow_receiver_bias();
 
         uint dir_count = min(scene_data_block.data.directional_light_count, uint(MAX_DIRECTIONAL_LIGHT_DATA_STRUCTS));
@@ -223,7 +219,7 @@ void main() {
         for (uint i = 0u; i < dir_count; ++i) {
             if (directional_lights.data[i].shadow_opacity > 0.001) {
                 has_dir = true;
-                float s = gs_directional_shadow(i, shadow_view_pos, normal, scene_data_block.data.taa_frame_count, receiver_bias);
+                float s = gs_directional_shadow(i, shadow_view_pos, debug_shadow_normal, scene_data_block.data.taa_frame_count, receiver_bias);
                 dir_shadow = min(dir_shadow, s);
             }
         }
@@ -233,7 +229,7 @@ void main() {
             if (omni_lights.data[i].shadow_opacity > 0.001) {
                 has_omni = true;
                 float atten;
-                float s = gs_omni_shadow_factor(i, view_pos, normal, scene_data_block.data.taa_frame_count, atten);
+                float s = gs_omni_shadow_factor(i, view_pos, debug_shadow_normal, scene_data_block.data.taa_frame_count, atten);
                 omni_shadow = min(omni_shadow, s);
             }
         }
@@ -243,7 +239,7 @@ void main() {
             if (spot_lights.data[i].shadow_opacity > 0.001) {
                 has_spot = true;
                 float atten;
-                float s = gs_spot_shadow_factor(i, view_pos, normal, scene_data_block.data.taa_frame_count, atten);
+                float s = gs_spot_shadow_factor(i, view_pos, debug_shadow_normal, scene_data_block.data.taa_frame_count, atten);
                 spot_shadow = min(spot_shadow, s);
             }
         }
@@ -278,7 +274,14 @@ void main() {
     float base_scale = (lighting_mode == 0u) ? params.lighting_config.y : 1.0;
     vec3 final_rgb = base_color * base_scale;
     float shadow_strength = clamp(params.shadow_strength.x, 0.0, 1.0);
-    bool shadow_sampling_enabled = shadow_strength > 0.0;
+    // Disable shadow sampling in resolve mode.  The per-pixel shadow
+    // evaluation produces noisy results at Gaussian boundaries because
+    // adjacent pixels reconstruct to different depths → different PSSM
+    // cascades → discontinuous shadow values.  With shadow disabled,
+    // light_compute receives shadow=1.0 (fully lit) and the only
+    // directional variation comes from NdotL via world-up normal.
+    // Per-splat mode (tile_binning) still uses full shadow evaluation.
+    bool shadow_sampling_enabled = false;
     float sh_occlusion = 0.0;
 
     // Apply lighting to pixels with valid depth and non-zero alpha
@@ -324,18 +327,30 @@ void main() {
             return;
         }
         vec3 view_dir = normalize(-view_pos);
-        vec3 shadow_view_dir = normalize(-shadow_view_pos);
         vec3 normal = view_dir;
         if (dot(normal_sample.rgb, normal_sample.rgb) > 1e-6) {
             normal = normalize(normal_sample.rgb);
         }
-        vec3 shadow_normal = normal;
-        if (dot(shadow_normal, shadow_normal) <= 1e-6) {
-            shadow_normal = shadow_view_dir;
-        }
+        // Resolve shadow helpers receive vec3(0) as the geometric normal so that
+        // shadow_normal_bias is zeroed.  The blended per-pixel normal from the
+        // rasterizer is unsuitable for shadow bias because it varies
+        // discontinuously at Gaussian overlap boundaries, which creates per-pixel
+        // position jitter in the shadow lookup and produces a noise-texture
+        // artefact.  Constant shadow_bias + receiver_bias along the light
+        // direction is sufficient for mesh-caster self-shadowing.
+        const vec3 shadow_geo_normal = vec3(0.0);
 
-        hvec3 h_normal_base = hvec3(normal);
-        hvec3 h_view = hvec3(view_dir);
+        // Use world-space up (transformed to view space) as the BRDF normal.
+        // The blended per-pixel normal from the rasterizer is too noisy at
+        // Gaussian overlap boundaries and creates dark patches.  World-up is:
+        //  - constant across all pixels (no per-pixel noise)
+        //  - camera-rotation-independent (fixed in world space)
+        //  - light-direction-responsive (NdotL changes with light rotation)
+        // The uniform_ndotl flag in the lighting functions adds a wrap bias
+        // of 0.5 so NdotL never goes below 0.5, preventing harsh dark regions.
+        vec3 world_up = normalize(mat3(scene_data_block.data.view_matrix) * vec3(0.0, 1.0, 0.0));
+        hvec3 h_normal_base = hvec3(world_up);
+        hvec3 h_view = hvec3(world_up);
         // Use neutral grey albedo for lighting by default. If indirect SH is disabled,
         // fall back to the base color so splat colors still show up in direct lighting.
         hvec3 h_albedo = hvec3(0.5);
@@ -353,12 +368,21 @@ void main() {
         float receiver_bias = resolve_shadow_receiver_bias();
 
         uint light_mask = params.light_counts.w;
-        gs_accumulate_directional_lights(shadow_view_pos, shadow_normal, receiver_bias, shadow_sampling_enabled,
+        gs_accumulate_directional_lights(shadow_view_pos, shadow_geo_normal, receiver_bias, shadow_sampling_enabled,
                 light_mask, h_normal_base, h_view, h_albedo, roughness, metallic, f0, alpha, uv,
-                energy_compensation, diffuse_light, specular_light, sh_occlusion);
+                energy_compensation, true, diffuse_light, specular_light, sh_occlusion);
+
+        // Resolve mode skips sh_occlusion darkening of the base SH color.
+        // In per-splat mode, sh_occlusion removes baked direct light per-Gaussian
+        // and blends the results smoothly.  In resolve mode, the single per-pixel
+        // evaluation is too destructive — it either preserves or kills the entire
+        // blended base color, creating harsh dark patches.  Instead, real-time
+        // shadow response comes solely from the direct light term: light_compute
+        // already attenuates diffuse/specular by the shadow factor, so shadowed
+        // pixels receive less additive direct light while their base SH color
+        // (the captured illumination) remains intact.
 
         bool use_clustered = gs_use_clustered_lights();
-        bool shadow_modulate_sh = shadow_strength > 0.0;
         uint cluster_offset = 0u;
         uint cluster_z = 0u;
         uint cluster_type_size = 0u;
@@ -366,40 +390,31 @@ void main() {
         if (use_clustered) {
             gs_get_cluster_params(vec2(coord), view_pos, cluster_offset, cluster_z, cluster_type_size,
                     max_cluster_element_count_div_32);
-
-            if (shadow_modulate_sh) {
-                gs_accumulate_clustered_omni_spot_sh_occlusion(cluster_offset, cluster_z, cluster_type_size,
-                        max_cluster_element_count_div_32, view_pos, normal, shadow_sampling_enabled, light_mask,
-                        sh_occlusion);
-            }
-        } else {
-            if (shadow_modulate_sh) {
-                gs_accumulate_unclustered_omni_spot_sh_occlusion(view_pos, normal, shadow_sampling_enabled,
-                        light_mask, sh_occlusion);
-            }
-        }
-
-        if (shadow_strength > 0.0 && sh_occlusion > 0.0) {
-            float sh_factor = 1.0 - shadow_strength * clamp(sh_occlusion, 0.0, 1.0);
-            sh_factor = max(sh_factor, 0.3);
-            final_rgb *= sh_factor;
-        }
-        if (use_clustered) {
             gs_accumulate_clustered_omni_spot_direct(cluster_offset, cluster_z, cluster_type_size,
                     max_cluster_element_count_div_32, view_pos, h_normal_base, h_view, h_albedo, roughness,
-                    metallic, f0, alpha, uv, energy_compensation, light_mask, diffuse_light, specular_light);
+                    metallic, f0, alpha, uv, energy_compensation, light_mask, true, diffuse_light, specular_light);
         } else {
             gs_accumulate_unclustered_omni_spot_direct(view_pos, h_normal_base, h_view, h_albedo, roughness,
-                    metallic, f0, alpha, uv, energy_compensation, light_mask, diffuse_light, specular_light);
+                    metallic, f0, alpha, uv, energy_compensation, light_mask, true, diffuse_light, specular_light);
         }
 
         // Match Godot's forward path: diffuse light is multiplied by albedo at the end.
         diffuse_light *= h_albedo;
         diffuse_light *= (half(1.0) - metallic);
         vec3 direct = vec3(diffuse_light + specular_light) * params.lighting_config.x;
-        final_rgb += direct;
+        // Resolve lighting is evaluated on a proxy surface after splat blending.
+        // Weight live direct light by accumulated coverage so sparse splat pixels
+        // do not saturate to white in the final premultiplied output.
+        float direct_lighting_weight = clamp(color.a, 0.0, 1.0);
+        final_rgb += direct * direct_lighting_weight;
         if (resolve_ambient) {
-            final_rgb += gs_compute_environment_ambient(normal) * clamp(base_color, vec3(0.0), vec3(1.0));
+            // Use view_dir rather than the blended per-pixel normal for the
+            // cubemap lookup.  The blended normal is discontinuous at Gaussian
+            // overlap boundaries; sampling the radiance cubemap with it creates
+            // a chrome-like environment-reflection noise pattern (sky vs ground
+            // flip between adjacent pixels).  view_dir is smooth and gives a
+            // stable, hemispherical ambient contribution.
+            final_rgb += gs_compute_environment_ambient(view_dir) * clamp(base_color, vec3(0.0), vec3(1.0));
         }
 
     }

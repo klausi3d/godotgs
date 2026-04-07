@@ -1153,7 +1153,7 @@ void main() {
             uint light_mask = params.light_counts.w;
             gs_accumulate_directional_lights(view_pos_scene, normal_view, receiver_bias, shadow_sampling_enabled,
                     light_mask, h_normal_base, h_view, h_albedo, roughness, metallic, f0, alpha, uv,
-                    energy_compensation, diffuse_light, specular_light, sh_occlusion);
+                    energy_compensation, false, diffuse_light, specular_light, sh_occlusion);
 
             bool use_clustered = gs_use_clustered_lights();
             bool shadow_modulate_sh = shadow_strength > 0.0;
@@ -1172,7 +1172,7 @@ void main() {
                 gs_accumulate_clustered_omni_spot_direct(cluster_offset, cluster_z, cluster_type_size,
                         max_cluster_element_count_div_32, view_pos, h_normal_base, h_view, h_albedo,
                         roughness, metallic, f0, alpha, uv, energy_compensation, light_mask,
-                        diffuse_light, specular_light);
+                        false, diffuse_light, specular_light);
             } else {
                 if (shadow_modulate_sh) {
                     gs_accumulate_unclustered_omni_spot_sh_occlusion(view_pos, normal_view, shadow_sampling_enabled,
@@ -1180,25 +1180,20 @@ void main() {
                 }
                 gs_accumulate_unclustered_omni_spot_direct(view_pos, h_normal_base, h_view, h_albedo,
                         roughness, metallic, f0, alpha, uv, energy_compensation, light_mask,
-                        diffuse_light, specular_light);
+                        false, diffuse_light, specular_light);
             }
 
             if (shadow_strength > 0.0 && sh_occlusion > 0.0) {
                 float sh_factor = 1.0 - shadow_strength * clamp(sh_occlusion, 0.0, 1.0);
-                // Preserve minimum ambient so shadowed SH regions are not fully black.
-                // The SH base colour already encodes baked indirect illumination that
-                // should survive real-time shadow.  A floor of 0.3 keeps ~30 % of the
-                // baked radiance visible in full shadow.
-                sh_factor = max(sh_factor, 0.3);
                 final_color *= sh_factor;
             }
 
-            final_color += gs_compute_environment_ambient(normal_view) * sh_albedo;
             // Match Godot's forward path: diffuse light is multiplied by albedo at the end.
             diffuse_light *= h_albedo;
             diffuse_light *= (half(1.0) - metallic);
             vec3 direct = vec3(diffuse_light + specular_light) * params.lighting_config.x;
             final_color += direct;
+            final_color += gs_compute_environment_ambient(normal_view) * sh_albedo;
         }
     }
 

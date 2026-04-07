@@ -3,6 +3,10 @@
 
 // Directional shadow sampling for Gaussian splats.
 // Adapted from Godot's forward clustered directional shadow path (no soft shadows).
+bool gs_directional_shadow_coord_valid(vec4 p_coord) {
+    return p_coord.z >= 0.0 && p_coord.z <= 1.0;
+}
+
 float gs_directional_shadow(uint idx, vec3 vertex, vec3 geo_normal, float taa_frame_count, float receiver_bias) {
     if (directional_lights.data[idx].shadow_opacity <= 0.001) {
         return 1.0;
@@ -51,20 +55,15 @@ float gs_directional_shadow(uint idx, vec3 vertex, vec3 geo_normal, float taa_fr
 
     pssm_coord /= pssm_coord.w;
 
-    // Guard: if the shadow coordinate falls outside the valid [0,1] depth range
-    // (e.g. vertex is beyond the cascade far plane), treat as unshadowed.
-    // Per-splat evaluation makes out-of-range artefacts far more visible than
-    // per-pixel mesh rendering, so this explicit check is necessary.
-    if (pssm_coord.z < 0.0 || pssm_coord.z > 1.0) {
-        return 1.0;
-    }
-
-    float shadow = sample_directional_pcf_shadow(
-            directional_shadow_atlas,
-            scene_data_block.data.directional_shadow_pixel_size * directional_lights.data[idx].soft_shadow_scale *
-                    (blur_factor + (1.0 - blur_factor) * float(directional_lights.data[idx].blend_splits)),
-            pssm_coord,
-            taa_frame_count);
+    bool shadow_valid = gs_directional_shadow_coord_valid(pssm_coord);
+    float shadow = shadow_valid
+            ? sample_directional_pcf_shadow(
+                      directional_shadow_atlas,
+                      scene_data_block.data.directional_shadow_pixel_size * directional_lights.data[idx].soft_shadow_scale *
+                              (blur_factor + (1.0 - blur_factor) * float(directional_lights.data[idx].blend_splits)),
+                      pssm_coord,
+                      taa_frame_count)
+            : 1.0;
 
     if (directional_lights.data[idx].blend_splits) {
         float pssm_blend;
@@ -106,14 +105,21 @@ float gs_directional_shadow(uint idx, vec3 vertex, vec3 geo_normal, float taa_fr
 
         pssm_coord /= pssm_coord.w;
 
-        float shadow2 = sample_directional_pcf_shadow(
-                directional_shadow_atlas,
-                scene_data_block.data.directional_shadow_pixel_size * directional_lights.data[idx].soft_shadow_scale *
-                        (blur_factor2 + (1.0 - blur_factor2) * float(directional_lights.data[idx].blend_splits)),
-                pssm_coord,
-                taa_frame_count);
+        bool shadow2_valid = gs_directional_shadow_coord_valid(pssm_coord);
+        float shadow2 = shadow2_valid
+                ? sample_directional_pcf_shadow(
+                          directional_shadow_atlas,
+                          scene_data_block.data.directional_shadow_pixel_size * directional_lights.data[idx].soft_shadow_scale *
+                                  (blur_factor2 + (1.0 - blur_factor2) * float(directional_lights.data[idx].blend_splits)),
+                          pssm_coord,
+                          taa_frame_count)
+                : 1.0;
 
-        shadow = mix(shadow, shadow2, pssm_blend);
+        if (shadow_valid && shadow2_valid) {
+            shadow = mix(shadow, shadow2, pssm_blend);
+        } else if (shadow2_valid) {
+            shadow = shadow2;
+        }
     }
 
     shadow = mix(shadow, 1.0, smoothstep(directional_lights.data[idx].fade_from, directional_lights.data[idx].fade_to, vertex.z));

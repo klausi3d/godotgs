@@ -1508,6 +1508,7 @@ bool GaussianSplatRenderer::_blit_shadow_depth(RID p_source_depth, RID p_shadow_
 
 bool GaussianSplatRenderer::render_directional_shadow_map(const Projection &p_light_projection, const Transform3D &p_light_transform,
         const Rect2i &p_atlas_rect, RID p_shadow_framebuffer, bool p_flip_y) {
+#ifdef DEV_ENABLED
     static bool logged_once = false;
     if (!logged_once) {
         logged_once = true;
@@ -1517,6 +1518,7 @@ bool GaussianSplatRenderer::render_directional_shadow_map(const Projection &p_li
                 p_atlas_rect.position.x, p_atlas_rect.position.y, p_atlas_rect.size.x, p_atlas_rect.size.y,
                 z_near, z_far, p_flip_y ? "true" : "false", p_shadow_framebuffer.is_valid() ? "true" : "false"));
     }
+#endif
     if (p_atlas_rect.size.x <= 0 || p_atlas_rect.size.y <= 0) {
         return false;
     }
@@ -1581,14 +1583,18 @@ bool GaussianSplatRenderer::render_directional_shadow_map(const Projection &p_li
     subsystem_state.output_compositor = saved_output_compositor;
 
     if (!subsystem_state.rasterizer.is_valid()) {
+#ifdef DEV_ENABLED
         WARN_PRINT_ONCE("[GS Shadow] render_directional_shadow_map: rasterizer not valid after render_sorted_splats");
+#endif
         return false;
     }
     RID depth_texture = subsystem_state.rasterizer->get_depth_texture();
     RenderingDevice *depth_owner = subsystem_state.rasterizer->get_depth_texture_owner();
     if (!depth_texture.is_valid() || !depth_owner) {
+#ifdef DEV_ENABLED
         WARN_PRINT_ONCE(vformat("[GS Shadow] render_directional_shadow_map: depth invalid: tex=%s owner=%s",
                 depth_texture.is_valid() ? "valid" : "null", depth_owner ? "valid" : "null"));
+#endif
         return false;
     }
     RenderingDevice *main_device = RenderingDevice::get_singleton();
@@ -1601,11 +1607,13 @@ bool GaussianSplatRenderer::render_directional_shadow_map(const Projection &p_li
     }
 
     bool blit_ok = _blit_shadow_depth(depth_texture, p_shadow_framebuffer, p_atlas_rect, p_flip_y);
+#ifdef DEV_ENABLED
     static bool blit_logged = false;
     if (!blit_logged) {
         blit_logged = true;
         WARN_PRINT(vformat("[GS Shadow] Shadow blit result: %s", blit_ok ? "SUCCESS" : "FAILED"));
     }
+#endif
     return blit_ok;
 }
 

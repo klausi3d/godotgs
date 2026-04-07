@@ -60,8 +60,8 @@ void gs_get_cluster_params(vec2 pixel_pos, vec3 view_pos, out uint cluster_offse
 
 void gs_accumulate_directional_lights(vec3 view_pos, vec3 normal, float receiver_bias, bool shadow_sampling_enabled,
         uint light_mask, hvec3 h_normal_base, hvec3 h_view, hvec3 h_albedo, half roughness, half metallic, hvec3 f0,
-        half alpha, vec2 uv, hvec3 energy_compensation, inout hvec3 diffuse_light, inout hvec3 specular_light,
-        inout float sh_occlusion) {
+        half alpha, vec2 uv, hvec3 energy_compensation, bool uniform_ndotl, inout hvec3 diffuse_light,
+        inout hvec3 specular_light, inout float sh_occlusion) {
     uint dir_count = min(scene_data_block.data.directional_light_count, uint(MAX_DIRECTIONAL_LIGHT_DATA_STRUCTS));
     for (uint i = 0u; i < dir_count; ++i) {
         DirectionalLightData light = directional_lights.data[i];
@@ -80,10 +80,23 @@ void gs_accumulate_directional_lights(vec3 view_pos, vec3 normal, float receiver
         hvec3 light_dir = normalize(hvec3(light_dir_f));
         hvec3 light_color = hvec3(light.color) * half(light.energy);
         hvec3 h_normal = h_normal_base;
-        if (dot(h_normal, light_dir) < half(0.0)) {
-            h_normal = -h_normal;
+        half ndotl_wrap = half(0.0);
+        if (uniform_ndotl) {
+            // Resolve mode: use the blended per-pixel normal as-is with a wrap
+            // bias.  Do NOT flip the normal — the flip creates a binary
+            // discontinuity at dot(N,L)=0 that amplifies noise from the blended
+            // normal.  Instead, wrap bias 0.5 gives:
+            //   NdotL = clamp(0.5 + dot(N,L), 0, 1)
+            // which is a smooth function — facing light → 1.0, perpendicular →
+            // 0.5, fully away → 0 (clamped by light_compute).  This preserves
+            // directional response while avoiding flip-induced noise.
+            ndotl_wrap = half(0.5);
+        } else {
+            if (dot(h_normal, light_dir) < half(0.0)) {
+                h_normal = -h_normal;
+            }
         }
-        light_compute(h_normal, light_dir, h_view, half(0.0), light_color, true, half(shadow), f0, roughness,
+        light_compute(h_normal, light_dir, h_view, ndotl_wrap, light_color, true, half(shadow), f0, roughness,
                 metallic, half(light.specular), h_albedo, alpha, uv, energy_compensation,
                 diffuse_light, specular_light);
     }
@@ -207,7 +220,7 @@ void gs_accumulate_unclustered_omni_spot_sh_occlusion(vec3 view_pos, vec3 normal
 void gs_accumulate_clustered_omni_spot_direct(uint cluster_offset, uint cluster_z, uint cluster_type_size,
         uint max_cluster_element_count_div_32, vec3 view_pos, hvec3 h_normal_base, hvec3 h_view,
         hvec3 h_albedo, half roughness, half metallic, hvec3 f0, half alpha, vec2 uv, hvec3 energy_compensation,
-        uint light_mask, inout hvec3 diffuse_light, inout hvec3 specular_light) {
+        uint light_mask, bool uniform_ndotl, inout hvec3 diffuse_light, inout hvec3 specular_light) {
     uint item_min, item_max, item_from, item_to;
     cluster_get_item_range(cluster_offset + max_cluster_element_count_div_32 + cluster_z,
             item_min, item_max, item_from, item_to);
@@ -223,8 +236,10 @@ void gs_accumulate_clustered_omni_spot_direct(uint cluster_offset, uint cluster_
             vec3 light_rel_vec = omni_lights.data[omni_index].position - view_pos;
             vec3 light_rel_vec_norm = light_rel_vec / max(length(light_rel_vec), 1e-6);
             hvec3 h_normal = h_normal_base;
-            if (dot(h_normal, hvec3(light_rel_vec_norm)) < half(0.0)) {
-                h_normal = -h_normal;
+            if (!uniform_ndotl) {
+                if (dot(h_normal, hvec3(light_rel_vec_norm)) < half(0.0)) {
+                    h_normal = -h_normal;
+                }
             }
             light_process_omni(omni_index, view_pos, h_view, h_normal, vec3(0.0), vec3(0.0), f0, roughness, metallic,
                     scene_data_block.data.taa_frame_count, h_albedo, alpha, uv, energy_compensation,
@@ -247,8 +262,10 @@ void gs_accumulate_clustered_omni_spot_direct(uint cluster_offset, uint cluster_
             vec3 light_rel_vec = spot_lights.data[spot_index].position - view_pos;
             vec3 light_rel_vec_norm = light_rel_vec / max(length(light_rel_vec), 1e-6);
             hvec3 h_normal = h_normal_base;
-            if (dot(h_normal, hvec3(light_rel_vec_norm)) < half(0.0)) {
-                h_normal = -h_normal;
+            if (!uniform_ndotl) {
+                if (dot(h_normal, hvec3(light_rel_vec_norm)) < half(0.0)) {
+                    h_normal = -h_normal;
+                }
             }
             light_process_spot(spot_index, view_pos, h_view, h_normal, vec3(0.0), vec3(0.0), f0, roughness, metallic,
                     scene_data_block.data.taa_frame_count, h_albedo, alpha, uv, energy_compensation,
@@ -259,15 +276,17 @@ void gs_accumulate_clustered_omni_spot_direct(uint cluster_offset, uint cluster_
 
 void gs_accumulate_unclustered_omni_spot_direct(vec3 view_pos, hvec3 h_normal_base, hvec3 h_view,
         hvec3 h_albedo, half roughness, half metallic, hvec3 f0, half alpha, vec2 uv, hvec3 energy_compensation,
-        uint light_mask, inout hvec3 diffuse_light, inout hvec3 specular_light) {
+        uint light_mask, bool uniform_ndotl, inout hvec3 diffuse_light, inout hvec3 specular_light) {
     uint omni_count = min(params.light_counts.x, uint(GS_MAX_OMNI_LIGHTS));
     for (uint i = 0u; i < omni_count; ++i) {
         if ((omni_lights.data[i].mask & light_mask) == 0u) continue;
         vec3 light_rel_vec = omni_lights.data[i].position - view_pos;
         vec3 light_rel_vec_norm = light_rel_vec / max(length(light_rel_vec), 1e-6);
         hvec3 h_normal = h_normal_base;
-        if (dot(h_normal, hvec3(light_rel_vec_norm)) < half(0.0)) {
-            h_normal = -h_normal;
+        if (!uniform_ndotl) {
+            if (dot(h_normal, hvec3(light_rel_vec_norm)) < half(0.0)) {
+                h_normal = -h_normal;
+            }
         }
         light_process_omni(i, view_pos, h_view, h_normal, vec3(0.0), vec3(0.0), f0, roughness, metallic,
                 scene_data_block.data.taa_frame_count, h_albedo, alpha, uv, energy_compensation,
@@ -280,8 +299,10 @@ void gs_accumulate_unclustered_omni_spot_direct(vec3 view_pos, hvec3 h_normal_ba
         vec3 light_rel_vec = spot_lights.data[i].position - view_pos;
         vec3 light_rel_vec_norm = light_rel_vec / max(length(light_rel_vec), 1e-6);
         hvec3 h_normal = h_normal_base;
-        if (dot(h_normal, hvec3(light_rel_vec_norm)) < half(0.0)) {
-            h_normal = -h_normal;
+        if (!uniform_ndotl) {
+            if (dot(h_normal, hvec3(light_rel_vec_norm)) < half(0.0)) {
+                h_normal = -h_normal;
+            }
         }
         light_process_spot(i, view_pos, h_view, h_normal, vec3(0.0), vec3(0.0), f0, roughness, metallic,
                 scene_data_block.data.taa_frame_count, h_albedo, alpha, uv, energy_compensation,
