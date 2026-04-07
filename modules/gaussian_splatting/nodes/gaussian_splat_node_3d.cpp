@@ -442,12 +442,6 @@ void GaussianSplatNode3D::_notification(int p_what) {
 }
 
 void GaussianSplatNode3D::_validate_property(PropertyInfo &p_property) const {
-    if (_is_renderer_shared_with_other_content(renderer)) {
-        if (p_property.name.begins_with("painterly/") || p_property.name == "rendering/color_grading") {
-            p_property.usage = PROPERTY_USAGE_NO_EDITOR;
-            return;
-        }
-    }
 
     // Hide painterly settings if disabled
     if (!enable_painterly) {
@@ -2061,11 +2055,7 @@ void GaussianSplatNode3D::_on_asset_changed() {
 
 void GaussianSplatNode3D::_on_color_grading_changed() {
     if (renderer.is_valid()) {
-        if (_is_renderer_shared_with_other_content(renderer)) {
-            renderer->set_color_grading(Ref<ColorGradingResource>());
-        } else {
-            renderer->set_color_grading(color_grading);
-        }
+        renderer->set_color_grading(color_grading);
         renderer->invalidate_cached_render();
     }
 }
@@ -2134,11 +2124,7 @@ void GaussianSplatNode3D::set_color_grading(const Ref<ColorGradingResource> &p_g
     }
 
     if (renderer.is_valid()) {
-        if (_is_renderer_shared_with_other_content(renderer)) {
-            renderer->set_color_grading(Ref<ColorGradingResource>());
-        } else {
-            renderer->set_color_grading(color_grading);
-        }
+        renderer->set_color_grading(color_grading);
         renderer->invalidate_cached_render();
     }
 

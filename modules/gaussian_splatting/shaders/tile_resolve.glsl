@@ -200,8 +200,10 @@ void main() {
     // Bright = lit (shadow=1), Dark = shadowed (shadow=0)
     if (params.debug_overlay_flags.x > 1.5 && depth < 1.0 && color.a > 0.001) {
         bool gs_is_ortho = abs(params.projection_matrix[2][3]) < 0.5;
-        vec3 shadow_view_pos = reconstruct_scene_view_pos(uv, depth, gs_is_ortho);
-        vec3 view_pos = reconstruct_scene_view_pos(uv, lighting_depth, gs_is_ortho);
+        // Use coverage-weighted average depth for shadow position.  Front depth
+        // (min) is discontinuous at Gaussian boundaries → cascade boundary noise.
+        vec3 shadow_view_pos = reconstruct_scene_view_pos(uv, lighting_depth, gs_is_ortho);
+        vec3 view_pos = shadow_view_pos;
 
         const vec3 debug_shadow_normal = vec3(0.0);
         float receiver_bias = resolve_shadow_receiver_bias();
@@ -274,22 +276,23 @@ void main() {
     float base_scale = (lighting_mode == 0u) ? params.lighting_config.y : 1.0;
     vec3 final_rgb = base_color * base_scale;
     float shadow_strength = clamp(params.shadow_strength.x, 0.0, 1.0);
-    // Disable shadow sampling in resolve mode.  The per-pixel shadow
-    // evaluation produces noisy results at Gaussian boundaries because
-    // adjacent pixels reconstruct to different depths → different PSSM
-    // cascades → discontinuous shadow values.  With shadow disabled,
-    // light_compute receives shadow=1.0 (fully lit) and the only
-    // directional variation comes from NdotL via world-up normal.
-    // Per-splat mode (tile_binning) still uses full shadow evaluation.
-    bool shadow_sampling_enabled = false;
+    // Re-enable shadow sampling in resolve mode using coverage-weighted
+    // average depth (lighting_depth) instead of raw front depth.  The
+    // weighted depth is smooth across Gaussian overlap boundaries,
+    // preventing the PSSM cascade boundary jitter that caused noise.
+    bool shadow_sampling_enabled = shadow_strength > 0.0;
     float sh_occlusion = 0.0;
 
     // Apply lighting to pixels with valid depth and non-zero alpha
     if (params.lighting_config.z > 0.5 && resolve_direct && depth < 1.0 && color.a > 0.001) {
         bool gs_is_ortho = abs(params.projection_matrix[2][3]) < 0.5;
         bool scene_is_ortho = abs(scene_data_block.data.projection_matrix[2][3]) < 0.5;
-        vec3 shadow_view_pos = reconstruct_scene_view_pos(uv, depth, gs_is_ortho);
+        // Use coverage-weighted average depth for shadow position reconstruction.
+        // Front depth (min) is discontinuous at Gaussian boundaries, causing
+        // different PSSM cascade selection → shadow noise.  The weighted average
+        // depth is smooth across overlap regions.
         vec3 view_pos = reconstruct_scene_view_pos(uv, lighting_depth, gs_is_ortho);
+        vec3 shadow_view_pos = view_pos;
 
         // DEBUG: Shadow opacity visualization (F7 + F9 together)
         // SOLID MAGENTA = debug triggered, then encode shadow_opacity
