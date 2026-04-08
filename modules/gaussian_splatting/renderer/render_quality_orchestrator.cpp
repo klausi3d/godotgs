@@ -258,7 +258,7 @@ void RenderQualityOrchestrator::set_overflow_autotune_enabled(bool p_enabled) {
 }
 
 void RenderQualityOrchestrator::set_max_splats(int p_count) {
-	ERR_FAIL_COND(p_count < 1000);
+	ERR_FAIL_COND(p_count < 1);
 	if (p_count == performance_settings.max_splats) {
 		return;
 	}

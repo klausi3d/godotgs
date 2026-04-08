@@ -537,7 +537,12 @@ Error GaussianSplatRenderer::restore_world_submission_runtime_state(const WorldS
 	set_async_upload_enabled(p_snapshot.async_upload_enabled);
 	set_opacity_multiplier(p_snapshot.opacity_multiplier);
 	set_streaming_config_overrides(p_snapshot.streaming_overrides);
-	set_max_splats(MAX(1000, p_snapshot.max_splats));
+	set_max_splats(MAX(1, p_snapshot.max_splats));
+
+	const bool has_renderable_data =
+			p_snapshot.gaussian_data.is_valid() && p_snapshot.gaussian_data->get_count() > 0;
+	const bool has_active_world_submission = p_snapshot.has_active_world_submission && has_renderable_data;
+	const bool has_residency_hint = has_active_world_submission && p_snapshot.has_desired_residency_hint;
 
 	if (p_snapshot.gaussian_data.is_valid()) {
 		const auto &resource_state = get_resource_state();
@@ -548,18 +553,23 @@ Error GaussianSplatRenderer::restore_world_submission_runtime_state(const WorldS
 
 	const Error err = set_gaussian_data(p_snapshot.gaussian_data);
 	if (err != OK) {
+		set_gaussian_data(Ref<GaussianData>());
+		clear_static_chunks();
+		world_submission_contract_active = false;
+		world_submission_has_residency_hint = false;
+		world_submission_residency_hint = 0;
 		return err;
 	}
 
-	if (p_snapshot.gaussian_data.is_valid() && p_snapshot.gaussian_data->get_count() > 0) {
+	if (has_renderable_data) {
 		set_static_chunks(p_snapshot.static_chunks);
 	} else {
 		clear_static_chunks();
 	}
 
-	world_submission_contract_active = p_snapshot.has_active_world_submission;
-	world_submission_has_residency_hint = p_snapshot.has_desired_residency_hint;
-	world_submission_residency_hint = p_snapshot.desired_residency_hint;
+	world_submission_contract_active = has_active_world_submission;
+	world_submission_has_residency_hint = has_residency_hint;
+	world_submission_residency_hint = has_residency_hint ? p_snapshot.desired_residency_hint : 0;
 	return OK;
 }
 
@@ -571,7 +581,10 @@ Error GaussianSplatRenderer::apply_world_submission_contract(const WorldSubmissi
 	set_async_upload_enabled(p_contract.async_upload_enabled);
 	set_opacity_multiplier(p_contract.opacity_multiplier);
 	set_streaming_config_overrides(p_contract.streaming_overrides);
-	set_max_splats(MAX(1000, p_contract.max_splats));
+	set_max_splats(MAX(1, p_contract.max_splats));
+
+	const bool has_renderable_data =
+			p_contract.gaussian_data.is_valid() && p_contract.gaussian_data->get_count() > 0;
 
 	if (p_contract.gaussian_data.is_valid()) {
 		const auto &resource_state = get_resource_state();
@@ -583,15 +596,16 @@ Error GaussianSplatRenderer::apply_world_submission_contract(const WorldSubmissi
 	const Error err = set_gaussian_data(p_contract.gaussian_data);
 	if (err != OK) {
 		clear_static_chunks();
+		world_submission_contract_active = false;
+		world_submission_has_residency_hint = false;
+		world_submission_residency_hint = 0;
 		return err;
 	}
 
-	world_submission_contract_active = true;
-	world_submission_has_residency_hint = p_contract.has_desired_residency_hint;
-	world_submission_residency_hint = p_contract.desired_residency_hint;
-
-	const uint32_t data_count = p_contract.gaussian_data.is_valid() ? p_contract.gaussian_data->get_count() : 0;
-	if (data_count == 0) {
+	if (!has_renderable_data) {
+		world_submission_contract_active = false;
+		world_submission_has_residency_hint = false;
+		world_submission_residency_hint = 0;
 		if (p_contract.debug_label.is_empty()) {
 			WARN_PRINT("[GaussianSplatRenderer] World submission has zero splats; renderer will stay disconnected.");
 		} else {
@@ -602,6 +616,9 @@ Error GaussianSplatRenderer::apply_world_submission_contract(const WorldSubmissi
 		return OK;
 	}
 
+	world_submission_contract_active = true;
+	world_submission_has_residency_hint = p_contract.has_desired_residency_hint;
+	world_submission_residency_hint = p_contract.has_desired_residency_hint ? p_contract.desired_residency_hint : 0;
 	set_static_chunks(p_contract.static_chunks);
 	return OK;
 }

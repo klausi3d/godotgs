@@ -288,6 +288,111 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Same-owner resubm
 	}
 }
 
+TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Same-owner resubmit defaults omitted overrides from the preserved baseline") {
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	const bool owns_director = (director == nullptr);
+	if (!director) {
+		director = memnew(GaussianSplatSceneDirector);
+	}
+	REQUIRE(director != nullptr);
+
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	Ref<World3D> world = root->get_world_3d();
+	REQUIRE(world.is_valid());
+	const RID scenario = world->get_scenario();
+	REQUIRE(scenario.is_valid());
+
+	Node *owner = memnew(Node);
+	REQUIRE(owner != nullptr);
+	root->add_child(owner);
+	tree->process(0.0);
+
+	Ref<GaussianSplatRenderer> renderer = director->get_shared_renderer(world.ptr());
+	if (!renderer.is_valid()) {
+		MESSAGE("Skipping same-owner baseline-default test - shared renderer unavailable");
+		root->remove_child(owner);
+		memdelete(owner);
+		tree->process(0.0);
+		if (owns_director) {
+			memdelete(director);
+		}
+		return;
+	}
+
+	const GaussianSplatRenderer::WorldSubmissionRuntimeStateSnapshot baseline_renderer_state =
+			renderer->snapshot_world_submission_runtime_state();
+	CHECK(baseline_renderer_state.valid);
+
+	GaussianSplatSceneDirector::WorldSubmission submission_a;
+	submission_a.owner_id = owner->get_instance_id();
+	submission_a.scenario = scenario;
+	submission_a.gaussian_data = stage1a_make_submission_test_data(6, 10.0f);
+	submission_a.static_chunks.push_back(stage1a_make_submission_test_chunk(0));
+	submission_a.desired_renderer_overrides[StringName("lod_enabled")] = false;
+	submission_a.desired_renderer_overrides[StringName("lod_bias")] = 1.5;
+	submission_a.desired_renderer_overrides[StringName("frustum_culling")] = false;
+	submission_a.desired_renderer_overrides[StringName("async_upload_enabled")] = false;
+	submission_a.desired_renderer_overrides[StringName("opacity_multiplier")] = 0.4f;
+	submission_a.desired_renderer_overrides[StringName("max_splats")] = int64_t(4);
+	Dictionary submission_a_streaming;
+	submission_a_streaming[StringName("override_prefetch")] = true;
+	submission_a_streaming[StringName("predictive_prefetch_enabled")] = false;
+	submission_a_streaming[StringName("prefetch_lookahead_distance")] = 24.0f;
+	submission_a_streaming[StringName("override_vram_budget")] = true;
+	submission_a_streaming[StringName("vram_budget_mb")] = int64_t(64);
+	submission_a_streaming[StringName("vram_min_chunks")] = int64_t(1);
+	submission_a_streaming[StringName("vram_max_chunks")] = int64_t(4);
+	submission_a.desired_renderer_overrides[StringName("streaming")] = submission_a_streaming;
+
+	GaussianSplatSceneDirector::WorldSubmission submission_b;
+	submission_b.owner_id = owner->get_instance_id();
+	submission_b.scenario = scenario;
+	submission_b.gaussian_data = stage1a_make_submission_test_data(3, 30.0f);
+	submission_b.static_chunks.push_back(stage1a_make_submission_test_chunk(1));
+	submission_b.desired_renderer_overrides[StringName("lod_bias")] = 0.25f;
+	Dictionary submission_b_streaming;
+	submission_b_streaming[StringName("prefetch_lookahead_distance")] = 18.0f;
+	submission_b.desired_renderer_overrides[StringName("streaming")] = submission_b_streaming;
+
+	CHECK(director->submit_world_submission(submission_a));
+	CHECK(director->submit_world_submission(submission_b));
+
+	CHECK(renderer->get_lod_enabled() == baseline_renderer_state.lod_enabled);
+	CHECK(renderer->get_lod_bias() == doctest::Approx(0.25f));
+	CHECK(renderer->get_frustum_culling() == baseline_renderer_state.frustum_culling);
+	CHECK(renderer->get_async_upload_enabled() == baseline_renderer_state.async_upload_enabled);
+	CHECK(renderer->get_opacity_multiplier() == doctest::Approx(baseline_renderer_state.opacity_multiplier));
+	CHECK(renderer->get_max_splats() == 3);
+
+	const GaussianStreamingSystem::ConfigOverrides streaming_overrides = renderer->get_streaming_config_overrides();
+	CHECK(streaming_overrides.override_prefetch == baseline_renderer_state.streaming_overrides.override_prefetch);
+	CHECK(streaming_overrides.predictive_prefetch_enabled ==
+			baseline_renderer_state.streaming_overrides.predictive_prefetch_enabled);
+	CHECK(streaming_overrides.prefetch_lookahead_distance == doctest::Approx(18.0f));
+	CHECK(streaming_overrides.override_vram_budget == baseline_renderer_state.streaming_overrides.override_vram_budget);
+	CHECK(streaming_overrides.vram_budget_config.budget_mb ==
+			baseline_renderer_state.streaming_overrides.vram_budget_config.budget_mb);
+	CHECK(streaming_overrides.vram_budget_config.min_chunks ==
+			baseline_renderer_state.streaming_overrides.vram_budget_config.min_chunks);
+	CHECK(streaming_overrides.vram_budget_config.max_chunks ==
+			baseline_renderer_state.streaming_overrides.vram_budget_config.max_chunks);
+
+	director->release_world_submission(owner->get_instance_id());
+
+	root->remove_child(owner);
+	memdelete(owner);
+	tree->process(0.0);
+
+	if (owns_director) {
+		memdelete(director);
+	}
+}
+
 TEST_CASE("[GaussianSplatting][World][SceneTree] World node forwards desired overrides through director submission") {
 	SceneTree *tree = SceneTree::get_singleton();
 	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
@@ -446,6 +551,81 @@ TEST_CASE("[GaussianSplatting][World][SceneTree] World node forwards desired ove
 
 	root->remove_child(node);
 	memdelete(node);
+	tree->process(0.0);
+
+	if (owns_director) {
+		memdelete(director);
+	}
+}
+
+TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Zero-splat submissions do not surface residency authority") {
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	const bool owns_director = (director == nullptr);
+	if (!director) {
+		director = memnew(GaussianSplatSceneDirector);
+	}
+	REQUIRE(director != nullptr);
+
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	Ref<World3D> world = root->get_world_3d();
+	REQUIRE(world.is_valid());
+
+	Node *owner = memnew(Node);
+	REQUIRE(owner != nullptr);
+	root->add_child(owner);
+	tree->process(0.0);
+
+	Ref<GaussianSplatRenderer> renderer = director->get_shared_renderer(world.ptr());
+	if (!renderer.is_valid()) {
+		MESSAGE("Skipping zero-splat authority test - shared renderer unavailable");
+		root->remove_child(owner);
+		memdelete(owner);
+		tree->process(0.0);
+		if (owns_director) {
+			memdelete(director);
+		}
+		return;
+	}
+
+	GaussianSplatSceneDirector::WorldSubmission submission;
+	submission.owner_id = owner->get_instance_id();
+	submission.scenario = world->get_scenario();
+	submission.gaussian_data = stage1a_make_submission_test_data(0);
+	submission.has_desired_residency_hint = true;
+	submission.desired_residency_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT;
+
+	CHECK(director->submit_world_submission(submission));
+	CHECK(director->has_world_submission_for_renderer(renderer.ptr()));
+
+	int32_t renderer_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT;
+	String renderer_hint_source;
+	CHECK_FALSE(renderer->get_submission_residency_hint(&renderer_hint, &renderer_hint_source));
+	CHECK(renderer_hint_source == String("none"));
+
+	int32_t director_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT;
+	String director_hint_source;
+	CHECK_FALSE(director->get_submission_residency_hint_for_renderer(renderer.ptr(), &director_hint, &director_hint_source));
+	CHECK(director_hint_source == String("none"));
+
+	String backend_reason;
+	CHECK_FALSE(renderer->should_prefer_resident_backend(gs::settings::GS_ROUTE_STREAMING, &backend_reason));
+	CHECK(backend_reason == String("requested_streaming_policy"));
+
+	const GaussianSplatRenderer::WorldSubmissionRuntimeStateSnapshot runtime_state =
+			renderer->snapshot_world_submission_runtime_state();
+	CHECK(runtime_state.valid);
+	CHECK_FALSE(runtime_state.has_active_world_submission);
+	CHECK_FALSE(runtime_state.has_desired_residency_hint);
+
+	director->release_world_submission(owner->get_instance_id());
+
+	root->remove_child(owner);
+	memdelete(owner);
 	tree->process(0.0);
 
 	if (owns_director) {

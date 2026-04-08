@@ -128,10 +128,9 @@ GaussianSplatRenderer::WorldSubmissionContract GaussianSplatSceneDirector::_buil
 	contract.streaming_overrides = p_renderer_state.streaming_overrides;
 
 	if (overrides.has(WORLD_OVERRIDE_STREAMING)) {
-		contract.streaming_overrides = GaussianStreamingTypes::ConfigOverrides();
 		const Dictionary streaming_dict = _dict_get_dictionary(overrides, WORLD_OVERRIDE_STREAMING);
 		contract.streaming_overrides.override_prefetch =
-				_dict_get_bool(streaming_dict, WORLD_STREAMING_OVERRIDE_PREFETCH, false);
+				_dict_get_bool(streaming_dict, WORLD_STREAMING_OVERRIDE_PREFETCH, contract.streaming_overrides.override_prefetch);
 		contract.streaming_overrides.predictive_prefetch_enabled =
 				_dict_get_bool(streaming_dict, WORLD_STREAMING_PREDICTIVE_PREFETCH_ENABLED,
 						contract.streaming_overrides.predictive_prefetch_enabled);
@@ -164,16 +163,16 @@ GaussianSplatRenderer::WorldSubmissionContract GaussianSplatSceneDirector::_buil
 	}
 
 	const uint32_t data_count = p_record.gaussian_data.is_valid() ? p_record.gaussian_data->get_count() : 0;
-	const int requested_max_splats = MAX(0, _dict_get_int(overrides, WORLD_OVERRIDE_MAX_SPLATS, p_renderer_state.max_splats));
+	const int baseline_max_splats = MAX(1, p_renderer_state.max_splats);
+	const int requested_max_splats = _dict_get_int(overrides, WORLD_OVERRIDE_MAX_SPLATS, baseline_max_splats);
 	int effective_max_splats = requested_max_splats;
-	if (effective_max_splats > 0 && data_count > 0) {
-		effective_max_splats = MIN(effective_max_splats, int(data_count));
-	} else if (data_count > 0) {
-		effective_max_splats = int(data_count);
-	} else {
-		effective_max_splats = 1000;
+	if (effective_max_splats <= 0) {
+		effective_max_splats = data_count > 0 ? int(data_count) : baseline_max_splats;
 	}
-	contract.max_splats = MAX(1000, effective_max_splats);
+	if (data_count > 0) {
+		effective_max_splats = MIN(effective_max_splats, int(data_count));
+	}
+	contract.max_splats = MAX(1, effective_max_splats);
 	return contract;
 }
 
@@ -241,7 +240,8 @@ GaussianSplatSceneDirector::SharedWorld *GaussianSplatSceneDirector::_get_or_cre
 			if (!entry->world_submission.renderer_restore_state.valid) {
 				entry->world_submission.renderer_restore_state = renderer_state;
 			}
-			_apply_world_submission_to_renderer(*entry, entry->world_submission, renderer_state);
+			_apply_world_submission_to_renderer(*entry, entry->world_submission,
+					entry->world_submission.renderer_restore_state);
 		}
 	}
 
@@ -490,7 +490,6 @@ void GaussianSplatSceneDirector::_restore_world_submission_renderer(SharedWorld 
 	const Error err = renderer->restore_world_submission_runtime_state(p_snapshot);
 	if (err != OK) {
 		GS_LOG_RENDERER_ERROR(vformat("[GaussianSplatSceneDirector] Failed to restore world submission renderer state (err=%d).", err));
-		renderer->clear_world_submission_contract();
 	}
 }
 
@@ -1300,7 +1299,7 @@ bool GaussianSplatSceneDirector::submit_world_submission(const WorldSubmission &
 					? target_previous_record.renderer_restore_state
 					: target_previous_renderer_state)
 			: target_previous_renderer_state;
-	if (!_apply_world_submission_to_renderer(*world, candidate_record, target_previous_renderer_state)) {
+	if (!_apply_world_submission_to_renderer(*world, candidate_record, candidate_record.renderer_restore_state)) {
 		_restore_world_submission_renderer(*world, target_previous_renderer_state);
 		return false;
 	}
@@ -1364,7 +1363,11 @@ bool GaussianSplatSceneDirector::get_submission_residency_hint_for_renderer(cons
 
 	MutexLock lock(world_mutex);
 	if (const SharedWorld *world = _find_world_for_renderer(p_renderer)) {
-		if (world->world_submission.active && world->world_submission.has_desired_residency_hint) {
+		const bool world_submission_has_renderable_data =
+				world->world_submission.gaussian_data.is_valid() &&
+				world->world_submission.gaussian_data->get_count() > 0;
+		if (world->world_submission.active && world_submission_has_renderable_data &&
+				world->world_submission.has_desired_residency_hint) {
 			*r_hint = world->world_submission.desired_residency_hint;
 			if (r_source) {
 				*r_source = "world_submission";

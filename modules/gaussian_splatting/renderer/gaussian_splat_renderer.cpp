@@ -2026,9 +2026,10 @@ bool GaussianSplatRenderer::_try_render_resident_frame(RenderDataRD *p_render_da
 }
 
 void GaussianSplatRenderer::_render_resident_frame(RenderDataRD *p_render_data, const Transform3D &p_world_to_camera_transform,
-        const Projection &p_projection, const Projection &p_render_projection, RenderSceneBuffersRD *p_render_buffers) {
+        const Projection &p_projection, const Projection &p_render_projection, RenderSceneBuffersRD *p_render_buffers,
+        bool p_allow_legacy_resident_fallback) {
     _try_render_resident_frame(p_render_data, p_world_to_camera_transform, p_projection,
-            p_render_projection, p_render_buffers, true, nullptr);
+            p_render_projection, p_render_buffers, p_allow_legacy_resident_fallback, nullptr);
 }
 
 void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
@@ -2273,7 +2274,8 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
         WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Streaming unavailable (route=%s); falling back to resident render path.",
                 fallback_route_uid));
     }
-    _render_resident_frame(p_render_data, view_transform, cam_projection, render_projection, render_buffers_rd);
+    _render_resident_frame(p_render_data, view_transform, cam_projection, render_projection, render_buffers_rd,
+            backend_plan.allow_legacy_resident_fallback);
 }
 
 void GaussianSplatRenderer::tick_streaming_only(const Transform3D &p_camera_to_world_transform, const Projection &p_projection) {

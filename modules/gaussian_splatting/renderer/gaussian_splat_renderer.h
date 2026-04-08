@@ -674,7 +674,8 @@ public:
             String *r_reason = nullptr);
     void _reset_legacy_streaming_data_path_state();
     void _render_resident_frame(RenderDataRD *p_render_data, const Transform3D &p_world_to_camera_transform,
-            const Projection &p_projection, const Projection &p_render_projection, RenderSceneBuffersRD *p_render_buffers);
+            const Projection &p_projection, const Projection &p_render_projection,
+            RenderSceneBuffersRD *p_render_buffers, bool p_allow_legacy_resident_fallback);
     const Gaussian *_get_streamed_gaussian(uint32_t p_index) const;
     SortStageSummary sort_gaussians_for_view(const Transform3D &p_world_to_camera_transform,
             IndexDomain p_input_domain = IndexDomain::UNKNOWN);
