@@ -86,7 +86,7 @@ Default report output is `user://benchmark_small_baseline_results.json`.
 
 ## Suite Runner
 
-For multi-lane benchmark runs, use the benchmark runner in [Benchmark Runner](benchmark-suite.md). It runs lane scenes one by one and aggregates the lane JSON outputs into a suite report:
+For multi-lane benchmark runs, use the contributor-facing benchmark runner in [Benchmark Runner](benchmark-suite.md). It runs lane scenes one by one, launching one Godot subprocess per lane, and aggregates the lane JSON outputs into a suite report once the benchmark fixture and manifest set have been staged into the sample project checkout:
 
 ```bash
 python3 tests/runtime/run_benchmark.py --profile quick --generate-dummy-assets
