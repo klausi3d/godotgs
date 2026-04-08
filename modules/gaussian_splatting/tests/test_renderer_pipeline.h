@@ -988,6 +988,11 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Upload processing rescues stranded a
     CHECK(streaming_system->get_chunks_loaded_this_frame() == 1);
     CHECK(streaming_system->get_pending_pack_jobs() == 0);
     CHECK(streaming_system->get_pending_upload_jobs() == 0);
+
+    upload_pipeline.process_upload_queue(*streaming_system.ptr());
+    CHECK(streaming_system->get_loaded_chunks() == 1);
+    CHECK(streaming_system->get_pending_pack_jobs() == 0);
+    CHECK(streaming_system->get_pending_upload_jobs() == 0);
 }
 
 TEST_CASE("[GaussianSplatting][RequiresGPU] World static chunks keep streaming instance buffers ready without SceneDirector instances") {

@@ -448,12 +448,15 @@ void StreamingUploadPipeline::pack_thread_func(GaussianStreamingSystem &system, 
 
         PackJob jobs[PACK_DEQUEUE_BATCH];
         uint32_t job_count = 0;
-        uint32_t semaphore_tokens_to_consume = 0;
         {
             const uint64_t lock_wait_start_usec = _ticks_usec_now();
             MutexLock lock(pack_mutex);
             record_pack_mutex_wait(lock_wait_start_usec);
             const uint64_t dequeue_usec = _ticks_usec_now();
+            // The pack queue guarded by pack_mutex is the authoritative owner
+            // of pending work. Semaphore wakeups may be stale if the main
+            // thread synchronously promotes a job after enqueue; in that case
+            // the worker simply observes no queued jobs and sleeps again.
             while (job_count < PACK_DEQUEUE_BATCH && pack_queue_read_idx < pack_queue.size()) {
                 jobs[job_count++] = std::move(pack_queue[pack_queue_read_idx++]);
                 const PackJob &dequeued_job = jobs[job_count - 1];
@@ -461,28 +464,6 @@ void StreamingUploadPipeline::pack_thread_func(GaussianStreamingSystem &system, 
                     const uint64_t latency_usec = dequeue_usec - dequeued_job.enqueue_usec;
                     telemetry.add_pack_queue_latency(latency_usec);
                 }
-            }
-            // queue_chunk_load() posts one semaphore token per enqueued job.
-            // This worker may dequeue several jobs after a single wait(), so
-            // consume extra ready tokens while the queue lock is held. That
-            // keeps token accounting aligned with the queue snapshot and avoids
-            // stealing wake credits for jobs enqueued after this dequeue.
-            semaphore_tokens_to_consume = job_count > 0 ? (job_count - 1) : 0;
-            while (semaphore_tokens_to_consume > 0) {
-                if (pack_thread_exit.load()) {
-                    break;
-                }
-                if (!pack_semaphore.try_wait()) {
-                    break;
-                }
-                // Shutdown posts one wake token per worker. If exit flips after
-                // try_wait() succeeds, return that token so blocked workers can
-                // still observe pack_thread_exit and terminate cleanly.
-                if (pack_thread_exit.load()) {
-                    pack_semaphore.post();
-                    break;
-                }
-                semaphore_tokens_to_consume--;
             }
             compact_queues_locked();
         }
@@ -807,12 +788,13 @@ void StreamingUploadPipeline::process_upload_queue(GaussianStreamingSystem &syst
     uint32_t sync_promoted_pack_jobs = 0;
 
     while (upload_budget_state.upload_budget > 0 && upload_budget_state.completed_chunks < upload_budget_state.chunk_limit) {
-        // Preserve forward progress when async workers are alive but have not yet
-        // produced any uploads. This keeps direct-renderer streaming from
-        // stalling indefinitely at pack_q>0 / upload_q=0.
+        // Only rescue orphaned pack work here. When pack threads are running,
+        // they are the sole dequeue owner for pack_queue and its semaphore
+        // tokens; the frame thread must not steal jobs from that path.
         if (sync_promoted_pack_jobs == 0 &&
                 get_upload_queue_depth_cached() == 0 &&
-                get_pack_queue_depth_cached() > 0) {
+                get_pack_queue_depth_cached() > 0 &&
+                !has_async_pack_queue_owner()) {
             const uint32_t promoted = promote_pack_jobs_sync(1);
             sync_promoted_pack_jobs += promoted;
             sync_promoted_pack_jobs_total += promoted;
@@ -1032,22 +1014,30 @@ void StreamingUploadPipeline::enqueue_upload_job(PendingChunkUpload *p_job) {
 }
 
 uint32_t StreamingUploadPipeline::promote_pack_jobs_sync(uint32_t p_max_jobs) {
+    if (has_async_pack_queue_owner()) {
+        return 0;
+    }
+
     uint32_t promoted = 0;
     while (promoted < p_max_jobs) {
         PackJob job;
         if (!pop_pack_job(job)) {
             break;
         }
-        // Consume the semaphore token that queue_chunk_load() posted for this job.
-        // Without this, the pack thread would get a spurious wake for a job that
-        // has already been promoted synchronously.
-        pack_semaphore.try_wait();
+        // The main thread claims work directly from the mutex-guarded pack
+        // queue. Workers may still observe a stale wake token afterwards, but
+        // they will see an empty queue and go back to sleep without touching
+        // unrelated jobs or wake ownership state.
         PendingChunkUpload *upload = build_pending_upload_from_pack_job(job);
         enqueue_upload_job(upload);
         _atomic_saturating_sub(pack_jobs_in_flight, 1);
         promoted++;
     }
     return promoted;
+}
+
+bool StreamingUploadPipeline::has_async_pack_queue_owner() const {
+    return async_pack_enabled && pack_thread_running.load(std::memory_order_acquire);
 }
 
 uint32_t StreamingUploadPipeline::get_pack_queue_depth_unsafe() const {
