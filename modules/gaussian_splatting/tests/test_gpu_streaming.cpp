@@ -5,7 +5,9 @@
 #include "../renderer/quantization_config.h"
 #include "../core/gaussian_data.h"
 #include "../core/residency_budget_controller.h"
+#define private public
 #include "../core/gaussian_streaming.h"
+#undef private
 #include "../core/gaussian_splat_manager.h"
 #include "../core/streaming_queue_pressure_controller.h"
 #include "core/config/project_settings.h"
@@ -1314,6 +1316,413 @@ TEST_CASE("[Streaming Pipeline] Stale generation upload jobs are dropped") {
     }
 
     CHECK(system->get_loaded_chunks() > 0);
+}
+
+TEST_CASE("[Streaming Pipeline] Residency finalize without requests leaves no pending work") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs) {
+        MESSAGE("Skipping - Rendering server unavailable");
+        return;
+    }
+
+    RenderingDevice *rd = RenderingDevice::get_singleton();
+    if (!rd) {
+        rd = rs->create_local_rendering_device();
+    }
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_with_device(create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE), rd);
+
+    system->begin_residency_requests();
+    system->finalize_residency_requests();
+
+    Dictionary status = system->get_residency_request_status(0, 0);
+    CHECK_FALSE(bool(status.get("requested", false)));
+    CHECK_FALSE(bool(status.get("request_pending", true)));
+    CHECK(String(status.get("request_state_name", String())) == "idle");
+    CHECK(String(status.get("request_result_name", String())) == "idle");
+}
+
+TEST_CASE("[Streaming Pipeline] Cancelled pending chunk uploads do not count as evictions") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs) {
+        MESSAGE("Skipping - Rendering server unavailable");
+        return;
+    }
+
+    RenderingDevice *rd = RenderingDevice::get_singleton();
+    if (!rd) {
+        rd = rs->create_local_rendering_device();
+    }
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    if (!project_settings) {
+        MESSAGE("Skipping - ProjectSettings unavailable");
+        return;
+    }
+
+    const String async_pack_setting = "rendering/gaussian_splatting/streaming/async_pack_enabled";
+    ScopedProjectSettingRestore async_pack_guard(project_settings, async_pack_setting);
+    project_settings->set_setting(async_pack_setting, true);
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_empty(rd);
+    if (!system->is_runtime_ready()) {
+        MESSAGE("Skipping - Streaming runtime not ready");
+        return;
+    }
+
+    const uint32_t asset_a = 17;
+    const uint32_t asset_b = 18;
+    system->register_asset(asset_a, create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE));
+    system->register_asset(asset_b, create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE));
+
+    Transform3D camera_transform;
+    camera_transform.origin = Vector3(0.0f, 0.0f, 5.0f);
+    Projection projection;
+    projection.set_perspective(60.0f, 1.0f, 0.1f, 2000.0f);
+
+    system->begin_residency_requests();
+    CHECK(system->request_chunk_residency(asset_a, 0, 0) == OK);
+    system->finalize_residency_requests();
+
+    bool saw_async_queue = false;
+    for (int i = 0; i < 48; i++) {
+        system->update_streaming(camera_transform, projection);
+        if (system->get_pending_pack_jobs() > 0 || system->get_pending_upload_jobs() > 0) {
+            saw_async_queue = true;
+            break;
+        }
+    }
+    if (!saw_async_queue) {
+        MESSAGE("Skipping - Async pack/upload queue not observed in test environment");
+        return;
+    }
+
+    system->begin_residency_requests();
+    CHECK(system->request_chunk_residency(asset_b, 0, 0) == OK);
+    system->finalize_residency_requests();
+
+    const uint32_t evictions_before = system->get_chunks_evicted_this_frame();
+    system->update_streaming(camera_transform, projection);
+    const uint32_t evictions_after = system->get_chunks_evicted_this_frame();
+
+    CHECK(evictions_after == evictions_before);
+}
+
+TEST_CASE("[Streaming Pipeline] Null-device atlas sync invalidates stale publication state") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs) {
+        MESSAGE("Skipping - Rendering server unavailable");
+        return;
+    }
+
+    RenderingDevice *rd = RenderingDevice::get_singleton();
+    if (!rd) {
+        rd = rs->create_local_rendering_device();
+    }
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_empty(rd);
+    if (!system->is_runtime_ready()) {
+        MESSAGE("Skipping - Streaming runtime not ready");
+        return;
+    }
+
+    const uint32_t asset_id = 91;
+    system->register_asset(asset_id, create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE));
+    const uint64_t generation_before = system->get_atlas_generation();
+    CHECK(generation_before > 0);
+    CHECK(system->get_asset_meta_buffer().is_valid());
+    CHECK(system->get_chunk_meta_buffer().is_valid());
+    CHECK(system->get_asset_chunk_index_buffer().is_valid());
+
+    system->_test_sync_global_atlas_state(nullptr);
+
+    CHECK(system->get_atlas_generation() == 0);
+    CHECK_FALSE(system->get_asset_meta_buffer().is_valid());
+    CHECK_FALSE(system->get_chunk_meta_buffer().is_valid());
+    CHECK_FALSE(system->get_asset_chunk_index_buffer().is_valid());
+}
+
+TEST_CASE("[Streaming Pipeline] Invalid atlas dirty marks force a rebuild path") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs) {
+        MESSAGE("Skipping - Rendering server unavailable");
+        return;
+    }
+
+    RenderingDevice *rd = RenderingDevice::get_singleton();
+    if (!rd) {
+        rd = rs->create_local_rendering_device();
+    }
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_empty(rd);
+    if (!system->is_runtime_ready()) {
+        MESSAGE("Skipping - Streaming runtime not ready");
+        return;
+    }
+
+    const uint32_t asset_id = 123;
+    system->register_asset(asset_id, create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE));
+    const uint64_t generation_before = system->get_atlas_generation();
+    CHECK(generation_before > 0);
+
+    system->_test_mark_chunk_meta_dirty(asset_id, GaussianStreamingSystem::CHUNK_SIZE + 3);
+    system->_test_sync_global_atlas_state(rd);
+
+    CHECK(system->get_atlas_generation() > generation_before);
+    CHECK(system->get_asset_meta_buffer().is_valid());
+    CHECK(system->get_chunk_meta_buffer().is_valid());
+    CHECK(system->get_asset_chunk_index_buffer().is_valid());
+}
+
+TEST_CASE("[Streaming Pipeline] Primary explicit residency requests expose request status") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs) {
+        MESSAGE("Skipping - Rendering server unavailable");
+        return;
+    }
+
+    RenderingDevice *rd = RenderingDevice::get_singleton();
+    if (!rd) {
+        rd = rs->create_local_rendering_device();
+    }
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_with_device(create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE), rd);
+
+    system->begin_residency_requests();
+    CHECK(system->request_chunk_residency(0, 0, 0) == OK);
+    CHECK(system->request_asset_residency(0, 0) == OK);
+
+    Dictionary status = system->get_residency_request_status(0, 0);
+    CHECK(bool(status.get("requested", false)));
+    CHECK(bool(status.get("request_pending", false)));
+    CHECK(String(status.get("request_state_name", String())) == "collected");
+    CHECK(String(status.get("request_result_name", String())) == "collected");
+    CHECK((int64_t)status.get("lod_mask", 0) != 0);
+}
+
+TEST_CASE("[Streaming Pipeline] Primary explicit residency bypasses sync-fallback visibility gating") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs) {
+        MESSAGE("Skipping - Rendering server unavailable");
+        return;
+    }
+
+    RenderingDevice *rd = RenderingDevice::get_singleton();
+    if (!rd) {
+        rd = rs->create_local_rendering_device();
+    }
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    if (!project_settings) {
+        MESSAGE("Skipping - ProjectSettings unavailable");
+        return;
+    }
+
+    const String async_pack_setting = "rendering/gaussian_splatting/streaming/async_pack_enabled";
+    ScopedProjectSettingRestore async_pack_guard(project_settings, async_pack_setting);
+    project_settings->set_setting(async_pack_setting, false);
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_with_device(
+            create_clustered_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE, Vector3(5000.0f, 5000.0f, 5000.0f)),
+            rd);
+    if (!system->is_runtime_ready()) {
+        MESSAGE("Skipping - Streaming runtime not ready");
+        return;
+    }
+
+    Transform3D camera_transform;
+    camera_transform.origin = Vector3(0.0f, 0.0f, 5.0f);
+    Projection projection;
+    projection.set_perspective(60.0f, 1.0f, 0.1f, 2000.0f);
+
+    system->begin_residency_requests();
+    CHECK(system->request_chunk_residency(0, 0, 0) == OK);
+    system->finalize_residency_requests();
+
+    for (int i = 0; i < 8; i++) {
+        system->update_streaming(camera_transform, projection);
+        if (system->get_loaded_chunks() > 0) {
+            break;
+        }
+    }
+
+    Dictionary status = system->get_residency_request_status(0, 0);
+    CHECK(system->get_loaded_chunks() > 0);
+    CHECK(String(status.get("request_state_name", String())) == "satisfied");
+    CHECK(String(status.get("request_result_name", String())) == "satisfied");
+}
+
+TEST_CASE("[Streaming Pipeline] Cancelled pending chunk loads do not count as evictions") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs) {
+        MESSAGE("Skipping - Rendering server unavailable");
+        return;
+    }
+
+    RenderingDevice *rd = RenderingDevice::get_singleton();
+    if (!rd) {
+        rd = rs->create_local_rendering_device();
+    }
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_empty(rd);
+    if (!system->is_runtime_ready()) {
+        MESSAGE("Skipping - Streaming runtime not ready");
+        return;
+    }
+
+    const uint32_t asset_id = 808;
+    system->register_asset(asset_id, create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE));
+
+    GaussianStreamingSystem::AtlasAssetState *asset = system->_get_asset_state(asset_id);
+    REQUIRE(asset != nullptr);
+    LocalVector<GaussianStreamingSystem::StreamingChunk> &asset_chunks = system->_get_asset_chunks(*asset);
+    REQUIRE(asset_chunks.size() > 0);
+
+    GaussianStreamingSystem::StreamingChunk &chunk = asset_chunks[0];
+    const uint64_t chunk_key = system->_make_chunk_key(asset_id, 0);
+    uint32_t buffer_slot = UINT32_MAX;
+    REQUIRE(system->atlas_allocator.allocate_slot(chunk_key, buffer_slot));
+    REQUIRE(system->_begin_chunk_upload(asset_id, 0, chunk, buffer_slot));
+    CHECK(chunk.upload_pending);
+    CHECK_FALSE(chunk.is_loaded);
+    CHECK(system->get_chunks_evicted_this_frame() == 0);
+
+    system->_evict_unrequested_chunks(asset_id, *asset, asset_chunks);
+
+    CHECK(system->get_chunks_evicted_this_frame() == 0);
+    CHECK_FALSE(chunk.is_loaded);
+    CHECK_FALSE(chunk.upload_pending);
+    CHECK(chunk.buffer_slot == UINT32_MAX);
+}
+
+TEST_CASE("[Streaming Pipeline] Invalid chunk meta dirty marks force a safe atlas rebuild") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs) {
+        MESSAGE("Skipping - Rendering server unavailable");
+        return;
+    }
+
+    RenderingDevice *rd = RenderingDevice::get_singleton();
+    if (!rd) {
+        rd = rs->create_local_rendering_device();
+    }
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_empty(rd);
+    if (!system->is_runtime_ready()) {
+        MESSAGE("Skipping - Streaming runtime not ready");
+        return;
+    }
+
+    const uint32_t asset_id = 809;
+    system->register_asset(asset_id, create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE));
+
+    const uint64_t generation_before = system->get_atlas_generation();
+    system->global_atlas_registry.mark_chunk_meta_dirty(*system, asset_id, 99);
+
+    CHECK(system->global_atlas_registry.asset_registry_dirty);
+    CHECK(system->global_atlas_registry.chunk_meta_dirty_all);
+    CHECK(system->global_atlas_registry.chunk_meta_dirty_indices.is_empty());
+
+    system->global_atlas_registry.sync_to_gpu(*system, rd);
+
+    CHECK(system->get_atlas_generation() > generation_before);
+    CHECK(system->get_asset_meta_buffer().is_valid());
+    CHECK(system->get_chunk_meta_buffer().is_valid());
+    CHECK(system->get_asset_chunk_index_buffer().is_valid());
+}
+
+TEST_CASE("[Streaming Pipeline] Dirty atlas publication is invalidated when GPU sync is skipped") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs) {
+        MESSAGE("Skipping - Rendering server unavailable");
+        return;
+    }
+
+    RenderingDevice *rd = RenderingDevice::get_singleton();
+    if (!rd) {
+        rd = rs->create_local_rendering_device();
+    }
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_empty(rd);
+    if (!system->is_runtime_ready()) {
+        MESSAGE("Skipping - Streaming runtime not ready");
+        return;
+    }
+
+    const uint64_t generation_before = system->get_atlas_generation();
+    REQUIRE(generation_before > 0);
+    REQUIRE(system->get_asset_meta_buffer().is_valid());
+    REQUIRE(system->get_chunk_meta_buffer().is_valid());
+    REQUIRE(system->get_asset_chunk_index_buffer().is_valid());
+
+    system->register_asset(810, create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE));
+    system->global_atlas_registry.sync_to_gpu(*system, nullptr);
+
+    CHECK_FALSE(system->get_asset_meta_buffer().is_valid());
+    CHECK_FALSE(system->get_chunk_meta_buffer().is_valid());
+    CHECK_FALSE(system->get_asset_chunk_index_buffer().is_valid());
+    CHECK(system->get_atlas_generation() == generation_before);
+
+    system->global_atlas_registry.sync_to_gpu(*system, rd);
+
+    CHECK(system->get_atlas_generation() > generation_before);
+    CHECK(system->get_asset_meta_buffer().is_valid());
+    CHECK(system->get_chunk_meta_buffer().is_valid());
+    CHECK(system->get_asset_chunk_index_buffer().is_valid());
 }
 
 TEST_CASE("[Streaming Pipeline] Dense-id generation rejects stale remapped instance mappings") {

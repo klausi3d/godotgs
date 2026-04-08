@@ -762,6 +762,8 @@ void GaussianStreamingSystem::_bind_methods() {
     ClassDB::bind_method(D_METHOD("request_asset_residency", "asset_id", "lod_level"),
             &GaussianStreamingSystem::request_asset_residency);
     ClassDB::bind_method(D_METHOD("finalize_residency_requests"), &GaussianStreamingSystem::finalize_residency_requests);
+    ClassDB::bind_method(D_METHOD("get_residency_request_status", "asset_id", "chunk_id"),
+            &GaussianStreamingSystem::get_residency_request_status);
     ClassDB::bind_method(D_METHOD("get_visible_count"), &GaussianStreamingSystem::get_visible_count);
     ClassDB::bind_method(D_METHOD("begin_frame"), &GaussianStreamingSystem::begin_frame);
     ClassDB::bind_method(D_METHOD("end_frame"), &GaussianStreamingSystem::end_frame);
@@ -1244,17 +1246,17 @@ void GaussianStreamingSystem::begin_residency_requests() {
     asset_registry.request_pending = false;
 }
 
-void GaussianStreamingSystem::request_chunk_residency(uint32_t asset_id, uint32_t chunk_id, uint32_t lod_level) {
+Error GaussianStreamingSystem::request_chunk_residency(uint32_t asset_id, uint32_t chunk_id, uint32_t lod_level) {
     AtlasAssetState *asset = _get_asset_state(asset_id);
     if (!asset) {
         ERR_PRINT(vformat("[Streaming] request_chunk_residency ignored: asset %d is not registered.", asset_id));
-        return;
+        return ERR_DOES_NOT_EXIST;
     }
     LocalVector<StreamingChunk> &asset_chunks = _get_asset_chunks(*asset);
     if (chunk_id >= asset_chunks.size()) {
         ERR_PRINT(vformat("[Streaming] request_chunk_residency ignored: asset %d chunk %d is out of range (chunk_count=%d).",
                 asset_id, chunk_id, asset_chunks.size()));
-        return;
+        return ERR_INVALID_PARAMETER;
     }
     if (!asset_registry.request_collection_active) {
         begin_residency_requests();
@@ -1266,34 +1268,122 @@ void GaussianStreamingSystem::request_chunk_residency(uint32_t asset_id, uint32_
         state.lod_mask = 0;
         asset->requested_chunks.push_back(chunk_id);
     }
+    state.request_generation = asset_registry.request_generation;
+    state.request_state = GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_COLLECTED;
+    state.request_result = GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_COLLECTED;
     state.lod_mask |= (1u << safe_lod);
     asset_registry.request_pending = true;
+    return OK;
 }
 
-void GaussianStreamingSystem::request_asset_residency(uint32_t asset_id, uint32_t lod_level) {
+Error GaussianStreamingSystem::request_asset_residency(uint32_t asset_id, uint32_t lod_level) {
     AtlasAssetState *asset = _get_asset_state(asset_id);
     if (!asset) {
         ERR_PRINT(vformat("[Streaming] request_asset_residency ignored: asset %d is not registered.", asset_id));
-        return;
+        return ERR_DOES_NOT_EXIST;
     }
     if (!asset->data.is_valid()) {
         ERR_PRINT(vformat("[Streaming] request_asset_residency ignored: asset %d has no data.", asset_id));
-        return;
+        return ERR_DOES_NOT_EXIST;
     }
     LocalVector<StreamingChunk> &asset_chunks = _get_asset_chunks(*asset);
     if (asset_chunks.is_empty()) {
         ERR_PRINT(vformat("[Streaming] request_asset_residency ignored: asset %d has zero chunks.", asset_id));
-        return;
+        return ERR_DOES_NOT_EXIST;
     }
     const uint32_t safe_lod = MIN(lod_level, MAX_REQUESTED_LOD);
+    Error last_error = OK;
     for (uint32_t i = 0; i < asset_chunks.size(); i++) {
-        request_chunk_residency(asset_id, i, safe_lod);
+        const Error err = request_chunk_residency(asset_id, i, safe_lod);
+        if (err != OK && last_error == OK) {
+            last_error = err;
+        }
     }
+    return last_error;
 }
 
 void GaussianStreamingSystem::finalize_residency_requests() {
-    asset_registry.request_pending = true;
     asset_registry.request_collection_active = false;
+}
+
+Dictionary GaussianStreamingSystem::get_residency_request_status(uint32_t asset_id, uint32_t chunk_id) const {
+    return _build_residency_request_status(asset_id, chunk_id);
+}
+
+bool GaussianStreamingSystem::_is_requested_chunk_in_current_generation(const AtlasAssetState &asset, uint32_t chunk_id) const {
+    const RequestedChunkState *state = asset.requested_chunk_state.getptr(chunk_id);
+    return state && state->stamp == asset_registry.request_generation;
+}
+
+void GaussianStreamingSystem::_update_requested_chunk_state(
+        AtlasAssetState &asset, uint32_t chunk_id, uint8_t request_state, uint8_t request_result) {
+    RequestedChunkState *state = asset.requested_chunk_state.getptr(chunk_id);
+    if (!state || state->stamp != asset_registry.request_generation) {
+        return;
+    }
+    state->request_state = request_state;
+    state->request_result = request_result;
+    state->request_generation = asset_registry.request_generation;
+}
+
+StringName GaussianStreamingSystem::_residency_request_state_name(uint8_t request_state) {
+    switch (request_state) {
+        case GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_COLLECTED:
+            return StringName("collected");
+        case GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_QUEUED:
+            return StringName("queued");
+        case GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED:
+            return StringName("deferred");
+        case GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED:
+            return StringName("satisfied");
+        case GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_FAILED:
+            return StringName("failed");
+        case GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_IDLE:
+        default:
+            return StringName("idle");
+    }
+}
+
+Dictionary GaussianStreamingSystem::_build_residency_request_status(uint32_t asset_id, uint32_t chunk_id) const {
+    Dictionary status;
+    status["asset_id"] = static_cast<int64_t>(asset_id);
+    status["chunk_id"] = static_cast<int64_t>(chunk_id);
+    status["request_generation"] = static_cast<int64_t>(asset_registry.request_generation);
+    status["request_collection_active"] = asset_registry.request_collection_active;
+    status["request_pending"] = asset_registry.request_pending;
+
+    const AtlasAssetState *asset = _get_asset_state(asset_id);
+    if (!asset) {
+        status["requested"] = false;
+        status["request_state"] = static_cast<int64_t>(GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_FAILED);
+        status["request_state_name"] = _residency_request_state_name(GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_FAILED);
+        status["request_result"] = static_cast<int64_t>(GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_FAILED);
+        status["request_result_name"] = _residency_request_state_name(GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_FAILED);
+        return status;
+    }
+
+    const LocalVector<StreamingChunk> &asset_chunks = _get_asset_chunks(*asset);
+    if (chunk_id >= asset_chunks.size()) {
+        status["requested"] = false;
+        status["request_state"] = static_cast<int64_t>(GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_FAILED);
+        status["request_state_name"] = _residency_request_state_name(GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_FAILED);
+        status["request_result"] = static_cast<int64_t>(GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_FAILED);
+        status["request_result_name"] = _residency_request_state_name(GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_FAILED);
+        return status;
+    }
+
+    const RequestedChunkState *state = asset->requested_chunk_state.getptr(chunk_id);
+    const bool requested = _is_requested_chunk_in_current_generation(*asset, chunk_id);
+    const uint8_t request_state = requested ? state->request_state : GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_IDLE;
+    const uint8_t request_result = requested ? state->request_result : GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_IDLE;
+    status["requested"] = requested;
+    status["request_generation_current"] = requested ? static_cast<int64_t>(state->request_generation) : int64_t(0);
+    status["lod_mask"] = requested ? static_cast<int64_t>(state->lod_mask) : int64_t(0);
+    status["request_state"] = static_cast<int64_t>(request_state);
+    status["request_state_name"] = _residency_request_state_name(request_state);
+    status["request_result"] = static_cast<int64_t>(request_result);
+    status["request_result_name"] = _residency_request_state_name(request_result);
+    return status;
 }
 
 void GaussianStreamingSystem::register_asset(uint32_t asset_id, const Ref<GaussianData> &p_data) {
@@ -2259,11 +2349,11 @@ void GaussianStreamingSystem::_run_streaming_frame_pipeline(const Transform3D &c
     }
     if (can_async_pack) {
         _load_visible_chunks(effective_max, evictions_left, eviction_blocked);
-        _apply_requested_residency();
+        _apply_requested_residency(can_async_pack);
     } else {
         // In sync fallback mode the per-frame sync cap is very small; prioritize
         // explicit residency requests before opportunistic visible loads.
-        _apply_requested_residency();
+        _apply_requested_residency(can_async_pack);
         _load_visible_chunks(effective_max, evictions_left, eviction_blocked);
         const uint64_t sync_drain_start_usec = os ? os->get_ticks_usec() : 0;
         _drain_sync_fallback_chunk_loads(effective_max, evictions_left, eviction_blocked);
@@ -3212,6 +3302,12 @@ void GaussianStreamingSystem::_complete_chunk_load_common(uint32_t asset_id, uin
     eviction_controller.touch_chunk_use(chunk.last_used_frame);
     budget.loaded_chunks_count++;
     budget.vram_usage += chunk.count * sizeof(PackedGaussian);
+    AtlasAssetState *asset = _get_asset_state(asset_id);
+    if (asset) {
+        _update_requested_chunk_state(*asset, chunk_idx,
+                GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED,
+                GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED);
+    }
     global_atlas_registry.mark_chunk_meta_dirty(*this, asset_id, chunk_idx);
     _assert_chunk_state_invariant(asset_id, chunk_idx, chunk, "_complete_chunk_load_common");
 }
@@ -4264,17 +4360,19 @@ uint32_t GaussianStreamingSystem::_drain_sync_fallback_chunk_loads(
         if (chunk.is_loaded || chunk.upload_pending) {
             continue;
         }
+        const bool explicitly_requested = _is_requested_chunk_in_current_generation(*asset, chunk_idx);
         bool enforce_vram_regulator_gate = true;
         if (asset_id == PRIMARY_ASSET_ID) {
-            if (!is_primary_chunk_relevant(chunk)) {
+            if (!explicitly_requested && !is_primary_chunk_relevant(chunk)) {
                 scheduler.last_sync_fallback_stalled_count++;
                 continue;
             }
+            if (explicitly_requested) {
+                enforce_vram_regulator_gate = false;
+            }
         } else {
             enforce_vram_regulator_gate = false;
-            const RequestedChunkState *state = asset->requested_chunk_state.getptr(chunk_idx);
-            const bool requested = state && state->stamp == asset_registry.request_generation;
-            if (!requested) {
+            if (!explicitly_requested) {
                 continue;
             }
         }
@@ -4296,6 +4394,9 @@ uint32_t GaussianStreamingSystem::_drain_sync_fallback_chunk_loads(
         const ResidencyBudgetController::AdmissionDecision decision = admission_gate.decision;
         if (decision == ResidencyBudgetController::AdmissionDecision::Skip) {
             scheduler.last_sync_fallback_stalled_count++;
+            _update_requested_chunk_state(*asset, chunk_idx,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED);
             _enqueue_sync_fallback_chunk_load(asset_id, chunk_idx, asset_id != PRIMARY_ASSET_ID);
             continue;
         }
@@ -4316,6 +4417,9 @@ uint32_t GaussianStreamingSystem::_drain_sync_fallback_chunk_loads(
             } else {
                 ResidencyBudgetController::note_blocked_eviction(admission_budget);
                 scheduler.last_sync_fallback_stalled_count++;
+                _update_requested_chunk_state(*asset, chunk_idx,
+                        GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED,
+                        GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED);
                 _enqueue_sync_fallback_chunk_load(asset_id, chunk_idx, asset_id != PRIMARY_ASSET_ID);
                 continue;
             }
@@ -4323,14 +4427,24 @@ uint32_t GaussianStreamingSystem::_drain_sync_fallback_chunk_loads(
 
         _load_chunk(asset_id, chunk_idx);
         if (chunk.is_loaded) {
+            _update_requested_chunk_state(*asset, chunk_idx,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED);
             drained++;
             scheduler.last_sync_fallback_drained_count++;
             budget.chunks_loaded_this_frame++;
             continue;
         }
 
-        if (!chunk.upload_pending) {
+        if (chunk.upload_pending) {
+            _update_requested_chunk_state(*asset, chunk_idx,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_QUEUED,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_QUEUED);
+        } else {
             scheduler.last_sync_fallback_stalled_count++;
+            _update_requested_chunk_state(*asset, chunk_idx,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED);
             _enqueue_sync_fallback_chunk_load(asset_id, chunk_idx, asset_id != PRIMARY_ASSET_ID);
         }
     }

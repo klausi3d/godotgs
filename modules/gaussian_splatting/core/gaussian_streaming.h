@@ -3,8 +3,10 @@
 
 #include "gaussian_data.h"
 #include "gaussian_splat_manager.h"
+#include "core/error/error_list.h"
 #include "core/math/plane.h"
 #include "core/math/transform_3d.h"
+#include "core/string/string_name.h"
 #include "servers/rendering/rendering_device.h"
 
 class GaussianMemoryStream;
@@ -176,9 +178,10 @@ public:
 
     // Global atlas residency requests (instance pipeline).
     void begin_residency_requests();
-    void request_chunk_residency(uint32_t asset_id, uint32_t chunk_id, uint32_t lod_level);
-    void request_asset_residency(uint32_t asset_id, uint32_t lod_level);
+    Error request_chunk_residency(uint32_t asset_id, uint32_t chunk_id, uint32_t lod_level);
+    Error request_asset_residency(uint32_t asset_id, uint32_t lod_level);
     void finalize_residency_requests();
+    Dictionary get_residency_request_status(uint32_t asset_id, uint32_t chunk_id) const;
 
     // Get GPU buffer for current frame's visible splats
     RID get_frame_buffer() const;
@@ -272,6 +275,12 @@ public:
     RID get_asset_chunk_index_buffer() const { return global_atlas_registry.get_global_atlas_state().asset_chunk_index_buffer; }
     RID get_atlas_quantization_buffer() const { return global_atlas_registry.get_global_atlas_state().quantization_buffer; }
     uint64_t get_atlas_generation() const { return global_atlas_registry.get_atlas_generation(); }
+#if defined(TESTS_ENABLED)
+    void _test_sync_global_atlas_state(RenderingDevice *p_rd) { global_atlas_registry.sync_to_gpu(*this, p_rd); }
+    void _test_mark_chunk_meta_dirty(uint32_t asset_id, uint32_t chunk_idx) {
+        global_atlas_registry.mark_chunk_meta_dirty(*this, asset_id, chunk_idx);
+    }
+#endif
 
     // Distance-based LOD (Octree-GS) - chunk-level LOD selection and reduction
     Dictionary get_lod_debug_stats() const;
@@ -352,6 +361,11 @@ private:
     uint32_t _drain_sync_fallback_chunk_loads(uint32_t effective_max, uint32_t &evictions_left, bool &eviction_blocked);
     bool _should_force_sync_fallback_for_async_stall(uint32_t pack_queue_depth, uint32_t upload_queue_depth);
     bool _can_use_async_pack_path(uint32_t pack_queue_depth, uint32_t upload_queue_depth);
+    bool _is_requested_chunk_in_current_generation(const AtlasAssetState &asset, uint32_t chunk_id) const;
+    void _update_requested_chunk_state(
+            AtlasAssetState &asset, uint32_t chunk_id, uint8_t request_state, uint8_t request_result);
+    Dictionary _build_residency_request_status(uint32_t asset_id, uint32_t chunk_id) const;
+    static StringName _residency_request_state_name(uint8_t request_state);
     uint32_t _get_sync_fallback_queue_depth() const;
     void _compact_sync_fallback_queue();
     void _process_upload_queue();
@@ -375,7 +389,7 @@ private:
     bool _upload_quantization_buffer(RenderingDevice *p_rd);
     ChunkQuantizationGPU _create_gpu_quantization_data(const ChunkQuantizationInfo &info, uint32_t start_idx, uint32_t count) const;
 
-    void _apply_requested_residency();
+    void _apply_requested_residency(bool can_async_pack);
     void _evict_unrequested_chunks(uint32_t asset_id, AtlasAssetState &asset,
             LocalVector<StreamingChunk> &asset_chunks);
     bool _load_requested_chunks(uint32_t asset_id, AtlasAssetState &asset,

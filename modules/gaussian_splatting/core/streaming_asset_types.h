@@ -12,6 +12,15 @@
 
 namespace GaussianStreamingTypes {
 
+enum ResidencyRequestState : uint8_t {
+    RESIDENCY_REQUEST_STATE_IDLE = 0,
+    RESIDENCY_REQUEST_STATE_COLLECTED = 1,
+    RESIDENCY_REQUEST_STATE_QUEUED = 2,
+    RESIDENCY_REQUEST_STATE_DEFERRED = 3,
+    RESIDENCY_REQUEST_STATE_SATISFIED = 4,
+    RESIDENCY_REQUEST_STATE_FAILED = 5,
+};
+
 struct ChunkLayoutHint {
     uint32_t start_idx = 0;
     uint32_t count = 0;
@@ -56,6 +65,10 @@ struct StreamingChunk {
 struct RequestedChunkState {
     uint64_t stamp = 0;
     uint32_t lod_mask = 0;
+    uint64_t request_generation = 0;
+    uint8_t request_state = 0;
+    uint8_t request_result = 0;
+    uint16_t reserved = 0;
 };
 
 struct AtlasAssetState {

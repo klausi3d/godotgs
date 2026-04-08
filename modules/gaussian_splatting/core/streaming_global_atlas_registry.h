@@ -38,6 +38,9 @@ public:
 	uint64_t get_atlas_generation() const { return global_atlas_state.atlas_generation; }
 
 private:
+	void _invalidate_chunk_meta_tracking();
+	void _invalidate_published_buffers();
+
 	GlobalAtlasState global_atlas_state;
 	uint32_t max_chunk_count_per_asset = 0;
 	uint32_t max_chunk_splats = 0;

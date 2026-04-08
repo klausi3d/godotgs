@@ -75,6 +75,22 @@ uint64_t StreamingGlobalAtlasRegistry::get_auxiliary_vram_overhead_bytes() const
 			uint64_t(asset_chunk_index_buffer_size);
 }
 
+void StreamingGlobalAtlasRegistry::_invalidate_chunk_meta_tracking() {
+	asset_registry_dirty = true;
+	asset_meta_dirty = true;
+	asset_chunk_index_dirty = true;
+	chunk_meta_dirty_all = true;
+	chunk_meta_dirty_indices.clear();
+	_clear_dirty_flags(chunk_meta_dirty_flags);
+}
+
+void StreamingGlobalAtlasRegistry::_invalidate_published_buffers() {
+	global_atlas_state.asset_meta_buffer = RID();
+	global_atlas_state.chunk_meta_buffer = RID();
+	global_atlas_state.asset_chunk_index_buffer = RID();
+	global_atlas_state.quantization_buffer = RID();
+}
+
 void StreamingGlobalAtlasRegistry::cleanup(RenderingDevice *p_rd) {
 	auto release_buffer = [p_rd](RID &buffer, uint32_t &size, const char *label) {
 		if (!buffer.is_valid()) {
@@ -322,10 +338,34 @@ void StreamingGlobalAtlasRegistry::mark_chunk_meta_dirty(GaussianStreamingSystem
 
 	GaussianStreamingSystem::AtlasAssetState *asset = system._get_asset_state(asset_id);
 	if (!asset) {
+		WARN_PRINT_ONCE(vformat("[Streaming] mark_chunk_meta_dirty rejected invalid asset %d for chunk %d; forcing atlas rebuild.",
+				asset_id, chunk_idx));
+		_invalidate_chunk_meta_tracking();
+		return;
+	}
+
+	LocalVector<GaussianStreamingSystem::StreamingChunk> &asset_chunks = system._get_asset_chunks(*asset);
+	if (chunk_idx >= asset_chunks.size()) {
+		WARN_PRINT_ONCE(vformat("[Streaming] mark_chunk_meta_dirty rejected out-of-range chunk %d for asset %d (chunk_count=%d); forcing atlas rebuild.",
+				chunk_idx, asset_id, asset_chunks.size()));
+		_invalidate_chunk_meta_tracking();
+		return;
+	}
+	if (asset->chunk_meta_base > chunk_meta_cpu.size() ||
+			asset->chunk_meta_base + asset_chunks.size() > chunk_meta_cpu.size()) {
+		WARN_PRINT_ONCE(vformat("[Streaming] mark_chunk_meta_dirty rejected stale chunk meta range for asset %d ([%d, %d) vs cpu_size=%d); forcing atlas rebuild.",
+				asset_id,
+				asset->chunk_meta_base,
+				asset->chunk_meta_base + asset_chunks.size(),
+				chunk_meta_cpu.size()));
+		_invalidate_chunk_meta_tracking();
 		return;
 	}
 	const uint32_t global_idx = asset->chunk_meta_base + chunk_idx;
 	if (global_idx >= chunk_meta_cpu.size()) {
+		WARN_PRINT_ONCE(vformat("[Streaming] mark_chunk_meta_dirty rejected out-of-range chunk %d for asset %d; forcing atlas rebuild.",
+				chunk_idx, asset_id));
+		_invalidate_chunk_meta_tracking();
 		return;
 	}
 
@@ -335,6 +375,9 @@ void StreamingGlobalAtlasRegistry::mark_chunk_meta_dirty(GaussianStreamingSystem
 		return;
 	}
 	if (chunk_meta_dirty_flags.is_empty() || global_idx >= chunk_meta_dirty_flags.size()) {
+		WARN_PRINT_ONCE(vformat("[Streaming] mark_chunk_meta_dirty missing dirty-flag tracking for asset %d chunk %d (global_idx=%d flags=%d); forcing atlas rebuild.",
+				asset_id, chunk_idx, global_idx, chunk_meta_dirty_flags.size()));
+		_invalidate_chunk_meta_tracking();
 		return;
 	}
 	if (chunk_meta_dirty_flags[global_idx] == 0) {
@@ -387,10 +430,8 @@ void StreamingGlobalAtlasRegistry::sync_to_gpu(GaussianStreamingSystem &system, 
 	if (!p_rd) {
 		if (atlas_dirty) {
 			WARN_PRINT_ONCE("[Streaming DIAG] _sync_global_atlas_state skipped GPU upload because RenderingDevice is null while atlas is dirty.");
+			_invalidate_published_buffers();
 		}
-		global_atlas_state.asset_meta_buffer = asset_meta_buffer;
-		global_atlas_state.chunk_meta_buffer = chunk_meta_buffer;
-		global_atlas_state.asset_chunk_index_buffer = asset_chunk_index_buffer;
 		return;
 	}
 
