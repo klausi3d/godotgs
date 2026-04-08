@@ -97,5 +97,10 @@ func _run() -> void:
 		return
 	streaming.finalize_residency_requests()
 
-	print("✅ Streaming residency API script bindings are callable")
+	var final_status := streaming.get_residency_request_status(0, 0)
+	if int(final_status.get("lod_mask", 0)) == 0:
+		_record_failure("Primary explicit residency request did not populate a lod mask", final_status)
+		return
+
+	print("✅ Streaming residency API request state coverage passed")
 	quit(0)

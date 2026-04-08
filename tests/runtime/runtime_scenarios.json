@@ -28,6 +28,7 @@
         "GPU Streaming Stress",
         "Engine Capability Sanity",
         "World Streaming Gate",
+        "Mixed Residency Routing",
         "Streaming Residency API",
         "Data Flow Recent Window",
         "Pipeline Trace Freshness",
@@ -42,6 +43,7 @@
       "gd_tests": [
         "GPU Streaming Stress",
         "World Streaming Gate",
+        "Mixed Residency Routing",
         "Streaming Residency API"
       ],
       "godot_args": [],
@@ -55,6 +57,7 @@
       "gd_tests": [
         "GPU Streaming Stress",
         "World Streaming Gate",
+        "Mixed Residency Routing",
         "Streaming Residency API"
       ],
       "godot_args": []

@@ -82,6 +82,7 @@ GDS_TESTS: Dict[str, Path] = {
     "GPU Streaming Stress": RUNTIME_DIR / "test_gpu_streaming_stress.gd",
     "Engine Capability Sanity": RUNTIME_DIR / "test_engine_capabilities.gd",
     "World Streaming Gate": RUNTIME_DIR / "test_world_streaming_gate.gd",
+    "Mixed Residency Routing": RUNTIME_DIR / "test_mixed_residency_routing.gd",
     "Streaming Residency API": RUNTIME_DIR / "test_streaming_residency_api.gd",
     "Data Flow Recent Window": RUNTIME_DIR / "test_data_flow_recent_window.gd",
     "Pipeline Trace Freshness": RUNTIME_DIR / "test_pipeline_trace_freshness.gd",
