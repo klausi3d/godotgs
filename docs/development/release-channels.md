@@ -8,15 +8,16 @@ Define how executable builds are distributed from this repository and what guara
 
 - Public GitHub releases are currently nightlies first.
 - The stable `v*` publish path exists in automation, but it is not the default public install track.
-- Public binaries currently cover the Linux editor and the Windows editor.
-- Preferred evaluation path: use the latest Linux nightly if it fits your environment, use the public Windows nightly/release path on Windows, and build from source on macOS.
+- Visible public binaries currently cover the Linux editor only.
+- The release workflow on this branch now packages Windows as well, but that path is not yet visible on Releases until the first publish lands.
+- Preferred evaluation path: use the latest Linux nightly if it fits your environment, build from source on Windows until the public Windows publish exists, and build from source on macOS.
 
 ## Channels
 
 | Channel | Source | Current public reality | Intended audience | Stability expectation |
 | --- | --- | --- | --- | --- |
 | CI artifact | `.github/workflows/release_builds.yml` on PR/push | Builds Linux and Windows contributor artifacts, not a public install surface | Contributors validating branch changes | No compatibility guarantee; debugging/testing only |
-| Nightly prerelease | `.github/workflows/release_builds.yml` schedule/manual with `publish_channel=nightly` | Primary visible public binary channel at present; publishes Linux and Windows assets | Early testers validating latest integration changes | May break at any time; not for production |
+| Nightly prerelease | `.github/workflows/release_builds.yml` schedule/manual with `publish_channel=nightly` | Primary visible public binary channel at present; publishes Linux assets today and Windows assets once the first Windows publish lands | Early testers validating latest integration changes | May break at any time; not for production |
 | Stable tag path | Tag push `v*` or manual with `publish_channel=stable` | Automation path exists, but users should only treat it as active when a visible `v*` release is actually published | Later versioned drops and downstream integrators | Intended stable path when used, but not the default public install track |
 
 ## Trigger Model
@@ -25,7 +26,7 @@ Define how executable builds are distributed from this repository and what guara
 | --- | --- |
 | Pull request touching engine/module paths | Build Linux and Windows editors and upload contributor artifacts |
 | Push to `master`/`main`/`develop` | Build Linux and Windows editors and upload contributor artifacts |
-| Nightly schedule (`30 2 * * *` UTC) | Build and publish nightly prerelease (`nightly-YYYYMMDD`) with Linux and Windows assets, then prune old nightlies |
+| Nightly schedule (`30 2 * * *` UTC) | Build and publish nightly prerelease (`nightly-YYYYMMDD`) with Linux assets today and Windows assets once the first Windows publish lands, then prune old nightlies |
 | Tag push (`v*`) | Build and publish a versioned stable-tag release with Linux and Windows assets when that path is intentionally used |
 | Manual dispatch | Optional publish mode: `none`, `nightly`, or `stable` |
 
@@ -46,7 +47,7 @@ Each publish includes:
 | Actions artifacts | Retention window is bounded by GitHub settings and this workflow's retention setting |
 | Public install guidance | Treat nightlies as the default public install path until a visible `v*` series exists on Releases/Tags |
 | Stable wording | Do not describe the repo as having a stable public channel unless a versioned release is actually visible |
-| Platform coverage (current) | Linux and Windows public binaries exist; macOS currently requires source builds |
+| Platform coverage (current) | Visible public binaries are Linux-only today; Windows packaging exists in the workflow but has not landed in Releases yet; macOS currently requires source builds |
 
 ## Manual Examples
 

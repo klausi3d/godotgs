@@ -16,9 +16,9 @@ export GODOT_BINARY=/absolute/path/to/your/godot-editor
 $env:GODOT_BINARY="C:\absolute\path\to\your\godot-editor.exe"
 ```
 
-Need a binary first? Use the Linux nightly editor, or the Windows public binary from Releases/nightlies if you are on Windows. If you are on macOS, use [Build from Source](../BUILDING.md), then come back here and set `GODOT_BINARY` to the binary you have.
+Need a binary first? Use the Linux nightly editor. The Windows release path exists in the workflow, but a public Windows release has not landed yet; if you are on Windows and need an editor today, use [Build from Source](../BUILDING.md). If you are on macOS, use [Build from Source](../BUILDING.md), then come back here and set `GODOT_BINARY` to the binary you have.
 
-After a successful build or download, point `GODOT_BINARY` at the editor binary:
+After a successful build, point `GODOT_BINARY` at the editor binary:
 
 ```bash
 export GODOT_BINARY=/absolute/path/to/your/godot-editor

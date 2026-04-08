@@ -8,13 +8,13 @@ GodotGS is a Godot 4.5 fork with an in-tree Gaussian Splatting module for import
 | --- | --- |
 | Maturity | Alpha |
 | Fastest public evaluation path | Linux nightly editor |
-| Windows | Public binary path via Releases/nightlies |
+| Windows | Release packaging path exists; public Releases are still Linux-only |
 | macOS | Source build first |
-| Public binaries | Linux editor + Windows editor |
+| Public binaries | Linux editor |
 | Compatibility truth | [Compatibility Matrix](docs/reference/compatibility-matrix.md) |
 | Performance truth | [Performance Dashboard](docs/performance/index.md) |
 
-No named non-nightly release is published yet. If you want the fastest way to evaluate the project, use the Linux nightly path first. Windows now has a public binary path through Releases/nightlies; macOS still starts with a source build.
+No named non-nightly release is published yet. If you want the fastest way to evaluate the project, use the Linux nightly path first. The release workflow on this branch now packages Windows, but the visible public Releases surface is still Linux-only until the first Windows publish lands. macOS still starts with a source build.
 
 ## Who This Is For
 
@@ -31,7 +31,7 @@ No named non-nightly release is published yet. If you want the fastest way to ev
 
 ## Current Public Evidence
 
-- Compatibility snapshot: Windows is `editor-tested` on the self-hosted Vulkan Forward+ lane with `NVIDIA GeForce RTX 3090` and also has a public binary path via Releases/nightlies; Linux is `sample-project-tested` on `ubuntu-24.04` with `xvfb` and `mesa-vulkan-drivers 25.2.8-0ubuntu0.24.04.1`; macOS is currently `build-supported`.
+- Compatibility snapshot: Windows is `editor-tested` on the self-hosted Vulkan Forward+ lane with `NVIDIA GeForce RTX 3090`; the release workflow on this branch now packages Windows, but the visible public Releases surface is still Linux-only. Linux is `sample-project-tested` on `ubuntu-24.04` with `xvfb` and `mesa-vulkan-drivers 25.2.8-0ubuntu0.24.04.1`; macOS is currently `build-supported`.
 - Benchmark snapshot: the public dashboard currently contains one committed `static_baseline` row at 74.0 average FPS and 15.62 ms P99 frame time.
 - Visual proof: real editor screenshots and short workflow clips are still pending. The current figures are technical diagrams, not product captures.
 

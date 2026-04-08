@@ -1,18 +1,18 @@
 # Try in 5 Minutes
 
-This is the shortest honest path to a visible result: download the Linux nightly editor, or the Windows public binary from Releases/nightlies if you are on Windows, open the sample project, and confirm the public evaluator in the viewport. macOS still starts with [Build from Source](../BUILDING.md).
+This is the shortest honest path to a visible result: download the Linux nightly editor, open the sample project, and confirm the public evaluator in the viewport. The Windows release path exists in the workflow, but a public Windows release has not landed yet, so Windows users should use [Build from Source](../BUILDING.md) for now. macOS still starts with [Build from Source](../BUILDING.md).
 
-## 1. Get a Public Binary
+## 1. Get the Linux Nightly Editor
 
 Open the repository releases page and download the newest Linux nightly editor archive:
 
 - [GitHub Releases](https://github.com/klausi3D/godotGS/releases)
 
-If you are on Windows, download the Windows editor zip from the same Releases page instead. If you are on macOS, stop here and use [Build from Source](../BUILDING.md).
+If you are on Windows, stop here and use [Build from Source](../BUILDING.md). The Windows release path is already wired into the workflow, but it is not yet visible on Releases. If you are on macOS, stop here and use [Build from Source](../BUILDING.md).
 
 ## 2. Open the Project
 
-Launch the editor you downloaded, then point `GODOT_BINARY` at it and open the sample project:
+Launch the Linux editor you downloaded, then point `GODOT_BINARY` at it and open the sample project:
 
 ```bash
 export GODOT_BINARY=/absolute/path/to/godot.linuxbsd.editor.dev.x86_64
