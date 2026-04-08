@@ -228,6 +228,15 @@ public:
     using PerformanceMetrics = GaussianRenderPerformance::PerformanceMetrics;
     using PerformanceState = GaussianRenderPerformance::PerformanceState;
 
+    struct RuntimeFidelityPolicy {
+        int requested_route_policy = gs::settings::GS_ROUTE_STREAMING;
+        String requested_route_policy_source = "default_fallback";
+        bool prefer_resident_backend = false;
+        String backend_preference_reason = "requested_streaming_policy";
+        bool preserve_source_fidelity = false;
+        uint32_t runtime_budget_splats = 0;
+    };
+
     // Rendering state
     using FrameState = RenderFrameContextManager::FrameState;
     using ViewState = RenderFrameContextManager::ViewState;
@@ -713,6 +722,8 @@ public:
     bool is_instance_contract_ready() const { return instance_pipeline_buffers_valid; }
     bool get_submission_residency_hint(int32_t *r_hint, String *r_source = nullptr) const;
     bool should_prefer_resident_backend(int p_requested_route_policy, String *r_reason = nullptr) const;
+    RuntimeFidelityPolicy build_runtime_fidelity_policy(const SceneState &p_scene_state,
+            const PerformanceSettings &p_performance_settings) const;
     bool update_instance_buffer(LocalVector<InstanceDataGPU> &p_instances, const PublishedInstanceAssetRemap &p_remap);
     int get_cached_streaming_route_policy();
     const String &get_cached_streaming_route_policy_source();

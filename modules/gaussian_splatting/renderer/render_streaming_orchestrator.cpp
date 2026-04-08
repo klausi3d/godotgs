@@ -13,9 +13,6 @@
 #include "../logger/gs_debug_trace.h"
 #include "../logger/gs_logger.h"
 
-#include "../core/gs_project_settings.h"
-#include "core/config/project_settings.h"
-
 #include "core/error/error_macros.h"
 #include "core/math/math_defs.h"
 #include "servers/rendering/renderer_rd/storage_rd/render_data_rd.h"
@@ -122,28 +119,6 @@ constexpr uint32_t kPrimaryStreamingAssetId = 0u;
 constexpr uint32_t kInvalidStreamingAssetId = UINT32_MAX;
 constexpr uint64_t kStreamingBootstrapRetryCooldownFrames = 30u;
 
-static int _metadata_int(const Dictionary &p_metadata, const StringName &p_key, int p_default) {
-	if (!p_metadata.has(p_key)) {
-		return p_default;
-	}
-	const Variant value = p_metadata[p_key];
-	if (value.get_type() == Variant::FLOAT) {
-		return int((double)value);
-	}
-	return int(value);
-}
-
-static double _metadata_double(const Dictionary &p_metadata, const StringName &p_key, double p_default) {
-	if (!p_metadata.has(p_key)) {
-		return p_default;
-	}
-	const Variant value = p_metadata[p_key];
-	if (value.get_type() == Variant::INT) {
-		return double(int64_t(value));
-	}
-	return (double)value;
-}
-
 static PublishedInstanceAssetRemap _build_streaming_instance_asset_remap(
 		GaussianStreamingSystem *p_streaming_system,
 		const LocalVector<InstanceAssetRegistration> &p_asset_cache,
@@ -186,77 +161,6 @@ static PublishedInstanceAssetRemap _build_streaming_instance_asset_remap(
 	remap.generation = p_generation == 0 ? 1u : p_generation;
 	remap.valid = true;
 	return remap;
-}
-
-static bool _asset_requests_full_fidelity_runtime(const Ref<GaussianSplatAsset> &p_asset) {
-	if (p_asset.is_null()) {
-		return false;
-	}
-	const Dictionary import_metadata = p_asset->get_import_metadata();
-	const int import_max_splats = _metadata_int(import_metadata, StringName("max_splats"), -1);
-	const double density_multiplier = _metadata_double(import_metadata, StringName("density_multiplier"), 1.0);
-	return import_max_splats == 0 && density_multiplier >= 0.999;
-}
-
-static bool _renderer_requests_conservative_full_fidelity_runtime(const GaussianSplatRenderer *p_renderer,
-		const Ref<GaussianSplatAsset> &p_active_asset) {
-	if (_asset_requests_full_fidelity_runtime(p_active_asset)) {
-		return true;
-	}
-	if (!p_renderer) {
-		return false;
-	}
-	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
-	if (!director) {
-		return false;
-	}
-
-	LocalVector<InstanceAssetRegistration> instance_assets;
-	director->collect_instance_assets_for_renderer(p_renderer, instance_assets,
-			p_renderer->is_shadow_instance_filter_enabled());
-	if (instance_assets.is_empty()) {
-		return false;
-	}
-	for (const InstanceAssetRegistration &entry : instance_assets) {
-		if (entry.requests_full_fidelity_runtime) {
-			return true;
-		}
-	}
-	if (p_active_asset.is_null()) {
-		return true;
-	}
-	const Ref<GaussianData> active_data = p_active_asset->get_gaussian_data();
-	if (active_data.is_null()) {
-		return true;
-	}
-	for (const InstanceAssetRegistration &entry : instance_assets) {
-		if (entry.data.is_null()) {
-			continue;
-		}
-		if (entry.data == active_data) {
-			return false;
-		}
-	}
-	return true;
-}
-
-static uint32_t _resolve_runtime_budget_splats(const GaussianSplatRenderer *p_renderer,
-		const GaussianSplatRenderer::SceneState &p_scene_state,
-		const PerformanceSettings &p_perf_settings) {
-	if (!p_scene_state.gaussian_data.is_valid()) {
-		return 0;
-	}
-	const uint32_t real_count = uint32_t(MAX(0, p_scene_state.gaussian_data->get_count()));
-	if (real_count == 0) {
-		return 0;
-	}
-	if (_renderer_requests_conservative_full_fidelity_runtime(p_renderer, p_scene_state.active_asset)) {
-		return real_count;
-	}
-	if (p_perf_settings.max_splats <= 0) {
-		return real_count;
-	}
-	return MIN<uint32_t>(real_count, uint32_t(p_perf_settings.max_splats));
 }
 
 enum class LayoutHintValidationUsage : uint8_t {
@@ -885,18 +789,19 @@ bool RenderStreamingOrchestrator::should_throttle_streaming_rebuild(uint32_t p_c
 }
 
 bool RenderStreamingOrchestrator::ensure_instance_streaming_system() {
-	// Route-policy gate: when resident is selected, never create the streaming system.
-	// This is the single chokepoint — all 4 callers funnel through here.
-	const int route_policy = renderer->get_cached_streaming_route_policy();
-	if (renderer->should_prefer_resident_backend(route_policy)) {
+	GaussianSplatRenderer::FrameStateProvider state_provider(renderer);
+	GaussianSplatRenderer::IFrameMutationAccess &state_mut = state_provider;
+	const GaussianSplatRenderer::IFrameStateView &state_view = state_provider;
+	const GaussianSplatRenderer::RuntimeFidelityPolicy runtime_policy =
+			renderer->build_runtime_fidelity_policy(state_view.get_scene_state(), renderer->get_performance_settings());
+	// Runtime-policy gate: when the shared policy prefers resident, never create the streaming system.
+	// This remains the single chokepoint for the streaming bootstrap callers.
+	if (runtime_policy.prefer_resident_backend) {
 		streaming_bootstrap_retry_after_frame = 0;
 		streaming_bootstrap_last_error = "resident_backend_selected";
 		return false;
 	}
 
-	GaussianSplatRenderer::FrameStateProvider state_provider(renderer);
-	GaussianSplatRenderer::IFrameMutationAccess &state_mut = state_provider;
-	const GaussianSplatRenderer::IFrameStateView &state_view = state_provider;
 	StreamingState &streaming_state = state_mut.get_streaming_state_mut();
 	if (streaming_state.current_streaming_system.is_valid()) {
 		streaming_bootstrap_retry_after_frame = 0;
@@ -1479,8 +1384,9 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 		return false;
 	}
 	const GaussianSplatRenderer::SceneState &scene_state = state_view.get_scene_state();
-	const PerformanceSettings &perf_settings = renderer->get_performance_settings();
-	const uint32_t desired_runtime_splats = _resolve_runtime_budget_splats(renderer, scene_state, perf_settings);
+	const GaussianSplatRenderer::RuntimeFidelityPolicy runtime_policy =
+			renderer->build_runtime_fidelity_policy(scene_state, renderer->get_performance_settings());
+	const uint32_t desired_runtime_splats = runtime_policy.runtime_budget_splats;
 	if (desired_runtime_splats > 0 && streaming_state.memory_stream.is_valid()) {
 		const uint32_t current_memory_capacity = streaming_state.memory_stream->get_max_gaussians();
 		const uint32_t current_runtime_capacity = streaming_state.current_streaming_system.is_valid()

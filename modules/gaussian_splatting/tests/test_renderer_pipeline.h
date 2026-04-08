@@ -3241,6 +3241,68 @@ TEST_CASE("[GaussianSplatting] route policy source reports explicit route policy
 	CHECK(String(gs::settings::get_streaming_route_policy_source(project_settings)) == String("route_policy"));
 }
 
+TEST_CASE("[GaussianSplatting] runtime fidelity policy preserves source budget for full-fidelity asset metadata") {
+	ScopedGaussianManagerPipeline manager_guard;
+
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate();
+	REQUIRE(renderer.is_valid());
+
+	Ref<GaussianData> data;
+	data.instantiate();
+	data->resize(32);
+
+	Ref<GaussianSplatAsset> asset;
+	asset.instantiate();
+	Dictionary metadata;
+	metadata[StringName("max_splats")] = 0;
+	metadata[StringName("density_multiplier")] = 1.0;
+	asset->set_import_metadata(metadata);
+
+	GaussianSplatRenderer::SceneState &scene_state = renderer->get_scene_state();
+	scene_state.gaussian_data = data;
+	scene_state.active_asset = asset;
+	renderer->get_performance_settings().max_splats = 8;
+
+	const GaussianSplatRenderer::RuntimeFidelityPolicy runtime_policy =
+			renderer->build_runtime_fidelity_policy(scene_state, renderer->get_performance_settings());
+	CHECK(runtime_policy.preserve_source_fidelity);
+	CHECK(runtime_policy.runtime_budget_splats == 32);
+}
+
+TEST_CASE("[GaussianSplatting] runtime fidelity policy centralizes route policy and runtime budget") {
+	ProjectSettings *project_settings = ProjectSettings::get_singleton();
+	if (project_settings == nullptr) {
+		MESSAGE("Skipping test - ProjectSettings unavailable");
+		return;
+	}
+
+	ScopedGaussianManagerPipeline manager_guard;
+	const String route_policy_setting = "rendering/gaussian_splatting/streaming/route_policy";
+	ScopedProjectSetting route_guard(project_settings, route_policy_setting);
+	project_settings->set_setting(route_policy_setting, int64_t(gs::settings::GS_ROUTE_RESIDENT));
+
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate();
+	REQUIRE(renderer.is_valid());
+
+	Ref<GaussianData> data;
+	data.instantiate();
+	data->resize(32);
+
+	GaussianSplatRenderer::SceneState &scene_state = renderer->get_scene_state();
+	scene_state.gaussian_data = data;
+	scene_state.active_asset.unref();
+	renderer->get_performance_settings().max_splats = 8;
+
+	const GaussianSplatRenderer::RuntimeFidelityPolicy runtime_policy =
+			renderer->build_runtime_fidelity_policy(scene_state, renderer->get_performance_settings());
+	CHECK(runtime_policy.requested_route_policy == gs::settings::GS_ROUTE_RESIDENT);
+	CHECK(runtime_policy.requested_route_policy_source == String("route_policy"));
+	CHECK(runtime_policy.prefer_resident_backend);
+	CHECK(runtime_policy.runtime_budget_splats == 8);
+}
+
 TEST_CASE("[GaussianSplatting] get_streaming_route_policy defaults to STREAMING when unset") {
 	ProjectSettings *project_settings = ProjectSettings::get_singleton();
 	if (project_settings == nullptr) {

@@ -100,6 +100,80 @@ static int _get_int_setting(ProjectSettings *ps, const StringName &name, int fal
     return static_cast<int>(gs::settings::get_uint(ps, name, static_cast<uint32_t>(fallback)));
 }
 
+static int _metadata_int(const Dictionary &p_metadata, const StringName &p_key, int p_default) {
+    if (!p_metadata.has(p_key)) {
+        return p_default;
+    }
+    const Variant value = p_metadata[p_key];
+    if (value.get_type() == Variant::FLOAT) {
+        return int((double)value);
+    }
+    return int(value);
+}
+
+static double _metadata_double(const Dictionary &p_metadata, const StringName &p_key, double p_default) {
+    if (!p_metadata.has(p_key)) {
+        return p_default;
+    }
+    const Variant value = p_metadata[p_key];
+    if (value.get_type() == Variant::INT) {
+        return double(int64_t(value));
+    }
+    return (double)value;
+}
+
+static bool _asset_requests_full_fidelity_runtime(const Ref<GaussianSplatAsset> &p_asset) {
+    if (p_asset.is_null()) {
+        return false;
+    }
+    const Dictionary import_metadata = p_asset->get_import_metadata();
+    const int import_max_splats = _metadata_int(import_metadata, StringName("max_splats"), -1);
+    const double density_multiplier = _metadata_double(import_metadata, StringName("density_multiplier"), 1.0);
+    return import_max_splats == 0 && density_multiplier >= 0.999;
+}
+
+static bool _renderer_requests_conservative_full_fidelity_runtime(const GaussianSplatRenderer *p_renderer,
+        const Ref<GaussianSplatAsset> &p_active_asset) {
+    if (_asset_requests_full_fidelity_runtime(p_active_asset)) {
+        return true;
+    }
+    if (!p_renderer) {
+        return false;
+    }
+    GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+    if (!director) {
+        return false;
+    }
+
+    LocalVector<InstanceAssetRegistration> instance_assets;
+    director->collect_instance_assets_for_renderer(p_renderer, instance_assets,
+            p_renderer->is_shadow_instance_filter_enabled());
+    if (instance_assets.is_empty()) {
+        return false;
+    }
+    for (const InstanceAssetRegistration &entry : instance_assets) {
+        if (entry.requests_full_fidelity_runtime) {
+            return true;
+        }
+    }
+    if (p_active_asset.is_null()) {
+        return true;
+    }
+    const Ref<GaussianData> active_data = p_active_asset->get_gaussian_data();
+    if (active_data.is_null()) {
+        return true;
+    }
+    for (const InstanceAssetRegistration &entry : instance_assets) {
+        if (entry.data.is_null()) {
+            continue;
+        }
+        if (entry.data == active_data) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Convert SH band level (0-3) to coefficient count limit
 static uint8_t _sh_band_to_coeff_limit(int p_band) {
     // SH bands: 0 -> 1 coeff (DC only), 1 -> 4, 2 -> 9, 3 -> 16
@@ -1261,6 +1335,37 @@ const String &GaussianSplatRenderer::get_cached_streaming_route_policy_source() 
     return cached_streaming_route_policy_source;
 }
 
+GaussianSplatRenderer::RuntimeFidelityPolicy GaussianSplatRenderer::build_runtime_fidelity_policy(
+        const SceneState &p_scene_state, const PerformanceSettings &p_performance_settings) const {
+    RuntimeFidelityPolicy policy;
+    const_cast<GaussianSplatRenderer *>(this)->_refresh_streaming_route_policy_cache();
+    policy.requested_route_policy = cached_streaming_route_policy;
+    policy.requested_route_policy_source = cached_streaming_route_policy_source;
+    policy.prefer_resident_backend =
+            should_prefer_resident_backend(policy.requested_route_policy, &policy.backend_preference_reason);
+    policy.preserve_source_fidelity =
+            _renderer_requests_conservative_full_fidelity_runtime(this, p_scene_state.active_asset);
+
+    if (!p_scene_state.gaussian_data.is_valid()) {
+        policy.runtime_budget_splats = 0;
+        return policy;
+    }
+
+    const uint32_t real_count = uint32_t(MAX(0, p_scene_state.gaussian_data->get_count()));
+    if (real_count == 0) {
+        policy.runtime_budget_splats = 0;
+        return policy;
+    }
+
+    if (policy.preserve_source_fidelity || p_performance_settings.max_splats <= 0) {
+        policy.runtime_budget_splats = real_count;
+        return policy;
+    }
+
+    policy.runtime_budget_splats = MIN<uint32_t>(real_count, uint32_t(p_performance_settings.max_splats));
+    return policy;
+}
+
 void GaussianSplatRenderer::initialize() {
     const uint64_t init_start_usec = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : 0;
     bool dispatch_submitted = false;
@@ -2020,11 +2125,12 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
     }
 
     // Update streaming system if active.
-    const int route_policy = get_cached_streaming_route_policy();
-    _set_route_policy_diagnostics(route_policy, get_cached_streaming_route_policy_source().utf8().get_data());
-    String backend_preference_reason;
-    const bool prefer_resident_backend = should_prefer_resident_backend(route_policy, &backend_preference_reason);
-    bool streaming_requested = (route_policy == gs::settings::GS_ROUTE_STREAMING);
+    const RuntimeFidelityPolicy runtime_policy = build_runtime_fidelity_policy(get_scene_state(), get_performance_settings());
+    _set_route_policy_diagnostics(runtime_policy.requested_route_policy,
+            runtime_policy.requested_route_policy_source.utf8().get_data());
+    const bool prefer_resident_backend = runtime_policy.prefer_resident_backend;
+    const String &backend_preference_reason = runtime_policy.backend_preference_reason;
+    bool streaming_requested = (runtime_policy.requested_route_policy == gs::settings::GS_ROUTE_STREAMING);
     String streaming_backend_reason = "requested_streaming_policy";
     String streaming_contract_ready_reason = "streaming_contract_published";
     String streaming_not_ready_fallback_reason = "streaming_frame_not_ready_fallback";
@@ -2157,8 +2263,8 @@ void GaussianSplatRenderer::tick_streaming_only(const Transform3D &p_camera_to_w
     // When route policy is resident, skip streaming tick entirely — don't create
     // or update the streaming system.  This eliminates all per-frame streaming
     // overhead (visibility scan, prefetch, eviction, worker threads).
-    const int route_policy = get_cached_streaming_route_policy();
-    if (should_prefer_resident_backend(route_policy)) {
+    const RuntimeFidelityPolicy runtime_policy = build_runtime_fidelity_policy(get_scene_state(), get_performance_settings());
+    if (runtime_policy.prefer_resident_backend) {
         return;
     }
     if (!streaming_orchestrator) {
