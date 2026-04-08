@@ -1715,6 +1715,9 @@ TEST_CASE("[Streaming Pipeline] Dirty atlas publication is invalidated when GPU 
     CHECK_FALSE(system->get_asset_meta_buffer().is_valid());
     CHECK_FALSE(system->get_chunk_meta_buffer().is_valid());
     CHECK_FALSE(system->get_asset_chunk_index_buffer().is_valid());
+    CHECK_FALSE(system->global_atlas_registry.asset_meta_buffer.is_valid());
+    CHECK_FALSE(system->global_atlas_registry.chunk_meta_buffer.is_valid());
+    CHECK_FALSE(system->global_atlas_registry.asset_chunk_index_buffer.is_valid());
     CHECK(system->get_atlas_generation() == generation_before);
 
     system->global_atlas_registry.sync_to_gpu(*system, rd);

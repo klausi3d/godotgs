@@ -30,9 +30,13 @@ var metrics: Dictionary = {
     "monitor_ready_seen": false,
     "near_loaded_chunks_max": 0,
     "near_visible_chunks_max": 0,
+    "near_loaded_chunks_last": 0,
+    "near_visible_chunks_last": 0,
     "return_loaded_chunks_max": 0,
     "return_visible_chunks_max": 0,
+    "return_chunks_loaded_this_frame_max": 0,
     "return_phase_samples": 0,
+    "return_transition_seen": false,
     "total_chunks_max": 0,
     "loaded_chunks_max": 0,
     "visible_chunks_max": 0,
@@ -171,9 +175,16 @@ func _sample_metrics(frame_index: int) -> void:
         metrics["return_phase_samples"] = int(metrics.get("return_phase_samples", 0)) + 1
         metrics["return_loaded_chunks_max"] = max(int(metrics.get("return_loaded_chunks_max", 0)), loaded_chunks)
         metrics["return_visible_chunks_max"] = max(int(metrics.get("return_visible_chunks_max", 0)), visible_chunks)
+        metrics["return_chunks_loaded_this_frame_max"] = max(int(metrics.get("return_chunks_loaded_this_frame_max", 0)), loaded_this_frame)
+        if (loaded_this_frame > 0 or
+                loaded_chunks != int(metrics.get("near_loaded_chunks_last", 0)) or
+                visible_chunks != int(metrics.get("near_visible_chunks_last", 0))):
+            metrics["return_transition_seen"] = true
     else:
         metrics["near_loaded_chunks_max"] = max(int(metrics.get("near_loaded_chunks_max", 0)), loaded_chunks)
         metrics["near_visible_chunks_max"] = max(int(metrics.get("near_visible_chunks_max", 0)), visible_chunks)
+        metrics["near_loaded_chunks_last"] = loaded_chunks
+        metrics["near_visible_chunks_last"] = visible_chunks
 
     if world_node != null and world_node.get_renderer() != null:
         var renderer = world_node.get_renderer()
@@ -242,7 +253,8 @@ func _has_return_path_ready() -> bool:
     var near_signal := int(metrics.get("near_loaded_chunks_max", 0)) > 0 or int(metrics.get("near_visible_chunks_max", 0)) > 0
     var return_signal := int(metrics.get("return_loaded_chunks_max", 0)) > 0 or int(metrics.get("return_visible_chunks_max", 0)) > 0
     var settled := int(metrics.get("return_phase_samples", 0)) >= RETURN_SETTLE_FRAMES
-    return _moved_to_near and _moved_back_far and near_signal and return_signal and settled
+    var transitioned := bool(metrics.get("return_transition_seen", false))
+    return _moved_to_near and _moved_back_far and near_signal and return_signal and settled and transitioned
 
 
 func _emit_metrics(status: String, reason: String) -> void:

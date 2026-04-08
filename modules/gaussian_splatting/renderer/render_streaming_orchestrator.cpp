@@ -81,6 +81,31 @@ static uint64_t _compute_instance_pipeline_resource_fingerprint(const ResourceSt
 	return generation;
 }
 
+static uint64_t _compute_instance_asset_remap_fingerprint(const PublishedInstanceAssetRemap &p_remap) {
+	uint64_t generation = 0x510e527fade682d1ULL;
+	generation = _mix_u32_generation(generation, p_remap.valid ? 1u : 0u);
+	generation = _mix_u32_generation(generation, p_remap.asset_to_dense_id.size());
+	generation = _mix_content_generation(generation, p_remap.generation);
+	if (p_remap.asset_to_dense_id.is_empty()) {
+		return generation;
+	}
+
+	LocalVector<uint32_t> asset_ids;
+	asset_ids.reserve(p_remap.asset_to_dense_id.size());
+	for (const KeyValue<uint32_t, uint32_t> &entry : p_remap.asset_to_dense_id) {
+		asset_ids.push_back(entry.key);
+	}
+	uint32_t *asset_ids_ptr = asset_ids.ptr();
+	std::sort(asset_ids_ptr, asset_ids_ptr + asset_ids.size());
+	for (uint32_t i = 0; i < asset_ids.size(); i++) {
+		const uint32_t asset_id = asset_ids[i];
+		const uint32_t *dense_id = p_remap.asset_to_dense_id.getptr(asset_id);
+		generation = _mix_u32_generation(generation, asset_id);
+		generation = _mix_u32_generation(generation, dense_id ? *dense_id : UINT32_MAX);
+	}
+	return generation;
+}
+
 static uint64_t _compute_instance_pipeline_upload_fingerprint(const ResourceState &p_resource_state,
 		const InstancePipelineBuffers &p_buffers,
 		const PublishedInstanceAssetRemap &p_remap) {
@@ -88,7 +113,7 @@ static uint64_t _compute_instance_pipeline_upload_fingerprint(const ResourceStat
 	generation = _mix_rid_generation(generation, p_resource_state.instance_buffer);
 	generation = _mix_u32_generation(generation, p_resource_state.instance_buffer_capacity);
 	generation = _mix_u32_generation(generation, p_buffers.instance_count);
-	generation = _mix_content_generation(generation, p_remap.generation);
+	generation = _mix_content_generation(generation, _compute_instance_asset_remap_fingerprint(p_remap));
 	return generation;
 }
 
@@ -727,6 +752,13 @@ bool RenderStreamingOrchestrator::refresh_instance_asset_snapshot(GaussianSplatS
 
 	instance_pipeline_assets_cache.clear();
 	p_director->collect_instance_assets_for_renderer(renderer, instance_pipeline_assets_cache, shadow_only);
+	if (instance_pipeline_assets_cache.size() > 1) {
+		InstanceAssetRegistration *asset_cache_ptr = instance_pipeline_assets_cache.ptr();
+		std::sort(asset_cache_ptr, asset_cache_ptr + instance_pipeline_assets_cache.size(),
+				[](const InstanceAssetRegistration &a, const InstanceAssetRegistration &b) {
+					return a.asset_id < b.asset_id;
+				});
+	}
 	instance_pipeline_asset_snapshot_generation = asset_generation;
 	instance_pipeline_asset_snapshot_shadow_only = shadow_only;
 	if (p_trace_enabled) {
@@ -1687,6 +1719,9 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 
 	if (streaming_system) {
 		InstancePipelineBuffers buffers = renderer->instance_pipeline_buffers;
+		if (resource_state.instance_buffer.is_valid()) {
+			buffers.instance_buffer = resource_state.instance_buffer;
+		}
 		const GlobalAtlasState &atlas_state = streaming_system->get_global_atlas_state();
 		const bool quantization_required = streaming_system->is_per_chunk_quantization_enabled();
 

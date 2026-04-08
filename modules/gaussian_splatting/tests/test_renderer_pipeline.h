@@ -1108,6 +1108,25 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] World static chunks keep streaming i
     CHECK_MESSAGE(buffers.instance_count > 0, "Expected instance pipeline to synthesize at least one instance for world/static-chunk streaming");
     CHECK_MESSAGE(buffers.max_visible_chunks > 0, "Expected world/static-chunk streaming buffers to expose visible chunk capacity");
 
+    renderer->clear_instance_pipeline_buffers();
+    CHECK_FALSE(renderer->has_instance_pipeline_buffers());
+
+    bool recovered_after_clear = false;
+    for (int i = 0; i < 6; i++) {
+        renderer->render_scene_instance(&render_data);
+        const GaussianRenderPipeline::InstancePipelineBuffers &recovered_buffers =
+                renderer->get_instance_pipeline_buffers();
+        if (renderer->has_instance_pipeline_buffers() &&
+                recovered_buffers.instance_buffer.is_valid() &&
+                recovered_buffers.instance_count > 0) {
+            recovered_after_clear = true;
+            break;
+        }
+    }
+
+    CHECK_MESSAGE(recovered_after_clear,
+            "Expected streaming instance pipeline to recover a ready contract after clearing only the published buffers");
+
     renderer.unref();
 }
 

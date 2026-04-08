@@ -430,7 +430,7 @@ void StreamingGlobalAtlasRegistry::sync_to_gpu(GaussianStreamingSystem &system, 
 	if (!p_rd) {
 		if (atlas_dirty) {
 			WARN_PRINT_ONCE("[Streaming DIAG] _sync_global_atlas_state skipped GPU upload because RenderingDevice is null while atlas is dirty.");
-			_invalidate_published_buffers();
+			cleanup(nullptr);
 		}
 		return;
 	}

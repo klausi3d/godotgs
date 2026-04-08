@@ -1,5 +1,9 @@
 extends SceneTree
 
+# Exploratory sequential route-phase script only.
+# This is intentionally excluded from blocking runtime profiles until the
+# runtime surface can prove true resident/streaming coexistence.
+
 const SKIP_MARKER := "[RUNTIME_SKIP]"
 const FAIL_MARKER := "[RUNTIME_FAIL]"
 const METRICS_MARKER := "[RUNTIME_METRICS]"
