@@ -16,7 +16,7 @@ The benchmark is report-only and ends with tuning suggestions based on measured 
 
 ### Editor / one-button
 
-The sample project no longer boots into the unified benchmark scene by default. Press Play in the sample project to open `res://scenes/public_evaluator.tscn`, or open the unified benchmark scene explicitly when you want to run it.
+The sample project no longer boots into the unified benchmark scene by default. Press Play in the sample project to open `res://scenes/public_evaluator.tscn`. Open `res://scenes/benchmark_unified.tscn` explicitly when you want to run the benchmark lane.
 
 ### CLI
 

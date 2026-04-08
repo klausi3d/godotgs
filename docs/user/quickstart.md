@@ -24,6 +24,6 @@ Visual captures for the artist lane are still pending, so this page keeps the wo
 ## Technical Flow Reference
 
 <figure markdown="1">
-![Diagram of the artist workflow handoff from first run to import, presets, iteration tools, and finishing tasks](../assets/images/artist-workflow-lane.svg){ .gs-diagram }
+![Diagram of the artist workflow handoff from the public evaluator to import, presets, iteration tools, and finishing tasks](../assets/images/artist-workflow-lane.svg){ .gs-diagram }
 <figcaption>The artist lane starts only after the public evaluator is already working, then moves through import, safe preset selection, iteration tools, and finishing tasks like bake or color grading.</figcaption>
 </figure>
