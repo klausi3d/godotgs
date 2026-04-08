@@ -267,6 +267,7 @@ public:
     void get_pending_queue_depths_cached(uint32_t &r_pack_queue_depth, uint32_t &r_upload_queue_depth) const;
 
 private:
+    bool has_async_pack_queue_owner() const;
     bool pop_pack_job(PackJob &r_job);
     PendingChunkUpload *build_pending_upload_from_pack_job(const PackJob &p_job);
     void enqueue_upload_job(PendingChunkUpload *p_job);
