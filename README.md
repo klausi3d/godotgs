@@ -8,12 +8,13 @@ GodotGS is a Godot 4.5 fork with an in-tree Gaussian Splatting module for import
 | --- | --- |
 | Maturity | Alpha |
 | Fastest public evaluation path | Linux nightly editor |
-| Windows / macOS | Source build first |
-| Public binaries | Linux editor only |
+| Windows | Public binary path via Releases/nightlies |
+| macOS | Source build first |
+| Public binaries | Linux editor + Windows editor |
 | Compatibility truth | [Compatibility Matrix](docs/reference/compatibility-matrix.md) |
 | Performance truth | [Performance Dashboard](docs/performance/index.md) |
 
-No named non-nightly release is published yet. If you want the fastest way to evaluate the project, use the Linux nightly path first.
+No named non-nightly release is published yet. If you want the fastest way to evaluate the project, use the Linux nightly path first. Windows now has a public binary path through Releases/nightlies; macOS still starts with a source build.
 
 ## Who This Is For
 
@@ -26,11 +27,11 @@ No named non-nightly release is published yet. If you want the fastest way to ev
 1. [Try in 5 Minutes](docs/getting-started/try-in-5-minutes.md) if you want the shortest honest evaluation path.
 2. [Public Evaluator](docs/getting-started/quick-start.md) if you want the canonical sample-project flow.
 3. [Compatibility Matrix](docs/reference/compatibility-matrix.md) if you need platform evidence before trying it.
-4. [Build from Source](docs/BUILDING.md) if you are on Windows or macOS, or you want a custom editor binary.
+4. [Build from Source](docs/BUILDING.md) if you are on macOS or you want a custom editor binary.
 
 ## Current Public Evidence
 
-- Compatibility snapshot: Windows is `editor-tested` on the self-hosted Vulkan Forward+ lane with `NVIDIA GeForce RTX 3090`; Linux is `sample-project-tested` on `ubuntu-24.04` with `xvfb` and `mesa-vulkan-drivers 25.2.8-0ubuntu0.24.04.1`; macOS is currently `build-supported`.
+- Compatibility snapshot: Windows is `editor-tested` on the self-hosted Vulkan Forward+ lane with `NVIDIA GeForce RTX 3090` and also has a public binary path via Releases/nightlies; Linux is `sample-project-tested` on `ubuntu-24.04` with `xvfb` and `mesa-vulkan-drivers 25.2.8-0ubuntu0.24.04.1`; macOS is currently `build-supported`.
 - Benchmark snapshot: the public dashboard currently contains one committed `static_baseline` row at 74.0 average FPS and 15.62 ms P99 frame time.
 - Visual proof: real editor screenshots and short workflow clips are still pending. The current figures are technical diagrams, not product captures.
 

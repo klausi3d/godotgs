@@ -25,9 +25,9 @@ godotGS is a Godot 4.5 fork with an in-tree Gaussian Splatting module for import
 
 ### Current Status
 
-- Preferred install path: Linux nightly for the fastest evaluation path, or [Build from Source](BUILDING.md) on Windows and macOS.
-- Release reality: public GitHub releases are currently nightly-first.
-- Binary coverage: public binaries currently cover the Linux editor only.
+- Preferred install path: Linux nightly for the fastest evaluation path, with a public Windows binary path available through Releases/nightlies and [Build from Source](BUILDING.md) still required on macOS.
+- Release reality: public GitHub releases are currently nightly-first, and no named stable series is published yet.
+- Binary coverage: public binaries currently cover the Linux editor and the Windows editor.
 - Usage fit: evaluation, prototypes, and contributor work.
 
 </div>
@@ -36,7 +36,7 @@ godotGS is a Godot 4.5 fork with an in-tree Gaussian Splatting module for import
 
 ## Start Here
 
-1. [Choose the current install path](getting-started/installation.md): Linux nightly for the fastest evaluation path, or [Build from Source](BUILDING.md) on other platforms.
+1. [Choose the current install path](getting-started/installation.md): Linux nightly for the fastest evaluation path, Windows public binaries through Releases/nightlies, or [Build from Source](BUILDING.md) on macOS and for custom binaries.
 2. [Run First Run and reach a first visible splat](getting-started/quick-start.md).
 3. [Check platform status](reference/compatibility-matrix.md), [release-channel reality](development/release-channels.md), and [known recurring issues](troubleshooting/recurring-issues.md).
 

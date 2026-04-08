@@ -1,19 +1,18 @@
 # Try in 5 Minutes
 
-This is the shortest honest path to a visible result: download the Linux nightly editor, open the sample project, and confirm the public evaluator in the viewport.
-If you are on Windows or macOS, use [Build from Source](../BUILDING.md) first and come back here after you have an editor from this fork.
+This is the shortest honest path to a visible result: download the Linux nightly editor, or the Windows public binary from Releases/nightlies if you are on Windows, open the sample project, and confirm the public evaluator in the viewport. macOS still starts with [Build from Source](../BUILDING.md).
 
-## 1. Get the Linux Nightly Editor
+## 1. Get a Public Binary
 
 Open the repository releases page and download the newest Linux nightly editor archive:
 
 - [GitHub Releases](https://github.com/klausi3D/godotGS/releases)
 
-If you are on Windows or macOS, stop here and use [Build from Source](../BUILDING.md).
+If you are on Windows, download the Windows editor zip from the same Releases page instead. If you are on macOS, stop here and use [Build from Source](../BUILDING.md).
 
 ## 2. Open the Project
 
-Launch the Linux editor you downloaded, then point `GODOT_BINARY` at it and open the sample project:
+Launch the editor you downloaded, then point `GODOT_BINARY` at it and open the sample project:
 
 ```bash
 export GODOT_BINARY=/absolute/path/to/godot.linuxbsd.editor.dev.x86_64
@@ -35,4 +34,4 @@ You should see:
 
 - Read [Public Evaluator](quick-start.md) for the slower canonical flow.
 - Check [Recurring Issues](../troubleshooting/recurring-issues.md).
-- On Windows or macOS, stop using this page and build an editor from this fork with [Build from Source](../BUILDING.md) before retrying.
+- On macOS, stop using this page and build an editor from this fork with [Build from Source](../BUILDING.md) before retrying.
