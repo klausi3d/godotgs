@@ -271,6 +271,11 @@ TEST_CASE("[GaussianSplatting][World][SceneTree] World node forwards desired ove
 		CHECK(director->get_submission_residency_hint_for_renderer(renderer.ptr(), &residency_hint, &residency_source));
 		CHECK(residency_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
 		CHECK(residency_source == String("world_submission"));
+		int32_t renderer_residency_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING;
+		String renderer_residency_source;
+		CHECK(renderer->get_submission_residency_hint(&renderer_residency_hint, &renderer_residency_source));
+		CHECK(renderer_residency_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
+		CHECK(renderer_residency_source == String("world_submission"));
 		String backend_reason;
 		CHECK(renderer->should_prefer_resident_backend(gs::settings::GS_ROUTE_STREAMING, &backend_reason));
 		CHECK(backend_reason == String("submission_hint_resident:world_submission"));
@@ -287,6 +292,12 @@ TEST_CASE("[GaussianSplatting][World][SceneTree] World node forwards desired ove
 
 	node->clear_world();
 	CHECK_FALSE(director->get_world_submission(node->get_instance_id(), &submission));
+	if (renderer.is_valid()) {
+		int32_t renderer_residency_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT;
+		String renderer_residency_source;
+		CHECK_FALSE(renderer->get_submission_residency_hint(&renderer_residency_hint, &renderer_residency_source));
+		CHECK(renderer_residency_source == String("none"));
+	}
 
 	root->remove_child(node);
 	memdelete(node);

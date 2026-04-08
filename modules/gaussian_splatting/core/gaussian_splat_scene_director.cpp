@@ -108,50 +108,75 @@ static const StringName WORLD_STREAMING_VRAM_MAX_CHUNKS("vram_max_chunks");
 static const StringName WORLD_STREAMING_OVERRIDE_IO_SOURCE("override_io_source");
 static const StringName WORLD_STREAMING_IO_SOURCE_PATH("io_source_path");
 
-struct WorldSubmissionRendererConfigSnapshot {
-	bool valid = false;
-	bool lod_enabled = true;
-	float lod_bias = 1.0f;
-	float lod_max_distance = 0.0f;
-	bool frustum_culling = true;
-	bool async_upload_enabled = true;
-	float opacity_multiplier = 1.0f;
-	int max_splats = 1000000;
-	GaussianStreamingTypes::ConfigOverrides streaming_overrides;
-};
+GaussianSplatRenderer::WorldSubmissionContract GaussianSplatSceneDirector::_build_world_submission_contract(
+		const Ref<GaussianSplatRenderer> &p_renderer, const SharedWorld::WorldSubmissionRecord &p_record) {
+	GaussianSplatRenderer::WorldSubmissionContract contract;
+	contract.gaussian_data = p_record.gaussian_data;
+	contract.static_chunks = p_record.static_chunks;
+	contract.debug_label = _dict_get_string(p_record.metadata, StringName("world_path"));
+	contract.has_desired_residency_hint = p_record.has_desired_residency_hint;
+	contract.desired_residency_hint = p_record.desired_residency_hint;
 
-static WorldSubmissionRendererConfigSnapshot _snapshot_world_submission_renderer_config(const Ref<GaussianSplatRenderer> &p_renderer) {
-	WorldSubmissionRendererConfigSnapshot snapshot;
 	if (p_renderer.is_null()) {
-		return snapshot;
+		return contract;
 	}
 
-	snapshot.valid = true;
-	snapshot.lod_enabled = p_renderer->get_lod_enabled();
-	snapshot.lod_bias = p_renderer->get_lod_bias();
-	snapshot.lod_max_distance = p_renderer->get_lod_max_distance();
-	snapshot.frustum_culling = p_renderer->get_frustum_culling();
-	snapshot.async_upload_enabled = p_renderer->get_async_upload_enabled();
-	snapshot.opacity_multiplier = p_renderer->get_opacity_multiplier();
-	snapshot.max_splats = p_renderer->get_max_splats();
-	snapshot.streaming_overrides = p_renderer->get_streaming_config_overrides();
-	return snapshot;
-}
+	const Dictionary &overrides = p_record.desired_renderer_overrides;
+	contract.lod_enabled = _dict_get_bool(overrides, WORLD_OVERRIDE_LOD_ENABLED, p_renderer->get_lod_enabled());
+	contract.lod_bias = _dict_get_float(overrides, WORLD_OVERRIDE_LOD_BIAS, p_renderer->get_lod_bias());
+	contract.lod_max_distance = _dict_get_float(overrides, WORLD_OVERRIDE_LOD_MAX_DISTANCE, p_renderer->get_lod_max_distance());
+	contract.frustum_culling = _dict_get_bool(overrides, WORLD_OVERRIDE_FRUSTUM_CULLING, p_renderer->get_frustum_culling());
+	contract.async_upload_enabled = _dict_get_bool(overrides, WORLD_OVERRIDE_ASYNC_UPLOAD_ENABLED, p_renderer->get_async_upload_enabled());
+	contract.opacity_multiplier = _dict_get_float(overrides, WORLD_OVERRIDE_OPACITY_MULTIPLIER, p_renderer->get_opacity_multiplier());
+	contract.streaming_overrides = p_renderer->get_streaming_config_overrides();
 
-static void _restore_world_submission_renderer_config(const Ref<GaussianSplatRenderer> &p_renderer,
-		const WorldSubmissionRendererConfigSnapshot &p_snapshot) {
-	if (p_renderer.is_null() || !p_snapshot.valid) {
-		return;
+	if (overrides.has(WORLD_OVERRIDE_STREAMING)) {
+		const Dictionary streaming_dict = _dict_get_dictionary(overrides, WORLD_OVERRIDE_STREAMING);
+		contract.streaming_overrides.override_prefetch =
+				_dict_get_bool(streaming_dict, WORLD_STREAMING_OVERRIDE_PREFETCH, contract.streaming_overrides.override_prefetch);
+		contract.streaming_overrides.predictive_prefetch_enabled =
+				_dict_get_bool(streaming_dict, WORLD_STREAMING_PREDICTIVE_PREFETCH_ENABLED,
+						contract.streaming_overrides.predictive_prefetch_enabled);
+		contract.streaming_overrides.prefetch_lookahead_distance =
+				_dict_get_float(streaming_dict, WORLD_STREAMING_PREFETCH_LOOKAHEAD_DISTANCE,
+						contract.streaming_overrides.prefetch_lookahead_distance);
+		contract.streaming_overrides.override_vram_budget =
+				_dict_get_bool(streaming_dict, WORLD_STREAMING_OVERRIDE_VRAM_BUDGET,
+						contract.streaming_overrides.override_vram_budget);
+		contract.streaming_overrides.vram_budget_config.budget_mb =
+				MAX(0, _dict_get_int(streaming_dict, WORLD_STREAMING_VRAM_BUDGET_MB,
+						int(contract.streaming_overrides.vram_budget_config.budget_mb)));
+		contract.streaming_overrides.vram_budget_config.min_chunks =
+				MAX(0, _dict_get_int(streaming_dict, WORLD_STREAMING_VRAM_MIN_CHUNKS,
+						int(contract.streaming_overrides.vram_budget_config.min_chunks)));
+		contract.streaming_overrides.vram_budget_config.max_chunks =
+				MAX(0, _dict_get_int(streaming_dict, WORLD_STREAMING_VRAM_MAX_CHUNKS,
+						int(contract.streaming_overrides.vram_budget_config.max_chunks)));
+		contract.streaming_overrides.override_io_source =
+				_dict_get_bool(streaming_dict, WORLD_STREAMING_OVERRIDE_IO_SOURCE,
+						contract.streaming_overrides.override_io_source);
+		contract.streaming_overrides.io_source_path =
+				_dict_get_string(streaming_dict, WORLD_STREAMING_IO_SOURCE_PATH,
+						contract.streaming_overrides.io_source_path);
+		if (contract.streaming_overrides.override_vram_budget) {
+			contract.streaming_overrides.vram_budget_config.min_chunks =
+					MIN(contract.streaming_overrides.vram_budget_config.min_chunks,
+							contract.streaming_overrides.vram_budget_config.max_chunks);
+		}
 	}
 
-	p_renderer->set_lod_enabled(p_snapshot.lod_enabled);
-	p_renderer->set_lod_bias(p_snapshot.lod_bias);
-	p_renderer->set_lod_max_distance(p_snapshot.lod_max_distance);
-	p_renderer->set_frustum_culling(p_snapshot.frustum_culling);
-	p_renderer->set_async_upload_enabled(p_snapshot.async_upload_enabled);
-	p_renderer->set_opacity_multiplier(p_snapshot.opacity_multiplier);
-	p_renderer->set_max_splats(p_snapshot.max_splats);
-	p_renderer->set_streaming_config_overrides(p_snapshot.streaming_overrides);
+	const uint32_t data_count = p_record.gaussian_data.is_valid() ? p_record.gaussian_data->get_count() : 0;
+	const int requested_max_splats = MAX(0, _dict_get_int(overrides, WORLD_OVERRIDE_MAX_SPLATS, p_renderer->get_max_splats()));
+	int effective_max_splats = requested_max_splats;
+	if (effective_max_splats > 0 && data_count > 0) {
+		effective_max_splats = MIN(effective_max_splats, int(data_count));
+	} else if (data_count > 0) {
+		effective_max_splats = int(data_count);
+	} else {
+		effective_max_splats = 1000;
+	}
+	contract.max_splats = MAX(1000, effective_max_splats);
+	return contract;
 }
 
 GaussianSplatSceneDirector *GaussianSplatSceneDirector::singleton = nullptr;
@@ -449,8 +474,7 @@ void GaussianSplatSceneDirector::_clear_world_submission_renderer(SharedWorld &p
 	if (!p_world.renderer.is_valid()) {
 		return;
 	}
-	p_world.renderer->set_gaussian_data(Ref<GaussianData>());
-	p_world.renderer->clear_static_chunks();
+	p_world.renderer->clear_world_submission_contract();
 }
 
 bool GaussianSplatSceneDirector::_apply_world_submission_to_renderer(SharedWorld &p_world,
@@ -461,76 +485,13 @@ bool GaussianSplatSceneDirector::_apply_world_submission_to_renderer(SharedWorld
 
 	GaussianSplatRenderer *renderer = p_world.renderer.ptr();
 	ERR_FAIL_NULL_V(renderer, false);
-
-	const Dictionary &overrides = p_record.desired_renderer_overrides;
-	renderer->set_lod_enabled(_dict_get_bool(overrides, WORLD_OVERRIDE_LOD_ENABLED, renderer->get_lod_enabled()));
-	renderer->set_lod_bias(_dict_get_float(overrides, WORLD_OVERRIDE_LOD_BIAS, renderer->get_lod_bias()));
-	renderer->set_lod_max_distance(_dict_get_float(overrides, WORLD_OVERRIDE_LOD_MAX_DISTANCE, renderer->get_lod_max_distance()));
-	renderer->set_frustum_culling(_dict_get_bool(overrides, WORLD_OVERRIDE_FRUSTUM_CULLING, renderer->get_frustum_culling()));
-	renderer->set_async_upload_enabled(_dict_get_bool(overrides, WORLD_OVERRIDE_ASYNC_UPLOAD_ENABLED, renderer->get_async_upload_enabled()));
-	renderer->set_opacity_multiplier(_dict_get_float(overrides, WORLD_OVERRIDE_OPACITY_MULTIPLIER, renderer->get_opacity_multiplier()));
-
-	if (overrides.has(WORLD_OVERRIDE_STREAMING)) {
-		GaussianStreamingTypes::ConfigOverrides streaming_overrides;
-		const Dictionary streaming_dict = _dict_get_dictionary(overrides, WORLD_OVERRIDE_STREAMING);
-		streaming_overrides.override_prefetch = _dict_get_bool(streaming_dict, WORLD_STREAMING_OVERRIDE_PREFETCH, false);
-		streaming_overrides.predictive_prefetch_enabled = _dict_get_bool(streaming_dict, WORLD_STREAMING_PREDICTIVE_PREFETCH_ENABLED,
-				streaming_overrides.predictive_prefetch_enabled);
-		streaming_overrides.prefetch_lookahead_distance = _dict_get_float(streaming_dict, WORLD_STREAMING_PREFETCH_LOOKAHEAD_DISTANCE,
-				streaming_overrides.prefetch_lookahead_distance);
-		streaming_overrides.override_vram_budget = _dict_get_bool(streaming_dict, WORLD_STREAMING_OVERRIDE_VRAM_BUDGET, false);
-		streaming_overrides.vram_budget_config.budget_mb = MAX(0, _dict_get_int(streaming_dict, WORLD_STREAMING_VRAM_BUDGET_MB,
-				int(streaming_overrides.vram_budget_config.budget_mb)));
-		streaming_overrides.vram_budget_config.min_chunks = MAX(0, _dict_get_int(streaming_dict, WORLD_STREAMING_VRAM_MIN_CHUNKS,
-				int(streaming_overrides.vram_budget_config.min_chunks)));
-		streaming_overrides.vram_budget_config.max_chunks = MAX(0, _dict_get_int(streaming_dict, WORLD_STREAMING_VRAM_MAX_CHUNKS,
-				int(streaming_overrides.vram_budget_config.max_chunks)));
-		streaming_overrides.override_io_source = _dict_get_bool(streaming_dict, WORLD_STREAMING_OVERRIDE_IO_SOURCE, false);
-		streaming_overrides.io_source_path = _dict_get_string(streaming_dict, WORLD_STREAMING_IO_SOURCE_PATH);
-		if (streaming_overrides.override_vram_budget) {
-			streaming_overrides.vram_budget_config.min_chunks = MIN(streaming_overrides.vram_budget_config.min_chunks,
-					streaming_overrides.vram_budget_config.max_chunks);
-		}
-		renderer->set_streaming_config_overrides(streaming_overrides);
-	}
-
-	const uint32_t data_count = p_record.gaussian_data.is_valid() ? p_record.gaussian_data->get_count() : 0;
-	const int requested_max_splats = MAX(0, _dict_get_int(overrides, WORLD_OVERRIDE_MAX_SPLATS, renderer->get_max_splats()));
-	int effective_max_splats = requested_max_splats;
-	if (effective_max_splats > 0 && data_count > 0) {
-		effective_max_splats = MIN(effective_max_splats, int(data_count));
-	} else if (data_count > 0) {
-		effective_max_splats = int(data_count);
-	} else {
-		effective_max_splats = 1000;
-	}
-	renderer->set_max_splats(MAX(1000, effective_max_splats));
-
-	const auto &resource_state = renderer->get_resource_state();
-	if (!resource_state.gpu_resources_initialized && !resource_state.gpu_initialization_pending) {
-		renderer->initialize();
-	}
-
-	const Error err = renderer->set_gaussian_data(p_record.gaussian_data);
+	const GaussianSplatRenderer::WorldSubmissionContract contract =
+			_build_world_submission_contract(p_world.renderer, p_record);
+	const Error err = renderer->apply_world_submission_contract(contract);
 	if (err != OK) {
-		GS_LOG_RENDERER_ERROR(vformat("[GaussianSplatSceneDirector] Failed to apply world submission (err=%d).", err));
-		renderer->clear_static_chunks();
+		GS_LOG_RENDERER_ERROR(vformat("[GaussianSplatSceneDirector] Failed to apply world submission contract (err=%d).", err));
 		return false;
 	}
-
-	if (data_count == 0) {
-		const String world_path = _dict_get_string(p_record.metadata, StringName("world_path"));
-		if (world_path.is_empty()) {
-			WARN_PRINT("[GaussianSplatSceneDirector] World submission has zero splats; renderer will stay disconnected.");
-		} else {
-			WARN_PRINT(vformat("[GaussianSplatSceneDirector] World submission '%s' has zero splats; renderer will stay disconnected.",
-					world_path));
-		}
-		renderer->clear_static_chunks();
-		return true;
-	}
-
-	renderer->set_static_chunks(p_record.static_chunks);
 	return true;
 }
 
@@ -1310,16 +1271,20 @@ bool GaussianSplatSceneDirector::submit_world_submission(const WorldSubmission &
 		}
 	}
 
-	const WorldSubmissionRendererConfigSnapshot target_previous_renderer_config =
-			_snapshot_world_submission_renderer_config(world->renderer);
+	const GaussianSplatRenderer::WorldSubmissionRuntimeStateSnapshot target_previous_renderer_state =
+			world->renderer.is_valid()
+					? world->renderer->snapshot_world_submission_runtime_state()
+					: GaussianSplatRenderer::WorldSubmissionRuntimeStateSnapshot();
 	SharedWorld::WorldSubmissionRecord candidate_record;
 	_store_world_submission_record(candidate_record, p_submission);
 	if (!_apply_world_submission_to_renderer(*world, candidate_record)) {
-		_restore_world_submission_renderer_config(world->renderer, target_previous_renderer_config);
-		if (target_previous_record.active) {
-			_apply_world_submission_to_renderer(*world, target_previous_record);
-		} else {
-			_clear_world_submission_renderer(*world);
+		if (world->renderer.is_valid()) {
+			const Error restore_err = world->renderer->restore_world_submission_runtime_state(target_previous_renderer_state);
+			if (restore_err != OK) {
+				GS_LOG_RENDERER_ERROR(vformat("[GaussianSplatSceneDirector] Failed to restore world submission state after apply failure (err=%d).",
+						restore_err));
+				world->renderer->clear_world_submission_contract();
+			}
 		}
 		return false;
 	}

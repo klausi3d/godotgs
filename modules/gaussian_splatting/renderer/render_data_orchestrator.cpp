@@ -503,3 +503,113 @@ void GaussianSplatRenderer::set_streaming_config_overrides(
 GaussianStreamingSystem::ConfigOverrides GaussianSplatRenderer::get_streaming_config_overrides() const {
 	return data_orchestrator ? data_orchestrator->get_streaming_config_overrides() : GaussianStreamingSystem::ConfigOverrides();
 }
+
+GaussianSplatRenderer::WorldSubmissionRuntimeStateSnapshot GaussianSplatRenderer::snapshot_world_submission_runtime_state() const {
+	WorldSubmissionRuntimeStateSnapshot snapshot;
+	snapshot.valid = true;
+	snapshot.gaussian_data = get_scene_state().gaussian_data;
+	if (subsystem_state.gpu_culler.is_valid()) {
+		snapshot.static_chunks = subsystem_state.gpu_culler->get_state().static_chunks;
+	}
+	snapshot.lod_enabled = get_lod_enabled();
+	snapshot.lod_bias = get_lod_bias();
+	snapshot.lod_max_distance = get_lod_max_distance();
+	snapshot.frustum_culling = get_frustum_culling();
+	snapshot.async_upload_enabled = get_async_upload_enabled();
+	snapshot.opacity_multiplier = get_opacity_multiplier();
+	snapshot.max_splats = get_max_splats();
+	snapshot.streaming_overrides = get_streaming_config_overrides();
+	snapshot.has_active_world_submission = world_submission_contract_active;
+	snapshot.has_desired_residency_hint = world_submission_has_residency_hint;
+	snapshot.desired_residency_hint = world_submission_residency_hint;
+	return snapshot;
+}
+
+Error GaussianSplatRenderer::restore_world_submission_runtime_state(const WorldSubmissionRuntimeStateSnapshot &p_snapshot) {
+	if (!p_snapshot.valid) {
+		return ERR_INVALID_PARAMETER;
+	}
+
+	set_lod_enabled(p_snapshot.lod_enabled);
+	set_lod_bias(p_snapshot.lod_bias);
+	set_lod_max_distance(p_snapshot.lod_max_distance);
+	set_frustum_culling(p_snapshot.frustum_culling);
+	set_async_upload_enabled(p_snapshot.async_upload_enabled);
+	set_opacity_multiplier(p_snapshot.opacity_multiplier);
+	set_streaming_config_overrides(p_snapshot.streaming_overrides);
+	set_max_splats(MAX(1000, p_snapshot.max_splats));
+
+	if (p_snapshot.gaussian_data.is_valid()) {
+		const auto &resource_state = get_resource_state();
+		if (!resource_state.gpu_resources_initialized && !resource_state.gpu_initialization_pending) {
+			initialize();
+		}
+	}
+
+	const Error err = set_gaussian_data(p_snapshot.gaussian_data);
+	if (err != OK) {
+		return err;
+	}
+
+	if (p_snapshot.gaussian_data.is_valid() && p_snapshot.gaussian_data->get_count() > 0) {
+		set_static_chunks(p_snapshot.static_chunks);
+	} else {
+		clear_static_chunks();
+	}
+
+	world_submission_contract_active = p_snapshot.has_active_world_submission;
+	world_submission_has_residency_hint = p_snapshot.has_desired_residency_hint;
+	world_submission_residency_hint = p_snapshot.desired_residency_hint;
+	return OK;
+}
+
+Error GaussianSplatRenderer::apply_world_submission_contract(const WorldSubmissionContract &p_contract) {
+	set_lod_enabled(p_contract.lod_enabled);
+	set_lod_bias(p_contract.lod_bias);
+	set_lod_max_distance(p_contract.lod_max_distance);
+	set_frustum_culling(p_contract.frustum_culling);
+	set_async_upload_enabled(p_contract.async_upload_enabled);
+	set_opacity_multiplier(p_contract.opacity_multiplier);
+	set_streaming_config_overrides(p_contract.streaming_overrides);
+	set_max_splats(MAX(1000, p_contract.max_splats));
+
+	if (p_contract.gaussian_data.is_valid()) {
+		const auto &resource_state = get_resource_state();
+		if (!resource_state.gpu_resources_initialized && !resource_state.gpu_initialization_pending) {
+			initialize();
+		}
+	}
+
+	const Error err = set_gaussian_data(p_contract.gaussian_data);
+	if (err != OK) {
+		clear_static_chunks();
+		return err;
+	}
+
+	world_submission_contract_active = true;
+	world_submission_has_residency_hint = p_contract.has_desired_residency_hint;
+	world_submission_residency_hint = p_contract.desired_residency_hint;
+
+	const uint32_t data_count = p_contract.gaussian_data.is_valid() ? p_contract.gaussian_data->get_count() : 0;
+	if (data_count == 0) {
+		if (p_contract.debug_label.is_empty()) {
+			WARN_PRINT("[GaussianSplatRenderer] World submission has zero splats; renderer will stay disconnected.");
+		} else {
+			WARN_PRINT(vformat("[GaussianSplatRenderer] World submission '%s' has zero splats; renderer will stay disconnected.",
+					p_contract.debug_label));
+		}
+		clear_static_chunks();
+		return OK;
+	}
+
+	set_static_chunks(p_contract.static_chunks);
+	return OK;
+}
+
+void GaussianSplatRenderer::clear_world_submission_contract() {
+	world_submission_contract_active = false;
+	world_submission_has_residency_hint = false;
+	world_submission_residency_hint = 0;
+	set_gaussian_data(Ref<GaussianData>());
+	clear_static_chunks();
+}

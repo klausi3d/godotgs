@@ -2478,6 +2478,14 @@ const GaussianSplatRenderer::ResourceState &GaussianSplatRenderer::get_resource_
 bool GaussianSplatRenderer::get_submission_residency_hint(int32_t *r_hint, String *r_source) const {
     ERR_FAIL_NULL_V(r_hint, false);
 
+    if (world_submission_contract_active && world_submission_has_residency_hint) {
+        *r_hint = world_submission_residency_hint;
+        if (r_source) {
+            *r_source = "world_submission";
+        }
+        return true;
+    }
+
     GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
     if (director == nullptr) {
         if (r_source) {

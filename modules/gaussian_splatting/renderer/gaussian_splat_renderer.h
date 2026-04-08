@@ -237,6 +237,39 @@ public:
         uint32_t runtime_budget_splats = 0;
     };
 
+    struct WorldSubmissionContract {
+        Ref<GaussianData> gaussian_data;
+        Vector<StaticChunk> static_chunks;
+        String debug_label;
+        bool has_desired_residency_hint = false;
+        int32_t desired_residency_hint = 0;
+        bool lod_enabled = true;
+        float lod_bias = 1.0f;
+        float lod_max_distance = 0.0f;
+        bool frustum_culling = true;
+        bool async_upload_enabled = true;
+        float opacity_multiplier = 1.0f;
+        int max_splats = 1000000;
+        GaussianStreamingSystem::ConfigOverrides streaming_overrides;
+    };
+
+    struct WorldSubmissionRuntimeStateSnapshot {
+        bool valid = false;
+        Ref<GaussianData> gaussian_data;
+        Vector<StaticChunk> static_chunks;
+        bool lod_enabled = true;
+        float lod_bias = 1.0f;
+        float lod_max_distance = 0.0f;
+        bool frustum_culling = true;
+        bool async_upload_enabled = true;
+        float opacity_multiplier = 1.0f;
+        int max_splats = 1000000;
+        GaussianStreamingSystem::ConfigOverrides streaming_overrides;
+        bool has_active_world_submission = false;
+        bool has_desired_residency_hint = false;
+        int32_t desired_residency_hint = 0;
+    };
+
     // Rendering state
     using FrameState = RenderFrameContextManager::FrameState;
     using ViewState = RenderFrameContextManager::ViewState;
@@ -542,6 +575,9 @@ public:
     InstanceBackendPolicy instance_backend_policy = InstanceBackendPolicy::NONE;
     String instance_contract_shape = "none";
     uint64_t instance_contract_source_generation = 0;
+    bool world_submission_contract_active = false;
+    bool world_submission_has_residency_hint = false;
+    int32_t world_submission_residency_hint = 0;
     int cached_streaming_route_policy = gs::settings::GS_ROUTE_STREAMING;
     String cached_streaming_route_policy_source = "default_fallback";
     bool cached_streaming_route_policy_dirty = true;
@@ -724,6 +760,10 @@ public:
     bool should_prefer_resident_backend(int p_requested_route_policy, String *r_reason = nullptr) const;
     RuntimeFidelityPolicy build_runtime_fidelity_policy(const SceneState &p_scene_state,
             const PerformanceSettings &p_performance_settings) const;
+    WorldSubmissionRuntimeStateSnapshot snapshot_world_submission_runtime_state() const;
+    Error restore_world_submission_runtime_state(const WorldSubmissionRuntimeStateSnapshot &p_snapshot);
+    Error apply_world_submission_contract(const WorldSubmissionContract &p_contract);
+    void clear_world_submission_contract();
     bool update_instance_buffer(LocalVector<InstanceDataGPU> &p_instances, const PublishedInstanceAssetRemap &p_remap);
     int get_cached_streaming_route_policy();
     const String &get_cached_streaming_route_policy_source();
