@@ -617,7 +617,7 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Instance buffer upload uses the publ
     instance.ids[0] = 42u;
     instances.push_back(instance);
 
-    CHECK(renderer->update_instance_buffer(instances));
+    CHECK(renderer->update_instance_buffer(instances, remap));
     REQUIRE(instances.size() == 1);
     CHECK(instances[0].ids[0] == 7u);
     CHECK(instances[0].lod[1] == 19u);

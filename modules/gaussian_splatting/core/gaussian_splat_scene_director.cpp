@@ -31,6 +31,13 @@ static void _bump_instance_generation(uint64_t &r_generation) {
 	}
 }
 
+static void _bump_instance_asset_generation(uint64_t &r_generation) {
+	r_generation++;
+	if (r_generation == 0) {
+		r_generation = 1;
+	}
+}
+
 static bool _dict_get_bool(const Dictionary &p_dict, const StringName &p_key, bool p_default) {
 	if (!p_dict.has(p_key)) {
 		return p_default;
@@ -341,6 +348,7 @@ bool GaussianSplatSceneDirector::_retain_asset_record(SharedWorld &p_world, cons
 		new_record.refcount = 1;
 		p_world.asset_records.insert(p_asset_id, new_record);
 		_bump_instance_generation(p_world.instance_generation);
+		_bump_instance_asset_generation(p_world.instance_asset_generation);
 		return true;
 	}
 
@@ -354,6 +362,7 @@ bool GaussianSplatSceneDirector::_retain_asset_record(SharedWorld &p_world, cons
 		record->data = refreshed_data;
 		record->edited_version = edited_version;
 		_bump_instance_generation(p_world.instance_generation);
+		_bump_instance_asset_generation(p_world.instance_asset_generation);
 	}
 	record->refcount++;
 	return true;
@@ -383,6 +392,7 @@ bool GaussianSplatSceneDirector::_refresh_asset_record(SharedWorld &p_world, con
 	record->data = refreshed_data;
 	record->edited_version = edited_version;
 	_bump_instance_generation(p_world.instance_generation);
+	_bump_instance_asset_generation(p_world.instance_asset_generation);
 	return true;
 }
 
@@ -396,6 +406,7 @@ void GaussianSplatSceneDirector::_release_asset_record(SharedWorld &p_world, uin
 	}
 	if (record->refcount == 0) {
 		p_world.asset_records.erase(p_asset_id);
+		_bump_instance_asset_generation(p_world.instance_asset_generation);
 	}
 }
 
@@ -590,6 +601,7 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 	if (index_ptr && *index_ptr < world->instances.size()) {
 		InstanceRecord &record = world->instances[*index_ptr];
 		bool dirty = false;
+		bool asset_selection_dirty = false;
 		if (!record.transform.is_equal_approx(p_transform)) {
 			record.transform = p_transform;
 			dirty = true;
@@ -609,10 +621,12 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 		if (record.casts_shadow != p_casts_shadow) {
 			record.casts_shadow = p_casts_shadow;
 			dirty = true;
+			asset_selection_dirty = true;
 		}
 		if (record.visible != p_visible) {
 			record.visible = p_visible;
 			dirty = true;
+			asset_selection_dirty = true;
 		}
 		if (!Math::is_equal_approx(record.wind_intensity, wind_intensity)) {
 			record.wind_intensity = wind_intensity;
@@ -657,10 +671,14 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 			record.asset_id = asset_id;
 			record.last_lod = 0;
 			dirty = true;
+			asset_selection_dirty = true;
 		}
 		record.dirty = record.dirty || dirty;
 		if (dirty) {
 			_bump_instance_generation(world->instance_generation);
+		}
+		if (asset_selection_dirty) {
+			_bump_instance_asset_generation(world->instance_asset_generation);
 		}
 		return;
 	}
@@ -690,6 +708,7 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 	world->instance_lookup[p_node_id] = world->instances.size();
 	world->instances.push_back(record);
 	_bump_instance_generation(world->instance_generation);
+	_bump_instance_asset_generation(world->instance_asset_generation);
 	GaussianSplatting::debug_trace_record_event("instance_reg",
 			vformat("ADDED: instances_after=%d", world->instances.size()),
 			false);
@@ -742,6 +761,7 @@ void GaussianSplatSceneDirector::update_instance_params(ObjectID p_node_id, floa
 	const uint32_t wind_mode = MIN(p_wind_mode, (uint32_t)INSTANCE_WIND_FORCE_ENABLED);
 	const float wind_frequency = MAX(0.0f, p_wind_frequency);
 	bool dirty = false;
+	bool asset_selection_dirty = false;
 	if (!Math::is_equal_approx(record.opacity, p_opacity)) {
 		record.opacity = p_opacity;
 		dirty = true;
@@ -757,10 +777,12 @@ void GaussianSplatSceneDirector::update_instance_params(ObjectID p_node_id, floa
 	if (record.casts_shadow != p_casts_shadow) {
 		record.casts_shadow = p_casts_shadow;
 		dirty = true;
+		asset_selection_dirty = true;
 	}
 	if (record.visible != p_visible) {
 		record.visible = p_visible;
 		dirty = true;
+		asset_selection_dirty = true;
 	}
 	if (!Math::is_equal_approx(record.wind_intensity, wind_intensity)) {
 		record.wind_intensity = wind_intensity;
@@ -790,6 +812,9 @@ void GaussianSplatSceneDirector::update_instance_params(ObjectID p_node_id, floa
 	if (dirty) {
 		_bump_instance_generation(world->instance_generation);
 	}
+	if (asset_selection_dirty) {
+		_bump_instance_asset_generation(world->instance_asset_generation);
+	}
 }
 
 void GaussianSplatSceneDirector::unregister_instance(ObjectID p_node_id) {
@@ -818,6 +843,7 @@ void GaussianSplatSceneDirector::unregister_instance(ObjectID p_node_id) {
 	world->instance_lookup.erase(p_node_id);
 	_release_asset_record(*world, asset_id);
 	_bump_instance_generation(world->instance_generation);
+	_bump_instance_asset_generation(world->instance_asset_generation);
 
 	_prune_world_if_unused(world->scenario);
 }
@@ -1243,6 +1269,15 @@ uint64_t GaussianSplatSceneDirector::get_instance_generation_for_renderer(const 
 		return 0;
 	}
 	return world->instance_generation;
+}
+
+uint64_t GaussianSplatSceneDirector::get_instance_asset_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const {
+	MutexLock lock(world_mutex);
+	const SharedWorld *world = _find_world_for_renderer(p_renderer);
+	if (!world) {
+		return 0;
+	}
+	return world->instance_asset_generation;
 }
 
 uint32_t GaussianSplatSceneDirector::get_instance_count_for_renderer(const GaussianSplatRenderer *p_renderer) const {

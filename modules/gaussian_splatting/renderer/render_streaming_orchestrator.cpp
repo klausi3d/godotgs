@@ -81,9 +81,21 @@ static uint64_t _compute_instance_pipeline_resource_fingerprint(const ResourceSt
 	return generation;
 }
 
+static uint64_t _compute_instance_pipeline_upload_fingerprint(const ResourceState &p_resource_state,
+		const InstancePipelineBuffers &p_buffers,
+		const PublishedInstanceAssetRemap &p_remap) {
+	uint64_t generation = 0xbb67ae8584caa73bULL;
+	generation = _mix_rid_generation(generation, p_resource_state.instance_buffer);
+	generation = _mix_u32_generation(generation, p_resource_state.instance_buffer_capacity);
+	generation = _mix_u32_generation(generation, p_buffers.instance_count);
+	generation = _mix_content_generation(generation, p_remap.generation);
+	return generation;
+}
+
 constexpr uint32_t kInstanceAssetEmptySyncGraceFrames = 3u;
 constexpr uint32_t kPrimaryStreamingAssetId = 0u;
 constexpr uint32_t kInvalidStreamingAssetId = UINT32_MAX;
+constexpr uint64_t kStreamingBootstrapRetryCooldownFrames = 30u;
 
 static int _metadata_int(const Dictionary &p_metadata, const StringName &p_key, int p_default) {
 	if (!p_metadata.has(p_key)) {
@@ -672,22 +684,88 @@ RenderStreamingOrchestrator::RenderStreamingOrchestrator(const RenderStreamingOr
 	ERR_FAIL_COND_MSG(runtime_ports.get_cull_frustum_plane_slack == nullptr, "RenderStreamingOrchestrator requires get_cull_frustum_plane_slack runtime port.");
 }
 
+void RenderStreamingOrchestrator::invalidate_instance_pipeline_caches() {
+	instance_pipeline_assets.clear();
+	instance_pipeline_assets_next.clear();
+	instance_pipeline_assets_to_remove.clear();
+	instance_pipeline_assets_cache.clear();
+	instance_pipeline_instance_cache.clear();
+	instance_pipeline_asset_versions.clear();
+	instance_pipeline_lod_mask_cache.clear();
+	instance_pipeline_asset_snapshot_generation = 0;
+	instance_pipeline_asset_snapshot_shadow_only = false;
+	instance_pipeline_empty_asset_sync_streak = 0;
+	visible_lod_selection._internal_get_instances().clear();
+	visible_lod_selection.residency_request_count = 0;
+	visible_lod_selection_generation = 0;
+	visible_lod_selection_shadow_only = false;
+}
+
+bool RenderStreamingOrchestrator::refresh_instance_asset_snapshot(GaussianSplatSceneDirector *p_director, bool p_trace_enabled) {
+	if (!p_director) {
+		instance_pipeline_assets_cache.clear();
+		instance_pipeline_asset_snapshot_generation = 0;
+		instance_pipeline_asset_snapshot_shadow_only = false;
+		return false;
+	}
+
+	const bool shadow_only = renderer->is_shadow_instance_filter_enabled();
+	const uint64_t asset_generation = p_director->get_instance_asset_generation_for_renderer(renderer);
+	const bool cache_hit = asset_generation != 0 &&
+			instance_pipeline_asset_snapshot_generation == asset_generation &&
+			instance_pipeline_asset_snapshot_shadow_only == shadow_only;
+	if (cache_hit) {
+		if (p_trace_enabled) {
+			GaussianSplatting::debug_trace_record_event("instance_pipeline",
+					vformat("SyncAssets cached generation=%d collected=%d",
+							static_cast<int64_t>(asset_generation),
+							instance_pipeline_assets_cache.size()),
+					false);
+		}
+		return true;
+	}
+
+	instance_pipeline_assets_cache.clear();
+	p_director->collect_instance_assets_for_renderer(renderer, instance_pipeline_assets_cache, shadow_only);
+	instance_pipeline_asset_snapshot_generation = asset_generation;
+	instance_pipeline_asset_snapshot_shadow_only = shadow_only;
+	if (p_trace_enabled) {
+		GaussianSplatting::debug_trace_record_event("instance_pipeline",
+				vformat("SyncAssets collected=%d generation=%d", instance_pipeline_assets_cache.size(),
+						static_cast<int64_t>(asset_generation)),
+				false);
+	}
+	return true;
+}
+
 const RenderStreamingOrchestrator::VisibleLODSelection &RenderStreamingOrchestrator::produce_visible_lod_selection(
 		GaussianSplatSceneDirector *p_director,
 		GaussianStreamingSystem *p_streaming_system,
 		const Vector3 &p_camera_origin) {
-	visible_lod_selection._internal_get_instances().clear();
 	visible_lod_selection.residency_request_count = 0;
 
 	if (!p_director || !p_streaming_system) {
+		visible_lod_selection._internal_get_instances().clear();
+		visible_lod_selection_generation = 0;
 		return visible_lod_selection;
 	}
 
 	const LODConfig &lod_config = p_streaming_system->get_lod_config();
 	const float hysteresis_zone = p_streaming_system->get_lod_hysteresis_zone();
 	p_director->update_instance_lods_for_renderer(renderer, p_camera_origin, lod_config, hysteresis_zone);
+	const uint64_t instance_generation = p_director->get_instance_generation_for_renderer(renderer);
+	const bool shadow_only = renderer->is_shadow_instance_filter_enabled();
+	if (instance_generation != 0 &&
+			visible_lod_selection_generation == instance_generation &&
+			visible_lod_selection_shadow_only == shadow_only) {
+		return visible_lod_selection;
+	}
+
+	visible_lod_selection._internal_get_instances().clear();
 	p_director->build_instance_buffer_for_renderer(renderer, visible_lod_selection._internal_get_instances(),
-			renderer->is_shadow_instance_filter_enabled());
+			shadow_only);
+	visible_lod_selection_generation = instance_generation;
+	visible_lod_selection_shadow_only = shadow_only;
 
 	return visible_lod_selection;
 }
@@ -777,8 +855,10 @@ bool RenderStreamingOrchestrator::should_throttle_streaming_rebuild(uint32_t p_c
 bool RenderStreamingOrchestrator::ensure_instance_streaming_system() {
 	// Route-policy gate: when resident is selected, never create the streaming system.
 	// This is the single chokepoint — all 4 callers funnel through here.
-	const int route_policy = gs::settings::get_streaming_route_policy(ProjectSettings::get_singleton());
+	const int route_policy = renderer->get_cached_streaming_route_policy();
 	if (renderer->should_prefer_resident_backend(route_policy)) {
+		streaming_bootstrap_retry_after_frame = 0;
+		streaming_bootstrap_last_error = "resident_backend_selected";
 		return false;
 	}
 
@@ -787,13 +867,24 @@ bool RenderStreamingOrchestrator::ensure_instance_streaming_system() {
 	const GaussianSplatRenderer::IFrameStateView &state_view = state_provider;
 	StreamingState &streaming_state = state_mut.get_streaming_state_mut();
 	if (streaming_state.current_streaming_system.is_valid()) {
+		streaming_bootstrap_retry_after_frame = 0;
+		streaming_bootstrap_last_error = "none";
 		return true;
 	}
+	const uint64_t current_frame = state_view.get_frame_state_view().frame_counter;
+	if (streaming_bootstrap_retry_after_frame > current_frame) {
+		return false;
+	}
+	streaming_state.last_streaming_init_attempt_frame = current_frame;
 	if (!(renderer->*runtime_ports.ensure_rendering_device)("instance_pipeline_streaming")) {
+		streaming_bootstrap_last_error = "rendering_device_unavailable";
+		streaming_bootstrap_retry_after_frame = current_frame + kStreamingBootstrapRetryCooldownFrames;
 		return false;
 	}
 	RenderingDevice *rd = state_view.get_rendering_device();
 	if (!rd) {
+		streaming_bootstrap_last_error = "rendering_device_null";
+		streaming_bootstrap_retry_after_frame = current_frame + kStreamingBootstrapRetryCooldownFrames;
 		return false;
 	}
 
@@ -832,6 +923,8 @@ bool RenderStreamingOrchestrator::ensure_instance_streaming_system() {
 	String init_error;
 	if (!streaming_system->is_runtime_ready(&init_error)) {
 		ERR_PRINT(vformat("[GaussianSplatRenderer] Failed to initialize streaming bootstrap: %s", init_error));
+		streaming_bootstrap_last_error = init_error;
+		streaming_bootstrap_retry_after_frame = current_frame + kStreamingBootstrapRetryCooldownFrames;
 		return false;
 	}
 	streaming_state.current_streaming_system = streaming_system;
@@ -841,8 +934,9 @@ bool RenderStreamingOrchestrator::ensure_instance_streaming_system() {
 	streaming_state.streaming_gpu_splat_count = 0;
 	streaming_state.streaming_gpu_total_capacity = 0;
 	streaming_state.streamed_indices_are_local = false;
-	instance_pipeline_assets.clear();
-	instance_pipeline_asset_versions.clear();
+	streaming_bootstrap_retry_after_frame = 0;
+	streaming_bootstrap_last_error = "none";
+	invalidate_instance_pipeline_caches();
 	// Streaming system can be recreated while static chunk revision stays unchanged.
 	// Force one sync cache miss so primary/io chunk layout hints are reapplied.
 	static_layout_cache_revision = UINT64_MAX;
@@ -875,6 +969,7 @@ void RenderStreamingOrchestrator::sync_instance_pipeline_assets(GaussianStreamin
 		if (trace_enabled) {
 			GaussianSplatting::debug_trace_record_event("instance_pipeline", "SyncAssets FAIL: streaming_system=NULL", true);
 		}
+		invalidate_instance_pipeline_caches();
 		return;
 	}
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
@@ -882,16 +977,10 @@ void RenderStreamingOrchestrator::sync_instance_pipeline_assets(GaussianStreamin
 		if (trace_enabled) {
 			GaussianSplatting::debug_trace_record_event("instance_pipeline", "SyncAssets FAIL: director=NULL", true);
 		}
+		invalidate_instance_pipeline_caches();
 		return;
 	}
-	instance_pipeline_assets_cache.clear();
-	director->collect_instance_assets_for_renderer(renderer, instance_pipeline_assets_cache,
-			renderer->is_shadow_instance_filter_enabled());
-	if (trace_enabled) {
-		GaussianSplatting::debug_trace_record_event("instance_pipeline",
-				vformat("SyncAssets collected=%d", instance_pipeline_assets_cache.size()),
-				false);
-	}
+	refresh_instance_asset_snapshot(director, trace_enabled);
 	bool transient_empty_asset_sync = false;
 	if (instance_pipeline_assets_cache.is_empty()) {
 		if (!instance_pipeline_assets.is_empty()) {
@@ -1567,14 +1656,22 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 	streaming_state.current_streaming_system->update_streaming(streaming_camera_transform, cull_projection);
 
 	uint64_t instance_generation = 0;
+	uint64_t instance_asset_generation = 0;
 	if (GaussianSplatSceneDirector *generation_director = GaussianSplatSceneDirector::get_singleton()) {
 		instance_generation = generation_director->get_instance_generation_for_renderer(renderer);
+		instance_asset_generation = generation_director->get_instance_asset_generation_for_renderer(renderer);
 	}
 	uint64_t atlas_generation = 0;
 	if (streaming_state.current_streaming_system.is_valid()) {
 		atlas_generation = streaming_state.current_streaming_system->get_atlas_generation();
 	}
 	const uint64_t base_content_generation = _mix_content_generation(instance_generation, atlas_generation);
+	const uint64_t contract_generation = _mix_content_generation(instance_asset_generation, atlas_generation);
+	const uint64_t upload_generation = base_content_generation;
+	const uint64_t previous_contract_generation = resource_state.instance_pipeline_contract_generation;
+	const uint64_t previous_contract_fingerprint = resource_state.instance_pipeline_contract_fingerprint;
+	const uint64_t previous_upload_generation = resource_state.instance_pipeline_upload_generation;
+	const uint64_t previous_upload_fingerprint = resource_state.instance_pipeline_upload_fingerprint;
 	resource_state.instance_pipeline_content_generation = base_content_generation;
 	bool instance_buffers_atlas_ready = false;
 	bool instance_buffers_cull_ready = false;
@@ -1798,24 +1895,41 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 				streaming_system, instance_pipeline_assets_cache, instance_pipeline_instance_cache,
 				base_content_generation);
 		const bool atlas_ready_preupload = GaussianSplatting::InstancePipelineContract::has_atlas_buffers(buffers);
+		uint64_t contract_fingerprint = _compute_instance_pipeline_resource_fingerprint(resource_state_mut, buffers);
+		const bool contract_changed = previous_contract_generation != contract_generation ||
+				previous_contract_fingerprint != contract_fingerprint ||
+				!renderer->instance_pipeline_buffers_valid ||
+				renderer->get_instance_backend_policy() != InstanceBackendPolicy::STREAMING;
+		uint64_t upload_fingerprint = _compute_instance_pipeline_upload_fingerprint(resource_state_mut, buffers, published_remap);
+		const bool upload_changed = previous_upload_generation != upload_generation ||
+				previous_upload_fingerprint != upload_fingerprint ||
+				!resource_state_mut.instance_buffer.is_valid();
 		if (atlas_ready_preupload) {
-			if (trace_enabled) {
+			if (trace_enabled && contract_changed) {
 				GaussianSplatting::debug_trace_record_event("instance_pipeline",
 						"InstanceBufferCheck atlas ready - publish_instance_pipeline_contract",
 						false);
 			}
-			renderer->publish_instance_pipeline_contract(
-					buffers,
-					published_remap,
-					InstanceBackendPolicy::STREAMING,
-					base_content_generation,
-					"atlas_emulation");
-			if (!(renderer->*runtime_ports.update_instance_buffer)(instance_pipeline_instance_cache)) {
-				buffers = renderer->get_instance_pipeline_buffers();
-				renderer->clear_instance_pipeline_buffers();
-			} else {
+			if (contract_changed) {
+				renderer->publish_instance_pipeline_contract(
+						buffers,
+						published_remap,
+						InstanceBackendPolicy::STREAMING,
+						contract_generation,
+						"atlas_emulation");
+			}
+			if (upload_changed) {
+				if (!(renderer->*runtime_ports.update_instance_buffer)(instance_pipeline_instance_cache, published_remap)) {
+					buffers = renderer->get_instance_pipeline_buffers();
+					renderer->clear_instance_pipeline_buffers();
+				} else {
+					buffers = renderer->get_instance_pipeline_buffers();
+				}
+			} else if (!contract_changed) {
 				buffers = renderer->get_instance_pipeline_buffers();
 			}
+			contract_fingerprint = _compute_instance_pipeline_resource_fingerprint(resource_state_mut, buffers);
+			upload_fingerprint = _compute_instance_pipeline_upload_fingerprint(resource_state_mut, buffers, published_remap);
 		}
 
 		const bool atlas_ready = GaussianSplatting::InstancePipelineContract::has_atlas_buffers(buffers);
@@ -2020,11 +2134,19 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 			renderer->instance_pipeline_buffers = buffers;
 			renderer->instance_pipeline_buffers_valid = false;
 		}
+		resource_state.instance_pipeline_contract_generation = contract_generation;
+		resource_state.instance_pipeline_contract_fingerprint = contract_fingerprint;
+		resource_state.instance_pipeline_upload_generation = upload_generation;
+		resource_state.instance_pipeline_upload_fingerprint = upload_fingerprint;
 		resource_state.instance_pipeline_content_generation = _mix_content_generation(
 				base_content_generation,
-				_compute_instance_pipeline_resource_fingerprint(resource_state_mut, buffers));
+				contract_fingerprint);
 	} else {
 		renderer->clear_instance_pipeline_buffers();
+		resource_state.instance_pipeline_contract_generation = 0;
+		resource_state.instance_pipeline_contract_fingerprint = 0;
+		resource_state.instance_pipeline_upload_generation = 0;
+		resource_state.instance_pipeline_upload_fingerprint = 0;
 		resource_state.instance_pipeline_content_generation = base_content_generation;
 	}
 

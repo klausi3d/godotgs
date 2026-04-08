@@ -37,6 +37,7 @@
 #include "../core/gaussian_data.h"
 #include "../core/gaussian_splat_asset.h"
 #include "../core/gaussian_splat_manager.h"
+#include "../core/gs_project_settings.h"
 #include "../painterly/painterly_material.h"
 #include "painterly_pass_graph.h"
 #include "../interfaces/painterly_renderer.h"
@@ -532,6 +533,9 @@ public:
     InstanceBackendPolicy instance_backend_policy = InstanceBackendPolicy::NONE;
     String instance_contract_shape = "none";
     uint64_t instance_contract_source_generation = 0;
+    int cached_streaming_route_policy = gs::settings::GS_ROUTE_STREAMING;
+    String cached_streaming_route_policy_source = "default_fallback";
+    bool cached_streaming_route_policy_dirty = true;
     PipelineFeatureSet pipeline_features_effective;
     String pipeline_features_warning_cache;
 
@@ -596,6 +600,8 @@ public:
             RenderFallbackReason p_cull_skip_reason_code, RenderFallbackReason p_sort_skip_reason_code,
             bool p_set_skip_metrics, bool p_clear_cull_state_on_skip);
     void _set_route_policy_diagnostics(int p_requested_route_policy, const char *p_policy_source);
+    void _mark_streaming_route_policy_dirty();
+    void _refresh_streaming_route_policy_cache();
     void _set_instance_backend_diagnostics(InstanceBackendPolicy p_backend_policy, const String &p_reason,
             bool p_contract_ready, const String &p_contract_shape = "atlas_emulation");
     bool _publish_resident_instance_pipeline_contract(bool p_allow_primary_fallback_instance,
@@ -707,7 +713,9 @@ public:
     bool is_instance_contract_ready() const { return instance_pipeline_buffers_valid; }
     bool get_submission_residency_hint(int32_t *r_hint, String *r_source = nullptr) const;
     bool should_prefer_resident_backend(int p_requested_route_policy, String *r_reason = nullptr) const;
-    bool update_instance_buffer(LocalVector<InstanceDataGPU> &p_instances);
+    bool update_instance_buffer(LocalVector<InstanceDataGPU> &p_instances, const PublishedInstanceAssetRemap &p_remap);
+    int get_cached_streaming_route_policy();
+    const String &get_cached_streaming_route_policy_source();
 
     bool ensure_rendering_device(const char *p_context) { return _ensure_rendering_device(p_context); }
     bool ensure_submission_device(const char *p_context) { return _ensure_submission_device(p_context); }

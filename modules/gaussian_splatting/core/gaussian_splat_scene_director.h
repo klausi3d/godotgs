@@ -96,6 +96,7 @@ public:
 			bool p_shadow_casters_only = false) const;
 	uint32_t get_instance_count_for_renderer(const GaussianSplatRenderer *p_renderer) const;
 	uint64_t get_instance_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
+	uint64_t get_instance_asset_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
     void register_instance_submission(ObjectID p_node_id, const Ref<GaussianSplatAsset> &p_asset,
             const Transform3D &p_transform, float p_opacity, float p_lod_bias, uint32_t p_flags,
             bool p_casts_shadow = false, float p_wind_intensity = 1.0f,
@@ -161,6 +162,7 @@ private:
         LocalVector<InstanceRecord> instances;
         HashMap<ObjectID, uint32_t> instance_lookup;
         uint64_t instance_generation = 1;
+        uint64_t instance_asset_generation = 1;
         struct WorldSubmissionRecord {
             ObjectID owner_id;
             Ref<GaussianData> gaussian_data;

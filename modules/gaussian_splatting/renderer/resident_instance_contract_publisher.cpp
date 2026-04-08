@@ -561,9 +561,13 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 
 	p_renderer->publish_instance_pipeline_contract(buffers, remap,
 			GaussianRenderPipeline::InstanceBackendPolicy::RESIDENT, source_generation, "atlas_emulation");
+	resource_state.instance_pipeline_contract_generation = source_generation;
 	resource_state.instance_pipeline_content_generation = source_generation;
+	resource_state.instance_pipeline_contract_fingerprint = 0;
+	resource_state.instance_pipeline_upload_generation = source_generation;
+	resource_state.instance_pipeline_upload_fingerprint = 0;
 
-	if (!p_renderer->update_instance_buffer(instances)) {
+	if (!p_renderer->update_instance_buffer(instances, remap)) {
 		if (r_reason) {
 			*r_reason = "resident_instance_upload_failed";
 		}

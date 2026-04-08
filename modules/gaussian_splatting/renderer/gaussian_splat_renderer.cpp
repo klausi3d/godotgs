@@ -768,6 +768,12 @@ GaussianSplatRenderer::GaussianSplatRenderer(RenderingDevice *p_device) {
     subsystem_state.gpu_culler->get_state().sort_cache_angle_cos_threshold = Math::cos(Math::deg_to_rad(5.0f));
     float position_threshold = 0.05f;
     subsystem_state.gpu_culler->get_state().sort_cache_position_threshold_sq = position_threshold * position_threshold;
+    if (ProjectSettings *project_settings = ProjectSettings::get_singleton()) {
+        Callable settings_changed = callable_mp(this, &GaussianSplatRenderer::_mark_streaming_route_policy_dirty);
+        if (!project_settings->is_connected("settings_changed", settings_changed)) {
+            project_settings->connect("settings_changed", settings_changed);
+        }
+    }
 
 	// Initialize orchestrators.
 	pipeline_stages = std::make_unique<RenderPipelineStages>(this);
@@ -1047,6 +1053,12 @@ void GaussianSplatRenderer::publish_sorted_indices(const SortPublicationPayload 
 }
 
 GaussianSplatRenderer::~GaussianSplatRenderer() {
+    if (ProjectSettings *project_settings = ProjectSettings::get_singleton()) {
+        Callable settings_changed = callable_mp(this, &GaussianSplatRenderer::_mark_streaming_route_policy_dirty);
+        if (project_settings->is_connected("settings_changed", settings_changed)) {
+            project_settings->disconnect("settings_changed", settings_changed);
+        }
+    }
     if (GaussianRenderingDiagnostics::get_singleton()) {
         GaussianRenderingDiagnostics::get_singleton()->unregister_renderer(this);
     }
@@ -1223,6 +1235,30 @@ void GaussianSplatRenderer::_release_shared_dynamic_asset() {
 void GaussianSplatRenderer::_notification(int p_what) {
     // Notification handling disabled for Object-based implementation
     // Will be called manually from module initialization
+}
+
+void GaussianSplatRenderer::_mark_streaming_route_policy_dirty() {
+    cached_streaming_route_policy_dirty = true;
+}
+
+void GaussianSplatRenderer::_refresh_streaming_route_policy_cache() {
+    if (!cached_streaming_route_policy_dirty) {
+        return;
+    }
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    cached_streaming_route_policy = gs::settings::get_streaming_route_policy(project_settings);
+    cached_streaming_route_policy_source = gs::settings::get_streaming_route_policy_source(project_settings);
+    cached_streaming_route_policy_dirty = false;
+}
+
+int GaussianSplatRenderer::get_cached_streaming_route_policy() {
+    _refresh_streaming_route_policy_cache();
+    return cached_streaming_route_policy;
+}
+
+const String &GaussianSplatRenderer::get_cached_streaming_route_policy_source() {
+    _refresh_streaming_route_policy_cache();
+    return cached_streaming_route_policy_source;
 }
 
 void GaussianSplatRenderer::initialize() {
@@ -1984,9 +2020,8 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
     }
 
     // Update streaming system if active.
-    ProjectSettings *project_settings = ProjectSettings::get_singleton();
-    const int route_policy = gs::settings::get_streaming_route_policy(project_settings);
-    _set_route_policy_diagnostics(route_policy, gs::settings::get_streaming_route_policy_source(project_settings));
+    const int route_policy = get_cached_streaming_route_policy();
+    _set_route_policy_diagnostics(route_policy, get_cached_streaming_route_policy_source().utf8().get_data());
     String backend_preference_reason;
     const bool prefer_resident_backend = should_prefer_resident_backend(route_policy, &backend_preference_reason);
     bool streaming_requested = (route_policy == gs::settings::GS_ROUTE_STREAMING);
@@ -2122,7 +2157,7 @@ void GaussianSplatRenderer::tick_streaming_only(const Transform3D &p_camera_to_w
     // When route policy is resident, skip streaming tick entirely — don't create
     // or update the streaming system.  This eliminates all per-frame streaming
     // overhead (visibility scan, prefetch, eviction, worker threads).
-    const int route_policy = gs::settings::get_streaming_route_policy(ProjectSettings::get_singleton());
+    const int route_policy = get_cached_streaming_route_policy();
     if (should_prefer_resident_backend(route_policy)) {
         return;
     }
@@ -2445,7 +2480,7 @@ void GaussianSplatRenderer::clear_instance_pipeline_buffers() {
     instance_contract_source_generation = 0;
 }
 
-bool GaussianSplatRenderer::update_instance_buffer(LocalVector<InstanceDataGPU> &p_instances) {
+bool GaussianSplatRenderer::update_instance_buffer(LocalVector<InstanceDataGPU> &p_instances, const PublishedInstanceAssetRemap &p_remap) {
     if (!_ensure_rendering_device("update_instance_buffer")) {
         return false;
     }
@@ -2456,19 +2491,19 @@ bool GaussianSplatRenderer::update_instance_buffer(LocalVector<InstanceDataGPU> 
         return true;
     }
 
-    if (!instance_asset_remap.valid) {
+    if (!p_remap.valid) {
         WARN_PRINT_ONCE("[GaussianSplatRenderer] Instance buffer upload skipped; published asset remap unavailable.");
         instance_pipeline_buffers.instance_count = 0;
         return false;
     }
 
-    const uint32_t published_generation = instance_asset_remap.generation == 0
+    const uint32_t published_generation = p_remap.generation == 0
             ? 1u
-            : uint32_t(instance_asset_remap.generation & uint64_t(UINT32_MAX));
+            : uint32_t(p_remap.generation & uint64_t(UINT32_MAX));
     for (uint32_t i = 0; i < instance_count; i++) {
         const uint32_t incoming_asset_id = p_instances[i].ids[0];
         uint32_t dense_id = 0u;
-        if (const uint32_t *mapped_dense_id = instance_asset_remap.asset_to_dense_id.getptr(incoming_asset_id)) {
+        if (const uint32_t *mapped_dense_id = p_remap.asset_to_dense_id.getptr(incoming_asset_id)) {
             dense_id = *mapped_dense_id;
         } else {
             WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Instance asset_id %u is not published; using primary resident asset.", incoming_asset_id));
