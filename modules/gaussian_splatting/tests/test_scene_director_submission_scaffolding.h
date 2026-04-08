@@ -600,7 +600,7 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Zero-splat submis
 	submission.desired_residency_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT;
 
 	CHECK(director->submit_world_submission(submission));
-	CHECK(director->has_world_submission_for_renderer(renderer.ptr()));
+	CHECK_FALSE(director->has_world_submission_for_renderer(renderer.ptr()));
 
 	int32_t renderer_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT;
 	String renderer_hint_source;

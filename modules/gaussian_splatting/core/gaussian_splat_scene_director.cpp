@@ -1354,7 +1354,12 @@ bool GaussianSplatSceneDirector::get_world_submission_for_scenario(const RID &p_
 bool GaussianSplatSceneDirector::has_world_submission_for_renderer(const GaussianSplatRenderer *p_renderer) const {
 	MutexLock lock(world_mutex);
 	const SharedWorld *world = _find_world_for_renderer(p_renderer);
-	return world && world->world_submission.active;
+	if (!world || !world->world_submission.active) {
+		return false;
+	}
+
+	return world->world_submission.gaussian_data.is_valid() &&
+			world->world_submission.gaussian_data->get_count() > 0;
 }
 
 bool GaussianSplatSceneDirector::get_submission_residency_hint_for_renderer(const GaussianSplatRenderer *p_renderer,
