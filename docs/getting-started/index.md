@@ -26,7 +26,7 @@ Visual captures for the user journey are still pending, so the linked workflow p
 
     ---
 
-    Use the Linux nightly editor path when you want the shortest honest evaluation loop.
+    Use the Linux nightly editor path when you want the shortest honest evaluation loop through the public evaluator.
 
     [Open try in 5 minutes](try-in-5-minutes.md)
 
@@ -38,13 +38,13 @@ Visual captures for the user journey are still pending, so the linked workflow p
 
     [Open installation](installation.md)
 
-- __Run first run__
+- __Open public evaluator__
 
     ---
 
-    Verify the sample path and get a first visible result before going deeper.
+    Verify the sample project default entrypoint before going deeper.
 
-    [Open first run](quick-start.md)
+    [Open public evaluator](quick-start.md)
 
 - __Check platform fit__
 

@@ -1,6 +1,6 @@
-# First Run
+# Public Evaluator
 
-Use this page after [Installation](installation.md) when you want the shortest path to a visible splat.
+Use this page after [Installation](installation.md) when you want the shortest path to the public evaluator scene in the sample project.
 
 Real editor screenshots for this flow are still pending, so this page stays text-first for now and keeps the diagram as a technical reference at the end.
 
@@ -30,20 +30,7 @@ $env:GODOT_BINARY=".\bin\<your-editor-binary>.exe"
 
 You should see an editor binary in `bin/`.
 
-## 2. Generate Synthetic Starter Assets
-
-```bash
-python3 tests/runtime/prepare_synthetic_assets.py --quiet
-```
-
-```powershell
-python .\tests\runtime\prepare_synthetic_assets.py --quiet
-```
-
-You should see:
-- the synthetic starter asset in the sample project fixture set
-
-## 3. Open the Sample Project
+## 2. Open the Sample Project
 
 ```bash
 $GODOT_BINARY --path tests/examples/godot/test_project
@@ -55,15 +42,13 @@ $GODOT_BINARY --path tests/examples/godot/test_project
 
 You should see the sample project open in the editor.
 
-## 4. Render Your First Splat
+## 3. Open the Public Evaluator
 
-1. Open `res://scenes/benchmark_unified.tscn`.
-2. If needed, add the splat node the sample scene expects.
-3. Set `PLY File Path` to `res://tests/fixtures/test_splats.ply`.
-4. Press `F6` to play the scene.
+Press Play. The sample project now opens `res://scenes/public_evaluator.tscn` by default.
 
 You should see:
 - a visible splat in the viewport
+- the evaluator scene already loaded
 
 ## If It Fails
 
@@ -75,6 +60,6 @@ You should see:
 ## Flow Reference
 
 <figure markdown="1">
-![Diagram of the first-run path from a fork-built editor to a visible sample splat](../assets/images/first-run-editor-path.svg){ .gs-diagram }
-<figcaption>The first-run path is a short proof loop: point at your editor, seed the synthetic fixture asset, open the sample project, and confirm a visible splat in the benchmark_unified scene.</figcaption>
+![Diagram of the public evaluator path from a fork-built editor to a visible sample splat](../assets/images/first-run-editor-path.svg){ .gs-diagram }
+<figcaption>The public evaluator path is a short proof loop: point at your editor, open the sample project, and confirm a visible splat in the public evaluator scene.</figcaption>
 </figure>

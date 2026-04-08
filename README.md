@@ -24,7 +24,7 @@ No named non-nightly release is published yet. If you want the fastest way to ev
 ## Fastest Way In
 
 1. [Try in 5 Minutes](docs/getting-started/try-in-5-minutes.md) if you want the shortest honest evaluation path.
-2. [First Run](docs/getting-started/quick-start.md) if you want the canonical sample-project flow.
+2. [Public Evaluator](docs/getting-started/quick-start.md) if you want the canonical sample-project flow.
 3. [Compatibility Matrix](docs/reference/compatibility-matrix.md) if you need platform evidence before trying it.
 4. [Build from Source](docs/BUILDING.md) if you are on Windows or macOS, or you want a custom editor binary.
 
