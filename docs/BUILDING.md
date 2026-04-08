@@ -28,7 +28,7 @@ Platform prerequisites:
   - `libvulkan-dev`
   - `mesa-vulkan-drivers`
 - Windows: Visual Studio Build Tools or Visual Studio with the C++ workload installed, with the MSVC environment already set up. The CI shape is `ilammy/msvc-dev-cmd@v1`, and the docs in `modules/gaussian_splatting/tests/README.md` assume the Visual Studio build tools are on `PATH`.
-- macOS: Xcode Command Line Tools or a full Xcode toolchain with Apple Clang available.
+- macOS: Xcode Command Line Tools or a full Xcode toolchain with Apple Clang available, plus a Vulkan SDK that provides MoltenVK. If SCons cannot find it automatically, pass `vulkan_sdk_path=<path-to-vulkan-sdk>` as the macOS detector suggests.
 
 Run all build commands from repository root.
 
@@ -46,10 +46,16 @@ scons platform=linuxbsd target=editor dev_build=yes -j"$(nproc)"
 scons platform=windows target=editor dev_build=yes -j10
 ```
 
-### macOS
+### macOS Apple Silicon
 
 ```bash
 scons platform=macos target=editor dev_build=yes arch=arm64 -j8
+```
+
+### macOS Intel
+
+```bash
+scons platform=macos target=editor dev_build=yes arch=x86_64 -j8
 ```
 
 If you want a test-enabled editor build, append `tests=yes` to the same command.
@@ -70,19 +76,25 @@ Use the built editor to open the sample project from this repository. The comman
 .\bin\godot.windows.editor.dev.x86_64.exe --headless --path .\tests\examples\godot\test_project --quit
 ```
 
-### macOS
+### macOS Apple Silicon
 
 ```bash
-./bin/godot.macos.editor.dev.universal --headless --path tests/examples/godot/test_project --quit
+./bin/godot.macos.editor.dev.arm64 --headless --path tests/examples/godot/test_project --quit
 ```
 
-If your build produced a non-`.dev` binary, use the matching filename from `bin/`.
+### macOS Intel
+
+```bash
+./bin/godot.macos.editor.dev.x86_64 --headless --path tests/examples/godot/test_project --quit
+```
 
 ## Output Naming
 
 - `dev_build=yes` adds a `.dev` segment to the binary name.
 - Windows example: `bin/godot.windows.editor.dev.x86_64.exe`
 - Linux example: `bin/godot.linuxbsd.editor.dev.x86_64`
+- macOS Apple Silicon example: `bin/godot.macos.editor.dev.arm64`
+- macOS Intel example: `bin/godot.macos.editor.dev.x86_64`
 
 ## Next Pages
 
