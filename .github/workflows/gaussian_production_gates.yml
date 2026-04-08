@@ -283,20 +283,16 @@ jobs:
             --skip-cpp `
             --fail-on-skip
 
-      - name: Run world-streaming runtime gate (blocking, windows-vulkan)
+      - name: Run streaming GPU runtime gate (blocking, windows-vulkan)
         env:
           GODOT_BINARY: ${{ steps.godot_bin.outputs.path }}
         shell: pwsh
         run: |
           python tests/runtime/run_runtime_validation.py `
             --godot-binary "$env:GODOT_BINARY" `
-            --gd-mode windows-vulkan `
+            --profile streaming-gpu-ci `
             --skip-cpp `
-            --fail-on-skip `
-            --gd-timeout 420 `
-            --godot-arg=--render-thread `
-            --godot-arg=safe `
-            --gd-script tests/runtime/test_world_streaming_gate.gd
+            --fail-on-skip
 
       - name: Run large-scene benchmark gate (streaming churn probe)
         id: large_scene_benchmark
