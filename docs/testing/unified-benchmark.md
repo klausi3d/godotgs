@@ -86,13 +86,13 @@ Default report output is `user://benchmark_small_baseline_results.json`.
 
 ## Suite Runner
 
-For multi-lane benchmark runs (scene set + aggregate report), use:
+For multi-lane benchmark runs, use the benchmark runner in [Benchmark Runner](benchmark-suite.md). It runs lane scenes one by one and aggregates the lane JSON outputs into a suite report:
 
 ```bash
-python3 tests/runtime/run_benchmark_suite.py --profile quick --generate-dummy-assets
+python3 tests/runtime/run_benchmark.py --profile quick --generate-dummy-assets
 ```
 
-See [Benchmark Suite Runner](benchmark-suite.md) for profiles, lane list, and asset override workflow.
+See [Benchmark Runner](benchmark-suite.md) for profiles, lane list, and asset override workflow.
 
 ## Controls
 
