@@ -1382,13 +1382,17 @@ void RenderSortingOrchestrator::force_sort_for_view(const Transform3D &p_world_t
 	// Runtime validation invokes force_sort_for_view outside render_scene_instance().
 	// Route through streaming orchestration first so instance cull/sort buffers are
 	// built and GPU radix has valid inputs.
-	if (renderer->streaming_orchestrator &&
-			renderer->streaming_orchestrator->ensure_instance_streaming_system()) {
+	GaussianSplatRenderer::FrameBackendPlan backend_plan =
+			renderer->build_frame_backend_plan(renderer->get_streaming_state().current_streaming_system.is_valid());
+	if (renderer->streaming_orchestrator) {
+		if (backend_plan.should_attempt_streaming_bootstrap &&
+				renderer->streaming_orchestrator->ensure_instance_streaming_system(backend_plan)) {
+			backend_plan.streaming_ready = renderer->get_streaming_state().current_streaming_system.is_valid();
+		}
 		auto &streaming_state = renderer->get_streaming_state();
-		if (streaming_state.current_streaming_system.is_valid()) {
-			const bool allow_primary_fallback_instance =
-					renderer->get_scene_state().gaussian_data.is_valid() &&
-					renderer->get_scene_state().gaussian_data->get_count() > 0;
+		if (!backend_plan.prefer_resident_backend &&
+				backend_plan.streaming_requested && backend_plan.streaming_ready &&
+				streaming_state.current_streaming_system.is_valid()) {
 			const bool stream_rendered = renderer->streaming_orchestrator->render_streaming_frame(
 					nullptr,
 					p_world_to_camera_transform,
@@ -1396,7 +1400,7 @@ void RenderSortingOrchestrator::force_sort_for_view(const Transform3D &p_world_t
 					projection,
 					projection,
 					nullptr,
-					allow_primary_fallback_instance);
+					backend_plan);
 			if (stream_rendered) {
 				return;
 			}

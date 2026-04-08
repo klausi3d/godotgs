@@ -237,6 +237,23 @@ public:
         uint32_t runtime_budget_splats = 0;
     };
 
+    struct FrameBackendPlan {
+        RuntimeFidelityPolicy runtime_policy;
+        bool streaming_requested = false;
+        bool prefer_resident_backend = false;
+        bool streaming_ready = false;
+        bool should_attempt_streaming_bootstrap = false;
+        bool allow_legacy_resident_fallback = false;
+        bool allow_primary_fallback_instance = false;
+        String primary_fallback_instance_reason = "primary_gaussian_data_unavailable";
+        String resident_backend_reason = "requested_streaming_policy";
+        String resident_rejection_reason = "none";
+        String streaming_backend_reason = "requested_streaming_policy";
+        String streaming_contract_ready_reason = "streaming_contract_published";
+        String streaming_not_ready_fallback_reason = "streaming_frame_not_ready_fallback";
+        String streaming_unavailable_fallback_reason = "streaming_unavailable_fallback";
+    };
+
     struct WorldSubmissionContract {
         Ref<GaussianData> gaussian_data;
         Vector<StaticChunk> static_chunks;
@@ -760,6 +777,7 @@ public:
     bool should_prefer_resident_backend(int p_requested_route_policy, String *r_reason = nullptr) const;
     RuntimeFidelityPolicy build_runtime_fidelity_policy(const SceneState &p_scene_state,
             const PerformanceSettings &p_performance_settings) const;
+    FrameBackendPlan build_frame_backend_plan(bool p_streaming_ready) const;
     WorldSubmissionRuntimeStateSnapshot snapshot_world_submission_runtime_state() const;
     Error restore_world_submission_runtime_state(const WorldSubmissionRuntimeStateSnapshot &p_snapshot);
     Error apply_world_submission_contract(const WorldSubmissionContract &p_contract);

@@ -3303,6 +3303,63 @@ TEST_CASE("[GaussianSplatting] runtime fidelity policy centralizes route policy 
 	CHECK(runtime_policy.runtime_budget_splats == 8);
 }
 
+TEST_CASE("[GaussianSplatting] frame backend plan centralizes streaming bootstrap and fallback eligibility") {
+	ProjectSettings *project_settings = ProjectSettings::get_singleton();
+	if (project_settings == nullptr) {
+		MESSAGE("Skipping test - ProjectSettings unavailable");
+		return;
+	}
+
+	ScopedGaussianManagerPipeline manager_guard;
+	const String route_policy_setting = "rendering/gaussian_splatting/streaming/route_policy";
+	ScopedProjectSetting route_guard(project_settings, route_policy_setting);
+	project_settings->set_setting(route_policy_setting, int64_t(gs::settings::GS_ROUTE_STREAMING));
+
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate();
+	REQUIRE(renderer.is_valid());
+
+	Ref<GaussianData> data;
+	data.instantiate();
+	data->resize(32);
+
+	GaussianSplatRenderer::SceneState &scene_state = renderer->get_scene_state();
+	scene_state.gaussian_data = data;
+
+	const GaussianSplatRenderer::FrameBackendPlan backend_plan = renderer->build_frame_backend_plan(false);
+	CHECK(backend_plan.streaming_requested);
+	CHECK_FALSE(backend_plan.prefer_resident_backend);
+	CHECK_FALSE(backend_plan.streaming_ready);
+	CHECK(backend_plan.should_attempt_streaming_bootstrap);
+	CHECK_FALSE(backend_plan.allow_legacy_resident_fallback);
+	CHECK(backend_plan.allow_primary_fallback_instance);
+}
+
+TEST_CASE("[GaussianSplatting] frame backend plan preserves resident request semantics") {
+	ProjectSettings *project_settings = ProjectSettings::get_singleton();
+	if (project_settings == nullptr) {
+		MESSAGE("Skipping test - ProjectSettings unavailable");
+		return;
+	}
+
+	ScopedGaussianManagerPipeline manager_guard;
+	const String route_policy_setting = "rendering/gaussian_splatting/streaming/route_policy";
+	ScopedProjectSetting route_guard(project_settings, route_policy_setting);
+	project_settings->set_setting(route_policy_setting, int64_t(gs::settings::GS_ROUTE_RESIDENT));
+
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate();
+	REQUIRE(renderer.is_valid());
+
+	const GaussianSplatRenderer::FrameBackendPlan backend_plan = renderer->build_frame_backend_plan(false);
+	CHECK_FALSE(backend_plan.streaming_requested);
+	CHECK(backend_plan.prefer_resident_backend);
+	CHECK_FALSE(backend_plan.should_attempt_streaming_bootstrap);
+	CHECK(backend_plan.allow_legacy_resident_fallback);
+	CHECK_FALSE(backend_plan.allow_primary_fallback_instance);
+	CHECK(backend_plan.resident_backend_reason == String("requested_resident_policy"));
+}
+
 TEST_CASE("[GaussianSplatting] get_streaming_route_policy defaults to STREAMING when unset") {
 	ProjectSettings *project_settings = ProjectSettings::get_singleton();
 	if (project_settings == nullptr) {

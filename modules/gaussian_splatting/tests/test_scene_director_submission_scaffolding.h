@@ -258,6 +258,23 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Same-owner resubm
 	CHECK(restored_renderer_state.async_upload_enabled == baseline_renderer_state.async_upload_enabled);
 	CHECK(restored_renderer_state.opacity_multiplier == doctest::Approx(baseline_renderer_state.opacity_multiplier));
 	CHECK(restored_renderer_state.max_splats == baseline_renderer_state.max_splats);
+	CHECK(restored_renderer_state.streaming_overrides.override_prefetch == baseline_renderer_state.streaming_overrides.override_prefetch);
+	CHECK(restored_renderer_state.streaming_overrides.predictive_prefetch_enabled ==
+			baseline_renderer_state.streaming_overrides.predictive_prefetch_enabled);
+	CHECK(restored_renderer_state.streaming_overrides.prefetch_lookahead_distance ==
+			doctest::Approx(baseline_renderer_state.streaming_overrides.prefetch_lookahead_distance));
+	CHECK(restored_renderer_state.streaming_overrides.override_vram_budget ==
+			baseline_renderer_state.streaming_overrides.override_vram_budget);
+	CHECK(restored_renderer_state.streaming_overrides.vram_budget_config.budget_mb ==
+			baseline_renderer_state.streaming_overrides.vram_budget_config.budget_mb);
+	CHECK(restored_renderer_state.streaming_overrides.vram_budget_config.min_chunks ==
+			baseline_renderer_state.streaming_overrides.vram_budget_config.min_chunks);
+	CHECK(restored_renderer_state.streaming_overrides.vram_budget_config.max_chunks ==
+			baseline_renderer_state.streaming_overrides.vram_budget_config.max_chunks);
+	CHECK(restored_renderer_state.streaming_overrides.override_io_source ==
+			baseline_renderer_state.streaming_overrides.override_io_source);
+	CHECK(restored_renderer_state.streaming_overrides.io_source_path ==
+			baseline_renderer_state.streaming_overrides.io_source_path);
 	CHECK(restored_renderer_state.has_active_world_submission == baseline_renderer_state.has_active_world_submission);
 	CHECK(restored_renderer_state.has_desired_residency_hint == baseline_renderer_state.has_desired_residency_hint);
 	CHECK(restored_renderer_state.desired_residency_hint == baseline_renderer_state.desired_residency_hint);

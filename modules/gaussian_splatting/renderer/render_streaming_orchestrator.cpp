@@ -788,21 +788,21 @@ bool RenderStreamingOrchestrator::should_throttle_streaming_rebuild(uint32_t p_c
 	return false;
 }
 
-bool RenderStreamingOrchestrator::ensure_instance_streaming_system() {
+bool RenderStreamingOrchestrator::ensure_instance_streaming_system(const GaussianSplatRenderer::FrameBackendPlan &p_backend_plan) {
 	GaussianSplatRenderer::FrameStateProvider state_provider(renderer);
 	GaussianSplatRenderer::IFrameMutationAccess &state_mut = state_provider;
 	const GaussianSplatRenderer::IFrameStateView &state_view = state_provider;
-	const GaussianSplatRenderer::RuntimeFidelityPolicy runtime_policy =
-			renderer->build_runtime_fidelity_policy(state_view.get_scene_state(), renderer->get_performance_settings());
+	StreamingState &streaming_state = state_mut.get_streaming_state_mut();
 	// Runtime-policy gate: when the shared policy prefers resident, never create the streaming system.
 	// This remains the single chokepoint for the streaming bootstrap callers.
-	if (runtime_policy.prefer_resident_backend) {
+	if (p_backend_plan.prefer_resident_backend || !p_backend_plan.streaming_requested) {
 		streaming_bootstrap_retry_after_frame = 0;
-		streaming_bootstrap_last_error = "resident_backend_selected";
+		streaming_bootstrap_last_error = p_backend_plan.prefer_resident_backend
+				? String("resident_backend_selected")
+				: String("streaming_not_requested");
 		return false;
 	}
 
-	StreamingState &streaming_state = state_mut.get_streaming_state_mut();
 	if (streaming_state.current_streaming_system.is_valid()) {
 		streaming_bootstrap_retry_after_frame = 0;
 		streaming_bootstrap_last_error = "none";
@@ -1355,7 +1355,7 @@ void RenderStreamingOrchestrator::sync_instance_pipeline_assets(GaussianStreamin
 
 bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_data, const Transform3D &p_camera_to_world_transform,
 		const Transform3D &p_world_to_camera_transform, const Projection &p_projection, const Projection &p_render_projection,
-		RenderSceneBuffersRD *p_render_buffers, bool p_allow_runtime_fallback_instance) {
+		RenderSceneBuffersRD *p_render_buffers, const GaussianSplatRenderer::FrameBackendPlan &p_backend_plan) {
 	const bool trace_enabled = GaussianSplatting::debug_trace_is_enabled();
 	// DEBUG: Track if this function runs every frame
 	static int streaming_frame_counter = 0;
@@ -1383,10 +1383,7 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 		performance_state.metrics.streaming_state = streaming_metrics;
 		return false;
 	}
-	const GaussianSplatRenderer::SceneState &scene_state = state_view.get_scene_state();
-	const GaussianSplatRenderer::RuntimeFidelityPolicy runtime_policy =
-			renderer->build_runtime_fidelity_policy(scene_state, renderer->get_performance_settings());
-	const uint32_t desired_runtime_splats = runtime_policy.runtime_budget_splats;
+	const uint32_t desired_runtime_splats = p_backend_plan.runtime_policy.runtime_budget_splats;
 	if (desired_runtime_splats > 0 && streaming_state.memory_stream.is_valid()) {
 		const uint32_t current_memory_capacity = streaming_state.memory_stream->get_max_gaussians();
 		const uint32_t current_runtime_capacity = streaming_state.current_streaming_system.is_valid()
@@ -1430,7 +1427,7 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 			streaming_state.cached_streamed_sh_limits.clear();
 			streaming_state.cached_streamed_index_lookup.clear();
 			(renderer->*runtime_ports.clear_instance_pipeline_buffers)();
-			if (!ensure_instance_streaming_system()) {
+			if (!ensure_instance_streaming_system(p_backend_plan)) {
 				const StreamingReadinessState readiness_state = StreamingReadinessState::RUNTIME_BOOTSTRAP_PENDING;
 				publish_not_ready_route(readiness_state);
 				Dictionary streaming_metrics = performance_state.metrics.streaming_state;
@@ -1541,7 +1538,7 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 	// render primary gaussian data without SceneDirector instances. In those cases we
 	// still need a synthetic instance entry so the instance-pipeline cull/sort/raster
 	// contracts can come up without silently falling back to the resident path.
-	if (p_allow_runtime_fallback_instance &&
+	if (p_backend_plan.allow_primary_fallback_instance &&
 			instance_pipeline_instance_cache.is_empty() &&
 			state_view.get_scene_state().gaussian_data.is_valid() &&
 			state_view.get_scene_state().gaussian_data->get_count() > 0) {
@@ -1566,14 +1563,15 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 		instance_pipeline_instance_cache.push_back(fallback_instance);
 		if (trace_enabled) {
 			GaussianSplatting::debug_trace_record_event("instance_pipeline",
-					"Injected primary fallback instance for empty-instance streaming path",
+					vformat("Injected primary fallback instance for empty-instance streaming path (%s)",
+							p_backend_plan.primary_fallback_instance_reason),
 					false);
 		}
 	}
 	const uint32_t registered_assets_with_data = streaming_system->get_registered_asset_count_with_data();
 	if (!instance_pipeline_instance_cache.is_empty() &&
 			registered_assets_with_data == 0 &&
-			!p_allow_runtime_fallback_instance) {
+			!p_backend_plan.allow_primary_fallback_instance) {
 		const StreamingReadinessState readiness_state = StreamingReadinessState::REGISTRATION_PENDING;
 		ERR_PRINT("[GaussianSplatRenderer] Streaming bootstrap produced instances but no registered streaming assets with data; resetting streaming system.");
 		finalize_streaming_frame(readiness_state,
@@ -2155,15 +2153,19 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 	return true;
 }
 
-void RenderStreamingOrchestrator::tick_streaming_only(const Transform3D &p_camera_to_world_transform, const Projection &p_projection) {
+void RenderStreamingOrchestrator::tick_streaming_only(const Transform3D &p_camera_to_world_transform, const Projection &p_projection,
+		const GaussianSplatRenderer::FrameBackendPlan &p_backend_plan) {
 	GaussianSplatRenderer::FrameStateProvider state_provider(renderer);
 	GaussianSplatRenderer::IFrameMutationAccess &state_mut = state_provider;
 	const GaussianSplatRenderer::IFrameStateView &state_view = state_provider;
 	StreamingState &streaming_state = state_mut.get_streaming_state_mut();
 	GaussianSplatRenderer::FrameState &frame_state_mut = state_mut.get_frame_state_mut();
 	GaussianSplatRenderer::PerformanceState &performance_state = state_mut.get_performance_state_mut();
+	if (p_backend_plan.prefer_resident_backend || !p_backend_plan.streaming_requested) {
+		return;
+	}
 	if (!streaming_state.current_streaming_system.is_valid()) {
-		if (!ensure_instance_streaming_system()) {
+		if (!ensure_instance_streaming_system(p_backend_plan)) {
 			return;
 		}
 	}
