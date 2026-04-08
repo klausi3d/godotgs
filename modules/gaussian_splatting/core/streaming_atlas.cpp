@@ -138,15 +138,24 @@ bool GaussianStreamingSystem::_load_requested_chunks(uint32_t asset_id, AtlasAss
 			continue;
 		}
 		chunks_processed++;
+        const GaussianStreamingSystem::RequestedChunkState *request_state =
+                asset.requested_chunk_state.getptr(chunk_id);
+        if (request_state &&
+                request_state->stamp == asset_registry.request_generation &&
+                request_state->request_result == GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_FAILED) {
+            continue;
+        }
         StreamingChunk &chunk = asset_chunks[chunk_id];
         if (chunk.is_loaded || chunk.upload_pending) {
             chunks_already_loaded++;
             if (chunk.is_loaded) {
+                chunk.explicit_request_generation = 0;
                 eviction_controller.touch_chunk_use(chunk.last_used_frame);
                 _update_requested_chunk_state(asset, chunk_id,
                         GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED,
                         GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED);
             } else {
+                chunk.explicit_request_generation = request_state ? request_state->stamp : asset_registry.request_generation;
                 _update_requested_chunk_state(asset, chunk_id,
                         GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_QUEUED,
                         GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_QUEUED);
@@ -157,6 +166,7 @@ bool GaussianStreamingSystem::_load_requested_chunks(uint32_t asset_id, AtlasAss
 
         if (queued) {
             chunks_queued++;
+            chunk.explicit_request_generation = request_state ? request_state->stamp : asset_registry.request_generation;
             _update_requested_chunk_state(asset, chunk_id,
                     GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_QUEUED,
                     GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_QUEUED);
@@ -172,7 +182,8 @@ bool GaussianStreamingSystem::_load_requested_chunks(uint32_t asset_id, AtlasAss
             }
             _update_requested_chunk_state(asset, chunk_id,
                     GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED,
-                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED);
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED,
+                    ERR_BUSY);
             has_deferred_chunks = true;
         }
         if (!can_async_pack && !chunk.is_loaded && !chunk.upload_pending) {

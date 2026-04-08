@@ -47,6 +47,7 @@ struct StreamingChunk {
     uint64_t last_used_frame = 0;
     uint64_t last_loaded_frame = 0;
     uint32_t buffer_slot = UINT32_MAX;
+    uint64_t explicit_request_generation = 0;
 
     float lod_blend_factor = 1.0f;
     float previous_distance = 0.0f;
@@ -63,12 +64,17 @@ struct StreamingChunk {
 };
 
 struct RequestedChunkState {
+    // `stamp` tracks the request generation that most recently collected this
+    // chunk into the explicit residency set.
     uint64_t stamp = 0;
     uint32_t lod_mask = 0;
+    // Latest caller-visible request status generation. This may lag behind the
+    // current global request generation when an older request completes or
+    // fails after collection has moved on.
     uint64_t request_generation = 0;
     uint8_t request_state = 0;
     uint8_t request_result = 0;
-    uint16_t reserved = 0;
+    int32_t request_error = 0;
 };
 
 struct AtlasAssetState {

@@ -71,6 +71,9 @@ func _run() -> void:
 	if int(idle_status.get("request_state", -1)) != 0:
 		_record_failure("No-op finalize should leave request state idle", idle_status)
 		return
+	if bool(idle_status.get("request_status_current_generation", true)):
+		_record_failure("Idle residency status should not report a current-generation completion", idle_status)
+		return
 
 	streaming.begin_residency_requests()
 	var chunk_result := streaming.request_chunk_residency(0, 0, 0)
@@ -86,6 +89,9 @@ func _run() -> void:
 		return
 	if status.get("request_result_name", "") != "collected":
 		_record_failure("Primary explicit residency request did not expose collected result", status)
+		return
+	if not bool(status.get("request_status_current_generation", false)):
+		_record_failure("Collected residency request should report a current-generation status", status)
 		return
 	if not bool(status.get("request_pending", false)):
 		_record_failure("Primary explicit residency request should mark pending work", status)

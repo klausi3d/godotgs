@@ -1271,6 +1271,7 @@ Error GaussianStreamingSystem::request_chunk_residency(uint32_t asset_id, uint32
     state.request_generation = asset_registry.request_generation;
     state.request_state = GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_COLLECTED;
     state.request_result = GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_COLLECTED;
+    state.request_error = OK;
     state.lod_mask |= (1u << safe_lod);
     asset_registry.request_pending = true;
     return OK;
@@ -1316,14 +1317,31 @@ bool GaussianStreamingSystem::_is_requested_chunk_in_current_generation(const At
 }
 
 void GaussianStreamingSystem::_update_requested_chunk_state(
-        AtlasAssetState &asset, uint32_t chunk_id, uint8_t request_state, uint8_t request_result) {
+        AtlasAssetState &asset, uint32_t chunk_id, uint8_t request_state, uint8_t request_result, Error request_error) {
+    const RequestedChunkState *state = asset.requested_chunk_state.getptr(chunk_id);
+    if (!state || state->stamp == 0) {
+        return;
+    }
+    _update_requested_chunk_state_for_generation(
+            asset,
+            chunk_id,
+            state->stamp,
+            request_state,
+            request_result,
+            request_error);
+}
+
+void GaussianStreamingSystem::_update_requested_chunk_state_for_generation(
+        AtlasAssetState &asset, uint32_t chunk_id, uint64_t request_generation,
+        uint8_t request_state, uint8_t request_result, Error request_error) {
     RequestedChunkState *state = asset.requested_chunk_state.getptr(chunk_id);
-    if (!state || state->stamp != asset_registry.request_generation) {
+    if (!state || state->stamp == 0 || state->stamp != request_generation) {
         return;
     }
     state->request_state = request_state;
     state->request_result = request_result;
-    state->request_generation = asset_registry.request_generation;
+    state->request_generation = request_generation;
+    state->request_error = request_error;
 }
 
 StringName GaussianStreamingSystem::_residency_request_state_name(uint8_t request_state) {
@@ -1344,6 +1362,39 @@ StringName GaussianStreamingSystem::_residency_request_state_name(uint8_t reques
     }
 }
 
+StringName GaussianStreamingSystem::_residency_request_error_name(Error request_error) {
+    switch (request_error) {
+        case OK:
+            return StringName("ok");
+        case ERR_BUSY:
+            return StringName("busy");
+        case ERR_UNAVAILABLE:
+            return StringName("unavailable");
+        case ERR_DOES_NOT_EXIST:
+            return StringName("does_not_exist");
+        case ERR_INVALID_PARAMETER:
+            return StringName("invalid_parameter");
+        case FAILED:
+            return StringName("failed");
+        default:
+            return StringName("unknown");
+    }
+}
+
+bool GaussianStreamingSystem::_is_terminal_residency_request_error(Error request_error) {
+    switch (request_error) {
+        case ERR_BUSY:
+        case OK:
+            return false;
+        case ERR_UNAVAILABLE:
+        case ERR_DOES_NOT_EXIST:
+        case ERR_INVALID_PARAMETER:
+        case FAILED:
+        default:
+            return true;
+    }
+}
+
 Dictionary GaussianStreamingSystem::_build_residency_request_status(uint32_t asset_id, uint32_t chunk_id) const {
     Dictionary status;
     status["asset_id"] = static_cast<int64_t>(asset_id);
@@ -1351,6 +1402,19 @@ Dictionary GaussianStreamingSystem::_build_residency_request_status(uint32_t ass
     status["request_generation"] = static_cast<int64_t>(asset_registry.request_generation);
     status["request_collection_active"] = asset_registry.request_collection_active;
     status["request_pending"] = asset_registry.request_pending;
+    status["request_generation_current"] = int64_t(0);
+    status["request_status_generation"] = int64_t(0);
+    status["request_status_current_generation"] = false;
+    status["request_error"] = int64_t(OK);
+    status["request_error_name"] = _residency_request_error_name(OK);
+    status["lod_mask"] = int64_t(0);
+    status["stale_request_generation"] = int64_t(0);
+    status["stale_request_state"] = static_cast<int64_t>(GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_IDLE);
+    status["stale_request_state_name"] = _residency_request_state_name(GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_IDLE);
+    status["stale_request_result"] = static_cast<int64_t>(GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_IDLE);
+    status["stale_request_result_name"] = _residency_request_state_name(GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_IDLE);
+    status["stale_request_error"] = int64_t(OK);
+    status["stale_request_error_name"] = _residency_request_error_name(OK);
 
     const AtlasAssetState *asset = _get_asset_state(asset_id);
     if (!asset) {
@@ -1374,15 +1438,35 @@ Dictionary GaussianStreamingSystem::_build_residency_request_status(uint32_t ass
 
     const RequestedChunkState *state = asset->requested_chunk_state.getptr(chunk_id);
     const bool requested = _is_requested_chunk_in_current_generation(*asset, chunk_id);
-    const uint8_t request_state = requested ? state->request_state : GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_IDLE;
-    const uint8_t request_result = requested ? state->request_result : GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_IDLE;
+    const bool has_recorded_status = state && state->request_generation != 0;
+    const uint8_t request_state = has_recorded_status ? state->request_state : GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_IDLE;
+    const uint8_t request_result = has_recorded_status ? state->request_result : GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_IDLE;
+    const Error request_error = has_recorded_status ? static_cast<Error>(state->request_error) : OK;
+    const bool stale_request = has_recorded_status && state->request_generation != asset_registry.request_generation;
     status["requested"] = requested;
-    status["request_generation_current"] = requested ? static_cast<int64_t>(state->request_generation) : int64_t(0);
-    status["lod_mask"] = requested ? static_cast<int64_t>(state->lod_mask) : int64_t(0);
+    if (requested) {
+        status["request_generation_current"] = static_cast<int64_t>(state->stamp);
+        status["lod_mask"] = static_cast<int64_t>(state->lod_mask);
+    }
+    if (has_recorded_status) {
+        status["request_status_generation"] = static_cast<int64_t>(state->request_generation);
+        status["request_status_current_generation"] = state->request_generation == asset_registry.request_generation;
+    }
     status["request_state"] = static_cast<int64_t>(request_state);
     status["request_state_name"] = _residency_request_state_name(request_state);
     status["request_result"] = static_cast<int64_t>(request_result);
     status["request_result_name"] = _residency_request_state_name(request_result);
+    status["request_error"] = static_cast<int64_t>(request_error);
+    status["request_error_name"] = _residency_request_error_name(request_error);
+    if (stale_request) {
+        status["stale_request_generation"] = static_cast<int64_t>(state->request_generation);
+        status["stale_request_state"] = static_cast<int64_t>(request_state);
+        status["stale_request_state_name"] = _residency_request_state_name(request_state);
+        status["stale_request_result"] = static_cast<int64_t>(request_result);
+        status["stale_request_result_name"] = _residency_request_state_name(request_result);
+        status["stale_request_error"] = static_cast<int64_t>(request_error);
+        status["stale_request_error_name"] = _residency_request_error_name(request_error);
+    }
     return status;
 }
 
@@ -2910,8 +2994,8 @@ void GaussianStreamingSystem::_update_chunk_visibility(const Transform3D &camera
     visibility.update_chunk_visibility(*this, camera_transform, projection);
 }
 
-void GaussianStreamingSystem::_load_chunk(uint32_t chunk_idx) {
-    _load_chunk(PRIMARY_ASSET_ID, chunk_idx);
+Error GaussianStreamingSystem::_load_chunk(uint32_t chunk_idx) {
+    return _load_chunk(PRIMARY_ASSET_ID, chunk_idx);
 }
 
 void GaussianStreamingSystem::_assert_chunk_state_invariant(uint32_t asset_id, uint32_t chunk_idx,
@@ -3037,20 +3121,20 @@ void GaussianStreamingSystem::_rollback_pending_chunk(uint32_t asset_id, uint32_
             !release_slot);
 }
 
-void GaussianStreamingSystem::_load_chunk(uint32_t asset_id, uint32_t chunk_idx) {
+Error GaussianStreamingSystem::_load_chunk(uint32_t asset_id, uint32_t chunk_idx) {
     AtlasAssetState *asset = _get_asset_state(asset_id);
     if (!asset || !asset->data.is_valid()) {
-        return;
+        return ERR_DOES_NOT_EXIST;
     }
 
     LocalVector<StreamingChunk> &asset_chunks = _get_asset_chunks(*asset);
     if (chunk_idx >= asset_chunks.size()) {
-        return;
+        return ERR_INVALID_PARAMETER;
     }
 
     StreamingChunk &chunk = asset_chunks[chunk_idx];
     if (chunk.is_loaded || chunk.upload_pending) {
-        return;
+        return ERR_BUSY;
     }
 
     _assert_chunk_state_invariant(asset_id, chunk_idx, chunk, "_load_chunk.pre");
@@ -3062,27 +3146,30 @@ void GaussianStreamingSystem::_load_chunk(uint32_t asset_id, uint32_t chunk_idx)
     GaussianSplatManager::ScopedSubmissionLock submission_lock;
     RenderingDevice *submission_rd = _resolve_submission_device(manager, submission_lock);
 
-    if (!submission_rd || !persistent_buffer.is_valid()) {
-        return;
+    if (!submission_rd) {
+        return ERR_UNAVAILABLE;
+    }
+    if (!persistent_buffer.is_valid()) {
+        return ERR_UNAVAILABLE;
     }
     if (!_ensure_atlas_slot_available(asset_id)) {
-        return;
+        return ERR_BUSY;
     }
 
     uint32_t buffer_slot = UINT32_MAX;
     if (!atlas_allocator.allocate_slot(_make_chunk_key(asset_id, chunk_idx), buffer_slot)) {
-        return;
+        return ERR_BUSY;
     }
 
     if (!_begin_chunk_upload(asset_id, chunk_idx, chunk, buffer_slot)) {
         atlas_allocator.release_slot(_make_chunk_key(asset_id, chunk_idx));
-        return;
+        return FAILED;
     }
 
     const uint64_t buffer_offset64 = uint64_t(buffer_slot) * CHUNK_SIZE * sizeof(PackedGaussian);
     if (buffer_offset64 > uint64_t(UINT32_MAX)) {
         _rollback_pending_chunk(asset_id, chunk_idx, chunk, true);
-        return;
+        return FAILED;
     }
     const uint32_t buffer_offset = static_cast<uint32_t>(buffer_offset64);
 
@@ -3090,14 +3177,15 @@ void GaussianStreamingSystem::_load_chunk(uint32_t asset_id, uint32_t chunk_idx)
     SHCompressionMetrics metrics;
     if (!_pack_chunk_data(asset_id, chunk_idx, *asset, chunk, chunk_data, metrics)) {
         _rollback_pending_chunk(asset_id, chunk_idx, chunk, true);
-        return;
+        return FAILED;
     }
     _log_chunk_load_metrics(chunk_idx, metrics);
     if (!_upload_chunk_to_gpu(submission_rd, buffer_offset, chunk_data, asset_id, chunk_idx, buffer_slot, chunk.count)) {
         _rollback_pending_chunk(asset_id, chunk_idx, chunk, true);
-        return;
+        return FAILED;
     }
     _finalize_chunk_load(asset_id, chunk_idx, chunk, buffer_slot, asset_chunks.size());
+    return OK;
 }
 
 RenderingDevice *GaussianStreamingSystem::_resolve_submission_device(GaussianSplatManager *manager,
@@ -3248,6 +3336,12 @@ void GaussianStreamingSystem::_log_chunk_load_metrics(uint32_t chunk_idx, const 
 bool GaussianStreamingSystem::_upload_chunk_to_gpu(RenderingDevice *submission_rd, uint32_t buffer_offset,
         const Vector<PackedGaussian> &chunk_data, uint32_t asset_id, uint32_t chunk_idx,
         uint32_t buffer_slot, uint32_t chunk_count) const {
+#if defined(TESTS_ENABLED)
+    if (const_cast<GaussianStreamingSystem *>(this)->test_force_next_chunk_upload_failure) {
+        const_cast<GaussianStreamingSystem *>(this)->test_force_next_chunk_upload_failure = false;
+        return false;
+    }
+#endif
     if (!submission_rd || !persistent_buffer.is_valid() || buffer_slot == UINT32_MAX || chunk_count == 0 || chunk_count > CHUNK_SIZE) {
         return false;
     }
@@ -3304,10 +3398,20 @@ void GaussianStreamingSystem::_complete_chunk_load_common(uint32_t asset_id, uin
     budget.vram_usage += chunk.count * sizeof(PackedGaussian);
     AtlasAssetState *asset = _get_asset_state(asset_id);
     if (asset) {
-        _update_requested_chunk_state(*asset, chunk_idx,
-                GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED,
-                GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED);
+        if (chunk.explicit_request_generation != 0) {
+            _update_requested_chunk_state_for_generation(*asset, chunk_idx,
+                    chunk.explicit_request_generation,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED,
+                    OK);
+        } else {
+            _update_requested_chunk_state(*asset, chunk_idx,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED,
+                    OK);
+        }
     }
+    chunk.explicit_request_generation = 0;
     global_atlas_registry.mark_chunk_meta_dirty(*this, asset_id, chunk_idx);
     _assert_chunk_state_invariant(asset_id, chunk_idx, chunk, "_complete_chunk_load_common");
 }
@@ -4396,7 +4500,8 @@ uint32_t GaussianStreamingSystem::_drain_sync_fallback_chunk_loads(
             scheduler.last_sync_fallback_stalled_count++;
             _update_requested_chunk_state(*asset, chunk_idx,
                     GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED,
-                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED);
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED,
+                    ERR_BUSY);
             _enqueue_sync_fallback_chunk_load(asset_id, chunk_idx, asset_id != PRIMARY_ASSET_ID);
             continue;
         }
@@ -4419,17 +4524,21 @@ uint32_t GaussianStreamingSystem::_drain_sync_fallback_chunk_loads(
                 scheduler.last_sync_fallback_stalled_count++;
                 _update_requested_chunk_state(*asset, chunk_idx,
                         GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED,
-                        GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED);
+                        GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED,
+                        ERR_BUSY);
                 _enqueue_sync_fallback_chunk_load(asset_id, chunk_idx, asset_id != PRIMARY_ASSET_ID);
                 continue;
             }
         }
 
-        _load_chunk(asset_id, chunk_idx);
+        const RequestedChunkState *request_state = asset->requested_chunk_state.getptr(chunk_idx);
+        chunk.explicit_request_generation = request_state ? request_state->stamp : uint64_t(0);
+        const Error load_error = _load_chunk(asset_id, chunk_idx);
         if (chunk.is_loaded) {
             _update_requested_chunk_state(*asset, chunk_idx,
                     GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED,
-                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED);
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_SATISFIED,
+                    OK);
             drained++;
             scheduler.last_sync_fallback_drained_count++;
             budget.chunks_loaded_this_frame++;
@@ -4439,12 +4548,21 @@ uint32_t GaussianStreamingSystem::_drain_sync_fallback_chunk_loads(
         if (chunk.upload_pending) {
             _update_requested_chunk_state(*asset, chunk_idx,
                     GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_QUEUED,
-                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_QUEUED);
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_QUEUED,
+                    OK);
+        } else if (_is_terminal_residency_request_error(load_error)) {
+            scheduler.last_sync_fallback_stalled_count++;
+            _update_requested_chunk_state(*asset, chunk_idx,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_FAILED,
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_FAILED,
+                    load_error);
+            chunk.explicit_request_generation = 0;
         } else {
             scheduler.last_sync_fallback_stalled_count++;
             _update_requested_chunk_state(*asset, chunk_idx,
                     GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED,
-                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED);
+                    GaussianStreamingTypes::RESIDENCY_REQUEST_STATE_DEFERRED,
+                    load_error == OK ? ERR_BUSY : load_error);
             _enqueue_sync_fallback_chunk_load(asset_id, chunk_idx, asset_id != PRIMARY_ASSET_ID);
         }
     }

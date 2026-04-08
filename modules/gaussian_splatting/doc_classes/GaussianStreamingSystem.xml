@@ -68,7 +68,7 @@
 			<param index="0" name="asset_id" type="int" />
 			<param index="1" name="chunk_id" type="int" />
 			<description>
-				Returns a small status dictionary for the requested chunk. The dictionary includes the request generation, LOD mask, request state, request result, and whether a residency batch is currently active or pending.
+				Returns a small status dictionary for the requested chunk. The dictionary includes the active request generation, LOD mask, request state/result, error code, and whether the latest recorded outcome still belongs to the current request generation. When an older explicit request completes after collection has moved on, the stale outcome remains visible through the returned status instead of collapsing back to idle.
 			</description>
 		</method>
 		<method name="get_visible_count">

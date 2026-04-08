@@ -1348,6 +1348,90 @@ TEST_CASE("[Streaming Pipeline] Residency finalize without requests leaves no pe
     CHECK(String(status.get("request_result_name", String())) == "idle");
 }
 
+TEST_CASE("[Streaming Pipeline] Stale residency completion remains visible in request status") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs) {
+        MESSAGE("Skipping - Rendering server unavailable");
+        return;
+    }
+
+    RenderingDevice *rd = RenderingDevice::get_singleton();
+    if (!rd) {
+        rd = rs->create_local_rendering_device();
+    }
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    if (!project_settings) {
+        MESSAGE("Skipping - ProjectSettings unavailable");
+        return;
+    }
+
+    const String async_pack_setting = "rendering/gaussian_splatting/streaming/async_pack_enabled";
+    ScopedProjectSettingRestore async_pack_guard(project_settings, async_pack_setting);
+    project_settings->set_setting(async_pack_setting, true);
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_with_device(create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE), rd);
+    if (!system->is_runtime_ready()) {
+        MESSAGE("Skipping - Streaming runtime not ready");
+        return;
+    }
+
+    Transform3D camera_transform;
+    camera_transform.origin = Vector3(0.0f, 0.0f, 5.0f);
+    Projection projection;
+    projection.set_perspective(60.0f, 1.0f, 0.1f, 2000.0f);
+
+    system->begin_residency_requests();
+    CHECK(system->request_chunk_residency(0, 0, 0) == OK);
+    system->finalize_residency_requests();
+
+    bool saw_async_queue = false;
+    for (int i = 0; i < 48; i++) {
+        system->update_streaming(camera_transform, projection);
+        if (system->get_pending_pack_jobs() > 0 || system->get_pending_upload_jobs() > 0) {
+            saw_async_queue = true;
+            break;
+        }
+        OS::get_singleton()->delay_usec(1000);
+    }
+    if (!saw_async_queue) {
+        MESSAGE("Skipping - Async pack/upload queue not observed in test environment");
+        return;
+    }
+
+    system->begin_residency_requests();
+    system->finalize_residency_requests();
+
+    for (int i = 0; i < 96; i++) {
+        system->update_streaming(camera_transform, projection);
+        if (system->get_loaded_chunks() > 0 &&
+                system->get_pending_pack_jobs() == 0 &&
+                system->get_pending_upload_jobs() == 0) {
+            break;
+        }
+        OS::get_singleton()->delay_usec(500);
+    }
+
+    if (system->get_loaded_chunks() == 0) {
+        MESSAGE("Skipping - Stale request completion did not complete in test environment");
+        return;
+    }
+
+    Dictionary status = system->get_residency_request_status(0, 0);
+    CHECK_FALSE(bool(status.get("requested", true)));
+    CHECK(String(status.get("request_state_name", String())) == "satisfied");
+    CHECK(String(status.get("request_result_name", String())) == "satisfied");
+    CHECK_FALSE(bool(status.get("request_status_current_generation", true)));
+    CHECK((int64_t)status.get("request_generation_current", -1) == 0);
+    CHECK((int64_t)status.get("request_status_generation", 0) > 0);
+}
+
 TEST_CASE("[Streaming Pipeline] Cancelled pending chunk uploads do not count as evictions") {
     RenderingServer *rs = RenderingServer::get_singleton();
     if (!rs) {
@@ -1586,6 +1670,68 @@ TEST_CASE("[Streaming Pipeline] Primary explicit residency bypasses sync-fallbac
     CHECK(system->get_loaded_chunks() > 0);
     CHECK(String(status.get("request_state_name", String())) == "satisfied");
     CHECK(String(status.get("request_result_name", String())) == "satisfied");
+}
+
+TEST_CASE("[Streaming Pipeline] Hard explicit residency load failures surface as failed status") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs) {
+        MESSAGE("Skipping - Rendering server unavailable");
+        return;
+    }
+
+    RenderingDevice *rd = RenderingDevice::get_singleton();
+    if (!rd) {
+        rd = rs->create_local_rendering_device();
+    }
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    if (!project_settings) {
+        MESSAGE("Skipping - ProjectSettings unavailable");
+        return;
+    }
+
+    const String async_pack_setting = "rendering/gaussian_splatting/streaming/async_pack_enabled";
+    ScopedProjectSettingRestore async_pack_guard(project_settings, async_pack_setting);
+    project_settings->set_setting(async_pack_setting, false);
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_with_device(create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE), rd);
+    if (!system->is_runtime_ready()) {
+        MESSAGE("Skipping - Streaming runtime not ready");
+        return;
+    }
+
+    Transform3D camera_transform;
+    camera_transform.origin = Vector3(0.0f, 0.0f, 5.0f);
+    Projection projection;
+    projection.set_perspective(60.0f, 1.0f, 0.1f, 2000.0f);
+
+    system->_test_force_next_chunk_upload_failure();
+    system->begin_residency_requests();
+    CHECK(system->request_chunk_residency(0, 0, 0) == OK);
+    system->finalize_residency_requests();
+
+    system->update_streaming(camera_transform, projection);
+    Dictionary failed_status = system->get_residency_request_status(0, 0);
+    CHECK(bool(failed_status.get("requested", false)));
+    CHECK(String(failed_status.get("request_state_name", String())) == "failed");
+    CHECK(String(failed_status.get("request_result_name", String())) == "failed");
+    CHECK(bool(failed_status.get("request_status_current_generation", false)));
+
+    system->update_streaming(camera_transform, projection);
+    Dictionary settled_status = system->get_residency_request_status(0, 0);
+    CHECK_FALSE(bool(settled_status.get("request_pending", true)));
+    CHECK(bool(settled_status.get("requested", false)));
+    CHECK(String(settled_status.get("request_state_name", String())) == "failed");
+    CHECK(String(settled_status.get("request_result_name", String())) == "failed");
+    CHECK((int64_t)settled_status.get("request_status_generation", 0) ==
+            (int64_t)settled_status.get("request_generation_current", -1));
+    CHECK(system->get_loaded_chunks() == 0);
 }
 
 TEST_CASE("[Streaming Pipeline] Cancelled pending chunk loads do not count as evictions") {
