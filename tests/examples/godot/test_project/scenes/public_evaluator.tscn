@@ -13,10 +13,8 @@ exposure = 0.23
 
 [node name="DemoSplat" type="GaussianSplatWorld3D" parent="."]
 world = ExtResource("1")
-quality/preset = 2
 quality/lod_bias = 0.75
 quality/max_splat_count = 1000000
-rendering/color_grading = SubResource("1")
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.94, 0.342, 0, -0.342, 0.94, 0, 10, 20)
