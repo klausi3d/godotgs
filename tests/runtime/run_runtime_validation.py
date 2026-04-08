@@ -131,7 +131,7 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Override the profile-selected Godot runtime mode. "
-            "Defaults to GS_RUNTIME_GD_MODE, otherwise the selected profile's gd_mode."
+            "Defaults to the selected profile's gd_mode, otherwise GS_RUNTIME_GD_MODE."
         ),
     )
     parser.add_argument(
@@ -941,7 +941,16 @@ def main() -> int:
     profile_gd_mode = str(profile_config.get("gd_mode", "")).strip()
     cpp_timeout = int(profile_config.get("cpp_timeout", args.cpp_timeout))
     gd_timeout = int(profile_config.get("gd_timeout", args.gd_timeout))
-    resolved_gd_mode = args.gd_mode or os.environ.get("GS_RUNTIME_GD_MODE") or profile_gd_mode or "headless"
+    env_gd_mode = os.environ.get("GS_RUNTIME_GD_MODE")
+    resolved_gd_mode = args.gd_mode or profile_gd_mode or env_gd_mode or "headless"
+    if env_gd_mode and not args.gd_mode and profile_gd_mode and env_gd_mode != profile_gd_mode:
+        print(
+            "[runtime] Ignoring GS_RUNTIME_GD_MODE={env!r}; profile '{profile}' requires gd_mode={mode!r}.".format(
+                env=env_gd_mode,
+                profile=profile_name,
+                mode=profile_gd_mode,
+            )
+        )
 
     selected_cpp_tests = args.cpp_test if args.cpp_test else profile_cpp_tests
     selected_gd_tests = args.gd_test if args.gd_test else profile_gd_tests
