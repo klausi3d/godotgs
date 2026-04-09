@@ -78,8 +78,26 @@ be stale:
 python3 tests/runtime/prepare_synthetic_assets.py --quiet
 ```
 Streaming-named lanes that still resolve to `test_splats.ply` are intentionally classified as
-`lightweight_smoke`; they are useful for churn-shaped smoke coverage, but they are not chunked
+`lightweight_smoke`; they are useful for proof-shape smoke coverage, but they are not chunked
 large-scene evidence.
+
+## Proof Ladder
+
+The current large-world proof ladder is intentionally split between one benchmark bootstrap lane
+and the existing runtime probes:
+
+| Proof role | Surface | Failure intent | Current evidence class |
+| --- | --- | --- | --- |
+| `proof_corridor_return_bootstrap` | `open_world_corridor_proof` | Catch failure to resolve the canonical corridor-return open-world stage contract through the benchmark manifest surface. | `chunked_open_world_candidate` |
+| `proof_support_corridor_churn_smoke` | `streaming_corridor` | Catch corridor-shaped churn regressions before the real chunked corridor lane is promoted. | `lightweight_smoke` |
+| `proof_support_boundary_crossing_smoke` | `city_flyover` | Catch large visibility-shift / boundary-crossing regressions on the existing smoke surface. | `lightweight_smoke` |
+| `proof_support_city_roam_soak_smoke` | `long_soak` | Catch revisit / soak regressions on the current smoke surface before the city-scale chunked lane is validated. | `lightweight_smoke` |
+| `runtime_budget_churn_probe` | `tests/runtime/test_gpu_streaming_eviction_churn_probe.gd` | Fail on budget-driven churn collapse, queue starvation, or stalled forward progress under tight VRAM. | Runtime probe |
+| `runtime_corridor_return_gate` | `tests/runtime/test_world_streaming_gate.gd` | Fail when forward and return phases never reach real streamed readiness under the streaming route. | Runtime gate |
+| `runtime_large_tier_stress` | `tests/runtime/test_gpu_streaming_stress.gd` | Fail when large-tier streaming loses first-visible, residency, or frame-budget stability. | Runtime stress |
+
+Mixed-residency and multi-asset hub scenarios remain evidence-only and are intentionally outside
+the blocking proof ladder for `Phase 4C.1`.
 
 ## Suite Coverage
 
@@ -88,12 +106,13 @@ These are the user-relevant lanes already encoded in the suite and available for
 | Lane | Purpose | Asset class | Evidence role | Current publication status |
 | --- | --- | --- | --- | --- |
 | `static_baseline` | Low-noise raster baseline | `lightweight_smoke` | Published baseline | Published |
-| `streaming_corridor` | Camera sweep stressing chunk turnover | `lightweight_smoke` | Streaming smoke only | Suite-only |
-| `city_flyover` | High-altitude visibility-change stress | `lightweight_smoke` | Streaming smoke only | Suite-only |
+| `open_world_corridor_proof` | Corridor return proof bootstrap | `chunked_open_world_candidate` | `proof_corridor_return_bootstrap` | Suite-only |
+| `streaming_corridor` | Corridor churn smoke support | `lightweight_smoke` | `proof_support_corridor_churn_smoke` | Suite-only |
+| `city_flyover` | Boundary-crossing smoke support | `lightweight_smoke` | `proof_support_boundary_crossing_smoke` | Suite-only |
 | `instance_storm` | Many-instance submission pressure | `lightweight_smoke` | Suite support | Suite-only |
 | `lighting_stress` | Animated light and shading stress | `lightweight_smoke` | Suite support | Suite-only |
-| `long_soak` | Long-horizon drift/churn stability | `lightweight_smoke` | Streaming smoke only | Suite-only |
-| `unified_composite` | Integrated all-systems composite lane | `lightweight_smoke` | Streaming smoke only | Suite-only |
+| `long_soak` | City-roam soak smoke support | `lightweight_smoke` | `proof_support_city_roam_soak_smoke` | Suite-only |
+| `unified_composite` | Integrated composite smoke support | `lightweight_smoke` | `proof_support_integrated_composite_smoke` | Suite-only |
 
 No currently documented benchmark lane should be cited as representative chunked streaming
 evidence unless its manifest classification is upgraded to `real_chunked`.

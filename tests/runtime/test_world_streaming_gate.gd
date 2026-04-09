@@ -1,5 +1,7 @@
 extends SceneTree
 
+# Runtime corridor-return gate for the large-world proof ladder.
+
 const SKIP_MARKER := "[RUNTIME_SKIP]"
 const FAIL_MARKER := "[RUNTIME_FAIL]"
 const METRICS_MARKER := "[RUNTIME_METRICS]"

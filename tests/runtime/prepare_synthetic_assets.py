@@ -141,8 +141,8 @@ LANE_DEFAULT_ASSETS: dict[str, str] = {
 LANE_METADATA: dict[str, dict[str, object]] = {
     "open_world_corridor_proof": {
         "asset_classification": "chunked_open_world_candidate",
-        "evidence_role": "open_world_proof_pending_staging",
-        "notes": "Explicit bootstrap proof lane resolving the canonical open-world corridor stage manifest through the benchmark asset manifest.",
+        "evidence_role": "proof_corridor_return_bootstrap",
+        "notes": "Explicit corridor-return proof bootstrap lane resolving the canonical open-world corridor stage manifest through the benchmark asset manifest.",
         "require_explicit_lane_default": True,
     },
     "static_baseline": {
@@ -153,14 +153,14 @@ LANE_METADATA: dict[str, dict[str, object]] = {
     },
     "streaming_corridor": {
         "asset_classification": "lightweight_smoke",
-        "evidence_role": "streaming_smoke_only",
-        "notes": "Streaming-shaped camera sweep currently backed by test_splats.ply; not representative chunked evidence.",
+        "evidence_role": "proof_support_corridor_churn_smoke",
+        "notes": "Streaming-shaped corridor churn support lane currently backed by test_splats.ply; useful for proof-shape smoke coverage, not representative chunked evidence.",
         "require_explicit_lane_default": True,
     },
     "city_flyover": {
         "asset_classification": "lightweight_smoke",
-        "evidence_role": "streaming_smoke_only",
-        "notes": "High-altitude streaming stress lane currently backed by test_splats.ply; not representative chunked evidence.",
+        "evidence_role": "proof_support_boundary_crossing_smoke",
+        "notes": "High-altitude boundary-crossing support lane currently backed by test_splats.ply; useful for proof-shape smoke coverage, not representative chunked evidence.",
         "require_explicit_lane_default": True,
     },
     "instance_storm": {
@@ -201,14 +201,14 @@ LANE_METADATA: dict[str, dict[str, object]] = {
     },
     "long_soak": {
         "asset_classification": "lightweight_smoke",
-        "evidence_role": "streaming_smoke_only",
-        "notes": "Long-duration streaming churn lane currently backed by test_splats.ply; not representative chunked evidence.",
+        "evidence_role": "proof_support_city_roam_soak_smoke",
+        "notes": "Long-horizon city-roam soak support lane currently backed by test_splats.ply; useful for proof-shape smoke coverage, not representative chunked evidence.",
         "require_explicit_lane_default": True,
     },
     "unified_composite": {
         "asset_classification": "lightweight_smoke",
-        "evidence_role": "streaming_smoke_only",
-        "notes": "Integrated benchmark lane currently backed by test_splats.ply; not representative chunked evidence.",
+        "evidence_role": "proof_support_integrated_composite_smoke",
+        "notes": "Integrated composite support lane currently backed by test_splats.ply; useful for combined-system smoke coverage, not representative chunked evidence.",
         "require_explicit_lane_default": True,
     },
     "small_baseline": {

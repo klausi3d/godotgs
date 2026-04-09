@@ -1,5 +1,7 @@
 extends Node3D
 
+# Shared benchmark lane scene reused by the corridor-churn and boundary-crossing proof-support lanes.
+
 const BenchmarkMetricsUtil = preload("res://scripts/benchmark_metrics.gd")
 const BenchmarkVisualMetrics = preload("res://scripts/benchmark_visual_metrics.gd")
 const BenchmarkSceneContract = preload("res://scripts/benchmark_scene_contract.gd")
