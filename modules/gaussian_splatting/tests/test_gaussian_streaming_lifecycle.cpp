@@ -1,3 +1,4 @@
+#define _ALLOW_KEYWORD_MACROS
 #define private public
 #include "../core/gaussian_streaming.h"
 #undef private

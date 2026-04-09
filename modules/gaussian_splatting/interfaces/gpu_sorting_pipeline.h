@@ -234,8 +234,14 @@ private:
     void ensure_remap_resources(RenderingDevice *p_device);
     void ensure_gather_resources(RenderingDevice *p_device);
     bool _publish_sorted_results(const Vector<uint8_t> &p_sorted_index_bytes);
+#ifdef TESTS_ENABLED
+public:
+#endif
     void _on_sort_readback(const Vector<uint8_t> &p_data, int64_t p_generation);
     void _on_instance_count_readback(const Vector<uint8_t> &p_data, int64_t p_generation);
+#ifdef TESTS_ENABLED
+private:
+#endif
     void _ensure_instance_param_buffer(RenderingDevice *p_device);
     void _ensure_instance_count_resources(RenderingDevice *p_device);
     void _ensure_instance_chunk_dispatch_resources(RenderingDevice *p_device);

@@ -1,13 +1,14 @@
+#define _ALLOW_KEYWORD_MACROS
 #include "test_macros.h"
+#define private public
+#include "../core/gaussian_streaming.h"
+#undef private
 #include "../renderer/gpu_memory_stream.h"
 #include "../renderer/gaussian_splat_renderer.h"
 #include "../renderer/resource_owner_mismatch_contract.h"
 #include "../renderer/quantization_config.h"
 #include "../core/gaussian_data.h"
 #include "../core/residency_budget_controller.h"
-#define private public
-#include "../core/gaussian_streaming.h"
-#undef private
 #include "../core/gaussian_splat_manager.h"
 #include "../core/streaming_queue_pressure_controller.h"
 #include "core/config/project_settings.h"
@@ -1137,7 +1138,8 @@ TEST_CASE("[Streaming Pipeline] Worker uploads remain coherent under concurrent 
 
         const bool matches_a = _packed_buffer_matches_position_pattern(rd, buffer, pattern_a);
         const bool matches_b = _packed_buffer_matches_position_pattern(rd, buffer, pattern_b);
-        CHECK(matches_a || matches_b);
+        const bool either_matches = matches_a || matches_b;
+        CHECK(either_matches);
     }
 
     ctx.stop.store(true, std::memory_order_release);
@@ -1811,13 +1813,13 @@ TEST_CASE("[Streaming Pipeline] Invalid chunk meta dirty marks force a safe atla
     system->register_asset(asset_id, create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE));
 
     const uint64_t generation_before = system->get_atlas_generation();
-    system->global_atlas_registry.mark_chunk_meta_dirty(*system, asset_id, 99);
+    system->_test_mark_chunk_meta_dirty(asset_id, 99);
 
     CHECK(system->global_atlas_registry.asset_registry_dirty);
     CHECK(system->global_atlas_registry.chunk_meta_dirty_all);
     CHECK(system->global_atlas_registry.chunk_meta_dirty_indices.is_empty());
 
-    system->global_atlas_registry.sync_to_gpu(*system, rd);
+    system->_test_sync_global_atlas_state(rd);
 
     CHECK(system->get_atlas_generation() > generation_before);
     CHECK(system->get_asset_meta_buffer().is_valid());
@@ -1856,7 +1858,7 @@ TEST_CASE("[Streaming Pipeline] Dirty atlas publication is invalidated when GPU 
     REQUIRE(system->get_asset_chunk_index_buffer().is_valid());
 
     system->register_asset(810, create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE));
-    system->global_atlas_registry.sync_to_gpu(*system, nullptr);
+    system->_test_sync_global_atlas_state(nullptr);
 
     CHECK_FALSE(system->get_asset_meta_buffer().is_valid());
     CHECK_FALSE(system->get_chunk_meta_buffer().is_valid());
@@ -1866,7 +1868,7 @@ TEST_CASE("[Streaming Pipeline] Dirty atlas publication is invalidated when GPU 
     CHECK_FALSE(system->global_atlas_registry.asset_chunk_index_buffer.is_valid());
     CHECK(system->get_atlas_generation() == generation_before);
 
-    system->global_atlas_registry.sync_to_gpu(*system, rd);
+    system->_test_sync_global_atlas_state(rd);
 
     CHECK(system->get_atlas_generation() > generation_before);
     CHECK(system->get_asset_meta_buffer().is_valid());
