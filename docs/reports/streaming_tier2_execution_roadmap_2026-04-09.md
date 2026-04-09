@@ -339,6 +339,179 @@ Exit criteria:
 - `streaming-gpu-ci` remains the canonical blocking streaming gate in both docs and workflow surfaces
 - large-world proof surfaces stay non-blocking until they are stable enough to promote deliberately
 
+##### Phase 4C.1 Implementation Checklist
+
+Use this checklist as the execution order for proving hundred-million-total-splat open-world streaming with a bounded resident and visible working set.
+
+###### 4C.1 Checklist A: Asset Ladder
+
+- [ ] Open issue: `Benchmark: add canonical chunked open-world asset ladder`
+- [ ] Add three benchmark-side chunked assets:
+  - [ ] `open_world_corridor_20m`
+  - [ ] `open_world_boundary_50m`
+  - [ ] `open_world_city_100m`
+- [ ] Ensure each asset is genuinely chunked:
+  - [ ] large total splat count
+  - [ ] bounded visible working set
+  - [ ] no monolithic single-file shortcut that bypasses residency behavior
+- [ ] Add manifest entries in the main test project and Deck project where needed.
+- [ ] Keep smoke/support assets unchanged so the old lanes remain comparable.
+
+Primary files:
+
+- `tests/fixtures/benchmark_asset_manifest.json`
+- `tests/examples/godot/test_project_deck/tests/fixtures/benchmark_asset_manifest.json`
+- `tests/runtime/prepare_synthetic_assets.py`
+- any new asset-generation or staging helpers introduced for the chunked ladder
+
+Done when:
+
+- one real chunked benchmark asset resolves through the canonical manifest path
+- no existing smoke lane changes classification by accident
+
+###### 4C.1 Checklist B: Lane Mapping
+
+- [ ] Open issue: `Benchmark: map open-world proof ladder to benchmark lanes`
+- [ ] Map the scenario ladder to concrete lane ids:
+  - [ ] corridor return
+  - [ ] budget-churn corridor
+  - [ ] biome boundary crossing
+  - [ ] city-block roam + soak
+- [ ] Reuse the current benchmark and runtime shapes before inventing new scenes.
+- [ ] Keep mixed-residency and multi-asset hub cases non-blocking for now.
+- [ ] Write one-sentence failure intent for each lane:
+  - missing preload
+  - failed revisit recovery
+  - boundary dead zone
+  - sustained churn / soak instability
+
+Primary files:
+
+- `tests/examples/godot/test_project/scenes/benchmark_suite/benchmark_suite_lane.gd`
+- `tests/runtime/test_world_streaming_gate.gd`
+- `tests/runtime/test_gpu_streaming_eviction_churn_probe.gd`
+- `tests/runtime/test_gpu_streaming_stress.gd`
+- `docs/testing/benchmark-suite.md`
+
+Done when:
+
+- each streaming-shaped lane has a declared proof role
+- the lane roster can be explained without branch history or tribal knowledge
+
+###### 4C.1 Checklist C: Metrics Contract
+
+- [ ] Open issue: `Benchmark: lock large-world streaming proof metrics and thresholds`
+- [ ] Keep the proof metrics centered on streaming behavior:
+  - [ ] `first_visible_ms`
+  - [ ] `residency_ratio`
+  - [ ] `frame_p95_ms`
+  - [ ] `frame_p95_to_avg_ratio`
+  - [ ] `queue_pressure_frames`
+  - [ ] `no_progress_frames`
+  - [ ] `scan_starved_frames`
+  - [ ] `vram_cap_hit_frames`
+  - [ ] `chunk_loads_per_frame`
+  - [ ] `chunk_evictions_per_frame`
+- [ ] Define lane-specific pass/fail thresholds for:
+  - [ ] corridor return
+  - [ ] boundary crossing
+  - [ ] city roam + soak
+- [ ] Keep correctness and performance noise separate in docs and result summaries.
+- [ ] Extend runner output only if current JSON/report fields are insufficient.
+
+Primary files:
+
+- `tests/runtime/run_benchmark.py`
+- `tests/runtime/run_benchmark_suite.py`
+- `tests/examples/godot/test_project/scenes/benchmark_suite/benchmark_suite_lane.gd`
+- `tests/runtime/test_gpu_streaming_stress.gd`
+- `docs/testing/benchmark-suite.md`
+
+Done when:
+
+- benchmark summaries make correctness failures distinguishable from transient machine noise
+- threshold policy matches the purpose of each lane
+
+###### 4C.1 Checklist D: CI Surface Split
+
+- [ ] Open issue: `CI: split large-world streaming proof into blocking and evidence-only surfaces`
+- [ ] Keep `streaming-gpu-ci` as the only canonical blocking GPU-backed streaming gate.
+- [ ] Add non-blocking proof surfaces:
+  - [ ] `openworld-proof-dev`
+  - [ ] `openworld-proof-weekly`
+- [ ] Keep suggested scope:
+  - [ ] `openworld-proof-dev` = `20M corridor` + `50M boundary`
+  - [ ] `openworld-proof-weekly` = `100M city roam + soak`
+- [ ] Do not add `100M` soak to per-PR blocking CI.
+- [ ] Align docs and workflow names so there is no second competing “streaming gate.”
+
+Primary files:
+
+- `tests/runtime/runtime_scenarios.json`
+- `.github/workflows/gaussian_production_gates.yml`
+- `.github/workflows/README.md`
+- `tests/runtime/README.md`
+- `docs/testing/benchmark-suite.md`
+
+Done when:
+
+- there is one blocking streaming gate and two clearly non-blocking proof surfaces
+- reviewers can tell which runs are regression gates vs evidence collection
+
+###### 4C.1 Checklist E: Real Run and Reclassification
+
+- [ ] Open issue: `Benchmark: run open-world proof lanes and reclassify validated chunked evidence`
+- [ ] Run the proof lanes on a Windows-capable runner with the canonical benchmark entrypoint.
+- [ ] Capture results for:
+  - [ ] `20M corridor`
+  - [ ] `50M boundary`
+  - [ ] `100M city roam + soak`
+- [ ] Reclassify only the lanes that have:
+  - [ ] real chunked asset backing
+  - [ ] stable results
+  - [ ] threshold contract defined in docs
+- [ ] Leave every `test_splats.ply` lane classified as smoke/support only.
+- [ ] Record hardware, VRAM budget, and resident chunk budget next to the result.
+
+Primary files:
+
+- `tests/runtime/run_benchmark.py`
+- `tests/output/benchmark_suite/<timestamp>/...`
+- `docs/testing/benchmark-suite.md`
+- `docs/performance/index.md`
+- `docs/reports/streaming_tier2_execution_roadmap_2026-04-09.md`
+
+Canonical run commands:
+
+```bash
+python3 tests/runtime/run_runtime_validation.py --profile streaming-gpu-ci --skip-cpp --fail-on-skip
+python3 tests/runtime/run_benchmark.py --profile performance --fail-fast
+```
+
+Done when:
+
+- at least one large-world lane is promoted to honest `real_chunked` evidence
+- the public docs stop implying that smoke-only lanes are representative chunked proof
+
+###### 4C.1 Checklist F: Claim Boundary
+
+- [ ] After `20M corridor` passes, allow only:
+  - `large chunked worlds with tens of millions total splats validated`
+- [ ] After `50M boundary` passes, allow only:
+  - `large-world boundary-crossing streaming validated under representative motion`
+- [ ] After `100M city roam + soak` passes, allow:
+  - `hundred-million-total open-world streaming validated on reference hardware`
+- [ ] Keep all wording resident/visible-budget based, never “renders hundred millions.”
+
+###### Suggested Commit Order
+
+1. add canonical chunked asset ladder and manifest wiring
+2. map proof scenarios to lanes
+3. lock metrics and thresholds
+4. wire blocking vs evidence-only CI surfaces
+5. run proof lanes on Windows-capable hardware
+6. reclassify lanes and publish claim-boundary docs
+
 #### Phase 4C.2: Monitor and Telemetry Closeout
 
 Goal:
