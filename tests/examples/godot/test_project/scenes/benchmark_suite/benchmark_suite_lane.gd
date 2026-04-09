@@ -805,7 +805,7 @@ func _sample_proof_metrics(stats: Dictionary) -> void:
 		if _proof_first_visible_ms < 0.0 and visible > 0:
 			_proof_first_visible_ms = _elapsed_s * 1000.0
 
-	var uploaded := _read_stat_int_max(stats, ["uploaded_splat_count", "buffer_manager_count", "total_splats"], -1)
+	var uploaded := _read_stat_int_max(stats, ["uploaded_splat_count", "buffer_manager_count"], -1)
 	var total := _read_stat_int_max(stats, ["total_splats", "uploaded_splat_count", "buffer_manager_count"], -1)
 	if uploaded >= 0 and total > 0:
 		_proof_residency_available = true
