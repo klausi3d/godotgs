@@ -114,8 +114,11 @@ That benchmark path resolves lane assets through the project-local
 `benchmark_asset_manifest.json`. Benchmark classifications in that manifest are
 authoritative for what a lane proves. Lanes that still resolve to `test_splats.ply`
 are smoke/support evidence only and should not be cited as representative chunked
-streaming coverage. The benchmark surfaces above are evidence-only and do not create
-a second blocking streaming gate.
+streaming coverage. That means the current `openworld-proof-dev` surface is a
+`20M corridor` candidate plus boundary-crossing smoke support, and
+`openworld-proof-weekly` is still city-roam soak smoke support rather than
+`100M city` proof. The benchmark surfaces above are evidence-only and do not
+create a second blocking streaming gate.
 
 ## Synthetic Asset Prep
 

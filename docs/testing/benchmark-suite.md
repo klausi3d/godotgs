@@ -89,8 +89,8 @@ surfaces below are evidence-only and should not be treated as a second streaming
 | Surface | Runner command | Scope | Blocking? |
 | --- | --- | --- | --- |
 | `streaming-gpu-ci` | `python3 tests/runtime/run_runtime_validation.py --profile streaming-gpu-ci` | Runtime validation for residency and world-streaming regressions | Yes |
-| `openworld-proof-dev` | `python3 tests/runtime/run_benchmark.py --profile performance --lane open_world_corridor_proof --lane city_flyover` | `20M corridor` + `50M boundary` evidence | No |
-| `openworld-proof-weekly` | `python3 tests/runtime/run_benchmark.py --profile performance --lane long_soak` | `100M city roam + soak` evidence | No |
+| `openworld-proof-dev` | `python3 tests/runtime/run_benchmark.py --profile performance --lane open_world_corridor_proof --lane city_flyover` | `20M corridor` candidate + boundary-crossing smoke support | No |
+| `openworld-proof-weekly` | `python3 tests/runtime/run_benchmark.py --profile performance --lane long_soak` | City-roam soak smoke support | No |
 
 ## Proof Ladder
 
@@ -122,6 +122,7 @@ The benchmark lanes above compose the evidence surfaces as follows:
 
 - `openworld-proof-dev` = `open_world_corridor_proof` + `city_flyover`
 - `openworld-proof-weekly` = `long_soak`
+- only `open_world_corridor_proof` is a large-world candidate lane today; `city_flyover` and `long_soak` remain smoke-support surfaces until the `50M boundary` and `100M city` lanes are runnable
 - both surfaces are benchmark evidence only, while `streaming-gpu-ci` remains the only blocking gate
 
 ## Large-World Proof Contract
