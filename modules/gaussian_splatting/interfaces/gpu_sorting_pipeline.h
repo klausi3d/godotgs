@@ -242,6 +242,10 @@ public:
 #ifdef TESTS_ENABLED
 private:
 #endif
+    void _reset_instance_count_readback_state(bool p_reset_bootstrap_attempted);
+    bool _capture_instance_count_sync(RenderingDevice *p_device, RID p_buffer,
+            uint32_t p_frame_counter, uint32_t p_safe_visible_max, uint32_t *r_resolved_visible = nullptr);
+    Error _enqueue_instance_count_readback(RenderingDevice *p_device, RID p_buffer, uint32_t p_frame_counter);
     void _ensure_instance_param_buffer(RenderingDevice *p_device);
     void _ensure_instance_count_resources(RenderingDevice *p_device);
     void _ensure_instance_chunk_dispatch_resources(RenderingDevice *p_device);
