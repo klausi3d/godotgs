@@ -149,7 +149,16 @@ Rules for this phase:
 
 Goal:
 
-- make the benchmark and CI surfaces honest about which lanes are synthetic, which lanes are chunked, and which surfaces are actually blocking
+- prove godotGS can stream hundred-million-total-splat worlds with a bounded resident and visible working set
+
+This phase is not trying to prove “render hundreds of millions at once.”
+The proof target is:
+
+- very large total scene size
+- bounded resident VRAM state
+- bounded visible / dispatched working set
+- stable forward progress during roam, revisit, and churn
+- honest blocking-vs-evidence CI surfaces
 
 Why this comes first:
 
@@ -163,36 +172,155 @@ Primary files:
 - `tests/runtime/run_benchmark.py`
 - `tests/runtime/run_benchmark_suite.py`
 - `tests/examples/godot/test_project/scenes/benchmark_suite/*`
+- `tests/runtime/test_world_streaming_gate.gd`
 - `docs/testing/benchmark-suite.md`
 - `tests/runtime/README.md`
 - `.github/workflows/gaussian_production_gates.yml`
 - `.github/workflows/README.md`
 
+Current architectural proof target:
+
+- chunked streaming uses `65,536` splats per chunk
+- scene totals are tracked separately from resident state
+- resident capacity is budgeted independently of total scene size
+- visible / rendered budget is determined by runtime dispatch, not total serialized world size
+
+The missing gap after the earlier `4C.1` honesty slice is benchmark evidence, not architecture direction.
+The current streaming-shaped benchmark lanes still resolve to `test_splats.ply` and therefore remain smoke-only evidence.
+
 Required work:
 
-- audit every streaming-relevant benchmark lane and classify it explicitly:
-  - real chunked scene
-  - deterministic synthetic scene
-  - intentionally lightweight smoke lane
-- remove any implicit “looks like streaming coverage but actually falls back to `test_splats.ply`” ambiguity for the lanes used to justify streaming claims:
-  - `streaming_corridor`
-  - `city_flyover`
-  - `long_soak`
-  - `unified_composite`
-- keep the benchmark runners aligned so the lane roster, profile selection, and asset expectations do not drift between:
+##### Phase 4C.1A: Canonical Real Chunked Benchmark Asset Family
+
+Goal:
+
+- add one canonical benchmark asset ladder that is genuinely chunked and large enough to prove open-world streaming behavior
+
+Required work:
+
+- add a chunked benchmark asset family with at least:
+  - `open_world_corridor_20m`
+  - `open_world_boundary_50m`
+  - `open_world_city_100m`
+- require these assets to be genuinely chunked:
+  - large total splat count
+  - bounded visible working set
+  - no monolithic single-asset shortcut
+- keep the manifest honest:
+  - smoke/support lanes stay `lightweight_smoke`
+  - only lanes backed by the new chunked family are promoted to `real_chunked`
+- keep runner policy aligned between:
   - `tests/runtime/run_benchmark.py`
   - `tests/runtime/run_benchmark_suite.py`
-- make the docs say exactly which profile is canonical for:
-  - blocking GPU-backed streaming validation
-  - broader release-ready runtime validation
-  - benchmark evidence collection
-- keep `Gaussian Production Gates` aligned with that policy and avoid adding a second competing streaming gate
+
+Exit:
+
+- at least one benchmark lane is backed by a real chunked asset and classified `real_chunked`
+
+##### Phase 4C.1B: Open-World Scenario Ladder
+
+Goal:
+
+- turn the current scenario shapes into actual proof lanes for large streamed worlds
+
+Base surfaces:
+
+- `tests/examples/godot/test_project/scenes/benchmark_suite/benchmark_suite_lane.gd`
+- `tests/runtime/test_world_streaming_gate.gd`
+
+Scenario ladder:
+
+- corridor return:
+  - preload, forward traversal, return-path reload, no dead zone after backtracking
+- budget-churn corridor:
+  - tight VRAM, eviction/reload stability, forward progress under pressure
+- biome boundary crossing:
+  - large visibility-set change with forward and reverse crossing
+- city-block roam + soak:
+  - sustained roaming, revisits, and long-run stability
+
+Rules:
+
+- do not make hub or mixed-residency scenarios blocking proof lanes yet
+- keep those surfaces evidence-only until the single-world large-streaming path is solid
+
+##### Phase 4C.1C: Large-World Proof Metrics
+
+Goal:
+
+- use metrics that prove streaming behavior, not just average FPS
+
+Track and gate:
+
+- `first_visible_ms`
+- `residency_ratio`
+- `frame_p95_ms`
+- `frame_p95_to_avg_ratio`
+- `queue_pressure_frames`
+- `no_progress_frames`
+- `scan_starved_frames`
+- `vram_cap_hit_frames`
+- `chunk_loads_per_frame`
+- `chunk_evictions_per_frame`
+- fallback / route changes when present
+
+Success means:
+
+- visible content appears quickly
+- revisits recover correctly
+- queue starvation is not sustained
+- VRAM-cap pinning is not sustained
+- churn is bounded and not pathological
+
+##### Phase 4C.1D: Blocking vs Evidence Surfaces
+
+Goal:
+
+- keep the runtime gate policy strict without overloading per-PR CI with hundred-million soak runs
+
+Rules:
+
+- keep `streaming-gpu-ci` as the single canonical blocking GPU-backed streaming gate
+- add non-blocking proof surfaces for large-world evidence:
+  - `openworld-proof-dev`
+  - `openworld-proof-weekly`
+- suggested scope:
+  - `openworld-proof-dev`: `20M corridor` + `50M boundary`
+  - `openworld-proof-weekly`: `100M city roam + soak`
+- only promote a large-world lane to blocking after repeated stable runs on the same runner class
+- do not put `100M` soak on per-PR CI
+
+##### Phase 4C.1E: Architecture Ceilings To Watch While Proving
+
+Goal:
+
+- validate the real scaling ceilings while the large-world proof lanes come online
+
+Likely bottlenecks:
+
+- all-chunk scan cost in `streaming_visibility_controller.cpp`
+- visible / dispatch scaling in `render_streaming_orchestrator.cpp`
+- sort-capacity and visible-cap clamps in `render_streaming_orchestrator.cpp`
+
+Reference scale:
+
+- `100M` total splats at `65,536` per chunk is about `1,526` chunks
+- `500M` total splats at `65,536` per chunk is about `7,629` chunks
+
+That is why the proof target is open-world streaming behavior with a bounded working set, not raw rendered splat count.
 
 Expected output:
 
-- an updated benchmark asset manifest and/or lane configuration that clearly marks which streaming lanes are real chunked evidence
-- benchmark docs that distinguish published evidence, suite-only lanes, and synthetic support lanes without ambiguity
-- one canonical description of the blocking streaming gate across runtime docs and workflow docs
+- one canonical real chunked benchmark asset family
+- at least one benchmark lane promoted from smoke/support evidence to genuine `real_chunked` evidence
+- an open-world scenario ladder covering return, churn, boundary crossing, and soak behavior
+- benchmark docs that distinguish:
+  - real chunked evidence
+  - deterministic synthetic support
+  - lightweight smoke/support lanes
+- one canonical description of:
+  - the blocking streaming runtime gate
+  - the non-blocking large-world proof surfaces
 
 Validation:
 
@@ -206,13 +334,20 @@ Exit criteria:
 
 - every streaming-relevant benchmark lane has an explicit asset/evidence classification
 - there is no hidden manifest fallback that can make a streaming lane look more representative than it is
+- at least one large-world benchmark lane is backed by a genuine chunked asset and classified `real_chunked`
+- smoke-only streaming lanes remain documented as smoke-only unless and until they are truly upgraded
 - `streaming-gpu-ci` remains the canonical blocking streaming gate in both docs and workflow surfaces
+- large-world proof surfaces stay non-blocking until they are stable enough to promote deliberately
 
 #### Phase 4C.2: Monitor and Telemetry Closeout
 
 Goal:
 
 - make the streaming monitor surface strong enough to explain sustained pressure, queue health, and multi-renderer behavior without reading code
+
+Prerequisite:
+
+- `Phase 4C.1` has already produced real chunked benchmark evidence, not just smoke-only benchmark classifications
 
 Why this is separate:
 
