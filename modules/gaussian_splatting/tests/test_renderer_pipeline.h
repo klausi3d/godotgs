@@ -1053,6 +1053,59 @@ TEST_CASE("[GaussianSplatting] Chunk meta upload planner escalates fragmented ch
     CHECK(plan.full_update);
 }
 
+TEST_CASE("[GaussianSplatting] Upload coalescing planner batches contiguous full-slot uploads") {
+    LocalVector<StreamingUploadPipeline::UploadCoalescingCandidate> candidates;
+
+    StreamingUploadPipeline::UploadCoalescingCandidate first;
+    first.buffer_slot = 10;
+    first.packed_count = GaussianStreamingSystem::CHUNK_SIZE;
+    candidates.push_back(first);
+
+    StreamingUploadPipeline::UploadCoalescingCandidate second;
+    second.buffer_slot = 11;
+    second.packed_count = GaussianStreamingSystem::CHUNK_SIZE;
+    candidates.push_back(second);
+
+    StreamingUploadPipeline::UploadCoalescingCandidate tail;
+    tail.buffer_slot = 12;
+    tail.packed_count = 128;
+    candidates.push_back(tail);
+
+    const uint64_t slot_bytes = uint64_t(GaussianStreamingSystem::CHUNK_SIZE) * sizeof(PackedGaussian);
+    const StreamingUploadPipeline::UploadCoalescingPlan plan =
+            StreamingUploadPipeline::_test_plan_coalesced_upload_batch(candidates, slot_bytes * 2);
+
+    CHECK(plan.coalesced_job_count == 2);
+    CHECK(plan.total_bytes == slot_bytes * 2);
+}
+
+TEST_CASE("[GaussianSplatting] Upload coalescing planner stops at partial or noncontiguous uploads") {
+    LocalVector<StreamingUploadPipeline::UploadCoalescingCandidate> candidates;
+
+    StreamingUploadPipeline::UploadCoalescingCandidate first;
+    first.buffer_slot = 20;
+    first.packed_count = GaussianStreamingSystem::CHUNK_SIZE;
+    candidates.push_back(first);
+
+    StreamingUploadPipeline::UploadCoalescingCandidate partial;
+    partial.buffer_slot = 21;
+    partial.packed_count = GaussianStreamingSystem::CHUNK_SIZE;
+    partial.bytes_uploaded = sizeof(PackedGaussian);
+    candidates.push_back(partial);
+
+    StreamingUploadPipeline::UploadCoalescingCandidate gap;
+    gap.buffer_slot = 23;
+    gap.packed_count = GaussianStreamingSystem::CHUNK_SIZE;
+    candidates.push_back(gap);
+
+    const uint64_t slot_bytes = uint64_t(GaussianStreamingSystem::CHUNK_SIZE) * sizeof(PackedGaussian);
+    const StreamingUploadPipeline::UploadCoalescingPlan plan =
+            StreamingUploadPipeline::_test_plan_coalesced_upload_batch(candidates, slot_bytes * 4);
+
+    CHECK(plan.coalesced_job_count == 1);
+    CHECK(plan.total_bytes == slot_bytes);
+}
+
 TEST_CASE("[GaussianSplatting][RequiresGPU] World static chunks keep streaming instance buffers ready without SceneDirector instances") {
     RenderingServer *rs = RenderingServer::get_singleton();
     if (rs == nullptr) {
