@@ -10,7 +10,7 @@ GitHub's Actions tab can also show historical workflow names from past runs, dis
 | --- | --- | --- | --- |
 | Baseline QA Automation | `baseline_qa.yml` | Runs baseline QA and optional compiled-module QA. | Builds the Linux editor once and reuses that artifact for push-only compiled QA. |
 | Docs Pages (Versioned) | `docs_pages.yml` | Builds and deploys MkDocs docs with mike versioning to `gh-pages`. | Publishes `latest` from `master/main` and versioned docs from `v*` tags. |
-| Gaussian Production Gates | `gaussian_production_gates.yml` | Enforces guard checks, pipeline smoke, runtime validation, benchmark probes, and optional Windows GPU evidence lane. | Owns the single Windows build for validation workflows. |
+| Gaussian Production Gates | `gaussian_production_gates.yml` | Enforces guard checks, pipeline smoke, runtime validation, supplemental benchmark probes, and optional Windows GPU evidence lane. | Owns the single Windows build for validation workflows. `streaming-gpu-ci` is the canonical blocking GPU-backed streaming runtime gate. |
 | Gaussian Shader Validation | `gaussian_shader_validation.yml` | Validates shader compile matrix and host/shader contract checks. | Focused shader CI gate. |
 | Release Builds | `release_builds.yml` | Builds the Linux editor for CI artifacts, nightly prereleases, and optional stable-tag publishes. | Current public binary coverage is Linux editor only. |
 

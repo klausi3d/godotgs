@@ -115,6 +115,8 @@ LANE_DEFAULT_ASSETS: dict[str, str] = {
     "unified_composite": "res://tests/fixtures/test_splats.ply",
     "small_baseline": "res://tests/fixtures/test_splats.ply",
     "instance_pipeline_ab": "res://tests/fixtures/test_splats.ply",
+    "instance_pipeline_ab_serial": "res://tests/fixtures/test_splats.ply",
+    "instance_pipeline_ab_single_pass": "res://tests/fixtures/test_splats.ply",
     "synthetic_sphere": "res://tests/fixtures/synthetic_sphere.ply",
     "synthetic_cube": "res://tests/fixtures/synthetic_cube.ply",
     "synthetic_plane": "res://tests/fixtures/synthetic_plane.ply",
@@ -125,13 +127,155 @@ LANE_DEFAULT_ASSETS: dict[str, str] = {
     "synthetic_flower_field": "res://tests/fixtures/synthetic_flower_field.ply",
 }
 
+LANE_METADATA: dict[str, dict[str, object]] = {
+    "static_baseline": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "published_baseline",
+        "notes": "Low-noise baseline lane backed by the lightweight canonical smoke asset.",
+        "require_explicit_lane_default": True,
+    },
+    "streaming_corridor": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "streaming_smoke_only",
+        "notes": "Streaming-shaped camera sweep currently backed by test_splats.ply; not representative chunked evidence.",
+        "require_explicit_lane_default": True,
+    },
+    "city_flyover": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "streaming_smoke_only",
+        "notes": "High-altitude streaming stress lane currently backed by test_splats.ply; not representative chunked evidence.",
+        "require_explicit_lane_default": True,
+    },
+    "instance_storm": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "suite_support",
+        "notes": "Submission-pressure lane using the lightweight canonical smoke asset.",
+        "require_explicit_lane_default": True,
+    },
+    "lighting_stress": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "suite_support",
+        "notes": "Lighting stress lane using the lightweight canonical smoke asset.",
+        "require_explicit_lane_default": True,
+    },
+    "animation_arena": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "suite_support",
+        "notes": "Animation lane using the lightweight canonical smoke asset.",
+        "require_explicit_lane_default": True,
+    },
+    "lod_torture": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "suite_support",
+        "notes": "LOD churn lane using the lightweight canonical smoke asset.",
+        "require_explicit_lane_default": True,
+    },
+    "integrity_sentinel": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "suite_support",
+        "notes": "Deterministic artifact-detection lane using the lightweight canonical smoke asset.",
+        "require_explicit_lane_default": True,
+    },
+    "parity_fidelity": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "suite_support",
+        "notes": "Parity-fidelity lane using the lightweight canonical smoke asset.",
+        "require_explicit_lane_default": True,
+    },
+    "long_soak": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "streaming_smoke_only",
+        "notes": "Long-duration streaming churn lane currently backed by test_splats.ply; not representative chunked evidence.",
+        "require_explicit_lane_default": True,
+    },
+    "unified_composite": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "streaming_smoke_only",
+        "notes": "Integrated benchmark lane currently backed by test_splats.ply; not representative chunked evidence.",
+        "require_explicit_lane_default": True,
+    },
+    "small_baseline": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "suite_support",
+        "notes": "Small baseline lane using the lightweight canonical smoke asset.",
+        "require_explicit_lane_default": True,
+    },
+    "instance_pipeline_ab": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "suite_support",
+        "notes": "Shared A/B benchmark scene using the lightweight canonical smoke asset.",
+        "require_explicit_lane_default": True,
+    },
+    "instance_pipeline_ab_serial": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "suite_support",
+        "notes": "Serial instance-pipeline A/B lane using the lightweight canonical smoke asset.",
+        "require_explicit_lane_default": True,
+    },
+    "instance_pipeline_ab_single_pass": {
+        "asset_classification": "lightweight_smoke",
+        "evidence_role": "suite_support",
+        "notes": "Single-pass instance-pipeline A/B lane using the lightweight canonical smoke asset.",
+        "require_explicit_lane_default": True,
+    },
+    "synthetic_sphere": {
+        "asset_classification": "deterministic_synthetic",
+        "evidence_role": "synthetic_support",
+        "notes": "Deterministic synthetic geometry support lane.",
+        "require_explicit_lane_default": True,
+    },
+    "synthetic_cube": {
+        "asset_classification": "deterministic_synthetic",
+        "evidence_role": "synthetic_support",
+        "notes": "Deterministic synthetic geometry support lane.",
+        "require_explicit_lane_default": True,
+    },
+    "synthetic_plane": {
+        "asset_classification": "deterministic_synthetic",
+        "evidence_role": "synthetic_support",
+        "notes": "Deterministic synthetic geometry support lane.",
+        "require_explicit_lane_default": True,
+    },
+    "synthetic_torus": {
+        "asset_classification": "deterministic_synthetic",
+        "evidence_role": "synthetic_support",
+        "notes": "Deterministic synthetic geometry support lane.",
+        "require_explicit_lane_default": True,
+    },
+    "synthetic_spiral": {
+        "asset_classification": "deterministic_synthetic",
+        "evidence_role": "synthetic_support",
+        "notes": "Deterministic synthetic geometry support lane.",
+        "require_explicit_lane_default": True,
+    },
+    "synthetic_mandelbulb": {
+        "asset_classification": "deterministic_synthetic",
+        "evidence_role": "synthetic_support",
+        "notes": "Deterministic synthetic geometry support lane.",
+        "require_explicit_lane_default": True,
+    },
+    "synthetic_cloud": {
+        "asset_classification": "deterministic_synthetic",
+        "evidence_role": "synthetic_support",
+        "notes": "Deterministic synthetic geometry support lane.",
+        "require_explicit_lane_default": True,
+    },
+    "synthetic_flower_field": {
+        "asset_classification": "deterministic_synthetic",
+        "evidence_role": "synthetic_support",
+        "notes": "Deterministic synthetic geometry support lane.",
+        "require_explicit_lane_default": True,
+    },
+}
+
 
 def _benchmark_asset_manifest() -> dict[str, object]:
     return {
-        "version": "2.0.0",
+        "version": "2.1.0",
         "default_asset": "res://tests/fixtures/test_splats.ply",
         "scene_defaults": dict(SCENE_DEFAULT_ASSETS),
         "lane_defaults": dict(LANE_DEFAULT_ASSETS),
+        "lane_metadata": dict(LANE_METADATA),
     }
 
 

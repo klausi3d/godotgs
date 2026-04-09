@@ -22,6 +22,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from benchmark_asset_manifest import (
+    BenchmarkAssetManifest,
+    resolve_benchmark_asset_manifest_path,
+    resolve_lane_asset_policy,
+    load_benchmark_asset_manifest,
+    validate_manifest_lane_policies,
+)
+
 
 @dataclass(frozen=True)
 class LaneDefinition:
@@ -319,7 +327,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--asset-manifest",
         default="",
-        help="Optional JSON file mapping lane_id -> asset path (res://... or absolute).",
+        help="Path to benchmark asset manifest JSON. Defaults to the project-local canonical manifest.",
     )
     parser.add_argument(
         "--generate-dummy-assets",
@@ -445,36 +453,6 @@ def _select_capture_lanes(
     return {lane_id for lane_id in DEFAULT_CAPTURE_LANES if lane_id in valid_lane_ids}
 
 
-def _load_asset_manifest(path: str) -> dict[str, str]:
-    if not path:
-        return {}
-    manifest_path = Path(path)
-    try:
-        with manifest_path.open("r", encoding="utf-8") as fh:
-            data = json.load(fh)
-    except FileNotFoundError as exc:
-        raise ValueError(f"--asset-manifest file not found: {manifest_path}") from exc
-    except OSError as exc:
-        raise ValueError(f"--asset-manifest could not be read: {manifest_path} ({exc})") from exc
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"--asset-manifest must be valid JSON: {exc}") from exc
-    if not isinstance(data, dict):
-        raise ValueError("--asset-manifest must be a JSON object")
-    out: dict[str, str] = {}
-    malformed_entries: list[str] = []
-    for key, value in data.items():
-        if not isinstance(key, str) or not isinstance(value, str):
-            malformed_entries.append(repr(key))
-            continue
-        out[key] = value
-    if malformed_entries:
-        raise ValueError(
-            "--asset-manifest entries must map string lane IDs to string asset paths; "
-            f"invalid keys: {', '.join(malformed_entries)}"
-        )
-    return out
-
-
 def _resolve_res_path(project_path: Path, resource_path: str) -> Path:
     return project_path / resource_path[len("res://") :]
 
@@ -525,7 +503,7 @@ def _collect_missing_res_dependencies(
 def _validate_suite_dependencies(
     project_path: Path,
     lanes: list[LaneDefinition],
-    asset_manifest: dict[str, str],
+    asset_manifest: BenchmarkAssetManifest,
     generated_assets: dict[str, str],
 ) -> list[str]:
     failures: list[str] = []
@@ -537,16 +515,23 @@ def _validate_suite_dependencies(
         )
         failures.extend(f"lane={lane.lane_id}: {entry}" for entry in scene_failures)
 
-        asset_override = asset_manifest.get(lane.lane_id, generated_assets.get(lane.lane_id, ""))
-        if not asset_override:
+        generated_asset_path = generated_assets.get(lane.lane_id, "")
+        asset_policy = resolve_lane_asset_policy(
+            asset_manifest,
+            lane_id=lane.lane_id,
+            scene_path=lane.scene,
+            generated_asset_path=generated_asset_path if _lane_supports_asset_override(lane) else "",
+        )
+        if not asset_policy.asset_path:
             continue
-        if asset_override.startswith("res://"):
-            asset_path = _resolve_res_path(project_path, asset_override)
+        if asset_policy.asset_path.startswith("res://"):
+            asset_path = _resolve_res_path(project_path, asset_policy.asset_path)
         else:
-            asset_path = Path(asset_override)
+            asset_path = Path(asset_policy.asset_path)
         if not asset_path.exists():
             failures.append(
-                f"lane={lane.lane_id}: asset override missing: {asset_override}"
+                f"lane={lane.lane_id}: resolved asset missing: {asset_policy.asset_path} "
+                f"(source={asset_policy.asset_source})"
             )
     return failures
 
@@ -1061,8 +1046,8 @@ def _write_suite_summary_markdown(
         f"- Profile: `{profile}`",
         f"- Aggregate score: `{aggregate_score:.2f}`",
         "",
-        "| Lane | Source | Score | Avg FPS | P1 FPS | Steady P1 | Warmup P1 | Sync FB | Route FB | Sort ms | Raster ms | Visible | GPU ms | GPU Src | Eff Preset | Eff Max | DistCull | Stall Cnt | Q Pressure | Exec Mode | Mode OK | P99 ms | Samples | Captures | SSIM min | PSNR min | Exit |",
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: | --- | ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Lane | Asset Class | Evidence | Asset Src | Source | Score | Avg FPS | P1 FPS | Steady P1 | Warmup P1 | Sync FB | Route FB | Sort ms | Raster ms | Visible | GPU ms | GPU Src | Eff Preset | Eff Max | DistCull | Stall Cnt | Q Pressure | Exec Mode | Mode OK | P99 ms | Samples | Captures | SSIM min | PSNR min | Exit |",
+        "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: | --- | ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for lane in lane_results:
         def _fmt(v: Any, decimals: int = 2) -> str:
@@ -1073,6 +1058,9 @@ def _write_suite_summary_markdown(
         lines.append(
             "| "
             f"`{lane['lane_id']}` | "
+            f"`{lane.get('asset_classification', 'n/a')}` | "
+            f"`{lane.get('evidence_role', 'n/a')}` | "
+            f"`{lane.get('asset_resolution_source', 'n/a')}` | "
             f"`{lane.get('summary_source', 'overall')}` | "
             f"{_fmt(lane.get('score'))} | "
             f"{_fmt(lane.get('avg_fps'))} | "
@@ -1177,8 +1165,29 @@ def main() -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
+    manifest_path = resolve_benchmark_asset_manifest_path(
+        args.asset_manifest,
+        repo_root=_repo_root(),
+        project_path=project_path,
+    )
+    project_manifest_path = (project_path / "tests" / "fixtures" / "benchmark_asset_manifest.json").resolve()
+    if any(not _lane_supports_asset_override(lane) for lane in selected_lanes):
+        if not project_manifest_path.exists():
+            print(
+                "ERROR: benchmark lanes that ignore --benchmark-asset require the project-local "
+                f"manifest at {project_manifest_path}. Run tests/runtime/prepare_synthetic_assets.py --quiet first.",
+                file=sys.stderr,
+            )
+            return 2
+        if args.asset_manifest and manifest_path != project_manifest_path:
+            print(
+                "ERROR: lanes that ignore --benchmark-asset require --asset-manifest to match the "
+                f"project-local manifest: {project_manifest_path}",
+                file=sys.stderr,
+            )
+            return 2
     try:
-        asset_manifest = _load_asset_manifest(args.asset_manifest)
+        asset_manifest = load_benchmark_asset_manifest(manifest_path)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -1186,6 +1195,16 @@ def main() -> int:
     generated_assets: dict[str, str] = {}
     if args.generate_dummy_assets:
         generated_assets = _generate_dummy_assets(project_path, selected_lanes, args.dummy_asset_dir)
+
+    manifest_policy_failures = validate_manifest_lane_policies(
+        asset_manifest,
+        ((lane.lane_id, lane.scene) for lane in selected_lanes),
+    )
+    if manifest_policy_failures:
+        print("ERROR: benchmark asset manifest policy is incomplete or misleading:", file=sys.stderr)
+        for failure in manifest_policy_failures:
+            print(f"  - {failure}", file=sys.stderr)
+        return 2
 
     preflight_failures = _validate_suite_dependencies(
         project_path=project_path,
@@ -1218,7 +1237,14 @@ def main() -> int:
         )
         return 2
     for lane in selected_lanes:
-        asset_override = asset_manifest.get(lane.lane_id, generated_assets.get(lane.lane_id, ""))
+        generated_asset_path = generated_assets.get(lane.lane_id, "")
+        asset_policy = resolve_lane_asset_policy(
+            asset_manifest,
+            lane_id=lane.lane_id,
+            scene_path=lane.scene,
+            generated_asset_path=generated_asset_path if _lane_supports_asset_override(lane) else "",
+        )
+        asset_override = asset_policy.asset_path
         lane_base_duration = lane.durations.get(args.profile, lane.durations.get("performance", 20.0))
         lane_duration = max(5.0, lane_base_duration * duration_scale)
         if asset_override and not _lane_supports_asset_override(lane):
@@ -1226,7 +1252,11 @@ def main() -> int:
                 f"[suite] lane={lane.lane_id} ignores --benchmark-asset; skipping asset override."
             )
             asset_override = ""
-        print(f"[suite] running lane={lane.lane_id} scene={lane.scene} duration={lane_duration:.1f}s")
+        print(
+            f"[suite] running lane={lane.lane_id} scene={lane.scene} duration={lane_duration:.1f}s "
+            f"asset_class={asset_policy.asset_classification} evidence={asset_policy.evidence_role} "
+            f"asset_source={asset_policy.asset_source}"
+        )
         result = _run_lane(
             godot_binary=godot_binary,
             project_path=project_path,
@@ -1242,6 +1272,11 @@ def main() -> int:
             timeout_scale=args.timeout_scale,
             timeout_grace=args.timeout_grace,
         )
+        result["resolved_asset_path"] = asset_policy.asset_path
+        result["asset_resolution_source"] = asset_policy.asset_source
+        result["asset_classification"] = asset_policy.asset_classification
+        result["evidence_role"] = asset_policy.evidence_role
+        result["asset_policy_notes"] = asset_policy.notes
         lane_results.append(result)
         score = result.get("score")
         avg_fps = result.get("avg_fps")
@@ -1382,7 +1417,8 @@ def main() -> int:
         "output_dir": str(output_dir),
         "generate_dummy_assets": bool(args.generate_dummy_assets),
         "dummy_asset_dir": args.dummy_asset_dir,
-        "asset_manifest_path": args.asset_manifest,
+        "asset_manifest_path": str(manifest_path),
+        "asset_manifest_version": asset_manifest.version,
         "benchmark_instancing_mode": args.benchmark_instancing_mode,
         "capture_lane_ids": sorted(capture_lane_ids),
         "capture_dir": str(capture_dir) if capture_dir is not None else "",

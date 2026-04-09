@@ -102,6 +102,16 @@ This keeps headless CI honest about what can actually execute while preserving t
 broader release-ready profile for non-headless lanes and one explicit streaming gate
 for world-streaming and residency regressions.
 
+Benchmark collection is separate from the canonical runtime gate:
+
+- `python3 tests/runtime/run_benchmark.py --profile performance --fail-fast`
+
+That benchmark path resolves lane assets through the project-local
+`benchmark_asset_manifest.json`. Benchmark classifications in that manifest are
+authoritative for what a lane proves. Lanes that still resolve to `test_splats.ply`
+are smoke/support evidence only and should not be cited as representative chunked
+streaming coverage.
+
 ## Synthetic Asset Prep
 
 Runtime and benchmark scenes depend on deterministic synthetic fixtures.

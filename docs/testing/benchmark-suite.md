@@ -7,10 +7,12 @@ Use this as the single benchmark entrypoint:
 ```bash
 python3 tests/runtime/run_benchmark.py \
   --godot-binary ./bin/godot.linuxbsd.editor.dev.x86_64 \
-  --project-path ./tests/examples/godot/test_project
+  --project-path ./tests/examples/godot/test_project \
+  --profile performance
 ```
 
-`--profile` defaults to `everything`.
+For ad hoc local exploration, `--profile` still defaults to `everything`. For benchmark evidence
+and Tier 2 closeout, `--profile performance` is the canonical lane set.
 
 ## Current Public Snapshot
 
@@ -46,7 +48,7 @@ The orchestrator loads each lane scene sequentially in-process and writes lane J
 
 - `everything`: suite lanes + unified + small baseline + synthetic scenes
 - `quick`: shortened smoke profile
-- `performance`: suite-focused performance profile
+- `performance`: canonical benchmark evidence profile
 - `synthetic-only`: synthetic scenes only
 - `ab-only`: instance pipeline serial vs single-pass lanes
 
@@ -57,20 +59,44 @@ Asset generation and mapping are canonicalized through:
 - `tests/runtime/prepare_synthetic_assets.py`
 - `tests/fixtures/benchmark_asset_manifest.json`
 
-The benchmark runner calls synthetic asset preparation automatically before execution.
+The benchmark runner resolves assets through the project-local benchmark manifest by default.
+That manifest now carries both:
+
+- the concrete asset path resolution order
+- the declared asset/evidence classification for each lane
+
+Use the classifications literally:
+
+- `real_chunked`: representative chunked-scene benchmark evidence
+- `deterministic_synthetic`: synthetic support lane
+- `lightweight_smoke`: lightweight smoke/support lane, not representative large-scene evidence
+
+Run synthetic asset preparation before benchmark collection whenever fixture or manifest state may
+be stale:
+
+```bash
+python3 tests/runtime/prepare_synthetic_assets.py --quiet
+```
+Streaming-named lanes that still resolve to `test_splats.ply` are intentionally classified as
+`lightweight_smoke`; they are useful for churn-shaped smoke coverage, but they are not chunked
+large-scene evidence.
 
 ## Suite Coverage
 
 These are the user-relevant lanes already encoded in the suite and available for publication once committed results exist:
 
-| Lane | Purpose | Current publication status |
-| --- | --- | --- |
-| `static_baseline` | Low-noise raster baseline | Published |
-| `streaming_corridor` | Camera sweep stressing chunk turnover | Suite-only |
-| `city_flyover` | High-altitude visibility-change stress | Suite-only |
-| `instance_storm` | Many-instance submission pressure | Suite-only |
-| `lighting_stress` | Animated light and shading stress | Suite-only |
-| `unified_composite` | Integrated all-systems composite lane | Suite-only |
+| Lane | Purpose | Asset class | Evidence role | Current publication status |
+| --- | --- | --- | --- | --- |
+| `static_baseline` | Low-noise raster baseline | `lightweight_smoke` | Published baseline | Published |
+| `streaming_corridor` | Camera sweep stressing chunk turnover | `lightweight_smoke` | Streaming smoke only | Suite-only |
+| `city_flyover` | High-altitude visibility-change stress | `lightweight_smoke` | Streaming smoke only | Suite-only |
+| `instance_storm` | Many-instance submission pressure | `lightweight_smoke` | Suite support | Suite-only |
+| `lighting_stress` | Animated light and shading stress | `lightweight_smoke` | Suite support | Suite-only |
+| `long_soak` | Long-horizon drift/churn stability | `lightweight_smoke` | Streaming smoke only | Suite-only |
+| `unified_composite` | Integrated all-systems composite lane | `lightweight_smoke` | Streaming smoke only | Suite-only |
+
+No currently documented benchmark lane should be cited as representative chunked streaming
+evidence unless its manifest classification is upgraded to `real_chunked`.
 
 ## Outputs
 
