@@ -19,6 +19,11 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from open_world_chunked_asset_ladder import (
+    build_chunked_asset_ladder,
+    validate_chunked_asset_ladder,
+)
+
 SH_C0 = 0.28209479177387814
 
 
@@ -86,6 +91,8 @@ CANONICAL_MANIFESTS: tuple[str, ...] = (
     "tests/fixtures/benchmark_asset_manifest.json",
     "tests/examples/godot/test_project/tests/fixtures/benchmark_asset_manifest.json",
 )
+
+DECK_MANIFEST_PATH = "tests/examples/godot/test_project_deck/tests/fixtures/benchmark_asset_manifest.json"
 
 SCENE_DEFAULT_ASSETS: dict[str, str] = {
     "benchmark_suite_lane": "res://tests/fixtures/test_splats.ply",
@@ -271,7 +278,8 @@ LANE_METADATA: dict[str, dict[str, object]] = {
 
 def _benchmark_asset_manifest() -> dict[str, object]:
     return {
-        "version": "2.1.0",
+        "chunked_asset_ladder": build_chunked_asset_ladder(),
+        "version": "2.2.0",
         "default_asset": "res://tests/fixtures/test_splats.ply",
         "scene_defaults": dict(SCENE_DEFAULT_ASSETS),
         "lane_defaults": dict(LANE_DEFAULT_ASSETS),
@@ -607,6 +615,11 @@ def _check_only(repo_root: Path) -> int:
     missing: list[str] = []
     forbidden_present: list[str] = []
     legacy_path_references: list[str] = []
+    policy_failures: list[str] = []
+
+    ladder_failures = validate_chunked_asset_ladder()
+    for failure in ladder_failures:
+        policy_failures.append(f"open-world ladder: {failure}")
 
     for spec in CANONICAL_SPECS:
         file_path = repo_root / spec.relative_path
@@ -617,6 +630,28 @@ def _check_only(repo_root: Path) -> int:
         file_path = repo_root / rel_path
         if not file_path.is_file() or file_path.stat().st_size <= 0:
             missing.append(rel_path)
+            continue
+        try:
+            data = json.loads(file_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            policy_failures.append(f"{rel_path}: invalid JSON ({exc})")
+            continue
+        expected_ladder = build_chunked_asset_ladder()
+        if data.get("chunked_asset_ladder") != expected_ladder:
+            policy_failures.append(f"{rel_path}: chunked_asset_ladder is stale or mismatched")
+
+    deck_manifest = repo_root / DECK_MANIFEST_PATH
+    if not deck_manifest.is_file() or deck_manifest.stat().st_size <= 0:
+        missing.append(DECK_MANIFEST_PATH)
+    else:
+        try:
+            deck_data = json.loads(deck_manifest.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            policy_failures.append(f"{DECK_MANIFEST_PATH}: invalid JSON ({exc})")
+        else:
+            deck_ladder = deck_data.get("chunked_asset_ladder")
+            if deck_ladder != {}:
+                policy_failures.append(f"{DECK_MANIFEST_PATH}: chunked_asset_ladder must stay empty for deck smoke lanes")
 
     for rel_path in FORBIDDEN_LEGACY_PLYS:
         file_path = repo_root / rel_path
@@ -641,7 +676,7 @@ def _check_only(repo_root: Path) -> int:
                 legacy_path_references.append(f"{rel_path}: contains legacy token '{token}'")
                 break
 
-    if missing or forbidden_present or legacy_path_references:
+    if missing or forbidden_present or legacy_path_references or policy_failures:
         print("[prepare_synthetic_assets] synthetic asset policy check failed")
         if missing:
             print("  missing canonical assets:")
@@ -654,6 +689,10 @@ def _check_only(repo_root: Path) -> int:
         if legacy_path_references:
             print("  forbidden legacy path references:")
             for rel in legacy_path_references:
+                print(f"    - {rel}")
+        if policy_failures:
+            print("  manifest policy failures:")
+            for rel in policy_failures:
                 print(f"    - {rel}")
         return 1
 
