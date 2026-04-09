@@ -461,7 +461,7 @@ TEST_CASE("[GaussianSplatting][World][SceneTree] World node forwards desired ove
 	CHECK(submission.metadata[StringName("label")] == String("stage1b_world"));
 	CHECK(submission.metadata[StringName("world_path")] == String("res://stage1b_world.gsplatworld"));
 	CHECK(submission.has_desired_residency_hint);
-	CHECK(submission.desired_residency_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
+	CHECK(submission.desired_residency_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING);
 	CHECK_FALSE((bool)submission.desired_renderer_overrides[StringName("lod_enabled")]);
 	CHECK(float(submission.desired_renderer_overrides[StringName("lod_bias")]) == doctest::Approx(1.75f));
 	CHECK(float(submission.desired_renderer_overrides[StringName("lod_max_distance")]) == doctest::Approx(80.0f));
@@ -485,16 +485,16 @@ TEST_CASE("[GaussianSplatting][World][SceneTree] World node forwards desired ove
 		int32_t residency_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING;
 		String residency_source;
 		CHECK(director->get_submission_residency_hint_for_renderer(renderer.ptr(), &residency_hint, &residency_source));
-		CHECK(residency_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
+		CHECK(residency_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING);
 		CHECK(residency_source == String("world_submission"));
-		int32_t renderer_residency_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING;
+		int32_t renderer_residency_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT;
 		String renderer_residency_source;
 		CHECK(renderer->get_submission_residency_hint(&renderer_residency_hint, &renderer_residency_source));
-		CHECK(renderer_residency_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
+		CHECK(renderer_residency_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING);
 		CHECK(renderer_residency_source == String("world_submission"));
 		String backend_reason;
-		CHECK(renderer->should_prefer_resident_backend(gs::settings::GS_ROUTE_STREAMING, &backend_reason));
-		CHECK(backend_reason == String("submission_hint_resident:world_submission"));
+		CHECK_FALSE(renderer->should_prefer_resident_backend(gs::settings::GS_ROUTE_STREAMING, &backend_reason));
+		CHECK(backend_reason == String("submission_hint_streaming:world_submission"));
 		CHECK(renderer->get_gaussian_data() == data);
 		CHECK(renderer->get_static_chunks().size() == 1);
 		CHECK_FALSE(renderer->get_lod_enabled());
@@ -1255,7 +1255,7 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Active world residency 
 	int32_t renderer_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING;
 	String renderer_hint_source;
 	CHECK(director->get_submission_residency_hint_for_renderer(renderer.ptr(), &renderer_hint, &renderer_hint_source));
-	CHECK(renderer_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
+	CHECK(renderer_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING);
 	CHECK(renderer_hint_source == String("world_submission"));
 
 	director->unregister_instance_submission(instance_node->get_instance_id());
