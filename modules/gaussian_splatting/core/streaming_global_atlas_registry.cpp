@@ -16,6 +16,9 @@
 
 namespace {
 
+constexpr uint32_t CHUNK_META_FULL_UPLOAD_RANGE_THRESHOLD = 16;
+constexpr uint32_t CHUNK_META_FULL_UPLOAD_DIRTY_DIVISOR = 4;
+
 bool _is_streaming_debug_enabled() {
 	ProjectSettings *ps = ProjectSettings::get_singleton();
 	if (!ps) {
@@ -90,6 +93,54 @@ void StreamingGlobalAtlasRegistry::_invalidate_published_buffers() {
 	global_atlas_state.asset_chunk_index_buffer = RID();
 	global_atlas_state.quantization_buffer = RID();
 }
+
+StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan StreamingGlobalAtlasRegistry::_plan_chunk_meta_uploads(
+		LocalVector<uint32_t> &r_dirty_indices, uint32_t p_total_chunks) {
+	ChunkMetaUploadPlan plan;
+	if (r_dirty_indices.is_empty() || p_total_chunks == 0) {
+		r_dirty_indices.clear();
+		return plan;
+	}
+
+	uint32_t dirty_count = r_dirty_indices.size();
+	uint32_t *dirty_ptr = r_dirty_indices.ptr();
+	std::sort(dirty_ptr, dirty_ptr + dirty_count);
+
+	uint32_t filtered_count = 0;
+	uint32_t last_idx = UINT32_MAX;
+	for (uint32_t i = 0; i < dirty_count; i++) {
+		const uint32_t idx = dirty_ptr[i];
+		if (idx >= p_total_chunks || idx == last_idx) {
+			continue;
+		}
+		dirty_ptr[filtered_count++] = idx;
+		last_idx = idx;
+	}
+	r_dirty_indices.resize(filtered_count);
+	plan.dirty_count = filtered_count;
+	if (filtered_count == 0) {
+		return plan;
+	}
+
+	uint32_t range_count = 1;
+	for (uint32_t i = 1; i < filtered_count; i++) {
+		if (dirty_ptr[i] != dirty_ptr[i - 1] + 1u) {
+			range_count++;
+		}
+	}
+	plan.contiguous_range_count = range_count;
+	plan.full_update = (filtered_count * CHUNK_META_FULL_UPLOAD_DIRTY_DIVISOR >= p_total_chunks) ||
+			(range_count >= CHUNK_META_FULL_UPLOAD_RANGE_THRESHOLD);
+	return plan;
+}
+
+#if defined(TESTS_ENABLED)
+StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan StreamingGlobalAtlasRegistry::_test_plan_chunk_meta_uploads(
+		const LocalVector<uint32_t> &p_dirty_indices, uint32_t p_total_chunks) {
+	LocalVector<uint32_t> dirty_indices = p_dirty_indices;
+	return _plan_chunk_meta_uploads(dirty_indices, p_total_chunks);
+}
+#endif
 
 void StreamingGlobalAtlasRegistry::cleanup(RenderingDevice *p_rd) {
 	auto release_buffer = [p_rd](RID &buffer, uint32_t &size, const char *label) {
@@ -485,60 +536,57 @@ void StreamingGlobalAtlasRegistry::sync_to_gpu(GaussianStreamingSystem &system, 
 			_clear_dirty_flags(chunk_meta_dirty_flags);
 			atlas_dirty = true;
 		} else if (!chunk_meta_dirty_indices.is_empty()) {
-			uint32_t dirty_count = chunk_meta_dirty_indices.size();
-			uint32_t *dirty_ptr = chunk_meta_dirty_indices.ptr();
-			std::sort(dirty_ptr, dirty_ptr + dirty_count);
+			const ChunkMetaUploadPlan upload_plan =
+					_plan_chunk_meta_uploads(chunk_meta_dirty_indices, chunk_meta_cpu.size());
+			if (upload_plan.dirty_count == 0) {
+				chunk_meta_dirty_indices.clear();
+			} else if (upload_plan.full_update) {
+				p_rd->buffer_update(chunk_meta_buffer, 0, chunk_meta_size, chunk_span.reinterpret<uint8_t>().ptr());
+				chunk_meta_dirty_indices.clear();
+				_clear_dirty_flags(chunk_meta_dirty_flags);
+				atlas_dirty = true;
+			} else {
+				const uint32_t dirty_count = upload_plan.dirty_count;
+				uint32_t *dirty_ptr = chunk_meta_dirty_indices.ptr();
+				uint32_t range_start = UINT32_MAX;
+				uint32_t range_end = UINT32_MAX;
+				for (uint32_t i = 0; i <= dirty_count; i++) {
+					const bool at_end = i == dirty_count;
+					const uint32_t idx = at_end ? UINT32_MAX : dirty_ptr[i];
+					if (range_start == UINT32_MAX) {
+						if (!at_end) {
+							range_start = idx;
+							range_end = idx;
+						}
+						continue;
+					}
 
-			uint32_t filtered_count = 0;
-			uint32_t last_idx = UINT32_MAX;
-			for (uint32_t i = 0; i < dirty_count; i++) {
-				const uint32_t idx = dirty_ptr[i];
-				if (idx >= chunk_meta_cpu.size() || idx == last_idx) {
-					continue;
-				}
-				dirty_ptr[filtered_count++] = idx;
-				last_idx = idx;
-			}
+					if (!at_end && idx == range_end + 1u) {
+						range_end = idx;
+						continue;
+					}
 
-			uint32_t range_start = UINT32_MAX;
-			uint32_t range_end = UINT32_MAX;
-			for (uint32_t i = 0; i <= filtered_count; i++) {
-				const bool at_end = i == filtered_count;
-				const uint32_t idx = at_end ? UINT32_MAX : dirty_ptr[i];
-				if (range_start == UINT32_MAX) {
+					const uint32_t range_count = range_end - range_start + 1u;
+					const uint32_t offset = range_start * sizeof(ChunkMetaGPU);
+					const uint32_t update_size = range_count * sizeof(ChunkMetaGPU);
+					p_rd->buffer_update(chunk_meta_buffer, offset, update_size, chunk_meta_cpu.ptr() + range_start);
+					for (uint32_t clear_idx = range_start; clear_idx <= range_end; clear_idx++) {
+						if (clear_idx < chunk_meta_dirty_flags.size()) {
+							chunk_meta_dirty_flags[clear_idx] = 0;
+						}
+					}
+
 					if (!at_end) {
 						range_start = idx;
 						range_end = idx;
-					}
-					continue;
-				}
-
-				if (!at_end && idx == range_end + 1u) {
-					range_end = idx;
-					continue;
-				}
-
-				const uint32_t range_count = range_end - range_start + 1u;
-				const uint32_t offset = range_start * sizeof(ChunkMetaGPU);
-				const uint32_t update_size = range_count * sizeof(ChunkMetaGPU);
-				p_rd->buffer_update(chunk_meta_buffer, offset, update_size, chunk_meta_cpu.ptr() + range_start);
-				for (uint32_t clear_idx = range_start; clear_idx <= range_end; clear_idx++) {
-					if (clear_idx < chunk_meta_dirty_flags.size()) {
-						chunk_meta_dirty_flags[clear_idx] = 0;
+					} else {
+						range_start = UINT32_MAX;
+						range_end = UINT32_MAX;
 					}
 				}
-
-				if (!at_end) {
-					range_start = idx;
-					range_end = idx;
-				} else {
-					range_start = UINT32_MAX;
-					range_end = UINT32_MAX;
-				}
+				chunk_meta_dirty_indices.clear();
+				atlas_dirty = true;
 			}
-
-			chunk_meta_dirty_indices.clear();
-			atlas_dirty = true;
 		}
 	}
 

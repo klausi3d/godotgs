@@ -1008,6 +1008,36 @@ TEST_CASE("[GaussianSplatting] Sync pack rescue does not steal worker-owned pack
     CHECK(upload_pipeline.get_upload_queue_depth_cached() == 0);
 }
 
+TEST_CASE("[GaussianSplatting] Chunk meta upload planner keeps compact dirty spans incremental") {
+    LocalVector<uint32_t> dirty_indices;
+    dirty_indices.push_back(4);
+    dirty_indices.push_back(5);
+    dirty_indices.push_back(6);
+    dirty_indices.push_back(20);
+    dirty_indices.push_back(21);
+
+    const StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan plan =
+            StreamingGlobalAtlasRegistry::_test_plan_chunk_meta_uploads(dirty_indices, 128);
+
+    CHECK(plan.dirty_count == 5);
+    CHECK(plan.contiguous_range_count == 2);
+    CHECK_FALSE(plan.full_update);
+}
+
+TEST_CASE("[GaussianSplatting] Chunk meta upload planner escalates fragmented churn to a full upload") {
+    LocalVector<uint32_t> dirty_indices;
+    for (uint32_t i = 0; i < 16; i++) {
+        dirty_indices.push_back(i * 2);
+    }
+
+    const StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan plan =
+            StreamingGlobalAtlasRegistry::_test_plan_chunk_meta_uploads(dirty_indices, 128);
+
+    CHECK(plan.dirty_count == 16);
+    CHECK(plan.contiguous_range_count == 16);
+    CHECK(plan.full_update);
+}
+
 TEST_CASE("[GaussianSplatting][RequiresGPU] World static chunks keep streaming instance buffers ready without SceneDirector instances") {
     RenderingServer *rs = RenderingServer::get_singleton();
     if (rs == nullptr) {
