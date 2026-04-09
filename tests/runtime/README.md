@@ -13,6 +13,8 @@ Runtime scenarios are defined declaratively in:
 The canonical headless CI profile is `headless-ci`.
 The canonical release-ready profile remains `release-ci` (default for explicit runtime validation).
 The canonical blocking GPU-backed streaming profile is `streaming-gpu-ci`.
+`--list-profiles` only lists runtime validation profiles; the benchmark proof surfaces are
+separate and live in the benchmark workflow/docs.
 List profiles:
 
 ```bash
@@ -102,15 +104,18 @@ This keeps headless CI honest about what can actually execute while preserving t
 broader release-ready profile for non-headless lanes and one explicit streaming gate
 for world-streaming and residency regressions.
 
-Benchmark collection is separate from the canonical runtime gate:
+Benchmark evidence collection is separate from the canonical runtime gate and uses the
+benchmark runner lane selector instead of runtime validation profiles:
 
-- `python3 tests/runtime/run_benchmark.py --profile performance --fail-fast`
+- `openworld-proof-dev` = `open_world_corridor_proof` + `city_flyover`
+- `openworld-proof-weekly` = `long_soak`
 
 That benchmark path resolves lane assets through the project-local
 `benchmark_asset_manifest.json`. Benchmark classifications in that manifest are
 authoritative for what a lane proves. Lanes that still resolve to `test_splats.ply`
 are smoke/support evidence only and should not be cited as representative chunked
-streaming coverage.
+streaming coverage. The benchmark surfaces above are evidence-only and do not create
+a second blocking streaming gate.
 
 ## Synthetic Asset Prep
 

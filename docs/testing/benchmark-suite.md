@@ -81,6 +81,17 @@ Streaming-named lanes that still resolve to `test_splats.ply` are intentionally 
 `lightweight_smoke`; they are useful for proof-shape smoke coverage, but they are not chunked
 large-scene evidence.
 
+## CI Surfaces
+
+`streaming-gpu-ci` is the only blocking GPU-backed streaming gate. The benchmark proof
+surfaces below are evidence-only and should not be treated as a second streaming gate.
+
+| Surface | Runner command | Scope | Blocking? |
+| --- | --- | --- | --- |
+| `streaming-gpu-ci` | `python3 tests/runtime/run_runtime_validation.py --profile streaming-gpu-ci` | Runtime validation for residency and world-streaming regressions | Yes |
+| `openworld-proof-dev` | `python3 tests/runtime/run_benchmark.py --profile performance --lane open_world_corridor_proof --lane city_flyover` | `20M corridor` + `50M boundary` evidence | No |
+| `openworld-proof-weekly` | `python3 tests/runtime/run_benchmark.py --profile performance --lane long_soak` | `100M city roam + soak` evidence | No |
+
 ## Proof Ladder
 
 The current large-world proof ladder is intentionally split between:
@@ -106,6 +117,12 @@ at the declared 20M total-splat scale.
 
 Mixed-residency and multi-asset hub scenarios remain evidence-only and are intentionally outside
 the blocking proof ladder for `Phase 4C.1`.
+
+The benchmark lanes above compose the evidence surfaces as follows:
+
+- `openworld-proof-dev` = `open_world_corridor_proof` + `city_flyover`
+- `openworld-proof-weekly` = `long_soak`
+- both surfaces are benchmark evidence only, while `streaming-gpu-ci` remains the only blocking gate
 
 ## Large-World Proof Contract
 
