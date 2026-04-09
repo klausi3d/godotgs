@@ -154,7 +154,7 @@ LANE_METADATA: dict[str, dict[str, object]] = {
     "open_world_corridor_proof": {
         "asset_classification": "chunked_open_world_candidate",
         "evidence_role": "proof_corridor_return_bootstrap",
-        "notes": "Dedicated world-consuming bootstrap proof lane. Consumes the canonical open-world corridor stage contract to build a benchmark-local GaussianSplatWorld; validates the bootstrap seam, not full-scale real_chunked evidence.",
+        "notes": "Dedicated world-consuming corridor proof lane. Consumes the canonical open-world corridor stage contract to build an approximately 20M-total benchmark-local GaussianSplatWorld using the deterministic spiral fixture; honest large-world candidate evidence, but not yet promoted real_chunked proof.",
         "require_explicit_lane_default": True,
         "resource_kind": "gaussian_world_contract",
     },

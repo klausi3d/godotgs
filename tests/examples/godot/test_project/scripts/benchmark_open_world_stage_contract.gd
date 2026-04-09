@@ -44,24 +44,26 @@ static func build_world_from_stage_manifest(stage_manifest_path: String, owner: 
 
 	var corridor_lanes := max(1, int(builder.get("corridor_lanes", 4)))
 	var corridor_segments := max(1, int(builder.get("corridor_segments", 32)))
+	var instance_count := max(1, int(builder.get("instance_count", corridor_lanes * corridor_segments)))
 	var lane_spacing := float(builder.get("lane_spacing", 7.5))
 	var segment_spacing := float(builder.get("segment_spacing", 10.0))
 	var vertical_wave := float(builder.get("vertical_wave_amplitude", 0.4))
 	var lateral_wave := float(builder.get("lateral_wave_amplitude", 1.2))
 
-	for segment in range(corridor_segments):
-		for lane in range(corridor_lanes):
-			var node := GaussianSplatNode3D.new()
-			node.name = "Bootstrap_%03d_%02d" % [segment, lane]
-			node.set_splat_asset(source_asset)
-			var lane_offset := (float(lane) - float(corridor_lanes - 1) * 0.5) * lane_spacing
-			var segment_offset := -float(segment) * segment_spacing
-			node.position = Vector3(
-				lane_offset + sin(float(segment) * 0.19) * lateral_wave,
-				cos(float(segment) * 0.11 + float(lane) * 0.7) * vertical_wave,
-				segment_offset
-			)
-			container.add_child(node)
+	for instance_index in range(instance_count):
+		var lane := instance_index % corridor_lanes
+		var segment := instance_index / corridor_lanes
+		var node := GaussianSplatNode3D.new()
+		node.name = "Bootstrap_%04d_%02d" % [segment, lane]
+		node.set_splat_asset(source_asset)
+		var lane_offset := (float(lane) - float(corridor_lanes - 1) * 0.5) * lane_spacing
+		var segment_offset := -float(segment) * segment_spacing
+		node.position = Vector3(
+			lane_offset + sin(float(segment) * 0.19) * lateral_wave,
+			cos(float(segment) * 0.11 + float(lane) * 0.7) * vertical_wave,
+			segment_offset
+		)
+		container.add_child(node)
 
 	container.merge_children()
 	var generated_chunk_count := int(container.get_chunk_count())
@@ -77,16 +79,17 @@ static func build_world_from_stage_manifest(stage_manifest_path: String, owner: 
 	metadata["benchmark_stage_manifest_path"] = stage_manifest_path
 	metadata["open_world_asset_id"] = str(stage_manifest.get("asset_id", ""))
 	metadata["open_world_contract_total_splats"] = int(working_set.get("total_splats", 0))
-	metadata["open_world_bootstrap_total_splats"] = int(builder.get("bootstrap_total_splats", 0))
-	metadata["open_world_bootstrap_instance_count"] = int(builder.get("instance_count", corridor_lanes * corridor_segments))
-	metadata["open_world_bootstrap_chunk_count"] = generated_chunk_count
+	metadata["open_world_materialized_total_splats"] = int(builder.get("materialized_total_splats", 0))
+	metadata["open_world_materialized_instance_count"] = instance_count
+	metadata["open_world_materialized_chunk_count"] = generated_chunk_count
 	world.set_metadata(metadata)
 
 	return {
 		"world": world,
 		"stage_manifest": stage_manifest,
 		"generated_chunk_count": generated_chunk_count,
-		"bootstrap_total_splats": int(builder.get("bootstrap_total_splats", 0)),
+		"materialized_total_splats": int(builder.get("materialized_total_splats", 0)),
+		"materialized_instance_count": instance_count,
 		"contract_total_splats": int(working_set.get("total_splats", 0)),
 		"asset_id": str(stage_manifest.get("asset_id", "")),
 	}

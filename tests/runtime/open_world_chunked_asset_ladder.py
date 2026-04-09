@@ -14,7 +14,8 @@ MAIN_PROJECT_FIXTURE_ROOT = "tests/examples/godot/test_project/tests/fixtures/op
 MAIN_PROJECT_RES_ROOT = "res://tests/fixtures/open_world"
 STAGE_MANIFEST_SUFFIX = ".stage_manifest.json"
 CHUNKED_LADDER_REF_PREFIX = "chunked_ladder:"
-BOOTSTRAP_SOURCE_ASSET_PATH = "res://tests/fixtures/test_splats.ply"
+WORLD_SOURCE_ASSET_PATH = "res://tests/fixtures/synthetic_spiral.ply"
+WORLD_SOURCE_ASSET_SPLATS = 25_000
 
 
 @dataclass(frozen=True)
@@ -128,10 +129,16 @@ def validate_chunked_asset_ladder(ladder: dict[str, dict[str, object]] | None = 
             failures.append(f"{spec.asset_id}: seed must be {spec.seed}")
         if not isinstance(bootstrap_builder, dict):
             failures.append(f"{spec.asset_id}: bootstrap_world_builder must be an object")
-        elif str(bootstrap_builder.get("source_asset_path", "")).strip() != BOOTSTRAP_SOURCE_ASSET_PATH:
-            failures.append(f"{spec.asset_id}: source_asset_path must be {BOOTSTRAP_SOURCE_ASSET_PATH}")
+        elif str(bootstrap_builder.get("source_asset_path", "")).strip() != WORLD_SOURCE_ASSET_PATH:
+            failures.append(f"{spec.asset_id}: source_asset_path must be {WORLD_SOURCE_ASSET_PATH}")
+        elif int(bootstrap_builder.get("source_asset_splats", 0)) != WORLD_SOURCE_ASSET_SPLATS:
+            failures.append(f"{spec.asset_id}: source_asset_splats must be {WORLD_SOURCE_ASSET_SPLATS}")
         elif int(bootstrap_builder.get("instance_count", 0)) <= 0:
             failures.append(f"{spec.asset_id}: bootstrap instance_count must be > 0")
+        elif int(bootstrap_builder.get("materialized_total_splats", 0)) != spec.total_splats:
+            failures.append(f"{spec.asset_id}: materialized_total_splats must be {spec.total_splats}")
+        elif int(bootstrap_builder.get("instance_count", 0)) * int(bootstrap_builder.get("source_asset_splats", 0)) != spec.total_splats:
+            failures.append(f"{spec.asset_id}: instance_count * source_asset_splats must equal {spec.total_splats}")
 
         stage_manifest_path = str(staging.get("project_stage_manifest_path", ""))
         if not stage_manifest_path:
@@ -173,7 +180,7 @@ def _build_asset_entry(spec: OpenWorldAssetSpec) -> dict[str, object]:
         "generation": {
             "chunk_naming_pattern": "chunks/chunk_{chunk_index:04d}.ply",
             "helper_script": "tests/runtime/open_world_chunked_asset_ladder.py",
-            "materialization_support": "metadata_only_stage_manifest",
+            "materialization_support": "runtime_world_builder_contract",
             "seed": spec.seed,
             "topology": spec.topology,
         },
@@ -203,24 +210,24 @@ def _build_bootstrap_world_builder(spec: OpenWorldAssetSpec) -> dict[str, object
     topology_defaults = {
         "corridor_return": {
             "builder_kind": "corridor_world_bootstrap",
-            "corridor_lanes": 4,
-            "corridor_segments": 96,
+            "corridor_lanes": 8,
+            "corridor_segments": 100,
             "lane_spacing": 7.5,
             "segment_spacing": 10.0,
             "camera_path_hint": "corridor_return",
         },
         "biome_boundary_crossing": {
             "builder_kind": "boundary_world_bootstrap",
-            "corridor_lanes": 6,
-            "corridor_segments": 80,
+            "corridor_lanes": 20,
+            "corridor_segments": 100,
             "lane_spacing": 12.0,
             "segment_spacing": 12.0,
             "camera_path_hint": "boundary_crossing",
         },
         "city_block_roam_soak": {
             "builder_kind": "city_world_bootstrap",
-            "corridor_lanes": 8,
-            "corridor_segments": 72,
+            "corridor_lanes": 20,
+            "corridor_segments": 200,
             "lane_spacing": 14.0,
             "segment_spacing": 14.0,
             "camera_path_hint": "city_roam",
@@ -229,7 +236,7 @@ def _build_bootstrap_world_builder(spec: OpenWorldAssetSpec) -> dict[str, object
     defaults = topology_defaults.get(spec.topology, topology_defaults["corridor_return"])
     instance_count = int(defaults["corridor_lanes"]) * int(defaults["corridor_segments"])
     return {
-        "bootstrap_total_splats": instance_count * 1024,
+        "materialized_total_splats": instance_count * WORLD_SOURCE_ASSET_SPLATS,
         "chunk_size": 0.75,
         "corridor_lanes": int(defaults["corridor_lanes"]),
         "corridor_segments": int(defaults["corridor_segments"]),
@@ -237,8 +244,8 @@ def _build_bootstrap_world_builder(spec: OpenWorldAssetSpec) -> dict[str, object
         "segment_spacing": float(defaults["segment_spacing"]),
         "camera_path_hint": str(defaults["camera_path_hint"]),
         "instance_count": instance_count,
-        "source_asset_path": BOOTSTRAP_SOURCE_ASSET_PATH,
-        "source_asset_splats": 1024,
+        "source_asset_path": WORLD_SOURCE_ASSET_PATH,
+        "source_asset_splats": WORLD_SOURCE_ASSET_SPLATS,
         "world_resource_kind": "gaussian_world_contract",
         "builder_kind": str(defaults["builder_kind"]),
     }

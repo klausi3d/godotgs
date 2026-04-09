@@ -58,7 +58,7 @@ LANES: list[LaneDefinition] = [
     LaneDefinition(
         lane_id="open_world_corridor_proof",
         scene="res://scenes/benchmark_suite/lane_open_world_corridor_proof.tscn",
-        description="Dedicated world-consuming corridor proof bootstrap",
+        description="Dedicated world-consuming 20M corridor proof surface",
         durations={"performance": 40.0},
         weights={"performance": 0.0},
     ),

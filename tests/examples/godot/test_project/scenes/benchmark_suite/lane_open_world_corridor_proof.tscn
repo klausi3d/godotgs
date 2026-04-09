@@ -7,7 +7,7 @@
 script = ExtResource("1")
 lane_id = "open_world_corridor_proof"
 lane_name = "Open-World Corridor Proof"
-lane_description = "Dedicated world-consuming bootstrap lane that builds a chunked GaussianSplatWorld from the canonical corridor stage contract."
+lane_description = "Dedicated world-consuming 20M corridor proof lane that builds a chunked GaussianSplatWorld from the canonical corridor stage contract."
 lane_preset = "streaming_corridor"
 default_duration_s = 40.0
 
