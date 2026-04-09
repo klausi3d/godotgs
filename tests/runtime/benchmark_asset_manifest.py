@@ -30,6 +30,7 @@ class LaneAssetPolicy:
 
 
 CHUNKED_LADDER_REF_PREFIX = "chunked_ladder:"
+RUNNABLE_CHUNKED_STAGING_STATUS = "materialized"
 
 
 def resolve_benchmark_asset_manifest_path(
@@ -153,8 +154,7 @@ def resolve_lane_asset_policy(
 
     chunked_entry = _resolve_chunked_asset_entry(manifest, asset_path)
     if chunked_entry is not None:
-        staging = chunked_entry.get("staging", {})
-        resolved_asset_path = str(staging.get("project_stage_manifest_path", "")).strip()
+        resolved_asset_path = _resolve_runnable_chunked_asset_path(chunked_entry)
         if resolved_asset_path:
             asset_path = resolved_asset_path
             asset_source = "chunked_ladder"
@@ -205,6 +205,12 @@ def validate_manifest_lane_policies(
                 f"lane={lane_id}: require_explicit_lane_default=true but resolved via {policy.asset_source}"
             )
         if raw_lane_asset.startswith(CHUNKED_LADDER_REF_PREFIX) and policy.asset_source != "chunked_ladder":
+            chunked_entry = _resolve_chunked_asset_entry(manifest, raw_lane_asset)
+            if chunked_entry is not None and not _resolve_runnable_chunked_asset_path(chunked_entry):
+                failures.append(
+                    f"lane={lane_id}: chunked ladder entry is not benchmark-consumable yet; "
+                    "wait for materialized staged assets before wiring a runnable lane"
+                )
             failures.append(
                 f"lane={lane_id}: chunked ladder asset reference did not resolve through chunked_ladder"
             )
@@ -300,6 +306,16 @@ def _resolve_chunked_asset_entry(
     if not isinstance(entry, dict):
         return None
     return entry
+
+
+def _resolve_runnable_chunked_asset_path(entry: dict[str, Any]) -> str:
+    if str(entry.get("staging_status", "")).strip() != RUNNABLE_CHUNKED_STAGING_STATUS:
+        return ""
+    staging = entry.get("staging", {})
+    if not isinstance(staging, dict):
+        return ""
+    benchmark_asset_path = str(staging.get("project_benchmark_asset_path", "")).strip()
+    return benchmark_asset_path
 
 
 def _classify_asset_path(asset_path: str) -> str:

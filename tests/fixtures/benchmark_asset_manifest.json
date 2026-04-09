@@ -106,7 +106,6 @@
     "lighting_stress": "res://tests/fixtures/test_splats.ply",
     "lod_torture": "res://tests/fixtures/test_splats.ply",
     "long_soak": "res://tests/fixtures/test_splats.ply",
-    "open_world_corridor_proof": "chunked_ladder:open_world_corridor_20m",
     "parity_fidelity": "res://tests/fixtures/test_splats.ply",
     "small_baseline": "res://tests/fixtures/test_splats.ply",
     "static_baseline": "res://tests/fixtures/test_splats.ply",
@@ -180,12 +179,6 @@
       "asset_classification": "lightweight_smoke",
       "evidence_role": "proof_support_city_roam_soak_smoke",
       "notes": "Long-horizon city-roam soak support lane currently backed by test_splats.ply; useful for proof-shape smoke coverage, not representative chunked evidence.",
-      "require_explicit_lane_default": true
-    },
-    "open_world_corridor_proof": {
-      "asset_classification": "chunked_open_world_candidate",
-      "evidence_role": "proof_corridor_return_bootstrap",
-      "notes": "Explicit corridor-return proof bootstrap lane resolving the canonical open-world corridor stage manifest through the benchmark asset manifest.",
       "require_explicit_lane_default": true
     },
     "parity_fidelity": {

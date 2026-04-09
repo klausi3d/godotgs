@@ -22,7 +22,6 @@ from pathlib import Path
 from open_world_chunked_asset_ladder import (
     MAIN_PROJECT_FIXTURE_ROOT,
     build_chunked_asset_ladder,
-    build_chunked_asset_reference,
     validate_chunked_asset_ladder,
     write_stage_manifests,
 )
@@ -112,7 +111,6 @@ SCENE_DEFAULT_ASSETS: dict[str, str] = {
 }
 
 LANE_DEFAULT_ASSETS: dict[str, str] = {
-    "open_world_corridor_proof": build_chunked_asset_reference("open_world_corridor_20m"),
     "static_baseline": "res://tests/fixtures/test_splats.ply",
     "streaming_corridor": "res://tests/fixtures/test_splats.ply",
     "city_flyover": "res://tests/fixtures/test_splats.ply",
@@ -139,12 +137,6 @@ LANE_DEFAULT_ASSETS: dict[str, str] = {
 }
 
 LANE_METADATA: dict[str, dict[str, object]] = {
-    "open_world_corridor_proof": {
-        "asset_classification": "chunked_open_world_candidate",
-        "evidence_role": "proof_corridor_return_bootstrap",
-        "notes": "Explicit corridor-return proof bootstrap lane resolving the canonical open-world corridor stage manifest through the benchmark asset manifest.",
-        "require_explicit_lane_default": True,
-    },
     "static_baseline": {
         "asset_classification": "lightweight_smoke",
         "evidence_role": "published_baseline",
@@ -653,10 +645,16 @@ def _check_only(repo_root: Path) -> int:
         raw_lane_defaults = data.get("lane_defaults", {})
         if not isinstance(raw_lane_defaults, dict):
             policy_failures.append(f"{rel_path}: lane_defaults must be a JSON object")
-        elif raw_lane_defaults.get("open_world_corridor_proof") != build_chunked_asset_reference("open_world_corridor_20m"):
-            policy_failures.append(
-                f"{rel_path}: open_world_corridor_proof must resolve through the canonical chunked ladder reference"
+        else:
+            chunked_lane_refs = sorted(
+                lane_id for lane_id, asset_path in raw_lane_defaults.items()
+                if isinstance(asset_path, str) and asset_path.startswith("chunked_ladder:")
             )
+            if chunked_lane_refs:
+                policy_failures.append(
+                    f"{rel_path}: runnable lane_defaults must not use chunked_ladder until staged benchmark assets exist "
+                    f"({', '.join(chunked_lane_refs)})"
+                )
 
     deck_manifest = repo_root / DECK_MANIFEST_PATH
     if not deck_manifest.is_file() or deck_manifest.stat().st_size <= 0:

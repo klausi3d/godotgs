@@ -3,6 +3,7 @@ extends RefCounted
 
 const MANIFEST_PATH := "res://tests/fixtures/benchmark_asset_manifest.json"
 const CHUNKED_LADDER_REF_PREFIX := "chunked_ladder:"
+const RUNNABLE_CHUNKED_STAGING_STATUS := "materialized"
 
 static var _manifest_loaded := false
 static var _manifest_cache: Dictionary = {}
@@ -81,10 +82,12 @@ static func _resolve_manifest_asset_path(manifest: Dictionary, raw_value: String
 	var entry = ladder.get(asset_id, {})
 	if not (entry is Dictionary):
 		return raw_value
+	if str(entry.get("staging_status", "")) != RUNNABLE_CHUNKED_STAGING_STATUS:
+		return raw_value
 	var staging = entry.get("staging", {})
 	if not (staging is Dictionary):
 		return raw_value
-	var staged_path := str(staging.get("project_stage_manifest_path", ""))
+	var staged_path := str(staging.get("project_benchmark_asset_path", ""))
 	return staged_path if not staged_path.is_empty() else raw_value
 
 static func _parse_cmdline_contract() -> Dictionary:
