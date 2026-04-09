@@ -219,6 +219,270 @@ PROFILE_WARMUP_SECONDS: dict[str, float] = {
 DEFAULT_CAPTURE_LANES: tuple[str, ...] = ("integrity_sentinel", "parity_fidelity")
 TEXT_DEPENDENCY_SUFFIXES: tuple[str, ...] = (".tscn", ".gd", ".tres", ".tscn")
 RES_PATH_PATTERN = re.compile(r"res://[^\s\"'\]\)]+")
+LARGE_WORLD_PROOF_CONTRACT_VERSION = "phase4c1_large_world_v1"
+LARGE_WORLD_PROOF_METRIC_LABELS: dict[str, str] = {
+    "first_visible_ms": "first_visible_ms",
+    "residency_ratio": "residency_ratio",
+    "frame_p95_ms": "frame_p95_ms",
+    "frame_p95_to_avg_ratio": "frame_p95_to_avg_ratio",
+    "queue_pressure_frames": "queue_pressure_frames",
+    "no_progress_frames": "no_progress_frames",
+    "scan_starved_frames": "scan_starved_frames",
+    "vram_cap_hit_frames": "vram_cap_hit_frames",
+    "chunk_loads_per_frame_p95": "chunk_loads_per_frame.p95",
+    "chunk_evictions_per_frame_p95": "chunk_evictions_per_frame.p95",
+}
+LARGE_WORLD_PROOF_CONTRACTS: dict[str, dict[str, Any]] = {
+    "open_world_corridor_proof": {
+        "proof_role": "corridor_return",
+        "proof_name": "Corridor return",
+        "failure_intent": (
+            "Fail when the dedicated large-world corridor lane never re-establishes visible streamed output "
+            "with stable residency and forward progress."
+        ),
+        "correctness_thresholds": [
+            {"metric": "first_visible_ms", "op": "<=", "value": 3500.0},
+            {"metric": "residency_ratio", "op": ">=", "value": 0.70},
+            {"metric": "queue_pressure_frames", "op": "<=", "value": 32},
+            {"metric": "no_progress_frames", "op": "<=", "value": 6},
+            {"metric": "scan_starved_frames", "op": "<=", "value": 6},
+            {"metric": "vram_cap_hit_frames", "op": "<=", "value": 0},
+        ],
+        "soft_budget_thresholds": [
+            {"metric": "frame_p95_ms", "op": "<=", "value": 95.0},
+            {"metric": "frame_p95_to_avg_ratio", "op": "<=", "value": 2.25},
+            {"metric": "chunk_loads_per_frame_p95", "op": "<=", "value": 10.0},
+            {"metric": "chunk_evictions_per_frame_p95", "op": "<=", "value": 4.0},
+        ],
+    },
+    "city_flyover": {
+        "proof_role": "boundary_crossing",
+        "proof_name": "Boundary crossing",
+        "failure_intent": (
+            "Fail when the visibility-shift lane can only stay afloat by prolonged queue pressure, "
+            "starved scans, or residency collapse during boundary crossing."
+        ),
+        "correctness_thresholds": [
+            {"metric": "first_visible_ms", "op": "<=", "value": 4500.0},
+            {"metric": "residency_ratio", "op": ">=", "value": 0.65},
+            {"metric": "queue_pressure_frames", "op": "<=", "value": 48},
+            {"metric": "no_progress_frames", "op": "<=", "value": 12},
+            {"metric": "scan_starved_frames", "op": "<=", "value": 12},
+            {"metric": "vram_cap_hit_frames", "op": "<=", "value": 4},
+        ],
+        "soft_budget_thresholds": [
+            {"metric": "frame_p95_ms", "op": "<=", "value": 120.0},
+            {"metric": "frame_p95_to_avg_ratio", "op": "<=", "value": 2.50},
+            {"metric": "chunk_loads_per_frame_p95", "op": "<=", "value": 12.0},
+            {"metric": "chunk_evictions_per_frame_p95", "op": "<=", "value": 8.0},
+        ],
+    },
+    "long_soak": {
+        "proof_role": "city_roam_soak",
+        "proof_name": "City roam + soak",
+        "failure_intent": (
+            "Fail when the long-roam soak lane loses visibility, residency, or forward progress while revisiting "
+            "already-streamed content."
+        ),
+        "correctness_thresholds": [
+            {"metric": "first_visible_ms", "op": "<=", "value": 6000.0},
+            {"metric": "residency_ratio", "op": ">=", "value": 0.75},
+            {"metric": "queue_pressure_frames", "op": "<=", "value": 96},
+            {"metric": "no_progress_frames", "op": "<=", "value": 24},
+            {"metric": "scan_starved_frames", "op": "<=", "value": 20},
+            {"metric": "vram_cap_hit_frames", "op": "<=", "value": 8},
+        ],
+        "soft_budget_thresholds": [
+            {"metric": "frame_p95_ms", "op": "<=", "value": 135.0},
+            {"metric": "frame_p95_to_avg_ratio", "op": "<=", "value": 2.60},
+            {"metric": "chunk_loads_per_frame_p95", "op": "<=", "value": 8.0},
+            {"metric": "chunk_evictions_per_frame_p95", "op": "<=", "value": 10.0},
+        ],
+    },
+}
+
+
+def _validate_large_world_proof_contract_definitions() -> None:
+    known_lanes = {lane.lane_id for lane in LANES}
+    known_metrics = set(LARGE_WORLD_PROOF_METRIC_LABELS)
+    allowed_ops = {"<=", ">="}
+    errors: list[str] = []
+    for lane_id, contract in LARGE_WORLD_PROOF_CONTRACTS.items():
+        if lane_id not in known_lanes:
+            errors.append(f"{lane_id}: lane is not defined in LANES")
+        seen_metrics: set[str] = set()
+        for rule_group in ("correctness_thresholds", "soft_budget_thresholds"):
+            rules = contract.get(rule_group)
+            if not isinstance(rules, list) or not rules:
+                errors.append(f"{lane_id}: {rule_group} must be a non-empty list")
+                continue
+            for idx, rule in enumerate(rules):
+                if not isinstance(rule, dict):
+                    errors.append(f"{lane_id}: {rule_group}[{idx}] must be an object")
+                    continue
+                metric = str(rule.get("metric", "")).strip()
+                op = str(rule.get("op", "")).strip()
+                value = rule.get("value")
+                if metric not in known_metrics:
+                    errors.append(f"{lane_id}: {rule_group}[{idx}] uses unknown metric '{metric}'")
+                if op not in allowed_ops:
+                    errors.append(f"{lane_id}: {rule_group}[{idx}] uses unsupported operator '{op}'")
+                if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                    errors.append(f"{lane_id}: {rule_group}[{idx}] has non-finite threshold {value!r}")
+                if metric in seen_metrics:
+                    errors.append(f"{lane_id}: metric '{metric}' is defined more than once")
+                seen_metrics.add(metric)
+    if errors:
+        raise ValueError("invalid large-world proof contract:\n- " + "\n- ".join(errors))
+
+
+def _extract_large_world_proof_metrics(report: dict[str, Any]) -> dict[str, Any]:
+    proof_metrics = report.get("proof_metrics")
+    metrics: dict[str, Any] = dict(proof_metrics) if isinstance(proof_metrics, dict) else {}
+    proof_window = metrics.get("proof_window")
+    proof_summary: dict[str, Any] | None = None
+    if proof_window == "steady_overall":
+        steady = report.get("steady_overall")
+        if isinstance(steady, dict) and int(steady.get("sample_count", 0)) > 0:
+            proof_summary = steady
+    if proof_summary is None:
+        overall = report.get("overall")
+        if isinstance(overall, dict):
+            proof_summary = overall
+            if not proof_window:
+                metrics["proof_window"] = "overall"
+    if isinstance(proof_summary, dict):
+        avg_frame_ms = _metric_as_float(proof_summary.get("avg_frame_ms"))
+        p95_frame_ms = _metric_as_float(proof_summary.get("p95_frame_ms"))
+        if _metric_as_float(metrics.get("frame_p95_ms")) is None:
+            metrics["frame_p95_ms"] = p95_frame_ms
+        if _metric_as_float(metrics.get("frame_p95_to_avg_ratio")) is None and avg_frame_ms is not None and p95_frame_ms is not None:
+            metrics["frame_p95_to_avg_ratio"] = p95_frame_ms / max(0.001, avg_frame_ms)
+    if _metric_as_float(metrics.get("queue_pressure_frames")) is None:
+        metrics["queue_pressure_frames"] = _report_renderer_metric(report, "streaming_queue_pressure_frames")
+    if _metric_as_float(metrics.get("vram_cap_hit_frames")) is None:
+        metrics["vram_cap_hit_frames"] = _report_renderer_metric(report, "streaming_vram_cap_hit_frames")
+    return metrics
+
+
+def _proof_metric_observed_value(metric_name: str, metrics: dict[str, Any]) -> float | None:
+    return _metric_as_float(metrics.get(metric_name))
+
+
+def _proof_metric_passes(observed: float, op: str, threshold: float) -> bool:
+    if op == "<=":
+        return observed <= threshold
+    if op == ">=":
+        return observed >= threshold
+    raise ValueError(f"Unsupported proof operator: {op}")
+
+
+def _format_proof_issue(rule: dict[str, Any], observed: float) -> str:
+    metric_name = LARGE_WORLD_PROOF_METRIC_LABELS.get(str(rule["metric"]), str(rule["metric"]))
+    threshold = float(rule["value"])
+    op = str(rule["op"])
+    if metric_name.endswith("_ratio"):
+        return f"{metric_name}={observed:.3f} {op} {threshold:.3f}"
+    if metric_name.endswith("_ms"):
+        return f"{metric_name}={observed:.1f} {op} {threshold:.1f}"
+    if observed.is_integer() and float(threshold).is_integer():
+        return f"{metric_name}={int(observed)} {op} {int(threshold)}"
+    return f"{metric_name}={observed:.2f} {op} {threshold:.2f}"
+
+
+def _evaluate_large_world_proof_contract(lane_id: str, report: dict[str, Any] | None) -> dict[str, Any]:
+    contract = LARGE_WORLD_PROOF_CONTRACTS.get(lane_id)
+    if contract is None:
+        return {
+            "proof_required": False,
+            "proof_contract_version": LARGE_WORLD_PROOF_CONTRACT_VERSION,
+            "proof_contract": None,
+            "proof_metrics": None,
+            "proof_status": "not_applicable",
+            "proof_valid": True,
+            "proof_failures": [],
+            "proof_warnings": [],
+            "proof_missing_telemetry": [],
+        }
+    proof_contract = {
+        "version": LARGE_WORLD_PROOF_CONTRACT_VERSION,
+        "proof_role": contract["proof_role"],
+        "proof_name": contract["proof_name"],
+        "failure_intent": contract["failure_intent"],
+        "correctness_thresholds": contract["correctness_thresholds"],
+        "soft_budget_thresholds": contract["soft_budget_thresholds"],
+    }
+    if not isinstance(report, dict):
+        return {
+            "proof_required": True,
+            "proof_contract_version": LARGE_WORLD_PROOF_CONTRACT_VERSION,
+            "proof_contract": proof_contract,
+            "proof_metrics": None,
+            "proof_status": "report_unavailable",
+            "proof_valid": False,
+            "proof_failures": [],
+            "proof_warnings": [],
+            "proof_missing_telemetry": [
+                {"metric": "report", "message": "lane JSON report unavailable; proof contract could not be audited"}
+            ],
+        }
+
+    metrics = _extract_large_world_proof_metrics(report)
+    proof_failures: list[dict[str, Any]] = []
+    proof_warnings: list[dict[str, Any]] = []
+    proof_missing_telemetry: list[dict[str, Any]] = []
+    for severity, rule_group, sink in (
+        ("correctness", "correctness_thresholds", proof_failures),
+        ("soft_budget", "soft_budget_thresholds", proof_warnings),
+    ):
+        for rule in contract[rule_group]:
+            observed = _proof_metric_observed_value(str(rule["metric"]), metrics)
+            if observed is None:
+                proof_missing_telemetry.append(
+                    {
+                        "metric": rule["metric"],
+                        "severity": severity,
+                        "message": f"missing telemetry for {LARGE_WORLD_PROOF_METRIC_LABELS[rule['metric']]}",
+                    }
+                )
+                continue
+            if _proof_metric_passes(observed, str(rule["op"]), float(rule["value"])):
+                continue
+            sink.append(
+                {
+                    "metric": rule["metric"],
+                    "severity": severity,
+                    "operator": rule["op"],
+                    "threshold": float(rule["value"]),
+                    "observed": observed,
+                    "message": _format_proof_issue(rule, observed),
+                }
+            )
+
+    proof_status = "pass"
+    if proof_failures:
+        proof_status = "fail"
+    elif proof_missing_telemetry:
+        proof_status = "missing_telemetry"
+    elif proof_warnings:
+        proof_status = "warn"
+    return {
+        "proof_required": True,
+        "proof_contract_version": LARGE_WORLD_PROOF_CONTRACT_VERSION,
+        "proof_contract": proof_contract,
+        "proof_metrics": metrics,
+        "proof_status": proof_status,
+        "proof_valid": proof_status not in {"fail", "missing_telemetry", "report_unavailable"},
+        "proof_failures": proof_failures,
+        "proof_warnings": proof_warnings,
+        "proof_missing_telemetry": proof_missing_telemetry,
+    }
+
+
+def _proof_issue_summary(issues: list[dict[str, Any]]) -> str:
+    if not issues:
+        return "none"
+    return "; ".join(str(issue.get("message", "")) for issue in issues)
 
 
 def _repo_root() -> Path:
@@ -888,6 +1152,7 @@ def _run_lane(
             capture_ssim_avg = visual_summary.get("ssim_avg")
             capture_psnr_min = visual_summary.get("psnr_min")
             capture_psnr_avg = visual_summary.get("psnr_avg")
+    proof_eval = _evaluate_large_world_proof_contract(lane.lane_id, report)
 
     return {
         "lane_id": lane.lane_id,
@@ -963,6 +1228,7 @@ def _run_lane(
         "reference_dir": str(reference_dir) if reference_dir is not None else "",
         "summary_source": summary_source,
         "report": report,
+        **proof_eval,
     }
 
 
@@ -1053,8 +1319,8 @@ def _write_suite_summary_markdown(
         f"- Profile: `{profile}`",
         f"- Aggregate score: `{aggregate_score:.2f}`",
         "",
-        "| Lane | Asset Class | Evidence | Asset Src | Source | Score | Avg FPS | P1 FPS | Steady P1 | Warmup P1 | Sync FB | Route FB | Sort ms | Raster ms | Visible | GPU ms | GPU Src | Eff Preset | Eff Max | DistCull | Stall Cnt | Q Pressure | Exec Mode | Mode OK | P99 ms | Samples | Captures | SSIM min | PSNR min | Exit |",
-        "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: | --- | ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Lane | Asset Class | Evidence | Asset Src | Source | Score | Avg FPS | P1 FPS | Steady P1 | Warmup P1 | Sync FB | Route FB | Sort ms | Raster ms | Visible | GPU ms | GPU Src | Eff Preset | Eff Max | DistCull | Stall Cnt | Q Pressure | Exec Mode | Mode OK | Proof | P99 ms | Samples | Captures | SSIM min | PSNR min | Exit |",
+        "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: | --- | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for lane in lane_results:
         def _fmt(v: Any, decimals: int = 2) -> str:
@@ -1088,6 +1354,7 @@ def _write_suite_summary_markdown(
             f"{_fmt(lane.get('streaming_queue_pressure_frames'), 0)} | "
             f"{lane.get('instancing_execution_mode', 'n/a')} | "
             f"{'yes' if lane.get('instancing_mode_match', True) else 'no'} | "
+            f"{lane.get('proof_status', 'not_applicable')} | "
             f"{_fmt(lane.get('p99_frame_ms'))} | "
             f"{lane.get('sample_count', 'n/a')} | "
             f"{_fmt(lane.get('capture_count'), 0)} | "
@@ -1095,6 +1362,33 @@ def _write_suite_summary_markdown(
             f"{_fmt(lane.get('capture_psnr_min'))} | "
             f"{lane.get('exit_code', 'n/a')} |"
         )
+    proof_lanes = [lane for lane in lane_results if bool(lane.get("proof_required"))]
+    if proof_lanes:
+        lines.extend(
+            [
+                "",
+                "## Large-World Proof Contract",
+                "",
+                f"- Contract version: `{LARGE_WORLD_PROOF_CONTRACT_VERSION}`",
+                "- `proof_failures`: correctness or streaming-behavior contract breaks.",
+                "- `proof_warnings`: perf-noise or soft-budget overruns that do not fail the lane on their own.",
+                "- `proof_missing_telemetry`: required proof telemetry missing from the lane report.",
+                "",
+                "| Lane | Role | Status | Correctness / Streaming Failures | Soft Budget Warnings | Missing Telemetry |",
+                "| --- | --- | --- | --- | --- | --- |",
+            ]
+        )
+        for lane in proof_lanes:
+            contract = lane.get("proof_contract") or {}
+            lines.append(
+                "| "
+                f"`{lane['lane_id']}` | "
+                f"`{contract.get('proof_name', 'n/a')}` | "
+                f"`{lane.get('proof_status', 'not_applicable')}` | "
+                f"{_proof_issue_summary(lane.get('proof_failures', []))} | "
+                f"{_proof_issue_summary(lane.get('proof_warnings', []))} | "
+                f"{_proof_issue_summary(lane.get('proof_missing_telemetry', []))} |"
+            )
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -1127,6 +1421,7 @@ def main() -> int:
     args = _parse_args()
     try:
         duration_scale = _ensure_duration_scale(args.duration_scale)
+        _validate_large_world_proof_contract_definitions()
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -1306,6 +1601,13 @@ def main() -> int:
             f"exec_path={result.get('instancing_execution_path', 'n/a')} "
             f"exec_reason={result.get('instancing_execution_reason', 'n/a')}"
         )
+        if bool(result.get("proof_required")):
+            print(
+                f"[suite] lane={lane.lane_id} proof={result.get('proof_status', 'not_applicable')} "
+                f"correctness={len(result.get('proof_failures', []))} "
+                f"warnings={len(result.get('proof_warnings', []))} "
+                f"missing={len(result.get('proof_missing_telemetry', []))}"
+            )
         report_valid = isinstance(result.get("report"), dict)
         visible_output_valid = False
         visibility_failure_detail = ""
@@ -1317,6 +1619,7 @@ def main() -> int:
         gpu_timing_match = True
         visual_reference_enforced = bool(result.get("reference_dir")) and int(result.get("capture_count") or 0) > 0
         visual_reference_match = True
+        proof_valid = bool(result.get("proof_valid", True))
         enforce_no_cpu_sort_route = args.profile == "performance"
         if report_valid:
             visible_output_valid, visibility_failure_detail = _lane_has_visible_output(result["report"])
@@ -1346,6 +1649,7 @@ def main() -> int:
             and instancing_mode_match
             and gpu_timing_match
             and visual_reference_match
+            and proof_valid
         )
         result["report_valid"] = report_valid
         result["visible_output_valid"] = visible_output_valid
@@ -1358,6 +1662,7 @@ def main() -> int:
         result["gpu_timing_match"] = gpu_timing_match
         result["visual_reference_enforced"] = visual_reference_enforced
         result["visual_reference_match"] = visual_reference_match
+        result["proof_valid"] = proof_valid
         result["lane_valid"] = lane_valid
         lane_failed = not lane_valid
         if lane_failed:
@@ -1399,6 +1704,31 @@ def main() -> int:
                     f"(matched={result.get('capture_reference_match_count', 0)} passed={result.get('capture_threshold_pass_count', 0)})",
                     file=sys.stderr,
                 )
+            elif not proof_valid:
+                if result.get("proof_status") == "missing_telemetry":
+                    print(
+                        f"[suite] lane={lane.lane_id} proof telemetry missing: "
+                        f"{_proof_issue_summary(result.get('proof_missing_telemetry', []))}",
+                        file=sys.stderr,
+                    )
+                elif result.get("proof_status") == "report_unavailable":
+                    print(
+                        f"[suite] lane={lane.lane_id} proof contract unavailable: "
+                        f"{_proof_issue_summary(result.get('proof_missing_telemetry', []))}",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"[suite] lane={lane.lane_id} proof correctness failed: "
+                        f"{_proof_issue_summary(result.get('proof_failures', []))}",
+                        file=sys.stderr,
+                    )
+                    if result.get("proof_warnings"):
+                        print(
+                            f"[suite] lane={lane.lane_id} proof soft warnings: "
+                            f"{_proof_issue_summary(result.get('proof_warnings', []))}",
+                            file=sys.stderr,
+                        )
             elif int(result["exit_code"]) != 0:
                 print(
                     f"[suite] lane={lane.lane_id} exited with code {result['exit_code']}: {result['log_path']}",
@@ -1407,6 +1737,11 @@ def main() -> int:
             failed = True
             if args.fail_fast:
                 break
+        elif result.get("proof_warnings"):
+            print(
+                f"[suite] lane={lane.lane_id} proof soft warnings: "
+                f"{_proof_issue_summary(result.get('proof_warnings', []))}"
+            )
 
     aggregate_score = _compute_aggregate(args.profile, lane_results)
     require_gpu_timestamps_global = bool(
@@ -1427,6 +1762,7 @@ def main() -> int:
         "dummy_asset_dir": args.dummy_asset_dir,
         "asset_manifest_path": str(manifest_path),
         "asset_manifest_version": asset_manifest.version,
+        "proof_contract_version": LARGE_WORLD_PROOF_CONTRACT_VERSION,
         "benchmark_instancing_mode": args.benchmark_instancing_mode,
         "capture_lane_ids": sorted(capture_lane_ids),
         "capture_dir": str(capture_dir) if capture_dir is not None else "",

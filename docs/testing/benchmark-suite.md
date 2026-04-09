@@ -107,6 +107,38 @@ at the declared 20M total-splat scale.
 Mixed-residency and multi-asset hub scenarios remain evidence-only and are intentionally outside
 the blocking proof ladder for `Phase 4C.1`.
 
+## Large-World Proof Contract
+
+The benchmark proof contract is emitted per lane in runner JSON via:
+
+- `proof_contract`
+- `proof_metrics`
+- `proof_status`
+- `proof_failures`
+- `proof_warnings`
+- `proof_missing_telemetry`
+
+Status meaning is intentionally narrow:
+
+- `pass`: lane met correctness and soft-budget thresholds
+- `warn`: correctness contract passed, but soft-budget thresholds exceeded
+- `fail`: correctness / streaming-behavior contract failed
+- `missing_telemetry`: runner could not audit one or more required proof metrics
+
+The contract is currently locked for these ladder lanes:
+
+| Lane | Proof role | Correctness / streaming behavior thresholds | Soft budget warnings |
+| --- | --- | --- | --- |
+| `open_world_corridor_proof` | Corridor return | `first_visible_ms <= 3500`, `residency_ratio >= 0.70`, `queue_pressure_frames <= 32`, `no_progress_frames <= 6`, `scan_starved_frames <= 6`, `vram_cap_hit_frames <= 0` | `frame_p95_ms <= 95`, `frame_p95_to_avg_ratio <= 2.25`, `chunk_loads_per_frame.p95 <= 10`, `chunk_evictions_per_frame.p95 <= 4` |
+| `city_flyover` | Boundary crossing | `first_visible_ms <= 4500`, `residency_ratio >= 0.65`, `queue_pressure_frames <= 48`, `no_progress_frames <= 12`, `scan_starved_frames <= 12`, `vram_cap_hit_frames <= 4` | `frame_p95_ms <= 120`, `frame_p95_to_avg_ratio <= 2.50`, `chunk_loads_per_frame.p95 <= 12`, `chunk_evictions_per_frame.p95 <= 8` |
+| `long_soak` | City roam + soak | `first_visible_ms <= 6000`, `residency_ratio >= 0.75`, `queue_pressure_frames <= 96`, `no_progress_frames <= 24`, `scan_starved_frames <= 20`, `vram_cap_hit_frames <= 8` | `frame_p95_ms <= 135`, `frame_p95_to_avg_ratio <= 2.60`, `chunk_loads_per_frame.p95 <= 8`, `chunk_evictions_per_frame.p95 <= 10` |
+
+Metric intent:
+
+- correctness thresholds are meant to capture lost visibility, stalled forward progress, or residency collapse
+- soft budget warnings are meant to flag machine-noise-sensitive frame spikes or bursty load/eviction pressure without turning one noisy run into a hard blocker
+- missing telemetry is a separate review condition because an unauditable lane is not valid proof evidence
+
 ## Suite Coverage
 
 These are the user-relevant lanes already encoded in the suite and available for publication once committed results exist:
