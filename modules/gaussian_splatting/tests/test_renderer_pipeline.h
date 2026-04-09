@@ -995,6 +995,19 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Upload processing rescues stranded a
     CHECK(streaming_system->get_pending_upload_jobs() == 0);
 }
 
+TEST_CASE("[GaussianSplatting] Sync pack rescue does not steal worker-owned pack jobs") {
+    GaussianStreamingSystem streaming_system;
+    StreamingUploadPipeline &upload_pipeline = streaming_system._internal_get_upload_pipeline();
+
+    upload_pipeline._test_set_async_pack_queue_owner(true);
+    CHECK(upload_pipeline._test_has_async_pack_queue_owner());
+    upload_pipeline._test_enqueue_dummy_pack_job();
+
+    CHECK(upload_pipeline._test_promote_pack_jobs_sync(1) == 0);
+    CHECK(upload_pipeline.get_pack_queue_depth_cached() == 1);
+    CHECK(upload_pipeline.get_upload_queue_depth_cached() == 0);
+}
+
 TEST_CASE("[GaussianSplatting][RequiresGPU] World static chunks keep streaming instance buffers ready without SceneDirector instances") {
     RenderingServer *rs = RenderingServer::get_singleton();
     if (rs == nullptr) {

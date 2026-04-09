@@ -265,6 +265,19 @@ public:
     uint32_t get_pack_queue_depth_cached() const;
     uint32_t get_upload_queue_depth_cached() const;
     void get_pending_queue_depths_cached(uint32_t &r_pack_queue_depth, uint32_t &r_upload_queue_depth) const;
+#if defined(TESTS_ENABLED)
+    void _test_set_async_pack_queue_owner(bool p_has_owner) {
+        async_pack_enabled = true;
+        pack_thread_running.store(p_has_owner, std::memory_order_release);
+    }
+    void _test_enqueue_dummy_pack_job() {
+        MutexLock lock(pack_mutex);
+        pack_queue.push_back(PackJob());
+        sync_cached_queue_depths_locked();
+    }
+    uint32_t _test_promote_pack_jobs_sync(uint32_t p_max_jobs) { return promote_pack_jobs_sync(p_max_jobs); }
+    bool _test_has_async_pack_queue_owner() const { return has_async_pack_queue_owner(); }
+#endif
 
 private:
     bool has_async_pack_queue_owner() const;
