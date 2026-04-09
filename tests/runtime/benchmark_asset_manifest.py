@@ -14,6 +14,7 @@ class BenchmarkAssetManifest:
     lane_defaults: dict[str, str]
     scene_defaults: dict[str, str]
     lane_metadata: dict[str, dict[str, Any]]
+    chunked_asset_ladder: dict[str, dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,9 @@ class LaneAssetPolicy:
     evidence_role: str
     notes: str
     require_explicit_lane_default: bool
+
+
+CHUNKED_LADDER_REF_PREFIX = "chunked_ladder:"
 
 
 def resolve_benchmark_asset_manifest_path(
@@ -75,6 +79,7 @@ def load_benchmark_asset_manifest(path: str | Path) -> BenchmarkAssetManifest:
             lane_defaults=lane_defaults,
             scene_defaults={},
             lane_metadata={},
+            chunked_asset_ladder={},
         )
 
     lane_defaults = _validate_string_map(data.get("lane_defaults", {}), "lane_defaults")
@@ -92,6 +97,8 @@ def load_benchmark_asset_manifest(path: str | Path) -> BenchmarkAssetManifest:
     if not isinstance(version, str):
         raise ValueError("--asset-manifest version must be a string")
 
+    chunked_asset_ladder = _validate_nested_object_map(data.get("chunked_asset_ladder", {}), "chunked_asset_ladder")
+
     return BenchmarkAssetManifest(
         manifest_path=str(manifest_path),
         version=version,
@@ -99,6 +106,7 @@ def load_benchmark_asset_manifest(path: str | Path) -> BenchmarkAssetManifest:
         lane_defaults=lane_defaults,
         scene_defaults=scene_defaults,
         lane_metadata=lane_metadata,
+        chunked_asset_ladder=chunked_asset_ladder,
     )
 
 
@@ -143,6 +151,20 @@ def resolve_lane_asset_policy(
     evidence_role = str(metadata.get("evidence_role", "")).strip() or "unspecified"
     notes = str(metadata.get("notes", "")).strip()
 
+    chunked_entry = _resolve_chunked_asset_entry(manifest, asset_path)
+    if chunked_entry is not None:
+        staging = chunked_entry.get("staging", {})
+        resolved_asset_path = str(staging.get("project_stage_manifest_path", "")).strip()
+        if resolved_asset_path:
+            asset_path = resolved_asset_path
+            asset_source = "chunked_ladder"
+        if not asset_classification:
+            asset_classification = str(chunked_entry.get("asset_classification", "")).strip() or "custom_asset"
+        if evidence_role == "unspecified":
+            evidence_role = str(chunked_entry.get("evidence_role", "")).strip() or evidence_role
+        if not notes:
+            notes = str(chunked_entry.get("notes", "")).strip()
+
     return LaneAssetPolicy(
         lane_id=lane_id,
         scene_id=scene_id,
@@ -174,9 +196,17 @@ def validate_manifest_lane_policies(
             failures.append(f"lane={lane_id}: missing lane_metadata.evidence_role")
 
         policy = resolve_lane_asset_policy(manifest, lane_id=lane_id, scene_path=scene_path)
-        if policy.require_explicit_lane_default and policy.asset_source != "lane_default":
+        raw_lane_asset = manifest.lane_defaults.get(lane_id, "")
+        explicit_lane_default_ok = policy.asset_source == "lane_default" or (
+            raw_lane_asset.startswith(CHUNKED_LADDER_REF_PREFIX) and policy.asset_source == "chunked_ladder"
+        )
+        if policy.require_explicit_lane_default and not explicit_lane_default_ok:
             failures.append(
                 f"lane={lane_id}: require_explicit_lane_default=true but resolved via {policy.asset_source}"
+            )
+        if raw_lane_asset.startswith(CHUNKED_LADDER_REF_PREFIX) and policy.asset_source != "chunked_ladder":
+            failures.append(
+                f"lane={lane_id}: chunked ladder asset reference did not resolve through chunked_ladder"
             )
         if policy.asset_classification == "real_chunked" and _is_lightweight_smoke_asset(policy.asset_path):
             failures.append(
@@ -235,6 +265,41 @@ def _validate_metadata_map(value: Any) -> dict[str, dict[str, Any]]:
             f"invalid entries: {', '.join(malformed_entries)}"
         )
     return out
+
+
+def _validate_nested_object_map(value: Any, label: str) -> dict[str, dict[str, Any]]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"--asset-manifest {label} must be a JSON object")
+    out: dict[str, dict[str, Any]] = {}
+    malformed_entries: list[str] = []
+    for key, item in value.items():
+        if not isinstance(key, str) or not isinstance(item, dict):
+            malformed_entries.append(repr(key))
+            continue
+        out[key] = item
+    if malformed_entries:
+        raise ValueError(
+            f"--asset-manifest {label} entries must map string keys to objects; "
+            f"invalid keys: {', '.join(malformed_entries)}"
+        )
+    return out
+
+
+def _resolve_chunked_asset_entry(
+    manifest: BenchmarkAssetManifest,
+    asset_path: str,
+) -> dict[str, Any] | None:
+    if not asset_path.startswith(CHUNKED_LADDER_REF_PREFIX):
+        return None
+    asset_id = asset_path[len(CHUNKED_LADDER_REF_PREFIX) :].strip()
+    if not asset_id:
+        return None
+    entry = manifest.chunked_asset_ladder.get(asset_id)
+    if not isinstance(entry, dict):
+        return None
+    return entry
 
 
 def _classify_asset_path(asset_path: str) -> str:

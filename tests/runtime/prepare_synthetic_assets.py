@@ -20,8 +20,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from open_world_chunked_asset_ladder import (
+    MAIN_PROJECT_FIXTURE_ROOT,
     build_chunked_asset_ladder,
+    build_chunked_asset_reference,
     validate_chunked_asset_ladder,
+    write_stage_manifests,
 )
 
 SH_C0 = 0.28209479177387814
@@ -109,6 +112,7 @@ SCENE_DEFAULT_ASSETS: dict[str, str] = {
 }
 
 LANE_DEFAULT_ASSETS: dict[str, str] = {
+    "open_world_corridor_proof": build_chunked_asset_reference("open_world_corridor_20m"),
     "static_baseline": "res://tests/fixtures/test_splats.ply",
     "streaming_corridor": "res://tests/fixtures/test_splats.ply",
     "city_flyover": "res://tests/fixtures/test_splats.ply",
@@ -135,6 +139,12 @@ LANE_DEFAULT_ASSETS: dict[str, str] = {
 }
 
 LANE_METADATA: dict[str, dict[str, object]] = {
+    "open_world_corridor_proof": {
+        "asset_classification": "chunked_open_world_candidate",
+        "evidence_role": "open_world_proof_pending_staging",
+        "notes": "Explicit bootstrap proof lane resolving the canonical open-world corridor stage manifest through the benchmark asset manifest.",
+        "require_explicit_lane_default": True,
+    },
     "static_baseline": {
         "asset_classification": "lightweight_smoke",
         "evidence_role": "published_baseline",
@@ -279,7 +289,7 @@ LANE_METADATA: dict[str, dict[str, object]] = {
 def _benchmark_asset_manifest() -> dict[str, object]:
     return {
         "chunked_asset_ladder": build_chunked_asset_ladder(),
-        "version": "2.2.0",
+        "version": "2.3.0",
         "default_asset": "res://tests/fixtures/test_splats.ply",
         "scene_defaults": dict(SCENE_DEFAULT_ASSETS),
         "lane_defaults": dict(LANE_DEFAULT_ASSETS),
@@ -595,6 +605,7 @@ def _write_manifest(repo_root: Path) -> None:
         path = repo_root / rel_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(encoded, encoding="utf-8")
+    write_stage_manifests(repo_root / MAIN_PROJECT_FIXTURE_ROOT)
 
 
 def _benchmark_scene_script_paths(repo_root: Path) -> list[str]:
@@ -639,6 +650,13 @@ def _check_only(repo_root: Path) -> int:
         expected_ladder = build_chunked_asset_ladder()
         if data.get("chunked_asset_ladder") != expected_ladder:
             policy_failures.append(f"{rel_path}: chunked_asset_ladder is stale or mismatched")
+        raw_lane_defaults = data.get("lane_defaults", {})
+        if not isinstance(raw_lane_defaults, dict):
+            policy_failures.append(f"{rel_path}: lane_defaults must be a JSON object")
+        elif raw_lane_defaults.get("open_world_corridor_proof") != build_chunked_asset_reference("open_world_corridor_20m"):
+            policy_failures.append(
+                f"{rel_path}: open_world_corridor_proof must resolve through the canonical chunked ladder reference"
+            )
 
     deck_manifest = repo_root / DECK_MANIFEST_PATH
     if not deck_manifest.is_file() or deck_manifest.stat().st_size <= 0:
@@ -652,6 +670,16 @@ def _check_only(repo_root: Path) -> int:
             deck_ladder = deck_data.get("chunked_asset_ladder")
             if deck_ladder != {}:
                 policy_failures.append(f"{DECK_MANIFEST_PATH}: chunked_asset_ladder must stay empty for deck smoke lanes")
+
+    for asset_id, entry in build_chunked_asset_ladder().items():
+        staging = entry.get("staging", {})
+        repo_stage_manifest_path = str(staging.get("repo_stage_manifest_path", ""))
+        if not repo_stage_manifest_path:
+            policy_failures.append(f"open-world ladder: {asset_id} missing repo_stage_manifest_path")
+            continue
+        stage_manifest_path = repo_root / repo_stage_manifest_path
+        if not stage_manifest_path.is_file() or stage_manifest_path.stat().st_size <= 0:
+            missing.append(repo_stage_manifest_path)
 
     for rel_path in FORBIDDEN_LEGACY_PLYS:
         file_path = repo_root / rel_path

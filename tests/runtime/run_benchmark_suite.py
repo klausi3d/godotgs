@@ -56,6 +56,13 @@ LANES: list[LaneDefinition] = [
         weights={"quick": 12.0, "performance": 12.0, "showcase": 12.0},
     ),
     LaneDefinition(
+        lane_id="open_world_corridor_proof",
+        scene="res://scenes/benchmark_suite/lane_streaming_corridor.tscn",
+        description="Bootstrap proof lane resolving the canonical open-world corridor stage manifest",
+        durations={"performance": 40.0},
+        weights={"performance": 0.0},
+    ),
+    LaneDefinition(
         lane_id="city_flyover",
         scene="res://scenes/benchmark_suite/lane_city_flyover.tscn",
         description="High-altitude visibility-change stress",

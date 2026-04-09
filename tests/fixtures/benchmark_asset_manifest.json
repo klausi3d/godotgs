@@ -106,6 +106,7 @@
     "lighting_stress": "res://tests/fixtures/test_splats.ply",
     "lod_torture": "res://tests/fixtures/test_splats.ply",
     "long_soak": "res://tests/fixtures/test_splats.ply",
+    "open_world_corridor_proof": "chunked_ladder:open_world_corridor_20m",
     "parity_fidelity": "res://tests/fixtures/test_splats.ply",
     "small_baseline": "res://tests/fixtures/test_splats.ply",
     "static_baseline": "res://tests/fixtures/test_splats.ply",
@@ -179,6 +180,12 @@
       "asset_classification": "lightweight_smoke",
       "evidence_role": "streaming_smoke_only",
       "notes": "Long-duration streaming churn lane currently backed by test_splats.ply; not representative chunked evidence.",
+      "require_explicit_lane_default": true
+    },
+    "open_world_corridor_proof": {
+      "asset_classification": "chunked_open_world_candidate",
+      "evidence_role": "open_world_proof_pending_staging",
+      "notes": "Explicit bootstrap proof lane resolving the canonical open-world corridor stage manifest through the benchmark asset manifest.",
       "require_explicit_lane_default": true
     },
     "parity_fidelity": {
@@ -273,5 +280,5 @@
     "synthetic_spiral": "res://tests/fixtures/synthetic_spiral.ply",
     "synthetic_torus": "res://tests/fixtures/synthetic_torus.ply"
   },
-  "version": "2.2.0"
+  "version": "2.3.0"
 }

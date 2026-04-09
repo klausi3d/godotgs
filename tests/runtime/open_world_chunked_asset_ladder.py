@@ -13,6 +13,7 @@ CHUNK_SPLAT_COUNT = 65_536
 MAIN_PROJECT_FIXTURE_ROOT = "tests/examples/godot/test_project/tests/fixtures/open_world"
 MAIN_PROJECT_RES_ROOT = "res://tests/fixtures/open_world"
 STAGE_MANIFEST_SUFFIX = ".stage_manifest.json"
+CHUNKED_LADDER_REF_PREFIX = "chunked_ladder:"
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,10 @@ OPEN_WORLD_ASSET_SPECS: tuple[OpenWorldAssetSpec, ...] = (
 
 def build_chunked_asset_ladder() -> dict[str, dict[str, object]]:
     return {spec.asset_id: _build_asset_entry(spec) for spec in OPEN_WORLD_ASSET_SPECS}
+
+
+def build_chunked_asset_reference(asset_id: str) -> str:
+    return f"{CHUNKED_LADDER_REF_PREFIX}{asset_id}"
 
 
 def validate_chunked_asset_ladder(ladder: dict[str, dict[str, object]] | None = None) -> list[str]:
