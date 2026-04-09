@@ -21,6 +21,7 @@ from pathlib import Path
 
 from open_world_chunked_asset_ladder import (
     MAIN_PROJECT_FIXTURE_ROOT,
+    build_chunked_asset_reference,
     build_chunked_asset_ladder,
     validate_chunked_asset_ladder,
     write_stage_manifests,
@@ -113,6 +114,7 @@ SCENE_DEFAULT_ASSETS: dict[str, str] = {
 LANE_DEFAULT_ASSETS: dict[str, str] = {
     "static_baseline": "res://tests/fixtures/test_splats.ply",
     "streaming_corridor": "res://tests/fixtures/test_splats.ply",
+    "open_world_corridor_proof": build_chunked_asset_reference("open_world_corridor_20m"),
     "city_flyover": "res://tests/fixtures/test_splats.ply",
     "instance_storm": "res://tests/fixtures/test_splats.ply",
     "lighting_stress": "res://tests/fixtures/test_splats.ply",
@@ -148,6 +150,13 @@ LANE_METADATA: dict[str, dict[str, object]] = {
         "evidence_role": "proof_support_corridor_churn_smoke",
         "notes": "Streaming-shaped corridor churn support lane currently backed by test_splats.ply; useful for proof-shape smoke coverage, not representative chunked evidence.",
         "require_explicit_lane_default": True,
+    },
+    "open_world_corridor_proof": {
+        "asset_classification": "chunked_open_world_candidate",
+        "evidence_role": "proof_corridor_return_bootstrap",
+        "notes": "Dedicated world-consuming bootstrap proof lane. Consumes the canonical open-world corridor stage contract to build a benchmark-local GaussianSplatWorld; validates the bootstrap seam, not full-scale real_chunked evidence.",
+        "require_explicit_lane_default": True,
+        "resource_kind": "gaussian_world_contract",
     },
     "city_flyover": {
         "asset_classification": "lightweight_smoke",
@@ -650,11 +659,23 @@ def _check_only(repo_root: Path) -> int:
                 lane_id for lane_id, asset_path in raw_lane_defaults.items()
                 if isinstance(asset_path, str) and asset_path.startswith("chunked_ladder:")
             )
-            if chunked_lane_refs:
+            illegal_chunked_refs = [lane_id for lane_id in chunked_lane_refs if lane_id != "open_world_corridor_proof"]
+            if illegal_chunked_refs:
                 policy_failures.append(
-                    f"{rel_path}: runnable lane_defaults must not use chunked_ladder until staged benchmark assets exist "
-                    f"({', '.join(chunked_lane_refs)})"
+                    f"{rel_path}: only open_world_corridor_proof may use chunked_ladder during bootstrap staging "
+                    f"({', '.join(illegal_chunked_refs)})"
                 )
+            if "open_world_corridor_proof" in chunked_lane_refs:
+                lane_metadata = data.get("lane_metadata", {})
+                proof_metadata = lane_metadata.get("open_world_corridor_proof", {}) if isinstance(lane_metadata, dict) else {}
+                if not isinstance(proof_metadata, dict):
+                    policy_failures.append(
+                        f"{rel_path}: open_world_corridor_proof lane_metadata must be an object"
+                    )
+                elif str(proof_metadata.get("resource_kind", "")).strip() != "gaussian_world_contract":
+                    policy_failures.append(
+                        f"{rel_path}: open_world_corridor_proof must declare resource_kind=gaussian_world_contract"
+                    )
 
     deck_manifest = repo_root / DECK_MANIFEST_PATH
     if not deck_manifest.is_file() or deck_manifest.stat().st_size <= 0:

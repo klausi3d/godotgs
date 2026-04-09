@@ -56,6 +56,13 @@ LANES: list[LaneDefinition] = [
         weights={"quick": 12.0, "performance": 12.0, "showcase": 12.0},
     ),
     LaneDefinition(
+        lane_id="open_world_corridor_proof",
+        scene="res://scenes/benchmark_suite/lane_open_world_corridor_proof.tscn",
+        description="Dedicated world-consuming corridor proof bootstrap",
+        durations={"performance": 40.0},
+        weights={"performance": 0.0},
+    ),
+    LaneDefinition(
         lane_id="city_flyover",
         scene="res://scenes/benchmark_suite/lane_city_flyover.tscn",
         description="Boundary-crossing smoke support",
@@ -1255,7 +1262,7 @@ def main() -> int:
         print(
             f"[suite] running lane={lane.lane_id} scene={lane.scene} duration={lane_duration:.1f}s "
             f"asset_class={asset_policy.asset_classification} evidence={asset_policy.evidence_role} "
-            f"asset_source={asset_policy.asset_source}"
+            f"asset_source={asset_policy.asset_source} resource_kind={asset_policy.resource_kind}"
         )
         result = _run_lane(
             godot_binary=godot_binary,
@@ -1274,6 +1281,7 @@ def main() -> int:
         )
         result["resolved_asset_path"] = asset_policy.asset_path
         result["asset_resolution_source"] = asset_policy.asset_source
+        result["asset_resource_kind"] = asset_policy.resource_kind
         result["asset_classification"] = asset_policy.asset_classification
         result["evidence_role"] = asset_policy.evidence_role
         result["asset_policy_notes"] = asset_policy.notes

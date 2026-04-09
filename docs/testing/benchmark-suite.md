@@ -83,13 +83,20 @@ large-scene evidence.
 
 ## Proof Ladder
 
-The current large-world proof ladder is intentionally split between the staged chunked asset
-contract and the existing runtime probes. No runnable benchmark lane should reference the
-chunked ladder until staged benchmark assets are materialized into a benchmark-consumable
-resource path.
+The current large-world proof ladder is intentionally split between:
+
+- one dedicated world-consuming bootstrap benchmark lane
+- the staged chunked asset contract for the wider ladder
+- the existing runtime probes
+
+No shared `GaussianSplatAsset` benchmark lane should reference the chunked ladder. The only
+committed runnable benchmark surface is the dedicated `open_world_corridor_proof` bootstrap
+lane, which consumes the staged corridor contract and builds a local `GaussianSplatWorld`
+runtime surface for seam validation.
 
 | Proof role | Surface | Failure intent | Current evidence class |
 | --- | --- | --- | --- |
+| `proof_corridor_return_bootstrap` | `open_world_corridor_proof` | Fail when the dedicated world-consuming corridor bootstrap surface cannot consume the staged contract and produce a runnable chunked world path. | `chunked_open_world_candidate` |
 | `proof_support_corridor_churn_smoke` | `streaming_corridor` | Catch corridor-shaped churn regressions before the real chunked corridor lane is promoted. | `lightweight_smoke` |
 | `proof_support_boundary_crossing_smoke` | `city_flyover` | Catch large visibility-shift / boundary-crossing regressions on the existing smoke surface. | `lightweight_smoke` |
 | `proof_support_city_roam_soak_smoke` | `long_soak` | Catch revisit / soak regressions on the current smoke surface before the city-scale chunked lane is validated. | `lightweight_smoke` |
@@ -107,6 +114,7 @@ These are the user-relevant lanes already encoded in the suite and available for
 | Lane | Purpose | Asset class | Evidence role | Current publication status |
 | --- | --- | --- | --- | --- |
 | `static_baseline` | Low-noise raster baseline | `lightweight_smoke` | Published baseline | Published |
+| `open_world_corridor_proof` | Dedicated world-consuming corridor bootstrap proof | `chunked_open_world_candidate` | `proof_corridor_return_bootstrap` | Suite-only |
 | `streaming_corridor` | Corridor churn smoke support | `lightweight_smoke` | `proof_support_corridor_churn_smoke` | Suite-only |
 | `city_flyover` | Boundary-crossing smoke support | `lightweight_smoke` | `proof_support_boundary_crossing_smoke` | Suite-only |
 | `instance_storm` | Many-instance submission pressure | `lightweight_smoke` | Suite support | Suite-only |
@@ -115,9 +123,10 @@ These are the user-relevant lanes already encoded in the suite and available for
 | `unified_composite` | Integrated composite smoke support | `lightweight_smoke` | `proof_support_integrated_composite_smoke` | Suite-only |
 
 No currently documented benchmark lane should be cited as representative chunked streaming
-evidence unless its manifest classification is upgraded to `real_chunked`. The canonical
-open-world chunked ladder remains staged-contract-only until it exposes a benchmark-consumable
-asset path.
+evidence unless its manifest classification is upgraded to `real_chunked`. The dedicated
+`open_world_corridor_proof` lane is a runnable bootstrap surface, not full-scale chunked proof
+evidence, and the rest of the canonical open-world ladder remains staged-contract-only until it
+exposes benchmark-consumable asset paths.
 
 ## Outputs
 

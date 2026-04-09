@@ -3,6 +3,20 @@
     "open_world_boundary_50m": {
       "asset_classification": "chunked_open_world_candidate",
       "asset_id": "open_world_boundary_50m",
+      "bootstrap_world_builder": {
+        "bootstrap_total_splats": 491520,
+        "builder_kind": "boundary_world_bootstrap",
+        "camera_path_hint": "boundary_crossing",
+        "chunk_size": 0.75,
+        "corridor_lanes": 6,
+        "corridor_segments": 80,
+        "instance_count": 480,
+        "lane_spacing": 12.0,
+        "segment_spacing": 12.0,
+        "source_asset_path": "res://tests/fixtures/test_splats.ply",
+        "source_asset_splats": 1024,
+        "world_resource_kind": "gaussian_world_contract"
+      },
       "evidence_role": "open_world_proof_pending_staging",
       "generation": {
         "chunk_naming_pattern": "chunks/chunk_{chunk_index:04d}.ply",
@@ -34,6 +48,20 @@
     "open_world_city_100m": {
       "asset_classification": "chunked_open_world_candidate",
       "asset_id": "open_world_city_100m",
+      "bootstrap_world_builder": {
+        "bootstrap_total_splats": 589824,
+        "builder_kind": "city_world_bootstrap",
+        "camera_path_hint": "city_roam",
+        "chunk_size": 0.75,
+        "corridor_lanes": 8,
+        "corridor_segments": 72,
+        "instance_count": 576,
+        "lane_spacing": 14.0,
+        "segment_spacing": 14.0,
+        "source_asset_path": "res://tests/fixtures/test_splats.ply",
+        "source_asset_splats": 1024,
+        "world_resource_kind": "gaussian_world_contract"
+      },
       "evidence_role": "open_world_proof_pending_staging",
       "generation": {
         "chunk_naming_pattern": "chunks/chunk_{chunk_index:04d}.ply",
@@ -65,6 +93,20 @@
     "open_world_corridor_20m": {
       "asset_classification": "chunked_open_world_candidate",
       "asset_id": "open_world_corridor_20m",
+      "bootstrap_world_builder": {
+        "bootstrap_total_splats": 393216,
+        "builder_kind": "corridor_world_bootstrap",
+        "camera_path_hint": "corridor_return",
+        "chunk_size": 0.75,
+        "corridor_lanes": 4,
+        "corridor_segments": 96,
+        "instance_count": 384,
+        "lane_spacing": 7.5,
+        "segment_spacing": 10.0,
+        "source_asset_path": "res://tests/fixtures/test_splats.ply",
+        "source_asset_splats": 1024,
+        "world_resource_kind": "gaussian_world_contract"
+      },
       "evidence_role": "open_world_proof_pending_staging",
       "generation": {
         "chunk_naming_pattern": "chunks/chunk_{chunk_index:04d}.ply",
@@ -106,6 +148,7 @@
     "lighting_stress": "res://tests/fixtures/test_splats.ply",
     "lod_torture": "res://tests/fixtures/test_splats.ply",
     "long_soak": "res://tests/fixtures/test_splats.ply",
+    "open_world_corridor_proof": "chunked_ladder:open_world_corridor_20m",
     "parity_fidelity": "res://tests/fixtures/test_splats.ply",
     "small_baseline": "res://tests/fixtures/test_splats.ply",
     "static_baseline": "res://tests/fixtures/test_splats.ply",
@@ -180,6 +223,13 @@
       "evidence_role": "proof_support_city_roam_soak_smoke",
       "notes": "Long-horizon city-roam soak support lane currently backed by test_splats.ply; useful for proof-shape smoke coverage, not representative chunked evidence.",
       "require_explicit_lane_default": true
+    },
+    "open_world_corridor_proof": {
+      "asset_classification": "chunked_open_world_candidate",
+      "evidence_role": "proof_corridor_return_bootstrap",
+      "notes": "Dedicated world-consuming bootstrap proof lane. Consumes the canonical open-world corridor stage contract to build a benchmark-local GaussianSplatWorld; validates the bootstrap seam, not full-scale real_chunked evidence.",
+      "require_explicit_lane_default": true,
+      "resource_kind": "gaussian_world_contract"
     },
     "parity_fidelity": {
       "asset_classification": "lightweight_smoke",
