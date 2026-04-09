@@ -956,8 +956,10 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Upload processing rescues stranded a
         return;
     }
 
+    const uint32_t full_chunk_count = GaussianStreamingSystem::CHUNK_SIZE;
+    const uint32_t tail_chunk_count = 128;
     LocalVector<Gaussian> gaussians;
-    fill_gaussians(gaussians, GaussianStreamingSystem::CHUNK_SIZE);
+    fill_gaussians(gaussians, full_chunk_count + tail_chunk_count);
 
     Ref<::GaussianData> data;
     data.instantiate();
@@ -988,9 +990,22 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Upload processing rescues stranded a
     CHECK(streaming_system->get_chunks_loaded_this_frame() == 1);
     CHECK(streaming_system->get_pending_pack_jobs() == 0);
     CHECK(streaming_system->get_pending_upload_jobs() == 0);
+    CHECK(upload_pipeline._test_get_sync_snapshot_gaussian_size() == full_chunk_count);
+    const uint32_t initial_snapshot_capacity = upload_pipeline._test_get_sync_snapshot_gaussian_capacity();
+    CHECK(initial_snapshot_capacity >= full_chunk_count);
+
+    CHECK_MESSAGE(upload_pipeline.queue_chunk_load(*streaming_system.ptr(), 0, 1),
+            "Expected tail chunk load request to enqueue async pack work for the primary asset");
+    upload_pipeline.process_upload_queue(*streaming_system.ptr());
+
+    CHECK(streaming_system->get_loaded_chunks() == 2);
+    CHECK(streaming_system->get_pending_pack_jobs() == 0);
+    CHECK(streaming_system->get_pending_upload_jobs() == 0);
+    CHECK(upload_pipeline._test_get_sync_snapshot_gaussian_size() == tail_chunk_count);
+    CHECK(upload_pipeline._test_get_sync_snapshot_gaussian_capacity() >= initial_snapshot_capacity);
 
     upload_pipeline.process_upload_queue(*streaming_system.ptr());
-    CHECK(streaming_system->get_loaded_chunks() == 1);
+    CHECK(streaming_system->get_loaded_chunks() == 2);
     CHECK(streaming_system->get_pending_pack_jobs() == 0);
     CHECK(streaming_system->get_pending_upload_jobs() == 0);
 }

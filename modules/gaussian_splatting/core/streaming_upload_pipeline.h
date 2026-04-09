@@ -15,6 +15,11 @@ class GaussianStreamingSystem;
 
 class StreamingUploadPipeline {
 public:
+    struct PackSnapshotScratch {
+        LocalVector<Gaussian> gaussian_snapshot;
+        LocalVector<Vector3> sh_high_order_snapshot;
+    };
+
     struct PackJob {
         uint32_t asset_id = 0;
         uint32_t chunk_idx = UINT32_MAX;
@@ -248,6 +253,7 @@ public:
     uint32_t pack_queue_read_idx = 0;
     LocalVector<PendingChunkUpload *> upload_queue;
     uint32_t upload_queue_read_idx = 0;
+    PackSnapshotScratch sync_pack_scratch;
     std::atomic<uint32_t> pack_queue_depth_cached{0};
     std::atomic<uint32_t> upload_queue_depth_cached{0};
 
@@ -277,12 +283,14 @@ public:
     }
     uint32_t _test_promote_pack_jobs_sync(uint32_t p_max_jobs) { return promote_pack_jobs_sync(p_max_jobs); }
     bool _test_has_async_pack_queue_owner() const { return has_async_pack_queue_owner(); }
+    uint32_t _test_get_sync_snapshot_gaussian_size() const { return sync_pack_scratch.gaussian_snapshot.size(); }
+    uint32_t _test_get_sync_snapshot_gaussian_capacity() const { return sync_pack_scratch.gaussian_snapshot.get_capacity(); }
 #endif
 
 private:
     bool has_async_pack_queue_owner() const;
     bool pop_pack_job(PackJob &r_job);
-    PendingChunkUpload *build_pending_upload_from_pack_job(const PackJob &p_job);
+    PendingChunkUpload *build_pending_upload_from_pack_job(const PackJob &p_job, PackSnapshotScratch &r_scratch);
     void enqueue_upload_job(PendingChunkUpload *p_job);
     uint32_t promote_pack_jobs_sync(uint32_t p_max_jobs);
     bool pop_upload_job(PendingChunkUpload *&job);

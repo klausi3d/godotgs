@@ -439,6 +439,7 @@ void StreamingUploadPipeline::pack_thread_entry(void *p_userdata) {
 void StreamingUploadPipeline::pack_thread_func(GaussianStreamingSystem &system, uint32_t p_thread_index) {
     (void)p_thread_index;
     static constexpr uint32_t PACK_DEQUEUE_BATCH = 4;
+    PackSnapshotScratch thread_scratch;
     while (!pack_thread_exit.load()) {
         pack_semaphore.wait();
         if (pack_thread_exit.load()) {
@@ -475,7 +476,7 @@ void StreamingUploadPipeline::pack_thread_func(GaussianStreamingSystem &system, 
 
         for (uint32_t job_idx = 0; job_idx < job_count; job_idx++) {
             telemetry.record_pack_thread_snapshot();
-            PendingChunkUpload *upload = build_pending_upload_from_pack_job(jobs[job_idx]);
+            PendingChunkUpload *upload = build_pending_upload_from_pack_job(jobs[job_idx], thread_scratch);
             enqueue_upload_job(upload);
             telemetry.record_pack_thread_enqueue_upload();
             _atomic_saturating_sub(pack_jobs_in_flight, 1);
@@ -945,7 +946,8 @@ bool StreamingUploadPipeline::pop_pack_job(PackJob &r_job) {
     return true;
 }
 
-StreamingUploadPipeline::PendingChunkUpload *StreamingUploadPipeline::build_pending_upload_from_pack_job(const PackJob &p_job) {
+StreamingUploadPipeline::PendingChunkUpload *StreamingUploadPipeline::build_pending_upload_from_pack_job(
+        const PackJob &p_job, PackSnapshotScratch &r_scratch) {
     PendingChunkUpload *upload = memnew(PendingChunkUpload);
     upload->asset_id = p_job.asset_id;
     upload->chunk_idx = p_job.chunk_idx;
@@ -956,36 +958,35 @@ StreamingUploadPipeline::PendingChunkUpload *StreamingUploadPipeline::build_pend
         return upload;
     }
 
-    LocalVector<Gaussian> gaussian_snapshot;
-    LocalVector<Vector3> sh_high_order_snapshot;
     uint32_t sh_first_order = 0;
     uint32_t sh_high_order = 0;
     bool snapshot_ok = false;
     if (p_job.uses_explicit_source_indices) {
         snapshot_ok = p_job.chunk_count == static_cast<uint32_t>(p_job.source_indices.size()) &&
                 p_job.data_ref->capture_indexed_chunk_snapshot(p_job.source_indices.ptr(), p_job.chunk_count,
-                        gaussian_snapshot,
-                        sh_high_order_snapshot,
+                        r_scratch.gaussian_snapshot,
+                        r_scratch.sh_high_order_snapshot,
                         sh_first_order,
                         sh_high_order);
     } else {
         snapshot_ok = p_job.data_ref->capture_chunk_snapshot(p_job.chunk_start, p_job.chunk_count,
-                gaussian_snapshot,
-                sh_high_order_snapshot,
+                r_scratch.gaussian_snapshot,
+                r_scratch.sh_high_order_snapshot,
                 sh_first_order,
                 sh_high_order);
     }
-    if (!snapshot_ok || p_job.chunk_count > static_cast<uint32_t>(gaussian_snapshot.size())) {
+    if (!snapshot_ok || p_job.chunk_count > static_cast<uint32_t>(r_scratch.gaussian_snapshot.size())) {
         return upload;
     }
 
-    const Vector3 *sh_coeffs = sh_high_order_snapshot.is_empty() ? nullptr : sh_high_order_snapshot.ptr();
+    const Vector3 *sh_coeffs =
+            r_scratch.sh_high_order_snapshot.is_empty() ? nullptr : r_scratch.sh_high_order_snapshot.ptr();
     const bool telemetry_on = telemetry.is_enabled();
     uint64_t pack_start_usec = 0;
     if (telemetry_on) {
         pack_start_usec = _ticks_usec_now();
     }
-    pack_gaussians_range(gaussian_snapshot,
+    pack_gaussians_range(r_scratch.gaussian_snapshot,
             0,
             p_job.chunk_count,
             upload->packed_data,
@@ -1028,7 +1029,7 @@ uint32_t StreamingUploadPipeline::promote_pack_jobs_sync(uint32_t p_max_jobs) {
         // queue. Workers may still observe a stale wake token afterwards, but
         // they will see an empty queue and go back to sleep without touching
         // unrelated jobs or wake ownership state.
-        PendingChunkUpload *upload = build_pending_upload_from_pack_job(job);
+        PendingChunkUpload *upload = build_pending_upload_from_pack_job(job, sync_pack_scratch);
         enqueue_upload_job(upload);
         _atomic_saturating_sub(pack_jobs_in_flight, 1);
         promoted++;
