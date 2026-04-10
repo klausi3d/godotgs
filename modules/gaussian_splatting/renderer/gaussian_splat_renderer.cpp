@@ -1391,7 +1391,9 @@ GaussianSplatRenderer::FrameBackendPlan GaussianSplatRenderer::build_frame_backe
             plan.streaming_requested && !plan.prefer_resident_backend && !plan.streaming_ready;
     plan.allow_legacy_resident_fallback = !plan.streaming_requested;
     plan.allow_primary_fallback_instance =
-            get_scene_state().gaussian_data.is_valid() && get_scene_state().gaussian_data->get_count() > 0;
+            get_scene_state().gaussian_data.is_valid() &&
+            get_scene_state().gaussian_data->get_count() > 0 &&
+            !world_submission_contract_active;
     plan.primary_fallback_instance_reason = plan.allow_primary_fallback_instance
             ? String("primary_gaussian_data_available")
             : String("primary_gaussian_data_unavailable");

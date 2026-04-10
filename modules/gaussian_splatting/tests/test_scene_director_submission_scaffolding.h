@@ -633,6 +633,87 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Zero-splat submis
 	}
 }
 
+TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Staged world submissions do not synthesize a primary fallback instance") {
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	const bool owns_director = (director == nullptr);
+	if (!director) {
+		director = memnew(GaussianSplatSceneDirector);
+	}
+	REQUIRE(director != nullptr);
+
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	ProjectSettings *project_settings = ProjectSettings::get_singleton();
+	REQUIRE(project_settings != nullptr);
+	const String route_policy_setting = "rendering/gaussian_splatting/streaming/route_policy";
+	const bool had_route_policy = project_settings->has_setting(route_policy_setting);
+	const Variant previous_route_policy = had_route_policy ? project_settings->get_setting(route_policy_setting) : Variant();
+	project_settings->set_setting(route_policy_setting, int64_t(gs::settings::GS_ROUTE_STREAMING));
+	project_settings->emit_signal("settings_changed");
+
+	Ref<World3D> world = root->get_world_3d();
+	REQUIRE(world.is_valid());
+
+	Node *owner = memnew(Node);
+	REQUIRE(owner != nullptr);
+	root->add_child(owner);
+	tree->process(0.0);
+
+	Ref<GaussianSplatRenderer> renderer = director->get_shared_renderer(world.ptr());
+	if (!renderer.is_valid()) {
+		MESSAGE("Skipping staged world fallback test - shared renderer unavailable");
+		root->remove_child(owner);
+		memdelete(owner);
+		tree->process(0.0);
+		if (had_route_policy) {
+			project_settings->set_setting(route_policy_setting, previous_route_policy);
+		} else {
+			project_settings->clear(route_policy_setting);
+		}
+		project_settings->emit_signal("settings_changed");
+		if (owns_director) {
+			memdelete(director);
+		}
+		return;
+	}
+
+	GaussianSplatSceneDirector::WorldSubmission submission;
+	submission.owner_id = owner->get_instance_id();
+	submission.scenario = world->get_scenario();
+	submission.gaussian_data = stage1a_make_submission_test_data(32, 16.0f);
+	submission.static_chunks = Vector<GaussianSplatRenderer::StaticChunk>();
+	submission.has_desired_residency_hint = true;
+	submission.desired_residency_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING;
+
+	CHECK(director->submit_world_submission(submission));
+	CHECK(director->has_world_submission_for_renderer(renderer.ptr()));
+
+	const GaussianSplatRenderer::FrameBackendPlan backend_plan = renderer->build_frame_backend_plan(false);
+	CHECK(backend_plan.streaming_requested);
+	CHECK_FALSE(backend_plan.allow_primary_fallback_instance);
+
+	director->release_world_submission(owner->get_instance_id());
+
+	root->remove_child(owner);
+	memdelete(owner);
+	tree->process(0.0);
+
+	if (had_route_policy) {
+		project_settings->set_setting(route_policy_setting, previous_route_policy);
+	} else {
+		project_settings->clear(route_policy_setting);
+	}
+	project_settings->emit_signal("settings_changed");
+
+	if (owns_director) {
+		memdelete(director);
+	}
+}
+
 TEST_CASE("[GaussianSplatting][World][SceneTree][RequiresGPU] World submission renders through the resident instanced route without a streaming system") {
 	RenderingServer *rs = RenderingServer::get_singleton();
 	if (rs == nullptr) {
