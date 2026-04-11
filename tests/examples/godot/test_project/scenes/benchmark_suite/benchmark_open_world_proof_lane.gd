@@ -7,6 +7,7 @@ const WORLD_CONTRACT_KIND := "gaussian_world_contract"
 
 var _world_stage_contract_path := ""
 var _world_stage_result: Dictionary = {}
+var _data_aabb := AABB()
 var _diag8_count := 0
 
 
@@ -62,6 +63,17 @@ func _build_instances(config: Dictionary) -> void:
 	streaming_world.apply_world()
 	_primary_renderer_owner = streaming_world
 
+	# Cache gaussian data AABB for camera sweep derivation.
+	if world.has_method("get_gaussian_data"):
+		var gdata = world.get_gaussian_data()
+		if gdata != null and gdata.has_method("get_aabb"):
+			_data_aabb = gdata.get_aabb()
+			# Override corridor sweep length from actual data extent.
+			var z_extent := absf(_data_aabb.size.z)
+			if z_extent > 1.0:
+				config["corridor_length"] = z_extent * 0.45
+				config["corridor_speed"] = z_extent * 0.045
+
 
 func _resolve_focus_point() -> Vector3:
 	# Prefer the gaussian data AABB (actual splat positions) over the world
@@ -75,15 +87,11 @@ func _resolve_focus_point() -> Vector3:
 				if gdata != null and gdata.has_method("get_aabb"):
 					var data_bounds: AABB = gdata.get_aabb()
 					if data_bounds.size.length() > 0.01:
-						var center := data_bounds.position + data_bounds.size * 0.5
-						print("[DIAG-FOCUS] Using gaussian_data AABB center: %s (bounds: pos=%s size=%s)" % [center, data_bounds.position, data_bounds.size])
-						return center
+						return data_bounds.position + data_bounds.size * 0.5
 			# Fall back to world bounds.
 			if world.has_method("get_bounds"):
 				var bounds: AABB = world.get_bounds()
-				var center := bounds.position + bounds.size * 0.5
-				print("[DIAG-FOCUS] Using world bounds center: %s (bounds: pos=%s size=%s)" % [center, bounds.position, bounds.size])
-				return center
+				return bounds.position + bounds.size * 0.5
 	return super._resolve_focus_point()
 
 
