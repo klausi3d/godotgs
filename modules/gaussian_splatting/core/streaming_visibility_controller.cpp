@@ -205,6 +205,29 @@ void StreamingVisibilityController::update_chunk_visibility(
         }
         if (system.chunks[i].is_loaded) {
             culling_stats.loaded_chunks++;
+            if (!system.chunks[i].upload_pending && system.chunks[i].buffer_slot != UINT32_MAX) {
+                culling_stats.resident_chunks++;
+            }
+        }
+    }
+
+    // Sort visible chunks by distance from camera so the streaming scheduler
+    // loads nearby chunks first (the scan cursor iterates this list in order).
+    if (visible_chunk_indices.size() > 1) {
+        const GaussianStreamingSystem::StreamingChunk *cptr = system.chunks.ptr();
+        const uint32_t cnt = visible_chunk_indices.size();
+        uint32_t *iptr = visible_chunk_indices.ptr();
+        // Simple insertion sort — visible count is typically < 2000 and
+        // the list is nearly sorted across frames.
+        for (uint32_t i = 1; i < cnt; i++) {
+            uint32_t key = iptr[i];
+            float key_dist = cptr[key].distance;
+            int32_t j = (int32_t)i - 1;
+            while (j >= 0 && cptr[iptr[j]].distance > key_dist) {
+                iptr[j + 1] = iptr[j];
+                j--;
+            }
+            iptr[j + 1] = key;
         }
     }
 

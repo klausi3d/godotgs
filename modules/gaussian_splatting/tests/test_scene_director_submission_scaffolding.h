@@ -1486,4 +1486,133 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Active world submission
 	}
 }
 
+TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] World submission produces identity instance in build_instance_buffer_for_renderer") {
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	const bool owns_director = (director == nullptr);
+	if (!director) {
+		director = memnew(GaussianSplatSceneDirector);
+	}
+	REQUIRE(director != nullptr);
+
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	Ref<World3D> world = root->get_world_3d();
+	REQUIRE(world.is_valid());
+	const RID scenario = world->get_scenario();
+	REQUIRE(scenario.is_valid());
+
+	Node *owner = memnew(Node);
+	REQUIRE(owner != nullptr);
+	root->add_child(owner);
+	tree->process(0.0);
+
+	GaussianSplatSceneDirector::WorldSubmission submission;
+	submission.owner_id = owner->get_instance_id();
+	submission.scenario = scenario;
+	submission.gaussian_data = stage1a_make_submission_test_data(8, 0.0f);
+	submission.static_chunks.push_back(stage1a_make_submission_test_chunk(0));
+
+	CHECK(director->submit_world_submission(submission));
+
+	Ref<GaussianSplatRenderer> renderer = director->get_shared_renderer(world.ptr());
+	if (renderer.is_valid()) {
+		LocalVector<InstanceDataGPU> instance_buffer;
+		director->build_instance_buffer_for_renderer(renderer.ptr(), instance_buffer, false);
+
+		CHECK_MESSAGE(instance_buffer.size() == 1,
+				"World submission should produce exactly one instance entry");
+		if (!instance_buffer.is_empty()) {
+			const InstanceDataGPU &entry = instance_buffer[0];
+			CHECK_MESSAGE(entry.ids[0] == 0u,
+					"World submission instance should reference primary asset (id=0)");
+			CHECK_MESSAGE((entry.ids[1] & GS_INSTANCE_FLAG_ROTATION_IDENTITY) != 0,
+					"World submission instance should have identity rotation flag");
+			CHECK_MESSAGE((entry.ids[1] & GS_INSTANCE_FLAG_SCALE_IDENTITY) != 0,
+					"World submission instance should have identity scale flag");
+			CHECK_MESSAGE((entry.ids[1] & GS_INSTANCE_FLAG_TRANSLATION_ZERO) != 0,
+					"World submission instance should have zero translation flag");
+			CHECK(entry.rotation[3] == doctest::Approx(1.0f));
+			CHECK(entry.inv_rotation[3] == doctest::Approx(1.0f));
+			CHECK(entry.translation_scale[3] == doctest::Approx(1.0f));
+			CHECK(entry.params[0] == doctest::Approx(1.0f));
+		}
+	} else {
+		MESSAGE("Skipping instance buffer content checks - shared renderer unavailable");
+	}
+
+	director->release_world_submission(submission.owner_id);
+
+	if (renderer.is_valid()) {
+		LocalVector<InstanceDataGPU> instance_buffer_after;
+		director->build_instance_buffer_for_renderer(renderer.ptr(), instance_buffer_after, false);
+		CHECK_MESSAGE(instance_buffer_after.is_empty(),
+				"After release, world submission should produce no instances");
+	}
+
+	root->remove_child(owner);
+	memdelete(owner);
+	tree->process(0.0);
+
+	if (owns_director) {
+		memdelete(director);
+	}
+}
+
+TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] World submission with zero splats produces no instance") {
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	const bool owns_director = (director == nullptr);
+	if (!director) {
+		director = memnew(GaussianSplatSceneDirector);
+	}
+	REQUIRE(director != nullptr);
+
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	Ref<World3D> world = root->get_world_3d();
+	REQUIRE(world.is_valid());
+	const RID scenario = world->get_scenario();
+	REQUIRE(scenario.is_valid());
+
+	Node *owner = memnew(Node);
+	REQUIRE(owner != nullptr);
+	root->add_child(owner);
+	tree->process(0.0);
+
+	Ref<GaussianData> empty_data;
+	empty_data.instantiate();
+	empty_data->resize(0);
+
+	GaussianSplatSceneDirector::WorldSubmission submission;
+	submission.owner_id = owner->get_instance_id();
+	submission.scenario = scenario;
+	submission.gaussian_data = empty_data;
+
+	CHECK(director->submit_world_submission(submission));
+
+	Ref<GaussianSplatRenderer> renderer = director->get_shared_renderer(world.ptr());
+	if (renderer.is_valid()) {
+		LocalVector<InstanceDataGPU> instance_buffer;
+		director->build_instance_buffer_for_renderer(renderer.ptr(), instance_buffer, false);
+		CHECK_MESSAGE(instance_buffer.is_empty(),
+				"Zero-splat world submission should produce no instances");
+	}
+
+	director->release_world_submission(submission.owner_id);
+	root->remove_child(owner);
+	memdelete(owner);
+	tree->process(0.0);
+
+	if (owns_director) {
+		memdelete(director);
+	}
+}
+
 #endif // TESTS_ENABLED || TOOLS_ENABLED

@@ -1386,10 +1386,13 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 	const uint32_t desired_runtime_splats = p_backend_plan.runtime_policy.runtime_budget_splats;
 	if (desired_runtime_splats > 0 && streaming_state.memory_stream.is_valid()) {
 		const uint32_t current_memory_capacity = streaming_state.memory_stream->get_max_gaussians();
-		const uint32_t current_runtime_capacity = streaming_state.current_streaming_system.is_valid()
-				? streaming_state.current_streaming_system->get_buffer_capacity_splats()
-				: 0u;
-		if (desired_runtime_splats > current_memory_capacity || desired_runtime_splats > current_runtime_capacity) {
+		// Only compare against the memory stream capacity.  The streaming
+		// system's persistent buffer (get_buffer_capacity_splats()) is
+		// intentionally smaller than the total budget — the whole point of
+		// streaming is to page chunks in and out of a smaller resident
+		// window.  Comparing against that capacity caused an infinite
+		// rebuild loop for large datasets.
+		if (desired_runtime_splats > current_memory_capacity) {
 			RenderingDevice *rd = state_view.get_rendering_device();
 			if (!rd) {
 				const StreamingReadinessState readiness_state = StreamingReadinessState::RUNTIME_BOOTSTRAP_PENDING;
@@ -1652,6 +1655,7 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 			buffers.quantization_required = quantization_required;
 			buffers.quantization_buffer = quantization_required ? atlas_state.quantization_buffer : RID();
 
+		buffers.world_submission_active = renderer->world_submission_contract_active;
 		buffers.instance_count = instance_pipeline_instance_cache.size();
 		const uint32_t instance_count = buffers.instance_count;
 		instance_pipeline_instance_count = instance_count;

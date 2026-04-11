@@ -2363,13 +2363,28 @@ bool GPUSortingPipeline::_sort_instance_pipeline(const Transform3D &p_cam_transf
     params.camera_position_ortho[2] = camera_transform.origin.z;
     params.camera_position_ortho[3] = orthographic ? 1.0f : 0.0f;
     params.cull_screen_distance[0] = pixel_scale_y;
-    params.cull_screen_distance[1] = tiny_splat_screen_radius;
-    params.cull_screen_distance[2] = min_screen_threshold;
-    params.cull_screen_distance[3] = max_distance_sq;
-    params.cull_frustum_radius[0] = radius_multiplier;
-    params.cull_frustum_radius[1] = frustum_plane_slack;
-    params.cull_frustum_radius[2] = enable_frustum;
-    params.cull_frustum_radius[3] = 0.0f;
+    if (inputs.world_submission_active) {
+        // World-submission mode: disable per-splat screen-size, distance, and frustum
+        // culling.  Chunk-level frustum cull and LOD selection already handle visibility.
+        // Per-splat thresholds were designed for single-asset close-up rendering and
+        // cause false rejection in world-scale streaming where individual splat radii
+        // are subpixel at typical camera distances.
+        params.cull_screen_distance[1] = 0.0f;
+        params.cull_screen_distance[2] = 0.0f;
+        params.cull_screen_distance[3] = 0.0f;
+        params.cull_frustum_radius[0] = radius_multiplier;
+        params.cull_frustum_radius[1] = frustum_plane_slack;
+        params.cull_frustum_radius[2] = 0.0f;
+        params.cull_frustum_radius[3] = 0.0f;
+    } else {
+        params.cull_screen_distance[1] = tiny_splat_screen_radius;
+        params.cull_screen_distance[2] = min_screen_threshold;
+        params.cull_screen_distance[3] = max_distance_sq;
+        params.cull_frustum_radius[0] = radius_multiplier;
+        params.cull_frustum_radius[1] = frustum_plane_slack;
+        params.cull_frustum_radius[2] = enable_frustum;
+        params.cull_frustum_radius[3] = 0.0f;
+    }
 
     Vector<uint8_t> param_bytes;
     param_bytes.resize(sizeof(InstanceDepthParamsGPU));

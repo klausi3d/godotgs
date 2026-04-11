@@ -319,6 +319,8 @@ LARGE_WORLD_PROOF_METRIC_LABELS: dict[str, str] = {
     "vram_cap_hit_frames": "vram_cap_hit_frames",
     "chunk_loads_per_frame_p95": "chunk_loads_per_frame.p95",
     "chunk_evictions_per_frame_p95": "chunk_evictions_per_frame.p95",
+    "loaded_chunks": "loaded_chunks",
+    "atlas_published_chunks": "atlas_published_chunks",
 }
 LARGE_WORLD_PROOF_CONTRACTS: dict[str, dict[str, Any]] = {
     "open_world_corridor_proof": {
@@ -343,51 +345,11 @@ LARGE_WORLD_PROOF_CONTRACTS: dict[str, dict[str, Any]] = {
             {"metric": "chunk_evictions_per_frame_p95", "op": "<=", "value": 4.0},
         ],
     },
-    "city_flyover": {
-        "proof_role": "boundary_crossing",
-        "proof_name": "Boundary crossing",
-        "failure_intent": (
-            "Fail when the visibility-shift lane can only stay afloat by prolonged queue pressure, "
-            "starved scans, or residency collapse during boundary crossing."
-        ),
-        "correctness_thresholds": [
-            {"metric": "first_visible_ms", "op": "<=", "value": 4500.0},
-            {"metric": "residency_ratio", "op": ">=", "value": 0.65},
-            {"metric": "queue_pressure_frames", "op": "<=", "value": 48},
-            {"metric": "no_progress_frames", "op": "<=", "value": 12},
-            {"metric": "scan_starved_frames", "op": "<=", "value": 12},
-            {"metric": "vram_cap_hit_frames", "op": "<=", "value": 4},
-        ],
-        "soft_budget_thresholds": [
-            {"metric": "frame_p95_ms", "op": "<=", "value": 120.0},
-            {"metric": "frame_p95_to_avg_ratio", "op": "<=", "value": 2.50},
-            {"metric": "chunk_loads_per_frame_p95", "op": "<=", "value": 12.0},
-            {"metric": "chunk_evictions_per_frame_p95", "op": "<=", "value": 8.0},
-        ],
-    },
-    "long_soak": {
-        "proof_role": "city_roam_soak",
-        "proof_name": "City roam + soak",
-        "failure_intent": (
-            "Fail when the long-roam soak lane loses visibility, residency, or forward progress while revisiting "
-            "already-streamed content."
-        ),
-        "correctness_thresholds": [
-            {"metric": "first_visible_ms", "op": "<=", "value": 6000.0},
-            {"metric": "residency_ratio", "op": ">=", "value": 0.75},
-            {"metric": "queue_pressure_frames", "op": "<=", "value": 96},
-            {"metric": "no_progress_frames", "op": "<=", "value": 24},
-            {"metric": "scan_starved_frames", "op": "<=", "value": 20},
-            {"metric": "vram_cap_hit_frames", "op": "<=", "value": 8},
-        ],
-        "soft_budget_thresholds": [
-            {"metric": "frame_p95_ms", "op": "<=", "value": 135.0},
-            {"metric": "frame_p95_to_avg_ratio", "op": "<=", "value": 2.60},
-            {"metric": "chunk_loads_per_frame_p95", "op": "<=", "value": 8.0},
-            {"metric": "chunk_evictions_per_frame_p95", "op": "<=", "value": 10.0},
-        ],
-    },
+    # city_flyover and long_soak are smoke-support lanes that do not use chunked
+    # world contracts yet.  Their proof contracts will be added once the lanes
+    # are promoted to real chunked evidence surfaces (see benchmark-suite.md).
 }
+
 
 
 def _validate_large_world_proof_contract_definitions() -> None:

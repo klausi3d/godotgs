@@ -110,6 +110,7 @@ static void _set_instance_sort_inputs(const GaussianSplatRenderer::InstancePipel
 	instance_inputs.max_visible_chunks = p_buffers.max_visible_chunks;
 	instance_inputs.max_visible_splats = p_buffers.max_visible_splats;
 	instance_inputs.max_chunk_splats = p_buffers.max_chunk_splats;
+	instance_inputs.world_submission_active = p_buffers.world_submission_active;
 	instance_inputs.device = p_render_device;
 	p_sorting_pipeline->set_instance_pipeline_inputs(instance_inputs);
 }

@@ -1120,7 +1120,38 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 	out.clear();
 
 	const SharedWorld *world = _find_world_for_renderer(p_renderer);
-	if (!world || world->instances.is_empty()) {
+	if (!world) {
+		return;
+	}
+
+	// World submission instance: when the world has an active world submission with
+	// renderable data and no normal instances, produce a proper identity-transform
+	// instance referencing the primary asset (id=0).  This replaces the synthetic
+	// fallback shim that render_streaming_orchestrator previously injected.
+	if (world->instances.is_empty()) {
+		if (world->world_submission.active &&
+				world->world_submission.gaussian_data.is_valid() &&
+				world->world_submission.gaussian_data->get_count() > 0) {
+			InstanceDataGPU entry = {};
+			entry.rotation[3] = 1.0f;
+			entry.inv_rotation[3] = 1.0f;
+			entry.translation_scale[3] = 1.0f;
+			entry.params[0] = 1.0f; // opacity
+			entry.params[1] = 1.0f; // lod_bias
+			entry.params[2] = 1.0f; // wind_intensity
+			entry.params[3] = 0.0f; // wind_mode
+			entry.ids[0] = 0u; // primary asset id
+			entry.ids[1] = GS_INSTANCE_FLAG_ROTATION_IDENTITY |
+					GS_INSTANCE_FLAG_SCALE_IDENTITY |
+					GS_INSTANCE_FLAG_TRANSLATION_ZERO;
+			entry.lod[0] = 0;
+			entry.lod[1] = 0;
+			entry.wind_params[0] = 0.0f;
+			entry.wind_params[1] = 0.0f;
+			entry.wind_params[2] = 0.0f;
+			entry.wind_params[3] = 1.0f;
+			out.push_back(entry);
+		}
 		return;
 	}
 

@@ -3492,4 +3492,45 @@ TEST_CASE("[GaussianSplatting] get_streaming_route_policy defaults to STREAMING 
 	CHECK(String(gs::settings::get_streaming_route_policy_source(project_settings)) == String("default_fallback"));
 }
 
+TEST_CASE("[GaussianSplatting][Pipeline] InstancePipelineBuffers propagates world_submission_active flag") {
+	GaussianSplatRenderer::InstancePipelineBuffers buffers;
+	CHECK_FALSE(buffers.world_submission_active);
+
+	buffers.world_submission_active = true;
+	CHECK(buffers.world_submission_active);
+
+	GaussianSplatRenderer::InstancePipelineBuffers default_buffers;
+	CHECK_FALSE(default_buffers.world_submission_active);
+}
+
+TEST_CASE("[GaussianSplatting][Pipeline] InstancePipelineInputs propagates world_submission_active flag") {
+	GPUSortingPipeline::InstancePipelineInputs inputs;
+	CHECK_FALSE(inputs.world_submission_active);
+
+	inputs.world_submission_active = true;
+	CHECK(inputs.world_submission_active);
+}
+
+TEST_CASE("[GaussianSplatting][Pipeline] ChunkCullingStats tracks resident_chunks separately from loaded_chunks") {
+	StreamingVisibilityController::ChunkCullingStats stats;
+	CHECK(stats.loaded_chunks == 0);
+	CHECK(stats.resident_chunks == 0);
+
+	// Simulate: 3 CPU-loaded, only 2 atlas-resident.
+	stats.loaded_chunks = 3;
+	stats.resident_chunks = 2;
+	CHECK(stats.loaded_chunks == 3);
+	CHECK(stats.resident_chunks == 2);
+
+	// Reset clears both.
+	stats.reset();
+	CHECK(stats.loaded_chunks == 0);
+	CHECK(stats.resident_chunks == 0);
+}
+
+TEST_CASE("[GaussianSplatting][Pipeline] StreamingGlobalAtlasRegistry exposes atlas_published_chunk_count") {
+	StreamingGlobalAtlasRegistry registry;
+	CHECK(registry.get_atlas_published_chunks() == 0);
+}
+
 } // namespace TestGaussianSplatting

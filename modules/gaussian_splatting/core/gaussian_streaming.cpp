@@ -1079,12 +1079,6 @@ void GaussianStreamingSystem::initialize_empty(RenderingDevice *p_device) {
 }
 
 void GaussianStreamingSystem::update_primary_asset_data(Ref<::GaussianData> p_data) {
-    // Diagnostic logging for debugging streaming fallback path
-    const uint64_t system_id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(this));
-    print_line(vformat("[Streaming DIAG] update_primary_asset_data: system=%s data_valid=%s streaming_initialized=%s",
-            String::num_uint64(system_id),
-            p_data.is_valid() ? "yes" : "no", streaming_initialized ? "yes" : "no"));
-
     if (p_data.is_null()) {
         GS_LOG_STREAMING_WARN("[Streaming] update_primary_asset_data called with null data");
         return;
@@ -1150,9 +1144,6 @@ void GaussianStreamingSystem::update_primary_asset_data(Ref<::GaussianData> p_da
     }
     quantization_cpu_cache_valid = false;
     global_atlas_registry.mark_asset_registry_dirty();
-
-    print_line(vformat("[Streaming DIAG] update_primary_asset_data complete: system=%s splats=%d chunks=%d",
-            String::num_uint64(system_id), total_splat_count, (uint32_t)chunks.size()));
 }
 
 void GaussianStreamingSystem::attach_memory_stream(const Ref<GaussianMemoryStream> &p_stream) {
@@ -1881,7 +1872,18 @@ void GaussianStreamingSystem::_build_chunks_for_data(const Ref<GaussianData> &p_
     const bool quantize = per_chunk_quantization_enabled;
     const LocalVector<Gaussian> *gaussians = quantize ? &p_data->get_gaussian_storage() : nullptr;
 
-    if (build_primary_spatial && splat_count > 0) {
+    // Skip Morton sort for very large datasets.  The O(N*log(N)) sort on
+    // hundreds of MB followed by random-access bounds computation into
+    // multi-GB gaussian storage causes stalls of 30+ seconds.  Contiguous
+    // chunks are sufficient for the initial pass; proper spatial layout
+    // arrives from static chunk hints via set_primary_chunk_layout().
+    static constexpr uint32_t kMortonSortSplatThreshold = 2'000'000;
+    const bool morton_sort_feasible = splat_count <= kMortonSortSplatThreshold;
+    if (build_primary_spatial && splat_count > 0 && !morton_sort_feasible) {
+        WARN_PRINT(vformat("[Streaming] Skipping Morton sort for %d splats (threshold=%d); using contiguous chunk layout.",
+                splat_count, kMortonSortSplatThreshold));
+    }
+    if (build_primary_spatial && splat_count > 0 && morton_sort_feasible) {
         struct MortonPair {
             uint32_t morton = 0;
             uint32_t source_index = 0;
@@ -1913,7 +1915,7 @@ void GaussianStreamingSystem::_build_chunks_for_data(const Ref<GaussianData> &p_
         StreamingChunk &chunk = out_chunks[i];
         chunk.start_idx = i * CHUNK_SIZE;
         chunk.count = MIN(CHUNK_SIZE, splat_count - chunk.start_idx);
-        chunk.source_index_remapped = build_primary_spatial;
+        chunk.source_index_remapped = build_primary_spatial && morton_sort_feasible;
         if (chunk.source_index_remapped &&
                 (uint64_t(chunk.start_idx) + uint64_t(chunk.count)) > asset_registry.primary_chunk_source_indices.size()) {
             WARN_PRINT_ONCE("[Streaming] Primary spatial remap index range is invalid; falling back to contiguous chunk reads.");
@@ -3484,6 +3486,7 @@ void GaussianStreamingSystem::end_frame() {
     analytics_snapshot["vram_payload_mb"] = double(payload_vram_bytes) / (1024.0 * 1024.0);
     analytics_snapshot["vram_overhead_mb"] = double(overhead_vram_bytes) / (1024.0 * 1024.0);
     analytics_snapshot["loaded_chunks"] = get_loaded_chunks();
+    analytics_snapshot["atlas_published_chunks"] = global_atlas_registry.get_atlas_published_chunks();
     analytics_snapshot["visible_splats"] = get_visible_count();
     analytics_snapshot["effective_max_chunks"] = get_effective_max_chunks();
     analytics_snapshot["chunks_loaded_this_frame"] = budget.chunks_loaded_this_frame;
@@ -4648,6 +4651,8 @@ Dictionary GaussianStreamingSystem::get_chunk_culling_stats() const {
     stats["visible_chunks"] = visibility.culling_stats.visible_chunks;
     stats["frustum_culled_chunks"] = visibility.culling_stats.frustum_culled_chunks;
     stats["loaded_chunks"] = visibility.culling_stats.loaded_chunks;
+    stats["resident_chunks"] = visibility.culling_stats.resident_chunks;
+    stats["atlas_published_chunks"] = global_atlas_registry.get_atlas_published_chunks();
     stats["culling_enabled"] = visibility.chunk_frustum_culling_enabled;
     stats["frustum_padding"] = visibility.chunk_frustum_padding;
     stats["zero_visible_consecutive_frames"] = visibility.zero_visible_recovery.zero_visible_consecutive_frames;

@@ -39,6 +39,7 @@ public:
 
 	uint32_t get_max_chunk_count_per_asset() const { return max_chunk_count_per_asset; }
 	uint32_t get_max_chunk_splats() const { return max_chunk_splats; }
+	uint32_t get_atlas_published_chunks() const { return atlas_published_chunk_count; }
 	uint64_t get_auxiliary_vram_overhead_bytes() const;
 	const GlobalAtlasState &get_global_atlas_state() const { return global_atlas_state; }
 	uint64_t get_atlas_generation() const { return global_atlas_state.atlas_generation; }
@@ -56,6 +57,7 @@ private:
 	GlobalAtlasState global_atlas_state;
 	uint32_t max_chunk_count_per_asset = 0;
 	uint32_t max_chunk_splats = 0;
+	uint32_t atlas_published_chunk_count = 0;
 	RID asset_meta_buffer;
 	RID chunk_meta_buffer;
 	RID asset_chunk_index_buffer;

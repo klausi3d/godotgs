@@ -7,6 +7,7 @@ const WORLD_CONTRACT_KIND := "gaussian_world_contract"
 
 var _world_stage_contract_path := ""
 var _world_stage_result: Dictionary = {}
+var _diag8_count := 0
 
 
 func _resolved_asset_path() -> String:
@@ -31,14 +32,28 @@ func _build_instances(config: Dictionary) -> void:
 		push_error("[BENCH-WORLD] Missing open-world stage contract path.")
 		return
 
-	_world_stage_result = BenchmarkOpenWorldStageContract.build_world_from_stage_manifest(_world_stage_contract_path, self)
-	var world = _world_stage_result.get("world")
-	if world == null:
-		push_error("[BENCH-WORLD] Failed to build world from %s (%s)" % [
-			_world_stage_contract_path,
-			str(_world_stage_result.get("error", "unknown_error")),
-		])
-		return
+	var world: GaussianSplatWorld = null
+	if _world_stage_contract_path.ends_with(".gsplatworld"):
+		# Pre-built staged world — load directly, no runtime synthesis.
+		world = load(_world_stage_contract_path) as GaussianSplatWorld
+		if world == null:
+			push_error("[BENCH-WORLD] Failed to load staged world from %s" % _world_stage_contract_path)
+			return
+		_world_stage_result = {
+			"world": world,
+			"staged_world_path": _world_stage_contract_path,
+			"generated_chunk_count": world.get_chunk_count() if world.has_method("get_chunk_count") else 0,
+		}
+	else:
+		# Runtime synthesis from stage manifest (bootstrap path).
+		_world_stage_result = BenchmarkOpenWorldStageContract.build_world_from_stage_manifest(_world_stage_contract_path, self)
+		world = _world_stage_result.get("world")
+		if world == null:
+			push_error("[BENCH-WORLD] Failed to build world from %s (%s)" % [
+				_world_stage_contract_path,
+				str(_world_stage_result.get("error", "unknown_error")),
+			])
+			return
 
 	streaming_world.set("quality/max_splat_count", int(config.get("max_splats", 50000)))
 	streaming_world.set("quality/lod_bias", float(config.get("lod_bias", 1.1)))
@@ -66,6 +81,19 @@ func _sample_metrics(delta: float) -> void:
 			_max_total_visible_splats = visible
 		if visible > _max_node_visible_splats:
 			_max_node_visible_splats = visible
+	# DIAG-8: log renderer visible splat count for streaming world proof validation.
+	if renderer != null:
+		var vis_count := int(renderer.get_visible_splat_count()) if renderer.has_method("get_visible_splat_count") else -1
+		var stats: Dictionary = renderer.get_render_stats() if renderer.has_method("get_render_stats") else {}
+		var vis_after_cull: int = int(stats.get("visible_after_culling", -1))
+		var uploaded: int = int(stats.get("uploaded_splat_count", -1))
+		var atlas_pub := -1
+		if Performance.has_custom_monitor("gaussian_splatting/streaming_atlas_published_chunks"):
+			atlas_pub = int(Performance.get_custom_monitor("gaussian_splatting/streaming_atlas_published_chunks"))
+		if _diag8_count < 30 or _diag8_count % 60 == 0:
+			print("[DIAG-BENCH-VIS] vis_splat_count=%d vis_after_cull=%d uploaded=%d atlas_pub_chunks=%d max_total=%d max_node=%d" % [
+				vis_count, vis_after_cull, uploaded, atlas_pub, _max_total_visible_splats, _max_node_visible_splats])
+		_diag8_count += 1
 
 
 func _apply_renderer_overrides_from_config() -> void:

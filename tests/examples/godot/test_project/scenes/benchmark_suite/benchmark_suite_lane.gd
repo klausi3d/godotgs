@@ -26,6 +26,8 @@ const MONITOR_KEYS := [
 	"streaming_total_chunks",
 	"streaming_visible_chunks",
 	"streaming_loaded_chunks",
+	"streaming_resident_chunks",
+	"streaming_atlas_published_chunks",
 	"streaming_vram_usage_mb",
 	"streaming_chunks_loaded_this_frame",
 	"streaming_chunks_evicted_this_frame",
@@ -215,6 +217,9 @@ var _proof_chunk_evictions_per_frame: Array = []
 var _proof_last_uploaded_splats := 0
 var _proof_last_total_splats := 0
 var _proof_last_visible_splats := 0
+var _proof_atlas_published_available := false
+var _proof_last_loaded_chunks := 0
+var _proof_last_atlas_published_chunks := 0
 
 func apply_benchmark_contract(contract: Dictionary) -> void:
 	_pending_contract = contract.duplicate(true)
@@ -819,6 +824,13 @@ func _sample_proof_metrics(stats: Dictionary) -> void:
 		_proof_chunk_monitor_available = true
 		_proof_chunk_evictions_per_frame.append(float(Performance.get_custom_monitor("gaussian_splatting/streaming_chunks_evicted_this_frame")))
 
+	if Performance.has_custom_monitor("gaussian_splatting/streaming_loaded_chunks"):
+		_proof_atlas_published_available = true
+		_proof_last_loaded_chunks = int(Performance.get_custom_monitor("gaussian_splatting/streaming_loaded_chunks"))
+	if Performance.has_custom_monitor("gaussian_splatting/streaming_atlas_published_chunks"):
+		_proof_atlas_published_available = true
+		_proof_last_atlas_published_chunks = int(Performance.get_custom_monitor("gaussian_splatting/streaming_atlas_published_chunks"))
+
 	var queue_pressure_active := false
 	if Performance.has_custom_monitor("gaussian_splatting/streaming_queue_pressure_active"):
 		_proof_queue_pressure_available = true
@@ -931,7 +943,10 @@ func _build_proof_metrics(overall: Dictionary, steady_overall: Dictionary, rende
 		"uploaded_splats": _proof_last_uploaded_splats if _proof_residency_available else null,
 		"total_splats": _proof_last_total_splats if _proof_residency_available else null,
 		"visible_splats": _proof_last_visible_splats if _proof_visibility_metric_available else null,
+		"loaded_chunks": _proof_last_loaded_chunks if _proof_atlas_published_available else null,
+		"atlas_published_chunks": _proof_last_atlas_published_chunks if _proof_atlas_published_available else null,
 		"visibility_telemetry_available": _proof_visibility_metric_available,
+		"atlas_published_telemetry_available": _proof_atlas_published_available,
 		"streaming_state_telemetry_available": _proof_streaming_state_available,
 		"residency_telemetry_available": _proof_residency_available,
 		"chunk_monitor_telemetry_available": _proof_chunk_monitor_available,

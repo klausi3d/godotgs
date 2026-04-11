@@ -306,6 +306,7 @@ void StreamingGlobalAtlasRegistry::build_cpu_state(GaussianStreamingSystem &syst
 			resident_meta_chunks++;
 		}
 	}
+	atlas_published_chunk_count = resident_meta_chunks;
 	if (log_enabled) {
 		const uint64_t system_id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&system));
 		GS_LOG_STREAMING_DEBUG(vformat("[Streaming DIAG] atlas cpu meta built: system=%s total_chunks=%d resident_meta_chunks=%d loaded_chunks_count=%d",
@@ -374,6 +375,17 @@ void StreamingGlobalAtlasRegistry::update_chunk_meta_entry(GaussianStreamingSyst
 	meta.lod_level = chunk.current_lod_level;
 	meta.flags = _pack_data_gpu_flags(asset->data);
 	meta.sh_limit = sh_band_limit;
+
+	// Track atlas-published chunk count delta.
+	const bool was_published = chunk_meta_cpu[global_idx].splat_count > 0;
+	const bool now_published = meta.splat_count > 0;
+	if (was_published && !now_published) {
+		if (atlas_published_chunk_count > 0) {
+			atlas_published_chunk_count--;
+		}
+	} else if (!was_published && now_published) {
+		atlas_published_chunk_count++;
+	}
 
 	chunk_meta_cpu[global_idx] = meta;
 }
@@ -616,15 +628,7 @@ void StreamingGlobalAtlasRegistry::sync_to_gpu(GaussianStreamingSystem &system, 
 	global_atlas_state.asset_meta_buffer = asset_meta_buffer;
 	global_atlas_state.chunk_meta_buffer = chunk_meta_buffer;
 	global_atlas_state.asset_chunk_index_buffer = asset_chunk_index_buffer;
-	static int atlas_sync_diag_counter = 0;
-	if (++atlas_sync_diag_counter <= 20) {
-		print_line(vformat("[Streaming DIAG] atlas sync publish: system=%s chunk_meta_rid=%d asset_meta_rid=%d chunk_index_rid=%d chunks=%d",
-				String::num_uint64(static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&system))),
-				chunk_meta_buffer.get_id(),
-				asset_meta_buffer.get_id(),
-				asset_chunk_index_buffer.get_id(),
-				chunk_meta_cpu.size()));
-	}
+
 	if (atlas_dirty) {
 		global_atlas_state.atlas_generation++;
 		if (global_atlas_state.atlas_generation == 0) {

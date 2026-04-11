@@ -1125,6 +1125,7 @@ struct RenderPipelineStages::SortStage {
 					instance_inputs.max_visible_chunks = buffers.max_visible_chunks;
 					instance_inputs.max_visible_splats = buffers.max_visible_splats;
 					instance_inputs.max_chunk_splats = buffers.max_chunk_splats;
+					instance_inputs.world_submission_active = buffers.world_submission_active;
 					instance_inputs.device = state_view.get_rendering_device();
 					sorting_pipeline->set_instance_pipeline_inputs(instance_inputs);
 				} else {

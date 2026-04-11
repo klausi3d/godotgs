@@ -22,12 +22,14 @@ public:
         uint32_t visible_chunks = 0;
         uint32_t frustum_culled_chunks = 0;
         uint32_t loaded_chunks = 0;
+        uint32_t resident_chunks = 0;
 
         void reset() {
             total_chunks = 0;
             visible_chunks = 0;
             frustum_culled_chunks = 0;
             loaded_chunks = 0;
+            resident_chunks = 0;
         }
     };
 
