@@ -2,6 +2,7 @@
 #define STREAMING_ASSET_TYPES_H
 
 #include "gaussian_data.h"
+#include "streaming_chunk_payload_source.h"
 #include "core/math/aabb.h"
 #include "core/math/vector3.h"
 #include "core/templates/hash_map.h"
@@ -81,6 +82,7 @@ struct AtlasAssetState {
     uint32_t asset_id = 0;
     uint32_t dense_id = 0;
     Ref<GaussianData> data;
+    Ref<ChunkPayloadSource> payload_source;
     bool uses_primary_chunks = false;
     LocalVector<StreamingChunk> asset_chunks;
     LocalVector<uint32_t> requested_chunks;

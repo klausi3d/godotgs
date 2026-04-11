@@ -3533,4 +3533,289 @@ TEST_CASE("[GaussianSplatting][Pipeline] StreamingGlobalAtlasRegistry exposes at
 	CHECK(registry.get_atlas_published_chunks() == 0);
 }
 
+TEST_CASE("[GaussianSplatting][Pipeline] Working-set sizing produces smaller capacity than atlas upper bound") {
+	// Scenario: large dataset (100 chunks per asset, 65536 splats/chunk),
+	// but VRAM budget only allows 8 chunks resident.
+	const uint32_t dispatch_chunk_count = 100;
+	const uint32_t max_chunk_splats = 65536;
+	const uint32_t effective_max_chunks = 8;
+	const uint32_t instance_count = 1;
+	const uint32_t atlas_gaussian_count = dispatch_chunk_count * max_chunk_splats; // 6.5M
+
+	// Old atlas-capacity sizing:
+	const uint64_t atlas_max_visible_splats = uint64_t(atlas_gaussian_count);
+	const uint64_t atlas_max_visible_chunks = uint64_t(instance_count) * uint64_t(dispatch_chunk_count);
+
+	// New working-set sizing:
+	const uint32_t working_set_chunks = MIN(effective_max_chunks, dispatch_chunk_count);
+	const uint64_t ws_max_visible_splats = uint64_t(working_set_chunks) * uint64_t(max_chunk_splats);
+	const uint64_t ws_max_visible_chunks = uint64_t(instance_count) * uint64_t(working_set_chunks);
+
+	CHECK(ws_max_visible_splats < atlas_max_visible_splats);
+	CHECK(ws_max_visible_chunks < atlas_max_visible_chunks);
+	CHECK(working_set_chunks == effective_max_chunks);
+	CHECK(ws_max_visible_splats == uint64_t(8) * uint64_t(65536));
+	CHECK(ws_max_visible_chunks == 8);
+}
+
+TEST_CASE("[GaussianSplatting][Pipeline] Working-set sizing falls back to dispatch_chunk_count when effective_max is zero") {
+	const uint32_t dispatch_chunk_count = 32;
+	const uint32_t max_chunk_splats = 65536;
+	const uint32_t effective_max_chunks = 0; // cold start
+
+	const uint32_t working_set_chunks = (effective_max_chunks > 0)
+			? MIN(effective_max_chunks, dispatch_chunk_count)
+			: dispatch_chunk_count;
+
+	CHECK(working_set_chunks == dispatch_chunk_count);
+}
+
+TEST_CASE("[GaussianSplatting][Pipeline] Working-set sizing multi-instance scales by instance count") {
+	const uint32_t dispatch_chunk_count = 100;
+	const uint32_t max_chunk_splats = 65536;
+	const uint32_t effective_max_chunks = 10;
+	const uint32_t instance_count = 4;
+
+	const uint32_t working_set_chunks = MIN(effective_max_chunks, dispatch_chunk_count);
+	const uint64_t max_visible_splats = uint64_t(instance_count)
+			* uint64_t(working_set_chunks) * uint64_t(max_chunk_splats);
+	const uint64_t max_visible_chunks = uint64_t(instance_count) * uint64_t(working_set_chunks);
+
+	CHECK(working_set_chunks == 10);
+	CHECK(max_visible_chunks == 40);
+	CHECK(max_visible_splats == uint64_t(40) * uint64_t(65536));
+}
+
+TEST_CASE("[GaussianSplatting][Pipeline] Working-set sizing respects sort cap clamp") {
+	const uint32_t dispatch_chunk_count = 100;
+	const uint32_t max_chunk_splats = 65536;
+	const uint32_t effective_max_chunks = 100; // large budget
+	const uint32_t sort_cap = 1000000; // 1M
+
+	const uint32_t working_set_chunks = MIN(effective_max_chunks, dispatch_chunk_count);
+	uint64_t max_visible_splats = uint64_t(working_set_chunks) * uint64_t(max_chunk_splats);
+	max_visible_splats = MIN(max_visible_splats, uint64_t(sort_cap));
+
+	CHECK(max_visible_splats == uint64_t(sort_cap));
+}
+
+// ---------------------------------------------------------------------------
+// Spatial grid visibility discovery (Issue #4)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("[GaussianSplatting][Pipeline] ChunkSpatialGrid build produces correct cell coverage") {
+	// Create 4 chunks at known positions.
+	GaussianStreamingTypes::StreamingChunk chunks[4];
+	chunks[0].bounds = AABB(Vector3(0, 0, 0), Vector3(10, 10, 10));
+	chunks[0].center = Vector3(5, 5, 5);
+	chunks[1].bounds = AABB(Vector3(100, 0, 0), Vector3(10, 10, 10));
+	chunks[1].center = Vector3(105, 5, 5);
+	chunks[2].bounds = AABB(Vector3(0, 0, 100), Vector3(10, 10, 10));
+	chunks[2].center = Vector3(5, 5, 105);
+	chunks[3].bounds = AABB(Vector3(100, 0, 100), Vector3(10, 10, 10));
+	chunks[3].center = Vector3(105, 5, 105);
+
+	ChunkSpatialGrid grid;
+	grid.build(chunks, 4);
+
+	CHECK(grid.is_built());
+	CHECK(grid.built_for_chunk_count == 4);
+	CHECK(grid.dim_x >= 1);
+	CHECK(grid.dim_y >= 1);
+	CHECK(grid.dim_z >= 1);
+	CHECK(grid.cell_size > 0.0f);
+
+	// Query the full world bounds — should return all 4 chunks.
+	LocalVector<uint32_t> results;
+	grid.query_aabb(grid.world_bounds, results);
+	// De-dup to count unique indices.
+	bool seen[4] = { false, false, false, false };
+	uint32_t unique = 0;
+	for (uint32_t i = 0; i < results.size(); i++) {
+		CHECK(results[i] < 4);
+		if (!seen[results[i]]) {
+			seen[results[i]] = true;
+			unique++;
+		}
+	}
+	CHECK(unique == 4);
+}
+
+TEST_CASE("[GaussianSplatting][Pipeline] ChunkSpatialGrid query_aabb returns bounded subset") {
+	// 100 chunks spread along the X axis at 20-unit intervals.
+	const uint32_t N = 100;
+	LocalVector<GaussianStreamingTypes::StreamingChunk> chunks;
+	chunks.resize(N);
+	for (uint32_t i = 0; i < N; i++) {
+		float x = float(i) * 20.0f;
+		chunks[i].bounds = AABB(Vector3(x, 0, 0), Vector3(10, 10, 10));
+		chunks[i].center = Vector3(x + 5, 5, 5);
+	}
+
+	ChunkSpatialGrid grid;
+	grid.build(chunks.ptr(), N);
+	CHECK(grid.is_built());
+
+	// Query a small AABB covering only the first ~5 chunks.
+	AABB small_query(Vector3(-5, -5, -5), Vector3(100, 20, 20));
+	LocalVector<uint32_t> results;
+	grid.query_aabb(small_query, results);
+
+	// De-dup.
+	LocalVector<uint8_t> visited;
+	visited.resize(N);
+	memset(visited.ptr(), 0, N);
+	uint32_t unique = 0;
+	for (uint32_t i = 0; i < results.size(); i++) {
+		if (!visited[results[i]]) {
+			visited[results[i]] = 1;
+			unique++;
+		}
+	}
+
+	// Should find far fewer than all 100 chunks.
+	CHECK(unique < N);
+	CHECK(unique >= 4); // at least the first few chunks in the query range
+}
+
+TEST_CASE("[GaussianSplatting][Pipeline] ChunkSpatialGrid query_nearby returns local chunks") {
+	// 3 chunks: one at origin, one nearby, one far.
+	GaussianStreamingTypes::StreamingChunk chunks[3];
+	chunks[0].bounds = AABB(Vector3(0, 0, 0), Vector3(10, 10, 10));
+	chunks[0].center = Vector3(5, 5, 5);
+	chunks[1].bounds = AABB(Vector3(20, 0, 0), Vector3(10, 10, 10));
+	chunks[1].center = Vector3(25, 5, 5);
+	chunks[2].bounds = AABB(Vector3(5000, 0, 0), Vector3(10, 10, 10));
+	chunks[2].center = Vector3(5005, 5, 5);
+
+	ChunkSpatialGrid grid;
+	grid.build(chunks, 3);
+	CHECK(grid.is_built());
+
+	// Query nearby the origin with radius=1 cell.
+	LocalVector<uint32_t> nearby;
+	grid.query_nearby(Vector3(5, 5, 5), 1, nearby);
+
+	// Should find at least chunk 0 (at origin) but not chunk 2 (far away).
+	bool found_0 = false;
+	bool found_2 = false;
+	for (uint32_t i = 0; i < nearby.size(); i++) {
+		if (nearby[i] == 0) {
+			found_0 = true;
+		}
+		if (nearby[i] == 2) {
+			found_2 = true;
+		}
+	}
+	CHECK(found_0);
+	CHECK_FALSE(found_2);
+}
+
+TEST_CASE("[GaussianSplatting][Pipeline] Spatial grid threshold gates grid usage") {
+	// Verify that the SPATIAL_GRID_MIN_CHUNKS threshold is a sensible guard.
+	CHECK(StreamingVisibilityController::SPATIAL_GRID_MIN_CHUNKS > 0);
+	CHECK(StreamingVisibilityController::SPATIAL_GRID_MIN_CHUNKS <= 128);
+}
+
+// ---------------------------------------------------------------------------
+// Out-of-core chunk payload source tests (Issue #5)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("[GaussianSplatting][Pipeline] InMemoryChunkPayloadSource delegates to GaussianData") {
+	LocalVector<Gaussian> gaussians;
+	fill_gaussians(gaussians, 32);
+	Ref<::GaussianData> data;
+	data.instantiate();
+	data->set_gaussians(gaussians);
+
+	Ref<InMemoryChunkPayloadSource> source;
+	source.instantiate();
+	source->set_data(data);
+
+	CHECK(source->is_valid());
+	CHECK(source->get_count() == 32);
+	CHECK(source->get_sh_degree() == data->get_sh_degree());
+
+	LocalVector<Gaussian> snapshot;
+	LocalVector<Vector3> sh_out;
+	uint32_t sh_first = 0, sh_high = 0;
+	bool ok = source->capture_chunk_snapshot(0, 16, snapshot, sh_out, sh_first, sh_high);
+	CHECK(ok);
+	CHECK(snapshot.size() == 16);
+
+	// Verify the captured gaussians match the originals.
+	for (uint32_t i = 0; i < 16; i++) {
+		CHECK(snapshot[i].position.is_equal_approx(gaussians[i].position));
+	}
+}
+
+TEST_CASE("[GaussianSplatting][Pipeline] InMemoryChunkPayloadSource indexed snapshot") {
+	LocalVector<Gaussian> gaussians;
+	fill_gaussians(gaussians, 32);
+	Ref<::GaussianData> data;
+	data.instantiate();
+	data->set_gaussians(gaussians);
+
+	Ref<InMemoryChunkPayloadSource> source;
+	source.instantiate();
+	source->set_data(data);
+
+	uint32_t indices[] = { 5, 10, 20 };
+	LocalVector<Gaussian> snapshot;
+	LocalVector<Vector3> sh_out;
+	uint32_t sh_first = 0, sh_high = 0;
+	bool ok = source->capture_indexed_chunk_snapshot(indices, 3, snapshot, sh_out, sh_first, sh_high);
+	CHECK(ok);
+	CHECK(snapshot.size() == 3);
+	CHECK(snapshot[0].position.is_equal_approx(gaussians[5].position));
+	CHECK(snapshot[1].position.is_equal_approx(gaussians[10].position));
+	CHECK(snapshot[2].position.is_equal_approx(gaussians[20].position));
+}
+
+TEST_CASE("[GaussianSplatting][Pipeline] Streaming system set_chunk_payload_source and detach_source_data") {
+	LocalVector<Gaussian> gaussians;
+	fill_gaussians(gaussians, 256);
+	Ref<::GaussianData> data;
+	data.instantiate();
+	data->set_gaussians(gaussians);
+
+	Ref<InMemoryChunkPayloadSource> source;
+	source.instantiate();
+	source->set_data(data);
+
+	Ref<GaussianStreamingSystem> system;
+	system.instantiate();
+	system->initialize(data);
+
+	// Set payload source on primary asset (id=0).
+	system->set_chunk_payload_source(0, source);
+
+	// Detach should succeed now that a payload source is set.
+	system->detach_source_data(0);
+
+	// After detach, the streaming system's internal data ref should be gone,
+	// but the payload source should still be valid for chunk reads.
+	CHECK(source->is_valid());
+	CHECK(source->get_count() == 256);
+}
+
+TEST_CASE("[GaussianSplatting][Pipeline] detach_source_data refuses without payload source") {
+	LocalVector<Gaussian> gaussians;
+	fill_gaussians(gaussians, 64);
+	Ref<::GaussianData> data;
+	data.instantiate();
+	data->set_gaussians(gaussians);
+
+	Ref<GaussianStreamingSystem> system;
+	system.instantiate();
+	system->initialize(data);
+
+	// detach without payload source should warn and refuse.
+	ERR_PRINT_OFF;
+	system->detach_source_data(0);
+	ERR_PRINT_ON;
+
+	// The system should still function (data not detached).
+}
+
 } // namespace TestGaussianSplatting

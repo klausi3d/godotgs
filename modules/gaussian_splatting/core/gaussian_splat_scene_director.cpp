@@ -113,6 +113,7 @@ GaussianSplatRenderer::WorldSubmissionContract GaussianSplatSceneDirector::_buil
 		const SharedWorld::WorldSubmissionRecord &p_record) {
 	GaussianSplatRenderer::WorldSubmissionContract contract;
 	contract.gaussian_data = p_record.gaussian_data;
+	contract.payload_source = p_record.payload_source;
 	contract.static_chunks = p_record.static_chunks;
 	contract.debug_label = _dict_get_string(p_record.metadata, StringName("world_path"));
 	contract.has_desired_residency_hint = p_record.has_desired_residency_hint;
@@ -449,6 +450,7 @@ void GaussianSplatSceneDirector::_store_world_submission_record(SharedWorld::Wor
 		const WorldSubmission &p_submission) {
 	r_record.owner_id = p_submission.owner_id;
 	r_record.gaussian_data = p_submission.gaussian_data;
+	r_record.payload_source = p_submission.payload_source;
 	r_record.static_chunks = p_submission.static_chunks;
 	r_record.bounds = p_submission.bounds;
 	r_record.metadata = p_submission.metadata;
@@ -466,6 +468,7 @@ void GaussianSplatSceneDirector::_copy_world_submission_record(const SharedWorld
 	r_submission->owner_id = p_record.owner_id;
 	r_submission->scenario = p_world.scenario;
 	r_submission->gaussian_data = p_record.gaussian_data;
+	r_submission->payload_source = p_record.payload_source;
 	r_submission->static_chunks = p_record.static_chunks;
 	r_submission->bounds = p_record.bounds;
 	r_submission->metadata = p_record.metadata;

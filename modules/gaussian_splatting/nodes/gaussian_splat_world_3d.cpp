@@ -370,6 +370,7 @@ void GaussianSplatWorld3D::_register_shared_renderer() {
     submission.owner_id = get_instance_id();
     submission.scenario = get_world_3d().is_valid() ? get_world_3d()->get_scenario() : RID();
     submission.gaussian_data = world->get_gaussian_data();
+    submission.payload_source = world->get_chunk_payload_source();
     submission.static_chunks = world->get_static_chunks();
     submission.bounds = world->get_bounds();
     if (!submission.bounds.has_volume() && submission.gaussian_data.is_valid()) {

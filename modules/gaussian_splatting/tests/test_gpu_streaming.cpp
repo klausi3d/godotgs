@@ -3346,3 +3346,65 @@ TEST_CASE("[Streaming Pipeline] Instance depth Stage-B applies frustum/screen/di
         memdelete(manager_owner);
     }
 }
+
+TEST_CASE("[Streaming Pipeline] Pressure sample total_pending_chunks includes pack_jobs_in_flight") {
+    StreamingQueuePressureController::PressureSample sample;
+    sample.pack_queue_depth = 3;
+    sample.upload_queue_depth = 2;
+    sample.sync_fallback_queue_depth = 1;
+    sample.pack_jobs_in_flight = 4;
+
+    const StreamingQueuePressureController::PressureSummary summary =
+            StreamingQueuePressureController::summarize(sample);
+
+    CHECK(summary.backlog_depth == 3); // MAX(1, MAX(3, 2))
+    CHECK(summary.total_pending_chunks == 10); // 3 + 4 + 2 + 1
+    CHECK(summary.active);
+    CHECK(StreamingQueuePressureController::validate_summary_invariants(summary, sample));
+}
+
+TEST_CASE("[Streaming Pipeline] Pressure sample visible_eviction_active contributes to cap_active") {
+    StreamingQueuePressureController::PressureSample sample;
+    sample.visible_eviction_active = true;
+
+    const StreamingQueuePressureController::PressureSummary summary =
+            StreamingQueuePressureController::summarize(sample);
+
+    CHECK(summary.active);
+    CHECK(summary.cap_active);
+    CHECK(summary.source == String(StreamingQueuePressureController::SOURCE_CAP));
+    CHECK(StreamingQueuePressureController::validate_summary_invariants(summary, sample));
+}
+
+TEST_CASE("[Streaming Pipeline] Idle sample has zero total_pending_chunks") {
+    StreamingQueuePressureController::PressureSample idle_sample;
+    const StreamingQueuePressureController::PressureSummary idle_summary =
+            StreamingQueuePressureController::summarize(idle_sample);
+
+    CHECK(idle_summary.total_pending_chunks == 0);
+    CHECK(idle_summary.backlog_depth == 0);
+    CHECK_FALSE(idle_summary.active);
+    CHECK(StreamingQueuePressureController::validate_summary_invariants(idle_summary, idle_sample));
+}
+
+TEST_CASE("[Streaming Pipeline] Combined pressure with in-flight pack jobs validates invariants") {
+    StreamingQueuePressureController::PressureSample sample;
+    sample.pack_queue_depth = 2;
+    sample.upload_queue_depth = 5;
+    sample.sync_fallback_queue_depth = 1;
+    sample.pack_jobs_in_flight = 3;
+    sample.pack_inflight_saturated = true;
+    sample.upload_frame_cap_hit = true;
+    sample.visible_eviction_active = true;
+
+    const StreamingQueuePressureController::PressureSummary summary =
+            StreamingQueuePressureController::summarize(sample);
+
+    CHECK(summary.active);
+    CHECK(summary.cap_active);
+    CHECK(summary.total_pending_chunks == 11); // 2 + 3 + 5 + 1
+    CHECK(summary.backlog_depth == 5); // MAX(1, MAX(2, 5))
+    CHECK(summary.source == String(StreamingQueuePressureController::SOURCE_COMBINED));
+    CHECK(summary.reason == String(StreamingQueuePressureController::REASON_QUEUE_AND_CAPS));
+    CHECK(StreamingQueuePressureController::validate_summary_invariants(summary, sample));
+}

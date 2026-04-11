@@ -351,6 +351,12 @@ def _resolve_chunked_world_contract_path(entry: dict[str, Any]) -> str:
     staging = entry.get("staging", {})
     if not isinstance(staging, dict):
         return ""
+    # Prefer pre-built staged world when the entry is materialized.
+    if str(entry.get("staging_status", "")).strip() == RUNNABLE_CHUNKED_STAGING_STATUS:
+        staged_world = str(staging.get("project_staged_world_path", "")).strip()
+        if staged_world:
+            return staged_world
+    # Fall back to the bootstrap stage-manifest path for runtime synthesis.
     return str(staging.get("project_stage_manifest_path", "")).strip()
 
 

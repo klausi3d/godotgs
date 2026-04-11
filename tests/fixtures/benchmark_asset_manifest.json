@@ -120,10 +120,9 @@
         "project_fixture_root": "tests/examples/godot/test_project/tests/fixtures/open_world/open_world_corridor_20m",
         "project_res_root": "res://tests/fixtures/open_world/open_world_corridor_20m",
         "project_stage_manifest_path": "res://tests/fixtures/open_world/open_world_corridor_20m/open_world_corridor_20m.stage_manifest.json",
-        "repo_stage_manifest_path": "tests/examples/godot/test_project/tests/fixtures/open_world/open_world_corridor_20m/open_world_corridor_20m.stage_manifest.json",
-        "project_staged_world_path": "res://tests/fixtures/open_world/open_world_corridor_20m/open_world_corridor_20m.gsplatworld"
+        "repo_stage_manifest_path": "tests/examples/godot/test_project/tests/fixtures/open_world/open_world_corridor_20m/open_world_corridor_20m.stage_manifest.json"
       },
-      "staging_status": "materialized",
+      "staging_status": "planned_unstaged",
       "working_set_contract": {
         "chunk_count": 306,
         "chunk_splats": 65536,

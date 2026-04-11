@@ -490,7 +490,7 @@ bool StreamingUploadPipeline::queue_chunk_load(GaussianStreamingSystem &system, 
     }
 
     GaussianStreamingSystem::AtlasAssetState *asset = system._get_asset_state(asset_id);
-    if (!asset || !asset->data.is_valid()) {
+    if (!asset || (!asset->data.is_valid() && !asset->payload_source.is_valid())) {
         return false;
     }
 
@@ -556,7 +556,8 @@ bool StreamingUploadPipeline::queue_chunk_load(GaussianStreamingSystem &system, 
         }
     }
     job.data_ref = asset->data;
-    if (!job.data_ref.is_valid()) {
+    job.payload_source = asset->payload_source;
+    if (!job.payload_source.is_valid() && !job.data_ref.is_valid()) {
         return false;
     }
 
@@ -1106,7 +1107,9 @@ StreamingUploadPipeline::PendingChunkUpload *StreamingUploadPipeline::build_pend
     upload->buffer_slot = p_job.buffer_slot;
     upload->asset_generation = p_job.asset_generation;
 
-    if (p_job.chunk_count == 0 || !p_job.data_ref.is_valid()) {
+    const bool has_payload_source = p_job.payload_source.is_valid();
+    const bool has_data_ref = p_job.data_ref.is_valid();
+    if (p_job.chunk_count == 0 || (!has_payload_source && !has_data_ref)) {
         return upload;
     }
 
@@ -1114,18 +1117,30 @@ StreamingUploadPipeline::PendingChunkUpload *StreamingUploadPipeline::build_pend
     uint32_t sh_high_order = 0;
     bool snapshot_ok = false;
     if (p_job.uses_explicit_source_indices) {
-        snapshot_ok = p_job.chunk_count == static_cast<uint32_t>(p_job.source_indices.size()) &&
-                p_job.data_ref->capture_indexed_chunk_snapshot(p_job.source_indices.ptr(), p_job.chunk_count,
-                        r_scratch.gaussian_snapshot,
-                        r_scratch.sh_high_order_snapshot,
-                        sh_first_order,
-                        sh_high_order);
+        const bool indices_ok = p_job.chunk_count == static_cast<uint32_t>(p_job.source_indices.size());
+        if (indices_ok && has_payload_source) {
+            snapshot_ok = p_job.payload_source->capture_indexed_chunk_snapshot(
+                    p_job.source_indices.ptr(), p_job.chunk_count,
+                    r_scratch.gaussian_snapshot, r_scratch.sh_high_order_snapshot,
+                    sh_first_order, sh_high_order);
+        } else if (indices_ok && has_data_ref) {
+            snapshot_ok = p_job.data_ref->capture_indexed_chunk_snapshot(
+                    p_job.source_indices.ptr(), p_job.chunk_count,
+                    r_scratch.gaussian_snapshot, r_scratch.sh_high_order_snapshot,
+                    sh_first_order, sh_high_order);
+        }
     } else {
-        snapshot_ok = p_job.data_ref->capture_chunk_snapshot(p_job.chunk_start, p_job.chunk_count,
-                r_scratch.gaussian_snapshot,
-                r_scratch.sh_high_order_snapshot,
-                sh_first_order,
-                sh_high_order);
+        if (has_payload_source) {
+            snapshot_ok = p_job.payload_source->capture_chunk_snapshot(
+                    p_job.chunk_start, p_job.chunk_count,
+                    r_scratch.gaussian_snapshot, r_scratch.sh_high_order_snapshot,
+                    sh_first_order, sh_high_order);
+        } else {
+            snapshot_ok = p_job.data_ref->capture_chunk_snapshot(
+                    p_job.chunk_start, p_job.chunk_count,
+                    r_scratch.gaussian_snapshot, r_scratch.sh_high_order_snapshot,
+                    sh_first_order, sh_high_order);
+        }
     }
     if (!snapshot_ok || p_job.chunk_count > static_cast<uint32_t>(r_scratch.gaussian_snapshot.size())) {
         return upload;

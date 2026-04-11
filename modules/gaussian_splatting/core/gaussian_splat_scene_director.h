@@ -15,6 +15,7 @@
 
 #include "gaussian_data.h"
 #include "gaussian_splat_asset.h"
+#include "streaming_chunk_payload_source.h"
 #include "../lod/lod_config.h"
 #include "../renderer/gaussian_splat_renderer.h"
 
@@ -57,6 +58,7 @@ public:
         ObjectID owner_id;
         RID scenario;
         Ref<GaussianData> gaussian_data;
+        Ref<ChunkPayloadSource> payload_source;
         Vector<GaussianSplatRenderer::StaticChunk> static_chunks;
         AABB bounds;
         Dictionary metadata;
@@ -166,6 +168,7 @@ private:
 	        struct WorldSubmissionRecord {
 	            ObjectID owner_id;
 	            Ref<GaussianData> gaussian_data;
+	            Ref<ChunkPayloadSource> payload_source;
 	            Vector<GaussianSplatRenderer::StaticChunk> static_chunks;
 	            AABB bounds;
 	            Dictionary metadata;

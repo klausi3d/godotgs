@@ -1622,6 +1622,7 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 	uint32_t instance_pipeline_max_visible_chunks = 0;
 	uint32_t instance_pipeline_max_visible_splats = 0;
 	uint32_t instance_pipeline_max_chunk_splats = 0;
+	uint32_t instance_pipeline_working_set_chunks = 0;
 	StreamingReadinessState stream_readiness_state = StreamingReadinessState::MISSING_STREAMING_SYSTEM;
 
 	if (streaming_system) {
@@ -1664,15 +1665,26 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 		buffers.max_chunk_splats = streaming_system->get_max_chunk_splats();
 		instance_pipeline_max_chunk_splats = buffers.max_chunk_splats;
 
+		// Size cull/sort buffers from the actual runtime working-set capacity,
+		// not the atlas upper bound.  effective_max_chunks is the VRAM
+		// regulator's chunk cap — the real ceiling on how many chunks can be
+		// resident simultaneously.  Using it instead of dispatch_chunk_count
+		// (structural per-asset maximum) avoids massively over-allocated
+		// buffers and unnecessary sorter rebuilds for large datasets with
+		// limited VRAM budgets.
+		const uint32_t effective_max = streaming_system->get_effective_max_chunks();
+		const uint32_t working_set_chunks_per_instance = (effective_max > 0)
+				? MIN(effective_max, buffers.dispatch_chunk_count)
+				: buffers.dispatch_chunk_count;
+
 		uint64_t max_visible_splats_u64 = desired_runtime_splats > 0
 				? uint64_t(desired_runtime_splats)
-				: uint64_t(atlas_state.atlas_gaussian_count);
+				: uint64_t(working_set_chunks_per_instance) * uint64_t(buffers.max_chunk_splats);
 
-		// Recompute the budget every frame from current scene state.
-		// Do not reuse stale values from prior renderer/scene frames.
-		if (instance_count > 1 && buffers.dispatch_chunk_count > 0 && buffers.max_chunk_splats > 0) {
+		// Multi-instance: scale by instance count using working-set budget.
+		if (instance_count > 1 && working_set_chunks_per_instance > 0 && buffers.max_chunk_splats > 0) {
 			const uint64_t needed = uint64_t(instance_count)
-					* uint64_t(buffers.dispatch_chunk_count)
+					* uint64_t(working_set_chunks_per_instance)
 					* uint64_t(buffers.max_chunk_splats);
 			max_visible_splats_u64 = MAX(max_visible_splats_u64, needed);
 		}
@@ -1685,13 +1697,14 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 				: uint32_t(max_visible_splats_u64);
 		buffers.max_visible_splats = max_visible_splats;
 
-		uint64_t max_visible_chunks_u64 = uint64_t(instance_count) * uint64_t(buffers.dispatch_chunk_count);
+		uint64_t max_visible_chunks_u64 = uint64_t(instance_count) * uint64_t(working_set_chunks_per_instance);
 		uint32_t max_visible_chunks = max_visible_chunks_u64 > UINT32_MAX ? UINT32_MAX : uint32_t(max_visible_chunks_u64);
 		if (max_visible_chunks > 0 && max_visible_splats > 0) {
 			max_visible_chunks = MIN(max_visible_chunks, max_visible_splats);
 		}
 		buffers.max_visible_chunks = max_visible_chunks;
 		instance_pipeline_max_visible_chunks = buffers.max_visible_chunks;
+		instance_pipeline_working_set_chunks = working_set_chunks_per_instance;
 
 		ResourceState &resource_state_mut = resource_state;
 		RenderingDevice *rd = state_view.get_rendering_device();
@@ -2117,7 +2130,7 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 			const int64_t total_chunks = int64_t(chunk_stats.get("total_chunks", int64_t(0)));
 			const int64_t visible_chunks = int64_t(chunk_stats.get("visible_chunks", int64_t(0)));
 			const int64_t loaded_chunks = int64_t(chunk_stats.get("loaded_chunks", int64_t(0)));
-				readiness_detail = vformat("state=%s atlas=%s cull=%s sort=%s raster=%s atlas_required=%s inst=%d chunk_count=%d max_vis_chunks=%d max_vis_splats=%d max_chunk_splats=%d chunks=%d/%d (visible=%d)",
+				readiness_detail = vformat("state=%s atlas=%s cull=%s sort=%s raster=%s atlas_required=%s inst=%d chunk_count=%d ws_chunks=%d max_vis_chunks=%d max_vis_splats=%d max_chunk_splats=%d chunks=%d/%d (visible=%d)",
 						String(_streaming_readiness_state_token(stream_readiness_state)),
 						instance_buffers_atlas_ready ? "Y" : "N",
 					instance_buffers_cull_ready ? "Y" : "N",
@@ -2126,6 +2139,7 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 					instance_buffers_atlas_required ? "Y" : "N",
 					instance_pipeline_instance_count,
 					instance_pipeline_dispatch_chunk_count,
+					instance_pipeline_working_set_chunks,
 					instance_pipeline_max_visible_chunks,
 					instance_pipeline_max_visible_splats,
 					instance_pipeline_max_chunk_splats,

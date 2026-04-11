@@ -256,6 +256,7 @@ public:
 
     struct WorldSubmissionContract {
         Ref<GaussianData> gaussian_data;
+        Ref<ChunkPayloadSource> payload_source;
         Vector<StaticChunk> static_chunks;
         String debug_label;
         bool has_desired_residency_hint = false;

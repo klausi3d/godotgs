@@ -269,6 +269,8 @@ public:
     // Multi-asset registration (scaffolding).
     void register_asset(uint32_t asset_id, const Ref<GaussianData> &p_data);
     void unregister_asset(uint32_t asset_id);
+    void set_chunk_payload_source(uint32_t asset_id, const Ref<ChunkPayloadSource> &p_source);
+    void detach_source_data(uint32_t asset_id);
     bool has_asset(uint32_t asset_id) const { return asset_registry.atlas_assets.has(asset_id); }
     uint32_t get_dense_asset_id(uint32_t asset_id) const;
     bool remap_instance_asset_ids(LocalVector<InstanceDataGPU> &p_instances, bool p_warn_on_missing = true) const;

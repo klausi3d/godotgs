@@ -42,17 +42,17 @@ static func build_world_from_stage_manifest(stage_manifest_path: String, owner: 
 	container.set_chunk_size(float(builder.get("chunk_size", 0.75)))
 	owner.add_child(container)
 
-	var corridor_lanes := max(1, int(builder.get("corridor_lanes", 4)))
-	var corridor_segments := max(1, int(builder.get("corridor_segments", 32)))
-	var instance_count := max(1, int(builder.get("instance_count", corridor_lanes * corridor_segments)))
+	var corridor_lanes: int = max(1, int(builder.get("corridor_lanes", 4)))
+	var corridor_segments: int = max(1, int(builder.get("corridor_segments", 32)))
+	var instance_count: int = max(1, int(builder.get("instance_count", corridor_lanes * corridor_segments)))
 	var lane_spacing := float(builder.get("lane_spacing", 7.5))
 	var segment_spacing := float(builder.get("segment_spacing", 10.0))
 	var vertical_wave := float(builder.get("vertical_wave_amplitude", 0.4))
 	var lateral_wave := float(builder.get("lateral_wave_amplitude", 1.2))
 
-	for instance_index in range(instance_count):
-		var lane := instance_index % corridor_lanes
-		var segment := instance_index / corridor_lanes
+	for instance_index: int in range(instance_count):
+		var lane: int = instance_index % corridor_lanes
+		var segment: int = instance_index / corridor_lanes
 		var node := GaussianSplatNode3D.new()
 		node.name = "Bootstrap_%04d_%02d" % [segment, lane]
 		node.set_splat_asset(source_asset)
@@ -75,7 +75,7 @@ static func build_world_from_stage_manifest(stage_manifest_path: String, owner: 
 	var metadata := world.get_metadata()
 	if not (metadata is Dictionary):
 		metadata = {}
-	var working_set := stage_manifest.get("working_set_contract", {})
+	var working_set: Dictionary = stage_manifest.get("working_set_contract", {})
 	metadata["benchmark_stage_manifest_path"] = stage_manifest_path
 	metadata["open_world_asset_id"] = str(stage_manifest.get("asset_id", ""))
 	metadata["open_world_contract_total_splats"] = int(working_set.get("total_splats", 0))

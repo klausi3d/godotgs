@@ -2,6 +2,7 @@
 #define STREAMING_UPLOAD_PIPELINE_H
 
 #include "gaussian_data.h"
+#include "streaming_chunk_payload_source.h"
 #include "core/os/mutex.h"
 #include "core/os/semaphore.h"
 #include "core/os/thread.h"
@@ -42,6 +43,7 @@ public:
         bool uses_explicit_source_indices = false;
         LocalVector<uint32_t> source_indices;
         Ref<GaussianData> data_ref;
+        Ref<ChunkPayloadSource> payload_source;
     };
 
     struct PendingChunkUpload {

@@ -351,6 +351,11 @@ Error RenderDataOrchestrator::update_gpu_buffers_with_real_data() {
 	streaming_system->set_chunk_radius_multiplier(
 			culling_config->cull_radius_multiplier * culling_config->cull_frustum_plane_slack);
 	streaming_system->initialize_with_device(scene_state.gaussian_data, rd_ptr);
+	if (streaming_state.pending_payload_source.is_valid()) {
+		streaming_system->set_chunk_payload_source(0 /* PRIMARY_ASSET_ID */,
+				streaming_state.pending_payload_source);
+		streaming_system->detach_source_data(0 /* PRIMARY_ASSET_ID */);
+	}
 	if (log_enabled) {
 		GS_LOG_STREAMING_DEBUG(vformat("[RenderDataOrch] streaming_system after initialize: chunks=%d",
 				streaming_state.current_streaming_system.is_valid() ? 0 : -1));
@@ -619,6 +624,7 @@ Error GaussianSplatRenderer::apply_world_submission_contract(const WorldSubmissi
 	world_submission_contract_active = true;
 	world_submission_has_residency_hint = p_contract.has_desired_residency_hint;
 	world_submission_residency_hint = p_contract.has_desired_residency_hint ? p_contract.desired_residency_hint : 0;
+	data_orchestrator->access_streaming_state_mutable().pending_payload_source = p_contract.payload_source;
 	set_static_chunks(p_contract.static_chunks);
 	return OK;
 }
@@ -627,6 +633,7 @@ void GaussianSplatRenderer::clear_world_submission_contract() {
 	world_submission_contract_active = false;
 	world_submission_has_residency_hint = false;
 	world_submission_residency_hint = 0;
+	data_orchestrator->access_streaming_state_mutable().pending_payload_source.unref();
 	set_gaussian_data(Ref<GaussianData>());
 	clear_static_chunks();
 }

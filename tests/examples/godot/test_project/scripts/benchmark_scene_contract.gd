@@ -125,11 +125,17 @@ static func _resolve_manifest_world_contract_path(manifest: Dictionary, raw_valu
 	var entry = ladder.get(asset_id, {})
 	if not (entry is Dictionary):
 		return raw_value
-	var builder = entry.get("bootstrap_world_builder", {})
-	if not (builder is Dictionary) or builder.is_empty():
-		return raw_value
 	var staging = entry.get("staging", {})
 	if not (staging is Dictionary):
+		return raw_value
+	# Prefer pre-built staged world when the entry is materialized.
+	if str(entry.get("staging_status", "")) == RUNNABLE_CHUNKED_STAGING_STATUS:
+		var staged_world := str(staging.get("project_staged_world_path", ""))
+		if not staged_world.is_empty():
+			return staged_world
+	# Fall back to the bootstrap stage-manifest path for runtime synthesis.
+	var builder = entry.get("bootstrap_world_builder", {})
+	if not (builder is Dictionary) or builder.is_empty():
 		return raw_value
 	var staged_path := str(staging.get("project_stage_manifest_path", ""))
 	return staged_path if not staged_path.is_empty() else raw_value

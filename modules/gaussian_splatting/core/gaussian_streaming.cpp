@@ -1621,6 +1621,28 @@ void GaussianStreamingSystem::unregister_asset(uint32_t asset_id) {
     _refresh_quantization_dc_compatibility();
 }
 
+void GaussianStreamingSystem::set_chunk_payload_source(uint32_t asset_id, const Ref<ChunkPayloadSource> &p_source) {
+    AtlasAssetState *asset = _get_asset_state(asset_id);
+    ERR_FAIL_NULL_MSG(asset, vformat("[Streaming] set_chunk_payload_source: asset %d not registered.", asset_id));
+    asset->payload_source = p_source;
+}
+
+void GaussianStreamingSystem::detach_source_data(uint32_t asset_id) {
+    AtlasAssetState *asset = _get_asset_state(asset_id);
+    ERR_FAIL_NULL_MSG(asset, vformat("[Streaming] detach_source_data: asset %d not registered.", asset_id));
+
+    if (asset->payload_source.is_null()) {
+        WARN_PRINT(vformat("[Streaming] detach_source_data: asset %d has no payload source; refusing to detach.", asset_id));
+        return;
+    }
+    asset->data.unref();
+
+    // For the primary asset, also release the system-level source_data reference.
+    if (asset_id == PRIMARY_ASSET_ID) {
+        source_data.unref();
+    }
+}
+
 void GaussianStreamingSystem::_refresh_quantization_dc_compatibility() {
     bool compatible = true;
     for (const KeyValue<uint32_t, AtlasAssetState> &E : asset_registry.atlas_assets) {
@@ -3215,9 +3237,31 @@ bool GaussianStreamingSystem::_pack_chunk_data(uint32_t asset_id, uint32_t chunk
     chunk_data.clear();
     metrics = SHCompressionMetrics();
 
-    if (!asset.data.is_valid()) {
+    // Resolve data source: prefer payload_source (supports out-of-core),
+    // fall back to in-memory asset.data.
+    const bool has_payload_source = asset.payload_source.is_valid();
+    const bool has_data = asset.data.is_valid();
+    if (!has_payload_source && !has_data) {
         return false;
     }
+
+    // Lambdas that abstract contiguous / indexed reads regardless of source.
+    const auto read_contiguous = [&](uint32_t start, uint32_t count,
+            LocalVector<Gaussian> &g, LocalVector<Vector3> &sh,
+            uint32_t &fo, uint32_t &ho) -> bool {
+        if (has_payload_source) {
+            return asset.payload_source->capture_chunk_snapshot(start, count, g, sh, fo, ho);
+        }
+        return asset.data->capture_chunk_snapshot(start, count, g, sh, fo, ho);
+    };
+    const auto read_indexed = [&](const uint32_t *indices, uint32_t count,
+            LocalVector<Gaussian> &g, LocalVector<Vector3> &sh,
+            uint32_t &fo, uint32_t &ho) -> bool {
+        if (has_payload_source) {
+            return asset.payload_source->capture_indexed_chunk_snapshot(indices, count, g, sh, fo, ho);
+        }
+        return asset.data->capture_indexed_chunk_snapshot(indices, count, g, sh, fo, ho);
+    };
 
     LocalVector<Gaussian> gaussian_snapshot;
     LocalVector<Vector3> sh_high_order_snapshot;
@@ -3233,12 +3277,12 @@ bool GaussianStreamingSystem::_pack_chunk_data(uint32_t asset_id, uint32_t chunk
             }
             source_indices[i] = source_index;
         }
-        if (!asset.data->capture_indexed_chunk_snapshot(source_indices.ptr(), chunk.count,
+        if (!read_indexed(source_indices.ptr(), chunk.count,
                     gaussian_snapshot, sh_high_order_snapshot, sh_first_order, sh_high_order)) {
             return false;
         }
     } else {
-        if (!asset.data->capture_chunk_snapshot(chunk.start_idx, chunk.count,
+        if (!read_contiguous(chunk.start_idx, chunk.count,
                     gaussian_snapshot, sh_high_order_snapshot, sh_first_order, sh_high_order)) {
             return false;
         }
@@ -3619,20 +3663,25 @@ void GaussianStreamingSystem::end_frame() {
     uint32_t upload_queue_depth = 0;
     const uint32_t sync_fallback_queue_depth = _get_sync_fallback_queue_depth();
     upload_pipeline.get_pending_queue_depths_cached(pack_queue_depth, upload_queue_depth);
+    const uint32_t analytics_pack_jobs_in_flight = upload_pipeline.pack_jobs_in_flight.load(std::memory_order_relaxed);
     const bool pack_inflight_saturated = upload_pipeline.max_pack_jobs_in_flight > 0 &&
-            upload_pipeline.pack_jobs_in_flight.load(std::memory_order_relaxed) >= upload_pipeline.max_pack_jobs_in_flight;
+            analytics_pack_jobs_in_flight >= upload_pipeline.max_pack_jobs_in_flight;
     const bool sync_backpressure =
             scheduler.last_sync_fallback_dropped_count > 0 || scheduler.last_sync_fallback_stalled_count > 0;
+    const bool analytics_visible_eviction_active = diagnostics.visible_evict_fallback_attempts > 0 &&
+            diagnostics.visible_evict_fallback_successes < diagnostics.visible_evict_fallback_attempts;
     StreamingQueuePressureController::PressureSample queue_pressure_sample;
     queue_pressure_sample.pack_queue_depth = pack_queue_depth;
     queue_pressure_sample.upload_queue_depth = upload_queue_depth;
     queue_pressure_sample.sync_fallback_queue_depth = sync_fallback_queue_depth;
+    queue_pressure_sample.pack_jobs_in_flight = analytics_pack_jobs_in_flight;
     queue_pressure_sample.pack_inflight_saturated = pack_inflight_saturated;
     queue_pressure_sample.upload_frame_cap_hit = upload_pipeline.upload_frame_cap_hit_this_frame;
     queue_pressure_sample.upload_bandwidth_cap_hit = upload_pipeline.upload_bandwidth_cap_hit_this_frame;
     queue_pressure_sample.chunk_load_cap_hit = upload_pipeline.chunk_load_cap_hit_this_frame;
     queue_pressure_sample.vram_chunk_cap_hit = budget.vram_chunk_cap_hit_this_frame;
     queue_pressure_sample.sync_backpressure = sync_backpressure;
+    queue_pressure_sample.visible_eviction_active = analytics_visible_eviction_active;
     const StreamingQueuePressureController::PressureSummary queue_pressure_summary =
             _summarize_queue_pressure_checked(queue_pressure_sample, "GaussianStreamingSystem::end_frame.analytics");
     StreamingQueuePressureController::latch_summary(queue_pressure_summary,
@@ -3692,6 +3741,7 @@ void GaussianStreamingSystem::end_frame() {
     queue_pressure_snapshot.source = upload_pipeline.queue_pressure_source;
     queue_pressure_snapshot.reason = upload_pipeline.queue_pressure_reason;
     queue_pressure_snapshot.backlog_depth = queue_pressure_summary.backlog_depth;
+    queue_pressure_snapshot.total_pending_chunks = queue_pressure_summary.total_pending_chunks;
     queue_pressure_snapshot.pack_source_active = queue_pressure_summary.pack_source_active;
     queue_pressure_snapshot.upload_source_active = queue_pressure_summary.upload_source_active;
     queue_pressure_snapshot.sync_source_active = queue_pressure_summary.sync_source_active;
@@ -3740,20 +3790,25 @@ Dictionary GaussianStreamingSystem::_build_streaming_diagnostics_snapshot(
     const bool upload_bandwidth_cap_hit = upload_pipeline.upload_bandwidth_cap_hit_this_frame;
     const bool chunk_load_cap_hit = upload_pipeline.chunk_load_cap_hit_this_frame;
     const bool vram_chunk_cap_hit = budget.vram_chunk_cap_hit_this_frame;
+    const uint32_t current_pack_jobs_in_flight = upload_pipeline.pack_jobs_in_flight.load(std::memory_order_relaxed);
     const bool pack_inflight_saturated = upload_pipeline.max_pack_jobs_in_flight > 0 &&
-            upload_pipeline.pack_jobs_in_flight.load(std::memory_order_relaxed) >= upload_pipeline.max_pack_jobs_in_flight;
+            current_pack_jobs_in_flight >= upload_pipeline.max_pack_jobs_in_flight;
     const bool sync_backpressure =
             scheduler.last_sync_fallback_dropped_count > 0 || scheduler.last_sync_fallback_stalled_count > 0;
+    const bool visible_eviction_active = diagnostics.visible_evict_fallback_attempts > 0 &&
+            diagnostics.visible_evict_fallback_successes < diagnostics.visible_evict_fallback_attempts;
     StreamingQueuePressureController::PressureSample queue_pressure_sample;
     queue_pressure_sample.pack_queue_depth = pack_queue_depth;
     queue_pressure_sample.upload_queue_depth = upload_queue_depth;
     queue_pressure_sample.sync_fallback_queue_depth = sync_fallback_queue_depth;
+    queue_pressure_sample.pack_jobs_in_flight = current_pack_jobs_in_flight;
     queue_pressure_sample.pack_inflight_saturated = pack_inflight_saturated;
     queue_pressure_sample.upload_frame_cap_hit = upload_frame_cap_hit;
     queue_pressure_sample.upload_bandwidth_cap_hit = upload_bandwidth_cap_hit;
     queue_pressure_sample.chunk_load_cap_hit = chunk_load_cap_hit;
     queue_pressure_sample.vram_chunk_cap_hit = vram_chunk_cap_hit;
     queue_pressure_sample.sync_backpressure = sync_backpressure;
+    queue_pressure_sample.visible_eviction_active = visible_eviction_active;
     const StreamingQueuePressureController::PressureSummary queue_pressure_summary =
             _summarize_queue_pressure_checked(queue_pressure_sample,
                     "GaussianStreamingSystem::_build_streaming_diagnostics_snapshot");
@@ -3830,6 +3885,49 @@ Dictionary GaussianStreamingSystem::_build_streaming_diagnostics_snapshot(
         diagnostics.vram_cap_hit_frames = 0;
     }
 
+    // Sustained pressure categorization: classify the dominant bottleneck
+    // so long-soak diagnostics can distinguish bandwidth limits, residency
+    // limits, churn, and pipeline stalls.
+    {
+        const uint32_t chunks_evicted = eviction_controller.get_chunks_evicted_this_frame();
+        const uint32_t visible_evicted = eviction_controller.get_visible_chunks_evicted_this_frame();
+        const bool bandwidth_signal = upload_frame_cap_hit || upload_bandwidth_cap_hit || chunk_load_cap_hit;
+        const bool residency_signal = vram_chunk_cap_hit && chunks_evicted > 0;
+        const bool churn_signal = visible_evicted > 0 && loaded_this_frame > 0;
+        const bool stall_signal = upload_stalled || sync_fallback_stalled || scheduler_stalled;
+
+        const uint32_t active_signals = uint32_t(bandwidth_signal) + uint32_t(residency_signal) +
+                uint32_t(churn_signal) + uint32_t(stall_signal);
+
+        if (active_signals > 1) {
+            diagnostics.pressure_category = "combined";
+            diagnostics.sustained_pressure_frames++;
+        } else if (churn_signal) {
+            diagnostics.pressure_category = "churn";
+            diagnostics.sustained_pressure_frames++;
+        } else if (residency_signal) {
+            diagnostics.pressure_category = "residency_limited";
+            diagnostics.sustained_pressure_frames++;
+        } else if (bandwidth_signal) {
+            diagnostics.pressure_category = "bandwidth_limited";
+            diagnostics.sustained_pressure_frames++;
+        } else if (stall_signal) {
+            diagnostics.pressure_category = "pipeline_stall";
+            diagnostics.sustained_pressure_frames++;
+        } else {
+            if (diagnostics.sustained_pressure_frames > 0) {
+                if (diagnostics.sustained_pressure_frames <= DiagnosticsState::SUSTAINED_PRESSURE_COOLDOWN_FRAMES) {
+                    diagnostics.sustained_pressure_frames = 0;
+                    diagnostics.pressure_category = "none";
+                } else {
+                    diagnostics.sustained_pressure_frames--;
+                }
+            } else {
+                diagnostics.pressure_category = "none";
+            }
+        }
+    }
+
     String category = "ok";
     String reason = "healthy";
     if (!runtime_ready) {
@@ -3873,7 +3971,7 @@ Dictionary GaussianStreamingSystem::_build_streaming_diagnostics_snapshot(
 
     const bool has_failure = category != "ok";
     const String fingerprint = vformat(
-            "%s|ready=%s|chunks=%d/%d/%d|visible_splats=%d|cand=%d|pack_q=%d|upload_q=%d|sync_q=%d|load_frame=%d|upload_frame=%d|caps=%d/%d/%d|vram=%d/%d|hits=%d%d%d%d%d|qsrc=%s|qwhy=%s|atlas=%d|req=%d|inv=%d/%d/%d|sync_promo=%d",
+            "%s|ready=%s|chunks=%d/%d/%d|visible_splats=%d|cand=%d|pack_q=%d|upload_q=%d|sync_q=%d|pack_flight=%d|total_pend=%d|load_frame=%d|upload_frame=%d|caps=%d/%d/%d|vram=%d/%d|hits=%d%d%d%d%d%d|qsrc=%s|qwhy=%s|atlas=%d|req=%d|inv=%d/%d/%d|sync_promo=%d",
             category,
             runtime_ready ? "1" : "0",
             loaded_chunks,
@@ -3884,6 +3982,8 @@ Dictionary GaussianStreamingSystem::_build_streaming_diagnostics_snapshot(
             pack_queue_depth,
             upload_queue_depth,
             sync_fallback_queue_depth,
+            current_pack_jobs_in_flight,
+            queue_pressure_summary.total_pending_chunks,
             loaded_this_frame,
             upload_chunks_this_frame,
             upload_pipeline.effective_upload_cap_mb_per_frame,
@@ -3896,6 +3996,7 @@ Dictionary GaussianStreamingSystem::_build_streaming_diagnostics_snapshot(
             chunk_load_cap_hit ? 1 : 0,
             vram_chunk_cap_hit ? 1 : 0,
             queue_pressure_active ? 1 : 0,
+            visible_eviction_active ? 1 : 0,
             queue_pressure_source,
             queue_pressure_reason,
             static_cast<int64_t>(global_atlas_registry.get_atlas_generation()),
@@ -3957,11 +4058,15 @@ Dictionary GaussianStreamingSystem::_build_streaming_diagnostics_snapshot(
     diagnostics_snapshot["pack_queue_depth"] = static_cast<int64_t>(pack_queue_depth);
     diagnostics_snapshot["upload_queue_depth"] = static_cast<int64_t>(upload_queue_depth);
     diagnostics_snapshot["sync_fallback_queue_depth"] = static_cast<int64_t>(sync_fallback_queue_depth);
+    diagnostics_snapshot["pack_jobs_in_flight"] = static_cast<int64_t>(current_pack_jobs_in_flight);
+    diagnostics_snapshot["total_pending_chunks"] = static_cast<int64_t>(queue_pressure_summary.total_pending_chunks);
+    diagnostics_snapshot["visible_eviction_active"] = visible_eviction_active;
     StreamingTelemetryAdapter::QueuePressureSnapshot queue_pressure_snapshot;
     queue_pressure_snapshot.active = queue_pressure_active;
     queue_pressure_snapshot.source = queue_pressure_source;
     queue_pressure_snapshot.reason = queue_pressure_reason;
     queue_pressure_snapshot.backlog_depth = queue_pressure_summary.backlog_depth;
+    queue_pressure_snapshot.total_pending_chunks = queue_pressure_summary.total_pending_chunks;
     queue_pressure_snapshot.pack_source_active = queue_pressure_summary.pack_source_active;
     queue_pressure_snapshot.upload_source_active = queue_pressure_summary.upload_source_active;
     queue_pressure_snapshot.sync_source_active = queue_pressure_summary.sync_source_active;
@@ -4026,6 +4131,8 @@ Dictionary GaussianStreamingSystem::_build_streaming_diagnostics_snapshot(
     diagnostics_snapshot["scheduler_stall_frames"] = static_cast<int64_t>(diagnostics.scheduler_stall_frames);
     diagnostics_snapshot["upload_stall_frames"] = static_cast<int64_t>(diagnostics.upload_stall_frames);
     diagnostics_snapshot["sync_fallback_stall_frames"] = static_cast<int64_t>(diagnostics.sync_fallback_stall_frames);
+    diagnostics_snapshot["sustained_pressure_frames"] = static_cast<int64_t>(diagnostics.sustained_pressure_frames);
+    diagnostics_snapshot["pressure_category"] = diagnostics.pressure_category;
     diagnostics_snapshot["scheduler_update_cpu_ms"] = scheduler.last_update_cpu_ms;
     diagnostics_snapshot["scheduler_visibility_cpu_ms"] = scheduler.last_visibility_cpu_ms;
     diagnostics_snapshot["scheduler_load_cpu_ms"] = scheduler.last_load_cpu_ms;
@@ -4275,10 +4382,21 @@ bool GaussianStreamingSystem::_should_force_sync_fallback_for_async_stall(
         scheduler.force_sync_fallback_due_to_async_stall = false;
     }
 
+    // Original narrow signature: pack queue has work but nothing reaches
+    // the upload queue — pack thread may be wedged.
     if (!scheduler.force_sync_fallback_due_to_async_stall &&
             diagnostics.upload_stall_frames >= DiagnosticsState::STALL_THRESHOLD_FRAMES &&
             pack_queue_depth > 0 &&
             upload_queue_depth == 0) {
+        scheduler.force_sync_fallback_due_to_async_stall = true;
+    }
+
+    // Broader signature: upload queue has work but nothing completes —
+    // GPU upload path may be blocked or starved.
+    if (!scheduler.force_sync_fallback_due_to_async_stall &&
+            diagnostics.upload_stall_frames >= DiagnosticsState::STALL_THRESHOLD_FRAMES &&
+            upload_queue_depth > 0 &&
+            upload_pipeline.last_upload_chunks == 0) {
         scheduler.force_sync_fallback_due_to_async_stall = true;
     }
 
@@ -4574,6 +4692,26 @@ uint32_t GaussianStreamingSystem::_drain_sync_fallback_chunk_loads(
     scheduler.last_sync_fallback_queue_depth = _get_sync_fallback_queue_depth();
     evictions_left = admission_budget.evictions_left;
     eviction_blocked = admission_budget.eviction_blocked;
+
+    // Track consecutive frames where the sync fallback queue has entries but
+    // drains zero chunks. When the staleness limit is reached, flush the
+    // queue to prevent indefinite re-enqueue loops under sustained pressure.
+    if (drained == 0 && scheduler.last_sync_fallback_queue_depth > 0) {
+        scheduler.sync_fallback_no_progress_frames++;
+        if (scheduler.sync_fallback_no_progress_frames >= SchedulerState::SYNC_FALLBACK_STALENESS_LIMIT_FRAMES) {
+            WARN_PRINT(vformat("[Streaming] Sync fallback queue stale for %d frames — flushing %d entries.",
+                    scheduler.sync_fallback_no_progress_frames,
+                    scheduler.last_sync_fallback_queue_depth));
+            scheduler.sync_fallback_chunk_load_queue.clear();
+            scheduler.sync_fallback_chunk_load_set.clear();
+            scheduler.sync_fallback_chunk_load_queue_read_idx = 0;
+            scheduler.sync_fallback_no_progress_frames = 0;
+            scheduler.last_sync_fallback_queue_depth = 0;
+        }
+    } else {
+        scheduler.sync_fallback_no_progress_frames = 0;
+    }
+
     return drained;
 }
 
