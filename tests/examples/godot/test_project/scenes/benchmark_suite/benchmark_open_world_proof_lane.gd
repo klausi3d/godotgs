@@ -64,11 +64,26 @@ func _build_instances(config: Dictionary) -> void:
 
 
 func _resolve_focus_point() -> Vector3:
+	# Prefer the gaussian data AABB (actual splat positions) over the world
+	# bounds (which may reflect chunk metadata in a different coordinate space).
 	if streaming_world != null and streaming_world.has_method("get_world"):
 		var world = streaming_world.get_world()
-		if world != null and world.has_method("get_bounds"):
-			var bounds: AABB = world.get_bounds()
-			return bounds.position + bounds.size * 0.5
+		if world != null:
+			# Try gaussian_data AABB first — this reflects actual splat positions.
+			if world.has_method("get_gaussian_data"):
+				var gdata = world.get_gaussian_data()
+				if gdata != null and gdata.has_method("get_aabb"):
+					var data_bounds: AABB = gdata.get_aabb()
+					if data_bounds.size.length() > 0.01:
+						var center := data_bounds.position + data_bounds.size * 0.5
+						print("[DIAG-FOCUS] Using gaussian_data AABB center: %s (bounds: pos=%s size=%s)" % [center, data_bounds.position, data_bounds.size])
+						return center
+			# Fall back to world bounds.
+			if world.has_method("get_bounds"):
+				var bounds: AABB = world.get_bounds()
+				var center := bounds.position + bounds.size * 0.5
+				print("[DIAG-FOCUS] Using world bounds center: %s (bounds: pos=%s size=%s)" % [center, bounds.position, bounds.size])
+				return center
 	return super._resolve_focus_point()
 
 
