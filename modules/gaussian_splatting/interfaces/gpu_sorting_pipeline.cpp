@@ -2364,17 +2364,18 @@ bool GPUSortingPipeline::_sort_instance_pipeline(const Transform3D &p_cam_transf
     params.camera_position_ortho[3] = orthographic ? 1.0f : 0.0f;
     params.cull_screen_distance[0] = pixel_scale_y;
     if (inputs.world_submission_active) {
-        // World-submission mode: disable per-splat screen-size, distance, and frustum
-        // culling.  Chunk-level frustum cull and LOD selection already handle visibility.
-        // Per-splat thresholds were designed for single-asset close-up rendering and
-        // cause false rejection in world-scale streaming where individual splat radii
-        // are subpixel at typical camera distances.
+        // Streamed-world path: disable per-splat screen-size, distance,
+        // AND frustum culling.  Screen-size/distance thresholds were calibrated
+        // for single-asset close-up rendering.  Per-splat frustum is disabled
+        // because chunk-level frustum cull is the authority for visibility;
+        // source-index remapped chunks may have gaussians whose file-order
+        // positions differ from their spatially-partitioned chunk centers.
         params.cull_screen_distance[1] = 0.0f;
         params.cull_screen_distance[2] = 0.0f;
         params.cull_screen_distance[3] = 0.0f;
         params.cull_frustum_radius[0] = radius_multiplier;
         params.cull_frustum_radius[1] = frustum_plane_slack;
-        params.cull_frustum_radius[2] = 0.0f;
+        params.cull_frustum_radius[2] = 0.0f; // Disable per-splat frustum — chunk-level cull suffices
         params.cull_frustum_radius[3] = 0.0f;
     } else {
         params.cull_screen_distance[1] = tiny_splat_screen_radius;

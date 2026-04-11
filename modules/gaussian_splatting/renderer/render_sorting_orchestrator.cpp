@@ -885,8 +885,9 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 		if (sorting_pipeline) {
 			_bind_sort_pipeline_host_context(sorting_pipeline, renderer);
 		}
-		if (sorting_pipeline && sorting_pipeline->sort_gaussians_gpu(p_world_to_camera_transform,
-				_build_sort_frame_context(state_view, state_mut, view_state))) {
+		const bool _gpu_sort_ok = sorting_pipeline && sorting_pipeline->sort_gaussians_gpu(p_world_to_camera_transform,
+				_build_sort_frame_context(state_view, state_mut, view_state));
+		if (_gpu_sort_ok) {
 			sort_executed = true;
 			debug_state.sort_route_uid = RenderRouteUID::INSTANCE_SORT_GPU;
 			sorting_state.last_sort_world_to_camera_transform = p_world_to_camera_transform;

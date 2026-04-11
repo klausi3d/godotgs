@@ -914,7 +914,11 @@ func _build_proof_metrics(overall: Dictionary, steady_overall: Dictionary, rende
 	var p95_frame_ms := float(proof_summary.get("p95_frame_ms", 0.0))
 	var residency_ratio = null
 	if _proof_residency_available and _proof_last_total_splats > 0:
-		residency_ratio = float(_proof_last_uploaded_splats) / float(max(1, _proof_last_total_splats))
+		var residency_numerator := _proof_last_uploaded_splats
+		# Streaming worlds don't update uploaded_splat_count; fall back to visible_splats.
+		if residency_numerator == 0 and _proof_atlas_published_available and _proof_last_visible_splats > 0:
+			residency_numerator = _proof_last_visible_splats
+		residency_ratio = float(residency_numerator) / float(max(1, _proof_last_total_splats))
 
 	return {
 		"proof_window": proof_window,

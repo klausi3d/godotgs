@@ -354,7 +354,9 @@ Error RenderDataOrchestrator::update_gpu_buffers_with_real_data() {
 	if (streaming_state.pending_payload_source.is_valid()) {
 		streaming_system->set_chunk_payload_source(0 /* PRIMARY_ASSET_ID */,
 				streaming_state.pending_payload_source);
-		streaming_system->detach_source_data(0 /* PRIMARY_ASSET_ID */);
+		// NOTE: detach_source_data deferred — needed for visibility and
+		// per-frame chunk source index resolution in streaming pipelines.
+		// streaming_system->detach_source_data(0 /* PRIMARY_ASSET_ID */);
 	}
 	if (log_enabled) {
 		GS_LOG_STREAMING_DEBUG(vformat("[RenderDataOrch] streaming_system after initialize: chunks=%d",
