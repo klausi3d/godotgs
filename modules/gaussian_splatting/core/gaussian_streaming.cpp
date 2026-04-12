@@ -2765,6 +2765,16 @@ void GaussianStreamingSystem::_load_visible_chunks(uint32_t effective_max, uint3
         scheduler.visible_scan_cursor = 0;
     }
 
+    // Under a throttled scan budget (queue pressure or limited enqueue headroom)
+    // the round-robin cursor can starve the nearest prefix: a later frame resumes
+    // mid-list and enqueues farther chunks before the nearest ones. visible_chunks
+    // is sorted nearest-first (streaming_visibility_controller.cpp:463), so when
+    // the budget can't cover the full list we always restart at 0 to prefer the
+    // near field. Only fall back to the cursor when the budget can scan the whole
+    // visible list in one frame (the fairness case).
+    const bool restart_from_nearest = scan_budget < visible_count;
+    const uint32_t scan_origin = restart_from_nearest ? 0u : scheduler.visible_scan_cursor;
+
     ResidencyBudgetController::AdmissionFrameBudget admission_budget =
             ResidencyBudgetController::make_frame_budget(effective_max, evictions_left, eviction_blocked);
     const float lod_mult = budget.vram_regulator.is_valid()
@@ -2785,7 +2795,7 @@ void GaussianStreamingSystem::_load_visible_chunks(uint32_t effective_max, uint3
                         upload_pipeline.max_pack_jobs_in_flight) == 0) {
             break;
         }
-        const uint32_t visible_idx = (scheduler.visible_scan_cursor + scanned_chunks) % visible_count;
+        const uint32_t visible_idx = (scan_origin + scanned_chunks) % visible_count;
         const uint32_t chunk_idx = visible_chunks[visible_idx];
         if (chunk_idx >= chunks.size()) {
             continue;
@@ -2845,7 +2855,12 @@ void GaussianStreamingSystem::_load_visible_chunks(uint32_t effective_max, uint3
             scheduler.last_sync_fallback_stalled_count++;
         }
     }
-    scheduler.visible_scan_cursor = (scheduler.visible_scan_cursor + scanned_chunks) % visible_count;
+    // If we restarted from the nearest prefix this frame, the cursor stays where
+    // it was so that a healthy (unthrottled) frame can resume fair round-robin.
+    // Otherwise advance it by the scanned count.
+    if (!restart_from_nearest) {
+        scheduler.visible_scan_cursor = (scheduler.visible_scan_cursor + scanned_chunks) % visible_count;
+    }
     scheduler.last_visible_scan_count = scanned_chunks;
     scheduler.last_visible_scan_budget_effective = scanned_chunks;
     scheduler.last_load_candidate_count = load_candidates;
