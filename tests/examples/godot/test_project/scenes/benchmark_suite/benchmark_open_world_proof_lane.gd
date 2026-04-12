@@ -9,6 +9,7 @@ var _world_stage_contract_path := ""
 var _world_stage_result: Dictionary = {}
 var _data_aabb := AABB()
 var _diag8_count := 0
+var _raster_counters_enabled := false
 
 
 func _resolved_asset_path() -> String:
@@ -63,6 +64,7 @@ func _build_instances(config: Dictionary) -> void:
 	streaming_world.apply_world()
 	_primary_renderer_owner = streaming_world
 
+
 	# Cache gaussian data AABB for camera sweep derivation.
 	if world.has_method("get_gaussian_data"):
 		var gdata = world.get_gaussian_data()
@@ -98,6 +100,16 @@ func _resolve_focus_point() -> Vector3:
 func _sample_metrics(delta: float) -> void:
 	super._sample_metrics(delta)
 	var renderer = _get_primary_renderer()
+	# Enable raster counters once the renderer is live. The shader checks both a
+	# compile-time define (gated by set_debug_binning_counters_enabled) and a
+	# runtime flag (debug_flags[1] via debug_show_performance_hud or
+	# debug_show_splat_coverage). We need both for the overflow checkpoint.
+	if not _raster_counters_enabled and renderer != null:
+		if renderer.has_method("set_debug_binning_counters_enabled"):
+			renderer.set_debug_binning_counters_enabled(true)
+		if renderer.has_method("set_debug_show_performance_hud"):
+			renderer.set_debug_show_performance_hud(true)
+		_raster_counters_enabled = true
 	if renderer != null and renderer.has_method("get_visible_splat_count"):
 		var visible := int(renderer.get_visible_splat_count())
 		if visible > _max_total_visible_splats:
