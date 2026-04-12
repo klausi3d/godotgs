@@ -147,8 +147,21 @@ bool gs_rasterize_splat_batch(
         inout vec4 final_color,
         inout float final_depth,
         inout vec3 final_normal,
-        inout bool has_depth) {
+        inout bool has_depth
+#ifdef GS_COLLECT_RASTER_STATS
+        , bool accumulate_locals,
+        inout uint local_iterated,
+        inout uint local_contributed,
+        inout bool local_break_remaining,
+        inout bool local_break_final
+#endif
+) {
     for (uint i = 0u; i < batch_size; ++i) {
+#ifdef GS_COLLECT_RASTER_STATS
+        if (accumulate_locals) {
+            local_iterated++;
+        }
+#endif
         uint sorted_idx = gs_shared_sorted_values[i];
         if (sorted_idx >= gs_get_visible_gaussian_count()) {
             continue;
@@ -215,6 +228,11 @@ bool gs_rasterize_splat_batch(
 
         float remaining_alpha = 1.0 - final_color.a;
         if (remaining_alpha <= 1e-3) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (accumulate_locals) {
+                local_break_remaining = true;
+            }
+#endif
             return true;
         }
 
@@ -228,8 +246,18 @@ bool gs_rasterize_splat_batch(
         final_normal += unpacked_normal * blend_alpha;
         final_depth = has_depth ? min(final_depth, linear_depth) : linear_depth;
         has_depth = true;
+#ifdef GS_COLLECT_RASTER_STATS
+        if (accumulate_locals) {
+            local_contributed++;
+        }
+#endif
 
         if (final_color.a >= 0.995) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (accumulate_locals) {
+                local_break_final = true;
+            }
+#endif
             return true;
         }
 
@@ -275,15 +303,30 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
 
 #ifdef GS_COLLECT_RASTER_STATS
     bool sample_raster_stats = false;
+    bool sample_hotspot_stats = false;
     {
         bool collect_raster_stats = params.debug_flags.y > 0.5;
+        ivec2 pixel_i = ivec2(frag_coord);
         if (collect_raster_stats) {
-            ivec2 pixel_i = ivec2(frag_coord);
             int local_x = pixel_i.x % int(TILE_SIZE);
             int local_y = pixel_i.y % int(TILE_SIZE);
             sample_raster_stats = (local_x == (int(TILE_SIZE) >> 1)) && (local_y == (int(TILE_SIZE) >> 1));
         }
+        // Always-on per-pixel sample for the host-nominated hotspot tile,
+        // regardless of the global runtime gate. This makes the hotspot probe
+        // independent of debug_show_splat_coverage / debug_show_performance_hud.
+        uint hotspot_tile = overflow_stats.hotspot_tile_idx;
+        if (hotspot_tile != 0u) {
+            uint htx = uint(pixel_i.x / int(TILE_SIZE));
+            uint hty = uint(pixel_i.y / int(TILE_SIZE));
+            uint hti = hty * uint(params.tile_count.x) + htx;
+            sample_hotspot_stats = (hti == hotspot_tile);
+        }
     }
+    // Combined gate: accumulate locals when EITHER the global stats sample
+    // fires OR the pixel belongs to the nominated hotspot tile. The two
+    // accumulator streams are dispatched separately at the end of the loop.
+    bool accumulate_locals = sample_raster_stats || sample_hotspot_stats;
 
     uint local_iterated = 0u;
     uint local_contributed = 0u;
@@ -335,7 +378,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
 
     for (uint i = 0u; i < splat_count; ++i) {
 #ifdef GS_COLLECT_RASTER_STATS
-        if (sample_raster_stats) {
+        if (accumulate_locals) {
             local_iterated++;
         }
 #endif
@@ -343,7 +386,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
         uint sorted_idx = gs_read_sorted_value(i, range_start);
         if (sorted_idx >= gs_get_visible_gaussian_count()) {
 #ifdef GS_COLLECT_RASTER_STATS
-            if (sample_raster_stats) {
+            if (accumulate_locals) {
                 local_reject_sorted++;
             }
 #endif
@@ -353,7 +396,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
         uint splat_ref_idx = sorted_indices.indices[sorted_idx];
         if (splat_ref_idx >= gs_get_visible_gaussian_count()) {
 #ifdef GS_COLLECT_RASTER_STATS
-            if (sample_raster_stats) {
+            if (accumulate_locals) {
                 local_reject_gaussian++;
             }
 #endif
@@ -362,7 +405,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
         uint gaussian_idx = splat_ref_buffer.splat_refs[splat_ref_idx].atlas_index;
         if (gaussian_idx >= params.total_gaussians) {
 #ifdef GS_COLLECT_RASTER_STATS
-            if (sample_raster_stats) {
+            if (accumulate_locals) {
                 local_reject_gaussian++;
             }
 #endif
@@ -383,7 +426,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
 
         if (stored_global_idx != sorted_idx) {
 #ifdef GS_COLLECT_RASTER_STATS
-            if (sample_raster_stats) {
+            if (accumulate_locals) {
                 atomicAdd(overflow_stats.raster_reject_index_mismatch, 1u);
             }
 #endif
@@ -406,7 +449,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
 
         if (base_opacity <= 0.0) {
 #ifdef GS_COLLECT_RASTER_STATS
-            if (sample_raster_stats) {
+            if (accumulate_locals) {
                 local_reject_base_opacity++;
             }
 #endif
@@ -423,7 +466,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
 #ifndef GS_DEBUG_COUNTERS_DISABLED
         if (any(isnan(screen_px)) || any(isinf(screen_px)) || any(isnan(conic)) || any(isinf(conic))) {
 #ifdef GS_COLLECT_RASTER_STATS
-            if (sample_raster_stats) {
+            if (accumulate_locals) {
                 local_reject_nan_inf++;
             }
 #endif
@@ -444,7 +487,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
         // Note: gs_exp_fast clamps input to [-16, 0] so minimum weight is ~1e-7
         if (weight <= 0.0) {
 #ifdef GS_COLLECT_RASTER_STATS
-            if (sample_raster_stats) {
+            if (accumulate_locals) {
                 local_reject_weight++;
             }
 #endif
@@ -459,7 +502,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
 
         if (alpha <= 1e-4) {
 #ifdef GS_COLLECT_RASTER_STATS
-            if (sample_raster_stats) {
+            if (accumulate_locals) {
                 local_reject_alpha++;
             }
 #endif
@@ -494,7 +537,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
         float remaining_alpha = 1.0 - final_color.a;
         if (remaining_alpha <= 1e-3) {
 #ifdef GS_COLLECT_RASTER_STATS
-            if (sample_raster_stats) {
+            if (accumulate_locals) {
                 local_break_remaining = true;
             }
 #endif
@@ -511,7 +554,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
         }
 
 #ifdef GS_COLLECT_RASTER_STATS
-        if (sample_raster_stats) {
+        if (accumulate_locals) {
             local_contributed++;
         }
 #endif
@@ -525,7 +568,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
 
         if (final_color.a >= 0.995) {
 #ifdef GS_COLLECT_RASTER_STATS
-            if (sample_raster_stats) {
+            if (accumulate_locals) {
                 local_break_final_alpha = true;
             }
 #endif
@@ -543,7 +586,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
         GS_SUBGROUP_EARLY_EXIT_IF_ALL_SATURATED(pixel_near_saturated, all_saturated);
         if (all_saturated) {
 #ifdef GS_COLLECT_RASTER_STATS
-            if (sample_raster_stats) {
+            if (accumulate_locals) {
                 local_break_subgroup_early_exit = true;
             }
 #endif
@@ -555,6 +598,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
     float depth_out = has_depth ? final_depth : 1.0;
 
 #ifdef GS_COLLECT_RASTER_STATS
+    // Global raster counters: only one center pixel per tile contributes.
     if (sample_raster_stats) {
         atomicAdd(overflow_stats.raster_sample_count, 1u);
         atomicAdd(overflow_stats.raster_splats_iterated, local_iterated);
@@ -579,6 +623,23 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
         }
         uint alpha_q10 = uint(clamp(final_color.a, 0.0, 1.0) * 1024.0 + 0.5);
         atomicAdd(overflow_stats.raster_alpha_sum_q10, alpha_q10);
+    }
+    // Per-hotspot-tile raster cost: every pixel inside the nominated hotspot
+    // contributes, regardless of the global sample gate. This gives full per-
+    // pixel coverage (256 samples per tile at 16-pixel tiles) for the one tile.
+    if (sample_hotspot_stats) {
+        atomicAdd(overflow_stats.hotspot_pixels_sampled, 1u);
+        atomicAdd(overflow_stats.hotspot_iterations, local_iterated);
+        atomicAdd(overflow_stats.hotspot_contributions, local_contributed);
+        if (local_break_remaining) {
+            atomicAdd(overflow_stats.hotspot_break_remaining, 1u);
+        }
+        if (local_break_final_alpha) {
+            atomicAdd(overflow_stats.hotspot_break_final, 1u);
+        }
+        if (local_break_subgroup_early_exit) {
+            atomicAdd(overflow_stats.hotspot_break_subgroup, 1u);
+        }
     }
 #endif
 

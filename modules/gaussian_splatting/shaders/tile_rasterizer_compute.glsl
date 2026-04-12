@@ -90,6 +90,27 @@ layout(set = 0, binding = 3, std430) buffer OverflowStatisticsBuffer {
     uint raster_alpha_sum_q10;
     uint raster_reject_index_mismatch;
     uint raster_break_subgroup_early_exit;  // Tiles where all pixels were alpha-saturated
+    // Binning-pass divergence diagnostics (written only by the binning shaders).
+    uint count_pass_accepts;
+    uint count_pass_entered;
+    uint emit_pass_entered;
+    uint probe_tile_idx;
+    uint probe_count_accepts;
+    uint probe_emit_attempts;
+    uint probe_emit_accepts;
+    uint probe_range_y_seen;
+    uint probe_range_x_seen;
+    uint first_clamp_tile_idx;
+    uint first_clamp_range_y;
+    uint first_clamp_local_offset;
+    // Per-hotspot-tile raster cost probe (written by this shader).
+    uint hotspot_tile_idx;
+    uint hotspot_pixels_sampled;
+    uint hotspot_iterations;
+    uint hotspot_contributions;
+    uint hotspot_break_remaining;
+    uint hotspot_break_final;
+    uint hotspot_break_subgroup;
 } overflow_stats;
 
 layout(set = 0, binding = 4, std430) readonly buffer ProjectionBuffer {
@@ -211,6 +232,27 @@ void main() {
     float outline_width = interactive_state.state_params.y;
     uint render_state = uint(interactive_state.state_params.z + 0.5);
 
+#ifdef GS_COLLECT_RASTER_STATS
+    // Hotspot probe: accumulate per-pixel raster cost for the host-nominated
+    // tile so we can answer iterations/contributions/break-cause distribution.
+    // Independent of the global raster sample gate.
+    bool accumulate_locals = false;
+    {
+        uint hotspot_tile = overflow_stats.hotspot_tile_idx;
+        if (hotspot_tile != 0u && in_viewport) {
+            ivec2 tile_count_i = ivec2(max(params.tile_count, vec2(1.0)));
+            uint htx = uint(pixel.x / int(TILE_SIZE));
+            uint hty = uint(pixel.y / int(TILE_SIZE));
+            uint hti = hty * uint(tile_count_i.x) + htx;
+            accumulate_locals = (hti == hotspot_tile);
+        }
+    }
+    uint local_iterated = 0u;
+    uint local_contributed = 0u;
+    bool local_break_remaining = false;
+    bool local_break_final = false;
+#endif
+
     for (uint batch_start = 0u; batch_start < splat_count; batch_start += uint(SPLATS_PER_TILE)) {
         uint batch_end = min(batch_start + uint(SPLATS_PER_TILE), splat_count);
         uint batch_size = batch_end - batch_start;
@@ -238,7 +280,13 @@ void main() {
             pixel_saturated = gs_rasterize_splat_batch(
                     pixel_center, batch_size, lod_blend, pixel_dither,
                     highlight_strength, outline_width, render_state,
-                    final_color, final_depth, final_normal, has_depth);
+                    final_color, final_depth, final_normal, has_depth
+#ifdef GS_COLLECT_RASTER_STATS
+                    , accumulate_locals,
+                    local_iterated, local_contributed,
+                    local_break_remaining, local_break_final
+#endif
+            );
             if (!pixel_saturated) {
                 atomicAnd(gs_shared_all_saturated, 0u);
             }
@@ -255,6 +303,30 @@ void main() {
     if (!in_viewport) {
         return;
     }
+
+#ifdef GS_COLLECT_RASTER_STATS
+    // Per-hotspot-tile raster cost: every in-viewport pixel inside the
+    // host-nominated tile contributes one sample (up to 256 samples at
+    // 16x16 tiles). Detects pixels that ended the batch loop without
+    // hitting either break condition (workgroup early-exit or end-of-splats).
+    if (accumulate_locals) {
+        atomicAdd(overflow_stats.hotspot_pixels_sampled, 1u);
+        atomicAdd(overflow_stats.hotspot_iterations, local_iterated);
+        atomicAdd(overflow_stats.hotspot_contributions, local_contributed);
+        if (local_break_remaining) {
+            atomicAdd(overflow_stats.hotspot_break_remaining, 1u);
+        }
+        if (local_break_final) {
+            atomicAdd(overflow_stats.hotspot_break_final, 1u);
+        }
+        // The workgroup-wide subgroup break is per-workgroup, not per-pixel,
+        // so credit it to every pixel that did not otherwise break. This
+        // upper-bounds the subgroup-early-exit share of the hotspot tile.
+        if (!local_break_remaining && !local_break_final && pixel_saturated) {
+            atomicAdd(overflow_stats.hotspot_break_subgroup, 1u);
+        }
+    }
+#endif
 
     // ========================================================================
     // Output
