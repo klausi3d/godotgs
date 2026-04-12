@@ -880,6 +880,84 @@ private:
 						print_line(vformat("[CAPTURE-HOTSPOT] tile=%d count=%d range_x=%d range_y=%d (count==range_y? %s)",
 								max_count_tile, max_count, hx, hy,
 								(max_count == hy) ? "Y" : "N"));
+						// Raster-cost hotspot analysis: project the per-tile range.y
+						// into per-pixel splat iteration work. Each tile has tile_size^2
+						// pixels (256 for 16-pixel tiles), and each pixel iterates
+						// range.y splats in the raster loop. Total raster work per frame
+						// is sum(256 * range_y[t]). Top-N tiles by range.y identify
+						// where the bulk of that work concentrates.
+						const int tile_size = renderer.config_state.tile_size;
+						const uint32_t pixels_per_tile = uint32_t(tile_size) * uint32_t(tile_size);
+						// Collect top-16 tiles by range.y via simple insertion.
+						constexpr uint32_t kTopN = 16;
+						struct TileEntry {
+							uint32_t tile_idx;
+							uint32_t range_y;
+						};
+						TileEntry top[kTopN];
+						uint32_t top_count = 0;
+						for (uint32_t t = 0; t < total_tiles; ++t) {
+							const uint32_t ry = ranges[t * 2u + 1u];
+							if (ry == 0u) {
+								continue;
+							}
+							if (top_count < kTopN) {
+								top[top_count++] = {t, ry};
+								// Bubble up to keep sorted descending by range_y.
+								for (int32_t i = int32_t(top_count) - 1; i > 0; --i) {
+									if (top[i].range_y > top[i - 1].range_y) {
+										TileEntry tmp = top[i];
+										top[i] = top[i - 1];
+										top[i - 1] = tmp;
+									} else {
+										break;
+									}
+								}
+							} else if (ry > top[kTopN - 1].range_y) {
+								top[kTopN - 1] = {t, ry};
+								for (int32_t i = int32_t(kTopN) - 1; i > 0; --i) {
+									if (top[i].range_y > top[i - 1].range_y) {
+										TileEntry tmp = top[i];
+										top[i] = top[i - 1];
+										top[i - 1] = tmp;
+									} else {
+										break;
+									}
+								}
+							}
+						}
+						// Count non-empty tiles and compute total raster iterations.
+						uint64_t total_raster_iterations = 0;
+						uint32_t nonempty_tiles = 0;
+						for (uint32_t t = 0; t < total_tiles; ++t) {
+							const uint32_t ry = ranges[t * 2u + 1u];
+							if (ry > 0u) {
+								nonempty_tiles++;
+							}
+							total_raster_iterations += uint64_t(pixels_per_tile) * uint64_t(ry);
+						}
+						// Sum top-N and compare to total.
+						uint64_t top_raster_iterations = 0;
+						for (uint32_t i = 0; i < top_count; ++i) {
+							top_raster_iterations += uint64_t(pixels_per_tile) * uint64_t(top[i].range_y);
+						}
+						const double top_share_pct = total_raster_iterations > 0
+								? (100.0 * double(top_raster_iterations) / double(total_raster_iterations))
+								: 0.0;
+						print_line(vformat("[CAPTURE-RASTER-COST] pixels_per_tile=%d nonempty_tiles=%d total_raster_iterations=%s top%d_iterations=%s top_share=%.1f%%",
+								pixels_per_tile, nonempty_tiles,
+								String::num_uint64(total_raster_iterations),
+								kTopN,
+								String::num_uint64(top_raster_iterations),
+								top_share_pct));
+						// Dump top-N tiles with their per-pixel cost.
+						for (uint32_t i = 0; i < top_count; ++i) {
+							const uint64_t work = uint64_t(pixels_per_tile) * uint64_t(top[i].range_y);
+							print_line(vformat("[CAPTURE-RASTER-TOP] rank=%d tile=%d range_y=%d per_pixel_iter=%d tile_work=%s",
+									i, top[i].tile_idx, top[i].range_y,
+									top[i].range_y,
+									String::num_uint64(work)));
+						}
 						// Dump raw overflow buffer bytes so we can inspect
 						// first_clamp_tile_idx offset directly.
 						if (!overflow_bytes.is_empty() && overflow_bytes.size() >= int(sizeof(OverflowStatsSnapshot))) {
