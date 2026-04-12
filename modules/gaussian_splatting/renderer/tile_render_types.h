@@ -123,9 +123,13 @@ struct TileOverflowStatsSnapshot {
 	// If emit_pass_entered > count_pass_entered, the two passes diverge on
 	// early-return predicates (conic, distance cull, eigen reject, etc.)
 	// rather than on the per-tile acceptance checks themselves.
-	// overflow_splats_aggregated + overflow_splats_clamped should equal
-	// count_pass_accepts under perfect parity; any positive delta localizes
-	// the overflow source to per-tile predicate divergence.
+	// overflow_splats_aggregated is the total number of EMIT-side attempted
+	// tile inserts before clamp/drop handling. Under perfect COUNT/EMIT parity,
+	// overflow_splats_aggregated should equal count_pass_accepts. A positive
+	// delta there means the two passes disagree on overlap acceptance. The
+	// separate overflow_splats_clamped counter records how many of those EMIT
+	// attempts could not be written because the per-tile or global overlap
+	// budget was exhausted.
 	uint32_t count_pass_accepts = 0;
 	uint32_t count_pass_entered = 0;
 	uint32_t emit_pass_entered = 0;
