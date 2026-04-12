@@ -5,6 +5,11 @@
     struct TileRendererDebugStats {
         explicit TileRendererDebugStats(TileRenderer &p_owner) : owner(p_owner) {}
 
+        // Host-set probe tile index. After clear_counters, this value is written
+        // into the OverflowStats.probe_tile_idx slot so COUNT and EMIT shaders
+        // can trace a single tile's per-pass activity.
+        uint32_t host_probe_tile_idx = 0;
+
         void clear_counters(RenderingDevice *p_device);
         void create_buffers(RenderingDevice *p_device);
         void free_buffers(RenderingDevice *p_device);

@@ -252,6 +252,19 @@ void TileRenderer::TileRendererDebugStats::clear_counters(RenderingDevice *p_dev
 	// Clear overflow stats as well
 	if (overflow_statistics_buffer.is_valid()) {
 		p_device->buffer_clear(overflow_statistics_buffer, 0, sizeof(OverflowStatsSnapshot));
+		// Stamp probe_tile_idx back in after the clear so the COUNT/EMIT shaders
+		// can trace one specific tile's activity per frame.
+		if (host_probe_tile_idx != 0) {
+			const uint32_t probe_idx = host_probe_tile_idx;
+			const uint64_t probe_offset = offsetof(OverflowStatsSnapshot, probe_tile_idx);
+			Vector<uint8_t> probe_bytes;
+			probe_bytes.resize(sizeof(uint32_t));
+			memcpy(probe_bytes.ptrw(), &probe_idx, sizeof(uint32_t));
+			p_device->buffer_update(overflow_statistics_buffer, probe_offset, sizeof(uint32_t), probe_bytes.ptr());
+		}
+		// first_clamp_tile_idx is left at 0 (cleared above). The shader uses
+		// atomicCompSwap(0, tile_idx+1), so 0 = "no clamp captured" and any
+		// non-zero value means a divergent tile was found.
 	}
 }
 

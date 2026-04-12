@@ -129,6 +129,18 @@ struct TileOverflowStatsSnapshot {
 	uint32_t count_pass_accepts = 0;
 	uint32_t count_pass_entered = 0;
 	uint32_t emit_pass_entered = 0;
+	// Per-tile probe for COUNT/EMIT/range.y triad diagnostics.
+	uint32_t probe_tile_idx = 0;
+	uint32_t probe_count_accepts = 0;
+	uint32_t probe_emit_attempts = 0;
+	uint32_t probe_emit_accepts = 0;
+	uint32_t probe_range_y_seen = 0;
+	uint32_t probe_range_x_seen = 0;
+	// First tile that triggered a clamp this frame. 0 means "no clamp";
+	// any non-zero value is (tile_idx + 1) to keep 0 as sentinel.
+	uint32_t first_clamp_tile_idx = 0;
+	uint32_t first_clamp_range_y = 0;
+	uint32_t first_clamp_local_offset = 0;
 };
 
 struct TileSplatAuditSnapshot {

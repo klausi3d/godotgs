@@ -122,6 +122,16 @@ struct RasterOverflowStats {
     uint32_t count_pass_accepts = 0;
     uint32_t count_pass_entered = 0;
     uint32_t emit_pass_entered = 0;
+    // Per-tile probe for COUNT/EMIT/range triad.
+    uint32_t probe_tile_idx = 0;
+    uint32_t probe_count_accepts = 0;
+    uint32_t probe_emit_attempts = 0;
+    uint32_t probe_emit_accepts = 0;
+    uint32_t probe_range_y_seen = 0;
+    uint32_t probe_range_x_seen = 0;
+    uint32_t first_clamp_tile_idx = 0;
+    uint32_t first_clamp_range_y = 0;
+    uint32_t first_clamp_local_offset = 0;
     // Frame number when these stats were captured. Used by the auto-tuner to detect
     // stale stats from async GPU readback. 0 means the frame number is unknown.
     uint64_t frame_number = 0;

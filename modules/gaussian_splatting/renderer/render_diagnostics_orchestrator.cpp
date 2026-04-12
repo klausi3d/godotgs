@@ -431,6 +431,15 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["count_pass_accepts"] = static_cast<int64_t>(overflow_stats.count_pass_accepts);
 		r_metrics["count_pass_entered"] = static_cast<int64_t>(overflow_stats.count_pass_entered);
 		r_metrics["emit_pass_entered"] = static_cast<int64_t>(overflow_stats.emit_pass_entered);
+		r_metrics["probe_tile_idx"] = static_cast<int64_t>(overflow_stats.probe_tile_idx);
+		r_metrics["probe_count_accepts"] = static_cast<int64_t>(overflow_stats.probe_count_accepts);
+		r_metrics["probe_emit_attempts"] = static_cast<int64_t>(overflow_stats.probe_emit_attempts);
+		r_metrics["probe_emit_accepts"] = static_cast<int64_t>(overflow_stats.probe_emit_accepts);
+		r_metrics["probe_range_y_seen"] = static_cast<int64_t>(overflow_stats.probe_range_y_seen);
+		r_metrics["probe_range_x_seen"] = static_cast<int64_t>(overflow_stats.probe_range_x_seen);
+		r_metrics["first_clamp_tile_idx"] = static_cast<int64_t>(overflow_stats.first_clamp_tile_idx);
+		r_metrics["first_clamp_range_y"] = static_cast<int64_t>(overflow_stats.first_clamp_range_y);
+		r_metrics["first_clamp_local_offset"] = static_cast<int64_t>(overflow_stats.first_clamp_local_offset);
 	} else {
 		r_metrics["tile_grid_size"] = Vector2i(0, 0);
 		r_metrics["tile_size"] = 0;
@@ -458,6 +467,15 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["count_pass_accepts"] = static_cast<int64_t>(0);
 		r_metrics["count_pass_entered"] = static_cast<int64_t>(0);
 		r_metrics["emit_pass_entered"] = static_cast<int64_t>(0);
+		r_metrics["probe_tile_idx"] = static_cast<int64_t>(0);
+		r_metrics["probe_count_accepts"] = static_cast<int64_t>(0);
+		r_metrics["probe_emit_attempts"] = static_cast<int64_t>(0);
+		r_metrics["probe_emit_accepts"] = static_cast<int64_t>(0);
+		r_metrics["probe_range_y_seen"] = static_cast<int64_t>(0);
+		r_metrics["probe_range_x_seen"] = static_cast<int64_t>(0);
+		r_metrics["first_clamp_tile_idx"] = static_cast<int64_t>(0);
+		r_metrics["first_clamp_range_y"] = static_cast<int64_t>(0);
+		r_metrics["first_clamp_local_offset"] = static_cast<int64_t>(0);
 	}
 }
 

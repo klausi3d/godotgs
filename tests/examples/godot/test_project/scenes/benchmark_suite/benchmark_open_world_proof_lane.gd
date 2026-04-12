@@ -159,6 +159,31 @@ func _sample_metrics(delta: float) -> void:
 			var accept_delta: int = emit_total - count_accepts
 			print("[DIAG-BENCH-DIVERGENCE] count_entered=%d emit_entered=%d (delta=%d) count_accepts=%d emit_total=%d (delta=%d)" % [
 				count_entered, emit_entered, pass_delta, count_accepts, emit_total, accept_delta])
+			# Per-tile triad for a single probe tile. COUNT's count vs the range.y
+			# that prefix scan produced vs EMIT's attempts/accepts. Decision rule:
+			# * count > range.y => prefix/range construction bug
+			# * count == range.y && emit_attempts > range.y => shader-local/aliasing
+			var probe_tile: int = int(stats.get("probe_tile_idx", 0))
+			var probe_count: int = int(stats.get("probe_count_accepts", 0))
+			var probe_emit_attempts: int = int(stats.get("probe_emit_attempts", 0))
+			var probe_emit_accepts: int = int(stats.get("probe_emit_accepts", 0))
+			var probe_range_y: int = int(stats.get("probe_range_y_seen", 0))
+			var probe_range_x: int = int(stats.get("probe_range_x_seen", 0))
+			print("[DIAG-BENCH-PROBE-TILE] idx=%d count=%d range_y=%d range_x=%d emit_attempts=%d emit_accepts=%d" % [
+				probe_tile, probe_count, probe_range_y, probe_range_x, probe_emit_attempts, probe_emit_accepts])
+			# First tile that clamped this frame. Shader stores tile_idx+1, so 0
+			# means "no clamp captured" and any non-zero value decodes to tile_idx.
+			var clamp_tile_plus1: int = int(stats.get("first_clamp_tile_idx", 0))
+			var clamp_range_y: int = int(stats.get("first_clamp_range_y", 0))
+			var clamp_local_offset: int = int(stats.get("first_clamp_local_offset", 0))
+			var clamp_valid: bool = clamp_tile_plus1 > 0
+			var clamp_tile: int = clamp_tile_plus1 - 1 if clamp_valid else -1
+			print("[DIAG-BENCH-FIRST-CLAMP] tile_idx=%d range_y=%d local_offset=%d valid=%s" % [
+				clamp_tile, clamp_range_y, clamp_local_offset, "Y" if clamp_valid else "N"])
+			# Use the most recent clamping tile as the probe tile for next frame.
+			# This aims the probe at a GUARANTEED divergent tile (count>=range.y).
+			if clamp_valid and renderer.has_method("set_debug_probe_tile_idx"):
+				renderer.set_debug_probe_tile_idx(clamp_tile)
 		_diag8_count += 1
 
 

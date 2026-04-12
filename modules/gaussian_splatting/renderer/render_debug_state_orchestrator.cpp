@@ -1240,6 +1240,18 @@ bool GaussianSplatRenderer::get_debug_binning_counters_enabled() const {
 	return debug_state_orchestrator->get_debug_binning_counters_enabled();
 }
 
+void GaussianSplatRenderer::set_debug_probe_tile_idx(int p_tile_idx) {
+	Ref<TileRenderer> tr = get_tile_renderer();
+	if (tr.is_valid()) {
+		tr->set_debug_probe_tile_idx(uint32_t(MAX(p_tile_idx, 0)));
+	}
+}
+
+int GaussianSplatRenderer::get_debug_probe_tile_idx() const {
+	Ref<TileRenderer> tr = get_tile_renderer();
+	return tr.is_valid() ? int(tr->get_debug_probe_tile_idx()) : 0;
+}
+
 void GaussianSplatRenderer::set_debug_pipeline_trace_enabled(bool p_enabled) {
 	debug_state_orchestrator->set_debug_pipeline_trace_enabled(p_enabled);
 }

@@ -154,6 +154,20 @@ layout(set = 0, binding = 3, std430) buffer OverflowStats {
     uint count_pass_accepts;                // COUNT-side total (splat,tile) accepts
     uint count_pass_entered;                // COUNT-side splats reaching tile loop
     uint emit_pass_entered;                 // EMIT-side splats reaching tile loop
+    // Per-tile probe. Host writes probe_tile_idx to pick a tile to trace.
+    // Shaders atomically accumulate the four counters for matching accesses.
+    uint probe_tile_idx;                    // host-set; shader input only, never written
+    uint probe_count_accepts;               // COUNT: times (probe_tile, splat) was accepted
+    uint probe_emit_attempts;               // EMIT: atomicAdd attempts on tile_counts[probe]
+    uint probe_emit_accepts;                // EMIT: writes that passed local_offset<range.y
+    uint probe_range_y_seen;                // EMIT: tile_ranges[probe].y, max of any thread
+    uint probe_range_x_seen;                // EMIT: tile_ranges[probe].x, max of any thread
+    // First tile that triggered a local_offset>=range.y clamp in EMIT this frame.
+    // Written once via atomicCompSwap from 0xFFFFFFFFu; any positive value here
+    // is a guaranteed divergent tile index.
+    uint first_clamp_tile_idx;
+    uint first_clamp_range_y;               // range.y at the time of first clamp
+    uint first_clamp_local_offset;          // local_offset at the time of first clamp
 } overflow_stats;
 
 layout(set = 0, binding = 5, std430) buffer TileCounts {
@@ -1021,6 +1035,7 @@ void main() {
 #ifdef GS_TILE_GLOBAL_SORT_COUNT_PASS
     // Pass 1: count overlaps per tile (no keys/values emitted).
     atomicAdd(overflow_stats.count_pass_entered, 1u);
+    uint probe_tile = overflow_stats.probe_tile_idx;
     for (int ty = min_tile_y; ty <= max_tile_y; ++ty) {
         for (int tx = min_tile_x; tx <= max_tile_x; ++tx) {
             if (!gs_tile_intersects_projected_ellipse(screen_pos, conic, ellipse_sigma2, tx, ty)) {
@@ -1032,6 +1047,9 @@ void main() {
             }
             atomicAdd(tile_counts.counts[tile_idx], 1u);
             atomicAdd(overflow_stats.count_pass_accepts, 1u);
+            if (tile_idx == probe_tile) {
+                atomicAdd(overflow_stats.probe_count_accepts, 1u);
+            }
         }
     }
     return;
@@ -1217,6 +1235,7 @@ void main() {
     projection_buffer.projected_gaussians[global_idx] = payload;
     uint emitted_overlap_count = 0u;
     atomicAdd(overflow_stats.emit_pass_entered, 1u);
+    uint probe_tile = overflow_stats.probe_tile_idx;
 
     // Pass 2: emit one overlap record per covered tile into the global key/value arrays.
     for (int ty = min_tile_y; ty <= max_tile_y; ++ty) {
@@ -1230,12 +1249,30 @@ void main() {
             }
             emitted_overlap_count += 1u;
             uvec2 range = tile_ranges.ranges[tile_idx];
+            if (tile_idx == probe_tile) {
+                atomicAdd(overflow_stats.probe_emit_attempts, 1u);
+                atomicMax(overflow_stats.probe_range_y_seen, range.y);
+                atomicMax(overflow_stats.probe_range_x_seen, range.x);
+            }
             uint local_offset = atomicAdd(tile_counts.counts[tile_idx], 1u);
             if (local_offset >= range.y) {
                 // Undo the cursor increment so tile_counts reflects emitted (clamped) records.
                 atomicAdd(tile_counts.counts[tile_idx], 0xFFFFFFFFu); // -1
                 atomicAdd(overflow_stats.overflow_splats_clamped, 1u);
+                // Capture the first clamping tile of the frame. Buffer is cleared
+                // to 0 each frame, so atomicCompSwap(0, tile_idx+1) succeeds only
+                // for the first thread. Store tile_idx+1 so 0 remains the sentinel.
+                uint prior = atomicCompSwap(overflow_stats.first_clamp_tile_idx, 0u, tile_idx + 1u);
+                if (prior == 0u) {
+                    // Winner: record the diagnostic triad. Non-atomic writes
+                    // are fine here because only one thread reaches this point.
+                    overflow_stats.first_clamp_range_y = range.y;
+                    overflow_stats.first_clamp_local_offset = local_offset;
+                }
                 continue;
+            }
+            if (tile_idx == probe_tile) {
+                atomicAdd(overflow_stats.probe_emit_accepts, 1u);
             }
             uint record_idx = range.x + local_offset;
             uint overlap_limit = indirect_dispatch.element_count;

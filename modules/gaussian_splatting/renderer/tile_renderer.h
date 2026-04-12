@@ -151,6 +151,9 @@ public:
     bool is_resolve_use_texel_fetch_enabled() const { return diagnostics.resolve_use_texel_fetch_sampling; }
     void set_debug_binning_counters_enabled(bool p_enabled);
     bool is_debug_binning_counters_enabled() const { return diagnostics.debug_binning_counters_enabled; }
+    // Picks one tile to capture COUNT/EMIT/range triad per frame. Zero disables.
+    void set_debug_probe_tile_idx(uint32_t p_tile_idx) { debug_stats.host_probe_tile_idx = p_tile_idx; }
+    uint32_t get_debug_probe_tile_idx() const { return debug_stats.host_probe_tile_idx; }
 
     void set_adaptive_settings(const AdaptiveSettings &p_settings);
     AdaptiveSettings get_adaptive_settings() const { return adaptive_controller.get_settings(); }

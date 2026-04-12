@@ -1293,6 +1293,8 @@ public:
     bool get_debug_dump_gpu_counters() const;
     void set_debug_binning_counters_enabled(bool p_enabled);
     bool get_debug_binning_counters_enabled() const;
+    void set_debug_probe_tile_idx(int p_tile_idx);
+    int get_debug_probe_tile_idx() const;
     void set_debug_pipeline_trace_enabled(bool p_enabled);
     bool get_debug_pipeline_trace_enabled() const;
     void set_debug_state_guardrails_enabled(bool p_enabled);
