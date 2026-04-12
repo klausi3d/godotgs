@@ -94,8 +94,10 @@ bool StagedFileChunkPayloadSource::capture_chunk_snapshot(uint32_t p_start, uint
 		return false;
 	}
 
-	MutexLock lock(file_mutex);
-
+	// Each call opens its own FileAccess handle. The OS handles concurrent
+	// reads on separate handles efficiently; no cross-thread mutex needed.
+	// Serializing all pack workers on a single mutex was the primary source
+	// of pack throughput stalls under bounded-VRAM corridor churn.
 	Ref<FileAccess> file = FileAccess::open(file_path, FileAccess::READ);
 	if (file.is_null()) {
 		ERR_PRINT(vformat("[StagedFileSource] Cannot open staged world file: %s", file_path));
@@ -163,8 +165,8 @@ bool StagedFileChunkPayloadSource::capture_indexed_chunk_snapshot(const uint32_t
 
 	const uint32_t range_count = max_idx - min_idx + 1;
 
-	MutexLock lock(file_mutex);
-
+	// No mutex: see capture_chunk_snapshot above. Independent file handles
+	// per call allow parallel reads from the staged world file.
 	Ref<FileAccess> file = FileAccess::open(file_path, FileAccess::READ);
 	if (file.is_null()) {
 		ERR_PRINT(vformat("[StagedFileSource] Cannot open staged world file: %s", file_path));
