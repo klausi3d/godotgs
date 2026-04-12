@@ -158,18 +158,18 @@ func _sample_metrics(delta: float) -> void:
 			# COUNT/EMIT divergence diagnostics. If emit_entered > count_entered,
 			# early-return predicates diverge (conic/distance/eigen/bbox/lens_fade).
 			# overflow_splats_aggregated is the EMIT-side attempted insert count,
-			# so it should match count_pass_accepts under perfect parity. The
-			# separate clamped counter records how many of those attempts were
-			# dropped by the per-tile or global overlap budget.
+			# so it should match count_pass_accepts under perfect COUNT/EMIT
+			# parity and pass-entry parity. The clamped counter is frame-wide and
+			# also includes later raster-stage drops, so it cannot be used to
+			# estimate EMIT writes directly.
 			var count_entered: int = int(stats.get("count_pass_entered", 0))
 			var emit_entered: int = int(stats.get("emit_pass_entered", 0))
 			var count_accepts: int = int(stats.get("count_pass_accepts", 0))
 			var emit_attempts: int = overflow_aggregated
-			var emit_estimated_writes: int = maxi(emit_attempts - overflow_clamped, 0)
 			var pass_delta: int = emit_entered - count_entered
 			var accept_delta: int = emit_attempts - count_accepts
-			print("[DIAG-BENCH-DIVERGENCE] count_entered=%d emit_entered=%d (delta=%d) count_accepts=%d emit_attempts=%d (delta=%d) emit_clamped=%d emit_est_writes=%d" % [
-				count_entered, emit_entered, pass_delta, count_accepts, emit_attempts, accept_delta, overflow_clamped, emit_estimated_writes])
+			print("[DIAG-BENCH-DIVERGENCE] count_entered=%d emit_entered=%d (delta=%d) count_accepts=%d emit_attempts=%d (delta=%d) frame_clamped=%d" % [
+				count_entered, emit_entered, pass_delta, count_accepts, emit_attempts, accept_delta, overflow_clamped])
 			# Per-tile triad for a single probe tile. COUNT's count vs the range.y
 			# that prefix scan produced vs EMIT's attempts/accepts. Decision rule:
 			# * count > range.y => prefix/range construction bug

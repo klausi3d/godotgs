@@ -124,12 +124,14 @@ struct TileOverflowStatsSnapshot {
 	// early-return predicates (conic, distance cull, eigen reject, etc.)
 	// rather than on the per-tile acceptance checks themselves.
 	// overflow_splats_aggregated is the total number of EMIT-side attempted
-	// tile inserts before clamp/drop handling. Under perfect COUNT/EMIT parity,
-	// overflow_splats_aggregated should equal count_pass_accepts. A positive
-	// delta there means the two passes disagree on overlap acceptance. The
-	// separate overflow_splats_clamped counter records how many of those EMIT
-	// attempts could not be written because the per-tile or global overlap
-	// budget was exhausted.
+	// tile inserts before clamp/drop handling. Under perfect COUNT/EMIT parity
+	// and pass-entry parity, overflow_splats_aggregated should equal
+	// count_pass_accepts. A positive delta here means the two passes disagree
+	// somewhere downstream of COUNT's accepted overlap set, but by itself does
+	// not distinguish overlap-acceptance divergence from broader pass-entry
+	// divergence. The separate overflow_splats_clamped counter is frame-wide
+	// and also accumulates later raster-stage clamp/drop events, so it must not
+	// be interpreted as an EMIT-only write-loss counter.
 	uint32_t count_pass_accepts = 0;
 	uint32_t count_pass_entered = 0;
 	uint32_t emit_pass_entered = 0;
