@@ -555,6 +555,9 @@ RasterOverflowStats TileRasterizer::get_overflow_stats() const {
     stats.raster_sample_count = snapshot.raster_sample_count;
     stats.raster_splats_iterated = snapshot.raster_splats_iterated;
     stats.raster_splats_contributed = snapshot.raster_splats_contributed;
+    stats.count_pass_accepts = snapshot.count_pass_accepts;
+    stats.count_pass_entered = snapshot.count_pass_entered;
+    stats.emit_pass_entered = snapshot.emit_pass_entered;
     // Stamp with the frame serial from the async GPU readback so consumers
     // (e.g. the overflow auto-tuner) can detect stale stats.
     stats.frame_number = tile_renderer->get_overflow_stats_frame_serial();

@@ -100,15 +100,15 @@ func _resolve_focus_point() -> Vector3:
 func _sample_metrics(delta: float) -> void:
 	super._sample_metrics(delta)
 	var renderer = _get_primary_renderer()
-	# Enable raster counters once the renderer is live. The shader checks both a
-	# compile-time define (gated by set_debug_binning_counters_enabled) and a
-	# runtime flag (debug_flags[1] via debug_show_performance_hud or
-	# debug_show_splat_coverage). We need both for the overflow checkpoint.
+	# Enable binning counters so COUNT/EMIT divergence stats flow into the
+	# OverflowStats buffer. count_pass_* fields are unconditional in the shader;
+	# raster_splats_* require GS_COLLECT_RASTER_STATS (enabled by
+	# set_debug_binning_counters_enabled). We skip debug_show_performance_hud
+	# here because its GDScript-side HUD rendering has %u format errors that
+	# crash _process.
 	if not _raster_counters_enabled and renderer != null:
 		if renderer.has_method("set_debug_binning_counters_enabled"):
 			renderer.set_debug_binning_counters_enabled(true)
-		if renderer.has_method("set_debug_show_performance_hud"):
-			renderer.set_debug_show_performance_hud(true)
 		_raster_counters_enabled = true
 	if renderer != null and renderer.has_method("get_visible_splat_count"):
 		var visible := int(renderer.get_visible_splat_count())
@@ -147,6 +147,18 @@ func _sample_metrics(delta: float) -> void:
 				tiles_with_overflow, max_splats_in_tile, avg_splats_per_tile, overflow_ratio,
 				overflow_clamped, overflow_aggregated, raster_iter, raster_contrib,
 				binning_time_ms, raster_time_ms])
+			# COUNT/EMIT divergence diagnostics. If emit_entered > count_entered,
+			# early-return predicates diverge (conic/distance/eigen/bbox/lens_fade).
+			# If count_accepts < (aggregated + clamped), the per-tile predicate or
+			# iteration range diverges between COUNT and EMIT dispatches.
+			var count_entered: int = int(stats.get("count_pass_entered", 0))
+			var emit_entered: int = int(stats.get("emit_pass_entered", 0))
+			var count_accepts: int = int(stats.get("count_pass_accepts", 0))
+			var emit_total: int = overflow_aggregated + overflow_clamped
+			var pass_delta: int = emit_entered - count_entered
+			var accept_delta: int = emit_total - count_accepts
+			print("[DIAG-BENCH-DIVERGENCE] count_entered=%d emit_entered=%d (delta=%d) count_accepts=%d emit_total=%d (delta=%d)" % [
+				count_entered, emit_entered, pass_delta, count_accepts, emit_total, accept_delta])
 		_diag8_count += 1
 
 

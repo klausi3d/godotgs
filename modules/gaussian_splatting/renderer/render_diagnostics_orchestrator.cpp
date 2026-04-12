@@ -428,6 +428,9 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["raster_sample_count"] = static_cast<int64_t>(overflow_stats.raster_sample_count);
 		r_metrics["raster_splats_iterated"] = static_cast<int64_t>(overflow_stats.raster_splats_iterated);
 		r_metrics["raster_splats_contributed"] = static_cast<int64_t>(overflow_stats.raster_splats_contributed);
+		r_metrics["count_pass_accepts"] = static_cast<int64_t>(overflow_stats.count_pass_accepts);
+		r_metrics["count_pass_entered"] = static_cast<int64_t>(overflow_stats.count_pass_entered);
+		r_metrics["emit_pass_entered"] = static_cast<int64_t>(overflow_stats.emit_pass_entered);
 	} else {
 		r_metrics["tile_grid_size"] = Vector2i(0, 0);
 		r_metrics["tile_size"] = 0;
@@ -452,6 +455,9 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["raster_sample_count"] = static_cast<int64_t>(0);
 		r_metrics["raster_splats_iterated"] = static_cast<int64_t>(0);
 		r_metrics["raster_splats_contributed"] = static_cast<int64_t>(0);
+		r_metrics["count_pass_accepts"] = static_cast<int64_t>(0);
+		r_metrics["count_pass_entered"] = static_cast<int64_t>(0);
+		r_metrics["emit_pass_entered"] = static_cast<int64_t>(0);
 	}
 }
 

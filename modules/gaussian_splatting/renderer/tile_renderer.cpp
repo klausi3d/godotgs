@@ -777,6 +777,10 @@ private:
 						renderer.subpixel_visibility_buffers.subpixel_visibility_buffer,
 						0, renderer.subpixel_visibility_buffers.subpixel_visibility_size);
 			}
+			// Clear debug counters BEFORE COUNT so COUNT's count_pass_* writes
+			// are preserved. The previous site (between COUNT and EMIT) wiped
+			// COUNT's contribution and made divergence invisible.
+			renderer._clear_debug_counters();
 
 			TileBinningStage::BinningUniformSets count_sets;
 			renderer.binning_stage.prepare_count_uniform_sets(uniform_device, params.gaussian_buffer, params.sorted_indices, params, count_sets);
@@ -881,8 +885,8 @@ private:
 
 			renderer.global_sort_resources.mark_tile_counts_dirty();
 
-			// Reset debug counters so diagnostics reflect emit+raster passes only.
-			renderer._clear_debug_counters();
+			// Debug counters were cleared before COUNT (above) so both COUNT and
+			// EMIT writes land in the same buffer, letting us measure divergence.
 
 			// Overlap count is read from global_sort_resources.indirect_dispatch_buffer in emit/raster shaders.
 

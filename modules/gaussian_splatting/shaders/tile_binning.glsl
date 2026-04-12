@@ -151,6 +151,9 @@ layout(set = 0, binding = 3, std430) buffer OverflowStats {
     uint raster_alpha_sum_q10;
     uint raster_reject_index_mismatch;
     uint raster_break_subgroup_early_exit;  // Tiles where all pixels were alpha-saturated
+    uint count_pass_accepts;                // COUNT-side total (splat,tile) accepts
+    uint count_pass_entered;                // COUNT-side splats reaching tile loop
+    uint emit_pass_entered;                 // EMIT-side splats reaching tile loop
 } overflow_stats;
 
 layout(set = 0, binding = 5, std430) buffer TileCounts {
@@ -1017,6 +1020,7 @@ void main() {
 
 #ifdef GS_TILE_GLOBAL_SORT_COUNT_PASS
     // Pass 1: count overlaps per tile (no keys/values emitted).
+    atomicAdd(overflow_stats.count_pass_entered, 1u);
     for (int ty = min_tile_y; ty <= max_tile_y; ++ty) {
         for (int tx = min_tile_x; tx <= max_tile_x; ++tx) {
             if (!gs_tile_intersects_projected_ellipse(screen_pos, conic, ellipse_sigma2, tx, ty)) {
@@ -1027,6 +1031,7 @@ void main() {
                 continue;
             }
             atomicAdd(tile_counts.counts[tile_idx], 1u);
+            atomicAdd(overflow_stats.count_pass_accepts, 1u);
         }
     }
     return;
@@ -1211,6 +1216,7 @@ void main() {
 #ifdef GS_TILE_GLOBAL_SORT_EMIT_PASS
     projection_buffer.projected_gaussians[global_idx] = payload;
     uint emitted_overlap_count = 0u;
+    atomicAdd(overflow_stats.emit_pass_entered, 1u);
 
     // Pass 2: emit one overlap record per covered tile into the global key/value arrays.
     for (int ty = min_tile_y; ty <= max_tile_y; ++ty) {

@@ -118,6 +118,10 @@ struct RasterOverflowStats {
     uint32_t raster_sample_count = 0;
     uint32_t raster_splats_iterated = 0;
     uint32_t raster_splats_contributed = 0;
+    // COUNT/EMIT divergence diagnostics.
+    uint32_t count_pass_accepts = 0;
+    uint32_t count_pass_entered = 0;
+    uint32_t emit_pass_entered = 0;
     // Frame number when these stats were captured. Used by the auto-tuner to detect
     // stale stats from async GPU readback. 0 means the frame number is unknown.
     uint64_t frame_number = 0;

@@ -116,6 +116,19 @@ struct TileOverflowStatsSnapshot {
 	uint32_t raster_alpha_sum_q10 = 0;
 	uint32_t raster_reject_index_mismatch = 0;
 	uint32_t raster_break_subgroup_early_exit = 0;
+	// Divergence diagnostics for COUNT/EMIT parity in tile binning.
+	// count_pass_accepts: number of (splat, tile) pairs that COUNT accepted.
+	// count_pass_entered: number of splats that reached COUNT's tile loop.
+	// emit_pass_entered:  number of splats that reached EMIT's tile loop.
+	// If emit_pass_entered > count_pass_entered, the two passes diverge on
+	// early-return predicates (conic, distance cull, eigen reject, etc.)
+	// rather than on the per-tile acceptance checks themselves.
+	// overflow_splats_aggregated + overflow_splats_clamped should equal
+	// count_pass_accepts under perfect parity; any positive delta localizes
+	// the overflow source to per-tile predicate divergence.
+	uint32_t count_pass_accepts = 0;
+	uint32_t count_pass_entered = 0;
+	uint32_t emit_pass_entered = 0;
 };
 
 struct TileSplatAuditSnapshot {
