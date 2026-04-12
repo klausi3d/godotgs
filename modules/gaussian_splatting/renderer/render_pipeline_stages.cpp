@@ -1912,7 +1912,37 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 					render_params.max_visible_splats));
 		}
 	}
+	// Snapshot stability probe: capture resource generations AROUND render_direct
+	// (which contains COUNT -> prefix -> EMIT). If any generation changes across
+	// this window, the atlas / instance pipeline / contract was republished
+	// mid-tile-rendering, which is a candidate for per-tile COUNT/EMIT divergence.
+	const uint64_t snap_content_before = renderer->get_instance_pipeline_content_generation();
+	const uint64_t snap_contract_before = renderer->get_resource_state().instance_pipeline_contract_generation;
+	uint64_t snap_atlas_before = 0;
+	const auto &streaming_state_before = state_view.get_streaming_state();
+	if (streaming_state_before.current_streaming_system.is_valid()) {
+		snap_atlas_before = streaming_state_before.current_streaming_system->get_atlas_generation();
+	}
 	RasterResult raster_result = subsystem_state.rasterizer->render_direct(tile_device, render_params);
+	{
+		const uint64_t snap_content_after = renderer->get_instance_pipeline_content_generation();
+		const uint64_t snap_contract_after = renderer->get_resource_state().instance_pipeline_contract_generation;
+		uint64_t snap_atlas_after = 0;
+		if (streaming_state_before.current_streaming_system.is_valid()) {
+			snap_atlas_after = streaming_state_before.current_streaming_system->get_atlas_generation();
+		}
+		const bool stable = (snap_content_before == snap_content_after) &&
+				(snap_contract_before == snap_contract_after) &&
+				(snap_atlas_before == snap_atlas_after);
+		static int _diag_stability = 0;
+		if (++_diag_stability <= 15 || _diag_stability % 60 == 0 || !stable) {
+			print_line(vformat("[DIAG-SNAPSHOT-STABILITY] stable=%s content=%d->%d contract=%d->%d atlas=%d->%d",
+					stable ? "Y" : "N",
+					(int64_t)snap_content_before, (int64_t)snap_content_after,
+					(int64_t)snap_contract_before, (int64_t)snap_contract_after,
+					(int64_t)snap_atlas_before, (int64_t)snap_atlas_after));
+		}
+	}
 
 	r_color_output = raster_result.output_texture;
 	r_depth_output = raster_result.has_depth ? raster_result.depth_texture : RID();
