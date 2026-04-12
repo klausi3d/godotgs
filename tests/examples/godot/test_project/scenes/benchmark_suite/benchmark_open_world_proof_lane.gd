@@ -116,6 +116,25 @@ func _sample_metrics(delta: float) -> void:
 		if _diag8_count < 30 or _diag8_count % 60 == 0:
 			print("[DIAG-BENCH-VIS] vis_splat_count=%d vis_after_cull=%d uploaded=%d atlas_pub_chunks=%d max_total=%d max_node=%d" % [
 				vis_count, vis_after_cull, uploaded, atlas_pub, _max_total_visible_splats, _max_node_visible_splats])
+			# Tile-overflow telemetry for the overlap checkpoint.
+			var overlap_records: int = int(stats.get("overlap_records", 0))
+			var overlap_budget: int = int(stats.get("overlap_record_budget_effective", 0))
+			var total_tiles: int = int(stats.get("total_tiles", 0))
+			var tiles_with_overflow: int = int(stats.get("tiles_with_overflow", 0))
+			var max_splats_in_tile: int = int(stats.get("max_splats_in_tile", 0))
+			var avg_splats_per_tile: float = float(stats.get("average_splats_per_tile", 0.0))
+			var overflow_ratio: float = float(stats.get("overflow_ratio", 0.0))
+			var overflow_clamped: int = int(stats.get("overflow_splats_clamped", 0))
+			var overflow_aggregated: int = int(stats.get("overflow_splats_aggregated", 0))
+			var raster_iter: int = int(stats.get("raster_splats_iterated", 0))
+			var raster_contrib: int = int(stats.get("raster_splats_contributed", 0))
+			var raster_time_ms: float = float(stats.get("gpu_tile_raster_time_ms", 0.0))
+			var binning_time_ms: float = float(stats.get("gpu_tile_binning_time_ms", 0.0))
+			print("[DIAG-BENCH-OVERFLOW] overlaps=%d/%d tiles=%d overflow_tiles=%d max_pt=%d avg_pt=%.1f overflow_ratio=%.3f clamped=%d aggregated=%d iter=%d contrib=%d binning_ms=%.2f raster_ms=%.2f" % [
+				overlap_records, overlap_budget, total_tiles,
+				tiles_with_overflow, max_splats_in_tile, avg_splats_per_tile, overflow_ratio,
+				overflow_clamped, overflow_aggregated, raster_iter, raster_contrib,
+				binning_time_ms, raster_time_ms])
 		_diag8_count += 1
 
 

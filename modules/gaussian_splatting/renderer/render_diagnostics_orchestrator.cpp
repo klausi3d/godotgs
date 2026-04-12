@@ -412,6 +412,22 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["overlap_thinning_keep_ratio"] = raster_stats.overlap_thinning_keep_ratio;
 		r_metrics["sorted_indices_blend_fallback_active"] = raster_stats.sorted_indices_blend_fallback_active;
 		r_metrics["sorted_indices_blend_fallback_reason"] = raster_stats.sorted_indices_blend_fallback_reason;
+		// Tile-overflow diagnostics (overlap checkpoint).
+		r_metrics["total_tiles"] = static_cast<int64_t>(raster_stats.total_tiles);
+		r_metrics["tiles_with_overflow"] = static_cast<int64_t>(raster_stats.tiles_with_overflow);
+		r_metrics["empty_tiles"] = static_cast<int64_t>(raster_stats.empty_tiles);
+		r_metrics["max_splats_in_tile"] = static_cast<int64_t>(raster_stats.max_splats_in_tile);
+		r_metrics["average_splats_per_tile"] = raster_stats.average_splats_per_tile;
+		r_metrics["overflow_ratio"] = raster_stats.overflow_ratio;
+		r_metrics["occupancy_ratio"] = raster_stats.occupancy_ratio;
+		r_metrics["dense_ratio"] = raster_stats.dense_ratio;
+		RasterOverflowStats overflow_stats = subsystem_state.rasterizer->get_overflow_stats();
+		r_metrics["overflow_tile_count"] = static_cast<int64_t>(overflow_stats.overflow_tile_count);
+		r_metrics["overflow_splats_clamped"] = static_cast<int64_t>(overflow_stats.overflow_splats_clamped);
+		r_metrics["overflow_splats_aggregated"] = static_cast<int64_t>(overflow_stats.overflow_splats_aggregated);
+		r_metrics["raster_sample_count"] = static_cast<int64_t>(overflow_stats.raster_sample_count);
+		r_metrics["raster_splats_iterated"] = static_cast<int64_t>(overflow_stats.raster_splats_iterated);
+		r_metrics["raster_splats_contributed"] = static_cast<int64_t>(overflow_stats.raster_splats_contributed);
 	} else {
 		r_metrics["tile_grid_size"] = Vector2i(0, 0);
 		r_metrics["tile_size"] = 0;
@@ -422,6 +438,20 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["overlap_thinning_keep_ratio"] = 1.0f;
 		r_metrics["sorted_indices_blend_fallback_active"] = false;
 		r_metrics["sorted_indices_blend_fallback_reason"] = String();
+		r_metrics["total_tiles"] = static_cast<int64_t>(0);
+		r_metrics["tiles_with_overflow"] = static_cast<int64_t>(0);
+		r_metrics["empty_tiles"] = static_cast<int64_t>(0);
+		r_metrics["max_splats_in_tile"] = static_cast<int64_t>(0);
+		r_metrics["average_splats_per_tile"] = 0.0f;
+		r_metrics["overflow_ratio"] = 0.0f;
+		r_metrics["occupancy_ratio"] = 0.0f;
+		r_metrics["dense_ratio"] = 0.0f;
+		r_metrics["overflow_tile_count"] = static_cast<int64_t>(0);
+		r_metrics["overflow_splats_clamped"] = static_cast<int64_t>(0);
+		r_metrics["overflow_splats_aggregated"] = static_cast<int64_t>(0);
+		r_metrics["raster_sample_count"] = static_cast<int64_t>(0);
+		r_metrics["raster_splats_iterated"] = static_cast<int64_t>(0);
+		r_metrics["raster_splats_contributed"] = static_cast<int64_t>(0);
 	}
 }
 
