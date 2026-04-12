@@ -10,6 +10,7 @@ var _world_stage_result: Dictionary = {}
 var _data_aabb := AABB()
 var _diag8_count := 0
 var _raster_counters_enabled := false
+var _capture_armed := false
 
 
 func _resolved_asset_path() -> String:
@@ -110,6 +111,13 @@ func _sample_metrics(delta: float) -> void:
 		if renderer.has_method("set_debug_binning_counters_enabled"):
 			renderer.set_debug_binning_counters_enabled(true)
 		_raster_counters_enabled = true
+	# Arm a sync CPU capture of tile_counts + tile_ranges once the scene has
+	# ramped enough to be interesting (frame counters are approximate).
+	if not _capture_armed and renderer != null and _max_total_visible_splats > 300000:
+		if renderer.has_method("debug_arm_one_shot_count_range_capture"):
+			renderer.debug_arm_one_shot_count_range_capture()
+			_capture_armed = true
+			print("[DIAG-BENCH] Armed one-shot CPU capture at visible=%d" % _max_total_visible_splats)
 	if renderer != null and renderer.has_method("get_visible_splat_count"):
 		var visible := int(renderer.get_visible_splat_count())
 		if visible > _max_total_visible_splats:

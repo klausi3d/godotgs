@@ -806,6 +806,98 @@ private:
 				GS_LOG_ERROR_DEFAULT("[TileRenderer] Failed to build global tile ranges for rasterization");
 				return false;
 			}
+			// One-shot sync CPU readback to diagnose COUNT -> prefix-scan handoff.
+			// tile_counts here was populated by COUNT and is about to be cleared
+			// before EMIT (line 871 below). tile_ranges here was just produced by
+			// the prefix scan (line 804 above). A per-tile diff answers:
+			//   * count == range_span -> COUNT-to-scan handoff is correct
+			//   * count != range_span -> bug is in prefix construction or a
+			//     missing barrier between COUNT and prefix scan
+			if (renderer.one_shot_count_range_capture_armed) {
+				renderer.one_shot_count_range_capture_armed = false;
+				RenderingDevice *capture_device = uniform_device ? uniform_device : resource_device;
+				if (capture_device &&
+						renderer.global_sort_resources.get_tile_counts_buffer().is_valid() &&
+						renderer.global_sort_resources.tile_ranges_buffer.is_valid()) {
+					const uint32_t total_tiles = renderer.grid_state.total_tiles;
+					const uint64_t counts_bytes = uint64_t(total_tiles) * sizeof(uint32_t);
+					const uint64_t ranges_bytes = uint64_t(total_tiles) * 2u * sizeof(uint32_t);
+					Vector<uint8_t> counts_data = capture_device->buffer_get_data(
+							renderer.global_sort_resources.get_tile_counts_buffer(), 0, counts_bytes);
+					Vector<uint8_t> ranges_data = capture_device->buffer_get_data(
+							renderer.global_sort_resources.tile_ranges_buffer, 0, ranges_bytes);
+					Vector<uint8_t> overflow_bytes;
+					if (renderer.debug_stats.overflow_statistics_buffer.is_valid()) {
+						overflow_bytes = capture_device->buffer_get_data(
+								renderer.debug_stats.overflow_statistics_buffer, 0,
+								sizeof(OverflowStatsSnapshot));
+					}
+					if (uint64_t(counts_data.size()) == counts_bytes &&
+							uint64_t(ranges_data.size()) == ranges_bytes) {
+						const uint32_t *counts = reinterpret_cast<const uint32_t *>(counts_data.ptr());
+						const uint32_t *ranges = reinterpret_cast<const uint32_t *>(ranges_data.ptr());
+						uint64_t sum_count = 0;
+						uint64_t sum_range_span = 0;
+						uint32_t mismatches = 0;
+						uint32_t max_count = 0;
+						uint32_t max_count_tile = 0;
+						uint32_t first_mismatch_tile = UINT32_MAX;
+						uint32_t first_mismatch_count = 0;
+						uint32_t first_mismatch_span = 0;
+						for (uint32_t t = 0; t < total_tiles; ++t) {
+							const uint32_t c = counts[t];
+							const uint32_t rx = ranges[t * 2u];
+							const uint32_t ry = ranges[t * 2u + 1u];
+							const uint32_t span = ry; // range.y is the per-tile count from prefix scan
+							sum_count += c;
+							sum_range_span += span;
+							if (c > max_count) {
+								max_count = c;
+								max_count_tile = t;
+							}
+							if (c != span) {
+								if (mismatches == 0u) {
+									first_mismatch_tile = t;
+									first_mismatch_count = c;
+									first_mismatch_span = span;
+								}
+								mismatches++;
+							}
+							(void)rx;
+						}
+						print_line(vformat("[CAPTURE] total_tiles=%d mismatches=%d sum_count=%s sum_range_y=%s max_count=%d@tile=%d",
+								total_tiles, mismatches,
+								String::num_uint64(sum_count), String::num_uint64(sum_range_span),
+								max_count, max_count_tile));
+						if (mismatches > 0u) {
+							print_line(vformat("[CAPTURE] first_mismatch tile=%d count=%d range_y=%d delta=%d",
+									first_mismatch_tile, first_mismatch_count, first_mismatch_span,
+									int32_t(first_mismatch_count) - int32_t(first_mismatch_span)));
+						}
+						// Log hotspot tile detail (top-count).
+						const uint32_t hx = ranges[max_count_tile * 2u];
+						const uint32_t hy = ranges[max_count_tile * 2u + 1u];
+						print_line(vformat("[CAPTURE-HOTSPOT] tile=%d count=%d range_x=%d range_y=%d (count==range_y? %s)",
+								max_count_tile, max_count, hx, hy,
+								(max_count == hy) ? "Y" : "N"));
+						// Dump raw overflow buffer bytes so we can inspect
+						// first_clamp_tile_idx offset directly.
+						if (!overflow_bytes.is_empty() && overflow_bytes.size() >= int(sizeof(OverflowStatsSnapshot))) {
+							const OverflowStatsSnapshot *ofs = reinterpret_cast<const OverflowStatsSnapshot *>(overflow_bytes.ptr());
+							print_line(vformat("[CAPTURE-OVERFLOW-RAW] first_clamp_tile=%d first_clamp_range_y=%d first_clamp_local_offset=%d count_pass_accepts=%d emit_pass_entered=%d",
+									(int32_t)ofs->first_clamp_tile_idx,
+									(int32_t)ofs->first_clamp_range_y,
+									(int32_t)ofs->first_clamp_local_offset,
+									(int32_t)ofs->count_pass_accepts,
+									(int32_t)ofs->emit_pass_entered));
+						}
+					} else {
+						print_line(vformat("[CAPTURE] readback size mismatch counts=%d expected=%s ranges=%d expected=%s",
+								counts_data.size(), String::num_uint64(counts_bytes),
+								ranges_data.size(), String::num_uint64(ranges_bytes)));
+					}
+				}
+			}
 			const uint32_t adaptive_overlap_budget_suggested = _update_adaptive_overlap_budget(&renderer, raw_overlap_record_count);
 #ifdef DEV_ENABLED
 			if (renderer.diagnostics.debug_tile_pipeline_logs_enabled) {

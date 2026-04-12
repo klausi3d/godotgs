@@ -154,6 +154,9 @@ public:
     // Picks one tile to capture COUNT/EMIT/range triad per frame. Zero disables.
     void set_debug_probe_tile_idx(uint32_t p_tile_idx) { debug_stats.host_probe_tile_idx = p_tile_idx; }
     uint32_t get_debug_probe_tile_idx() const { return debug_stats.host_probe_tile_idx; }
+    // Arm a one-shot sync CPU readback of tile_counts (after COUNT) and
+    // tile_ranges (after prefix scan). Diagnoses COUNT-to-scan handoff.
+    void arm_one_shot_count_range_capture() { one_shot_count_range_capture_armed = true; }
 
     void set_adaptive_settings(const AdaptiveSettings &p_settings);
     AdaptiveSettings get_adaptive_settings() const { return adaptive_controller.get_settings(); }
@@ -372,6 +375,10 @@ private:
     TileRenderSettings render_settings;
     AdaptiveOverlapBudgetRuntimeState adaptive_overlap_budget_runtime_state;
     bool adaptive_overlap_budget_runtime_state_initialized = false;
+    // One-shot sync capture of tile_counts (post-COUNT) and tile_ranges
+    // (post-prefix-scan) to diagnose COUNT-to-scan handoff divergence.
+    // Consumed and cleared on the next render_direct() call.
+    bool one_shot_count_range_capture_armed = false;
     TileResourceController resource_controller;
     struct InstancePipelineBindings {
         RID instance_buffer;

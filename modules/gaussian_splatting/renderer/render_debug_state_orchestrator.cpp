@@ -1252,6 +1252,13 @@ int GaussianSplatRenderer::get_debug_probe_tile_idx() const {
 	return tr.is_valid() ? int(tr->get_debug_probe_tile_idx()) : 0;
 }
 
+void GaussianSplatRenderer::debug_arm_one_shot_count_range_capture() {
+	Ref<TileRenderer> tr = get_tile_renderer();
+	if (tr.is_valid()) {
+		tr->arm_one_shot_count_range_capture();
+	}
+}
+
 void GaussianSplatRenderer::set_debug_pipeline_trace_enabled(bool p_enabled) {
 	debug_state_orchestrator->set_debug_pipeline_trace_enabled(p_enabled);
 }
