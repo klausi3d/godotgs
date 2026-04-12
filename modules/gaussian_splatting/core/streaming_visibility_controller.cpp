@@ -259,13 +259,15 @@ void StreamingVisibilityController::handle_zero_visible_chunk_recovery(GaussianS
 
     uint32_t forced_count = 0;
 
+    // Use the last known camera position for distance recomputation.
+    // This is the same position used by the grid search below.
+    const Vector3 recovery_pos = camera_tracker.has_previous_position
+            ? camera_tracker.last_position
+            : Vector3();
+
     if (spatial_grid.is_built()) {
         // Bounded local recovery: search outward from camera position
         // through expanding rings of grid cells.
-        Vector3 recovery_pos = camera_tracker.has_previous_position
-                ? camera_tracker.last_position
-                : Vector3();
-
         visible_chunk_indices.clear();
 
         for (int r = 0; r <= RECOVERY_MAX_CELL_RADIUS && visible_chunk_indices.is_empty(); r++) {
@@ -305,6 +307,33 @@ void StreamingVisibilityController::handle_zero_visible_chunk_recovery(GaussianS
             visible_chunk_indices.push_back(i);
         }
         forced_count = total_chunks;
+    }
+
+    // Recompute distances for the recovered set and sort nearest-first.
+    // Without this, the streaming scheduler would load chunks in grid
+    // traversal order (expanding rings) or in index order, which on a
+    // corridor asset means far-before-near pop-in.
+    {
+        GaussianStreamingSystem::StreamingChunk *chunks_ptr = system.chunks.ptr();
+        const uint32_t cnt = visible_chunk_indices.size();
+        uint32_t *iptr = visible_chunk_indices.ptr();
+        for (uint32_t i = 0; i < cnt; i++) {
+            const uint32_t ci = iptr[i];
+            chunks_ptr[ci].distance = recovery_pos.distance_to(chunks_ptr[ci].center);
+        }
+        if (cnt > 1) {
+            // Same insertion sort as the normal path — nearest-first.
+            for (uint32_t i = 1; i < cnt; i++) {
+                uint32_t key = iptr[i];
+                float key_dist = chunks_ptr[key].distance;
+                int32_t j = (int32_t)i - 1;
+                while (j >= 0 && chunks_ptr[iptr[j]].distance > key_dist) {
+                    iptr[j + 1] = iptr[j];
+                    j--;
+                }
+                iptr[j + 1] = key;
+            }
+        }
     }
 
     culling_stats.visible_chunks = forced_count;
