@@ -516,3 +516,10 @@ outputs/**/*.import
 outputs/**/*.translation
 *.bak
 *.backup
+
+# Materialized benchmark artifacts and local caches
+tests/examples/godot/test_project/tests/fixtures/open_world/*/*.gsplatworld
+tests/examples/godot/test_project/tests/fixtures/open_world/*/*.gsplatworld.import
+tests/examples/godot/test_project/tests/fixtures/**/*.gsplatcache
+godotgs-scons-cache/
+benchmark_stageb_proof/
