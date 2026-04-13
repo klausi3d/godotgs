@@ -1391,17 +1391,35 @@ GaussianSplatRenderer::FrameBackendPlan GaussianSplatRenderer::build_frame_backe
             plan.streaming_requested && !plan.prefer_resident_backend && !plan.streaming_ready;
     plan.allow_legacy_resident_fallback = !plan.streaming_requested;
     // Allow the streaming path to inject a synthetic identity instance when
-    // the SceneDirector has no instances.  World submissions (gsplatworld) do
-    // NOT populate the director's instance array, so this fallback is the
-    // only way the streaming cull/sort/raster contracts come up.  The
-    // resident path's 2 GB guard prevents oversized uploads when this flag
-    // is true for large datasets.
+    // the SceneDirector has no instances and no world submission is active.
+    // World submissions (gsplatworld) own the streaming cull/sort/raster
+    // contract directly, so a synthetic primary fallback would re-route the
+    // staged-world data back through the resident-style primary path and
+    // contradict the active submission.  Suppressing the fallback here keeps
+    // staged worlds on the streamed-world path; the contract-active flag
+    // comes from apply_world_submission_contract(), and the director-side
+    // probe catches the case where the contract has not yet been observed
+    // by this renderer but a submission is already published.
+    const bool world_submission_active = world_submission_contract_active;
+    bool director_has_submission = false;
+    if (!world_submission_active) {
+        if (const GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
+            director_has_submission = director->has_world_submission_for_renderer(this);
+        }
+    }
+    const bool any_world_submission = world_submission_active || director_has_submission;
+    plan.has_active_world_submission = any_world_submission;
     plan.allow_primary_fallback_instance =
+            !any_world_submission &&
             get_scene_state().gaussian_data.is_valid() &&
             get_scene_state().gaussian_data->get_count() > 0;
-    plan.primary_fallback_instance_reason = plan.allow_primary_fallback_instance
-            ? String("primary_gaussian_data_available")
-            : String("primary_gaussian_data_unavailable");
+    if (any_world_submission) {
+        plan.primary_fallback_instance_reason = String("world_submission_owns_streaming_path");
+    } else if (plan.allow_primary_fallback_instance) {
+        plan.primary_fallback_instance_reason = String("primary_gaussian_data_available");
+    } else {
+        plan.primary_fallback_instance_reason = String("primary_gaussian_data_unavailable");
+    }
     plan.resident_backend_reason = plan.runtime_policy.backend_preference_reason;
     plan.streaming_backend_reason = plan.runtime_policy.backend_preference_reason;
     return plan;
