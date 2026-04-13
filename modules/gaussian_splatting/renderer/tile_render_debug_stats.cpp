@@ -265,6 +265,16 @@ void TileRenderer::TileRendererDebugStats::clear_counters(RenderingDevice *p_dev
 		// first_clamp_tile_idx is left at 0 (cleared above). The shader uses
 		// atomicCompSwap(0, tile_idx+1), so 0 = "no clamp captured" and any
 		// non-zero value means a divergent tile was found.
+		// Stamp hotspot_tile_idx so the raster shader knows which tile to
+		// sample per-pixel cost for. Zero disables (no hotspot probe).
+		if (host_hotspot_tile_idx != 0) {
+			const uint32_t hotspot_idx = host_hotspot_tile_idx;
+			const uint64_t hotspot_offset = offsetof(OverflowStatsSnapshot, hotspot_tile_idx);
+			Vector<uint8_t> hotspot_bytes;
+			hotspot_bytes.resize(sizeof(uint32_t));
+			memcpy(hotspot_bytes.ptrw(), &hotspot_idx, sizeof(uint32_t));
+			p_device->buffer_update(overflow_statistics_buffer, hotspot_offset, sizeof(uint32_t), hotspot_bytes.ptr());
+		}
 	}
 }
 

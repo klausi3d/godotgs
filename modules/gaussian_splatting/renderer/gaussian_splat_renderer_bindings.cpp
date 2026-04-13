@@ -148,6 +148,8 @@ void GaussianSplatRenderer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_debug_probe_tile_idx", "tile_idx"), &GaussianSplatRenderer::set_debug_probe_tile_idx);
 	ClassDB::bind_method(D_METHOD("get_debug_probe_tile_idx"), &GaussianSplatRenderer::get_debug_probe_tile_idx);
 	ClassDB::bind_method(D_METHOD("debug_arm_one_shot_count_range_capture"), &GaussianSplatRenderer::debug_arm_one_shot_count_range_capture);
+	ClassDB::bind_method(D_METHOD("set_debug_hotspot_tile_idx", "tile_idx"), &GaussianSplatRenderer::set_debug_hotspot_tile_idx);
+	ClassDB::bind_method(D_METHOD("get_debug_hotspot_tile_idx"), &GaussianSplatRenderer::get_debug_hotspot_tile_idx);
 	ClassDB::bind_method(D_METHOD("set_debug_pipeline_trace_enabled", "enabled"), &GaussianSplatRenderer::set_debug_pipeline_trace_enabled);
 	ClassDB::bind_method(D_METHOD("get_debug_pipeline_trace_enabled"), &GaussianSplatRenderer::get_debug_pipeline_trace_enabled);
 	ClassDB::bind_method(D_METHOD("set_debug_state_guardrails_enabled", "enabled"), &GaussianSplatRenderer::set_debug_state_guardrails_enabled);

@@ -1259,6 +1259,18 @@ void GaussianSplatRenderer::debug_arm_one_shot_count_range_capture() {
 	}
 }
 
+void GaussianSplatRenderer::set_debug_hotspot_tile_idx(int p_tile_idx) {
+	Ref<TileRenderer> tr = get_tile_renderer();
+	if (tr.is_valid()) {
+		tr->set_debug_hotspot_tile_idx(uint32_t(MAX(p_tile_idx, 0)));
+	}
+}
+
+int GaussianSplatRenderer::get_debug_hotspot_tile_idx() const {
+	Ref<TileRenderer> tr = get_tile_renderer();
+	return tr.is_valid() ? int(tr->get_debug_hotspot_tile_idx()) : 0;
+}
+
 void GaussianSplatRenderer::set_debug_pipeline_trace_enabled(bool p_enabled) {
 	debug_state_orchestrator->set_debug_pipeline_trace_enabled(p_enabled);
 }

@@ -958,6 +958,14 @@ private:
 									top[i].range_y,
 									String::num_uint64(work)));
 						}
+						// Auto-arm the per-hotspot raster probe with the top-1 tile so
+						// next frame's raster shader collects per-pixel iteration /
+						// contribution / early-break counters for it.
+						if (top_count > 0u) {
+							renderer.set_debug_hotspot_tile_idx(top[0].tile_idx);
+							print_line(vformat("[CAPTURE-RASTER-PROBE] armed hotspot_tile_idx=%d for next frame",
+									top[0].tile_idx));
+						}
 						// Dump raw overflow buffer bytes so we can inspect
 						// first_clamp_tile_idx offset directly.
 						if (!overflow_bytes.is_empty() && overflow_bytes.size() >= int(sizeof(OverflowStatsSnapshot))) {

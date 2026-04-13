@@ -1295,6 +1295,8 @@ public:
     bool get_debug_binning_counters_enabled() const;
     void set_debug_probe_tile_idx(int p_tile_idx);
     int get_debug_probe_tile_idx() const;
+    void set_debug_hotspot_tile_idx(int p_tile_idx);
+    int get_debug_hotspot_tile_idx() const;
     // One-shot sync CPU readback of tile_counts (post-COUNT) and tile_ranges
     // (post-prefix-scan) for COUNT/EMIT divergence diagnosis.
     void debug_arm_one_shot_count_range_capture();

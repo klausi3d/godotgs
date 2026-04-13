@@ -9,6 +9,11 @@
         // into the OverflowStats.probe_tile_idx slot so COUNT and EMIT shaders
         // can trace a single tile's per-pass activity.
         uint32_t host_probe_tile_idx = 0;
+        // Host-set hotspot tile index. After clear_counters, this is written
+        // into OverflowStats.hotspot_tile_idx so the raster shader can sample
+        // per-pixel iteration / contribution / early-termination stats for a
+        // single nominated hotspot tile.
+        uint32_t host_hotspot_tile_idx = 0;
 
         void clear_counters(RenderingDevice *p_device);
         void create_buffers(RenderingDevice *p_device);
