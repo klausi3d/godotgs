@@ -440,6 +440,14 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["first_clamp_tile_idx"] = static_cast<int64_t>(overflow_stats.first_clamp_tile_idx);
 		r_metrics["first_clamp_range_y"] = static_cast<int64_t>(overflow_stats.first_clamp_range_y);
 		r_metrics["first_clamp_local_offset"] = static_cast<int64_t>(overflow_stats.first_clamp_local_offset);
+		r_metrics["hotspot_tile_idx"] = static_cast<int64_t>(overflow_stats.hotspot_tile_idx);
+		r_metrics["hotspot_pixels_sampled"] = static_cast<int64_t>(overflow_stats.hotspot_pixels_sampled);
+		r_metrics["hotspot_iterations"] = static_cast<int64_t>(overflow_stats.hotspot_iterations);
+		r_metrics["hotspot_contributions"] = static_cast<int64_t>(overflow_stats.hotspot_contributions);
+		r_metrics["hotspot_break_remaining"] = static_cast<int64_t>(overflow_stats.hotspot_break_remaining);
+		r_metrics["hotspot_break_final"] = static_cast<int64_t>(overflow_stats.hotspot_break_final);
+		r_metrics["hotspot_break_subgroup"] = static_cast<int64_t>(overflow_stats.hotspot_break_subgroup);
+		r_metrics["hotspot_pruned_overlap_records"] = static_cast<int64_t>(overflow_stats.hotspot_pruned_overlap_records);
 	} else {
 		r_metrics["tile_grid_size"] = Vector2i(0, 0);
 		r_metrics["tile_size"] = 0;
@@ -476,6 +484,14 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["first_clamp_tile_idx"] = static_cast<int64_t>(0);
 		r_metrics["first_clamp_range_y"] = static_cast<int64_t>(0);
 		r_metrics["first_clamp_local_offset"] = static_cast<int64_t>(0);
+		r_metrics["hotspot_tile_idx"] = static_cast<int64_t>(0);
+		r_metrics["hotspot_pixels_sampled"] = static_cast<int64_t>(0);
+		r_metrics["hotspot_iterations"] = static_cast<int64_t>(0);
+		r_metrics["hotspot_contributions"] = static_cast<int64_t>(0);
+		r_metrics["hotspot_break_remaining"] = static_cast<int64_t>(0);
+		r_metrics["hotspot_break_final"] = static_cast<int64_t>(0);
+		r_metrics["hotspot_break_subgroup"] = static_cast<int64_t>(0);
+		r_metrics["hotspot_pruned_overlap_records"] = static_cast<int64_t>(0);
 	}
 }
 

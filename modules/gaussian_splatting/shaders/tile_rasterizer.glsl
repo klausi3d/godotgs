@@ -87,6 +87,28 @@ layout(set = 0, binding = 3, std430) buffer OverflowStatisticsBuffer {
     uint raster_alpha_sum_q10;
     uint raster_reject_index_mismatch;
     uint raster_break_subgroup_early_exit;  // Tiles where all pixels were alpha-saturated
+    // Binning-pass divergence diagnostics (written only by the binning shaders).
+    uint count_pass_accepts;
+    uint count_pass_entered;
+    uint emit_pass_entered;
+    uint probe_tile_idx;
+    uint probe_count_accepts;
+    uint probe_emit_attempts;
+    uint probe_emit_accepts;
+    uint probe_range_y_seen;
+    uint probe_range_x_seen;
+    uint first_clamp_tile_idx;
+    uint first_clamp_range_y;
+    uint first_clamp_local_offset;
+    // Per-hotspot-tile raster cost probe (written by this shader).
+    uint hotspot_tile_idx;
+    uint hotspot_pixels_sampled;
+    uint hotspot_iterations;
+    uint hotspot_contributions;
+    uint hotspot_break_remaining;
+    uint hotspot_break_final;
+    uint hotspot_break_subgroup;
+    uint hotspot_pruned_overlap_records;
 } overflow_stats;
 
 layout(set = 0, binding = 4, std430) readonly buffer ProjectionBuffer {

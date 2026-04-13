@@ -60,6 +60,15 @@ struct RasterParams {
     float lod_blend_factor = 1.0f;
     float lod_blend_distance = 5.0f;
 
+    // Hotspot-aware pre-raster cull (shared by COUNT and EMIT via tile_counts ping-pong).
+    // Prunes marginal (gaussian, tile) pairs from tiles whose previous-frame count
+    // exceeded hotspot_pressure_threshold. Conservative defaults: the per-tile gate
+    // is no-op unless last-frame tile count >4096 (normal scenes stay well below),
+    // and within a hot tile only sub-pixel minor-axis splats (raw_min_radius_px<1)
+    // are pruned. Set either to 0 to disable entirely.
+    uint32_t hotspot_pressure_threshold = 4096;
+    float hotspot_min_radius_px = 1.0f;
+
     // Compute raster selection (defaults to global config).
     GaussianSplatting::ComputeRasterPolicy compute_raster_policy = GaussianSplatting::ComputeRasterPolicy::Default;
 
@@ -132,6 +141,14 @@ struct RasterOverflowStats {
     uint32_t first_clamp_tile_idx = 0;
     uint32_t first_clamp_range_y = 0;
     uint32_t first_clamp_local_offset = 0;
+    uint32_t hotspot_tile_idx = 0;
+    uint32_t hotspot_pixels_sampled = 0;
+    uint32_t hotspot_iterations = 0;
+    uint32_t hotspot_contributions = 0;
+    uint32_t hotspot_break_remaining = 0;
+    uint32_t hotspot_break_final = 0;
+    uint32_t hotspot_break_subgroup = 0;
+    uint32_t hotspot_pruned_overlap_records = 0;
     // Frame number when these stats were captured. Used by the auto-tuner to detect
     // stale stats from async GPU readback. 0 means the frame number is unknown.
     uint64_t frame_number = 0;

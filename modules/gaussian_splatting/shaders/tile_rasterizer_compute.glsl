@@ -111,6 +111,7 @@ layout(set = 0, binding = 3, std430) buffer OverflowStatisticsBuffer {
     uint hotspot_break_remaining;
     uint hotspot_break_final;
     uint hotspot_break_subgroup;
+    uint hotspot_pruned_overlap_records;
 } overflow_stats;
 
 layout(set = 0, binding = 4, std430) readonly buffer ProjectionBuffer {

@@ -36,7 +36,7 @@
 
 namespace TestGaussianSplatting {
 
-static_assert(GS_RENDER_PARAMS_LAYOUT_VERSION == 16, "Render params layout version mismatch");
+static_assert(GS_RENDER_PARAMS_LAYOUT_VERSION == 17, "Render params layout version mismatch");
 
 static_assert(sizeof(InstanceDataGPU) == 96, "InstanceDataGPU size contract changed");
 static_assert(offsetof(InstanceDataGPU, lod) == 72, "InstanceDataGPU.lod offset contract changed");
@@ -339,7 +339,7 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Instance cull failures without fallb
 }
 
 TEST_CASE("[GaussianSplatting] GPU layout contract invariants remain stable") {
-    CHECK(GS_RENDER_PARAMS_LAYOUT_VERSION == 16u);
+    CHECK(GS_RENDER_PARAMS_LAYOUT_VERSION == 17u);
     CHECK(sizeof(InstanceDataGPU) == size_t(96));
     CHECK(sizeof(AssetMetaGPU) == size_t(112));
     CHECK(sizeof(ChunkMetaGPU) == size_t(64));

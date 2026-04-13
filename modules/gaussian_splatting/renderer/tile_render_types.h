@@ -147,6 +147,20 @@ struct TileOverflowStatsSnapshot {
 	uint32_t first_clamp_tile_idx = 0;
 	uint32_t first_clamp_range_y = 0;
 	uint32_t first_clamp_local_offset = 0;
+	// Per-hotspot-tile raster cost probe. Host-set hotspot_tile_idx (0 =
+	// disabled) nominates one tile whose raster samples accumulate these
+	// counters, so we can answer: iteration/contribution ratio, early-
+	// termination effectiveness, and per-pixel work for the hottest tile.
+	uint32_t hotspot_tile_idx = 0;
+	uint32_t hotspot_pixels_sampled = 0;
+	uint32_t hotspot_iterations = 0;
+	uint32_t hotspot_contributions = 0;
+	uint32_t hotspot_break_remaining = 0;
+	uint32_t hotspot_break_final = 0;
+	uint32_t hotspot_break_subgroup = 0;
+	// Count of (splat, tile) pairs dropped this frame by
+	// gs_should_hotspot_prune_overlap() in either COUNT or EMIT.
+	uint32_t hotspot_pruned_overlap_records = 0;
 };
 
 struct TileSplatAuditSnapshot {
@@ -392,6 +406,11 @@ struct TileRenderParams {
 	bool lod_blend_enabled = true;
 	float lod_blend_factor = 1.0f;
 	float lod_blend_distance = 5.0f;
+	// Hotspot-aware pre-raster cull (shared by COUNT and EMIT). Defaults match
+	// RasterParams so a tile needs >4096 prior records and the candidate splat
+	// needs raw_min_radius_px<1px to be pruned. Set either to 0 to disable.
+	uint32_t hotspot_pressure_threshold = 4096;
+	float hotspot_min_radius_px = 1.0f;
 	bool wind_enabled = false;
 	Vector3 wind_direction = Vector3(1.0f, 0.0f, 0.0f);
 	float wind_strength = 0.0f;

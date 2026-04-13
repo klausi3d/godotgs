@@ -283,6 +283,8 @@ RasterResult TileRasterizer::render(const RasterParams &p_params) {
     render_params.lod_blend_enabled = p_params.lod_blend_enabled;
     render_params.lod_blend_factor = p_params.lod_blend_factor;
     render_params.lod_blend_distance = p_params.lod_blend_distance;
+    render_params.hotspot_pressure_threshold = p_params.hotspot_pressure_threshold;
+    render_params.hotspot_min_radius_px = p_params.hotspot_min_radius_px;
     render_params.frame_serial = p_params.frame_serial;
     // Instance rotation inverse for SH view direction correction
     render_params.instance_rotation_inverse = p_params.instance_rotation_inverse;
@@ -567,6 +569,14 @@ RasterOverflowStats TileRasterizer::get_overflow_stats() const {
     stats.first_clamp_tile_idx = snapshot.first_clamp_tile_idx;
     stats.first_clamp_range_y = snapshot.first_clamp_range_y;
     stats.first_clamp_local_offset = snapshot.first_clamp_local_offset;
+    stats.hotspot_tile_idx = snapshot.hotspot_tile_idx;
+    stats.hotspot_pixels_sampled = snapshot.hotspot_pixels_sampled;
+    stats.hotspot_iterations = snapshot.hotspot_iterations;
+    stats.hotspot_contributions = snapshot.hotspot_contributions;
+    stats.hotspot_break_remaining = snapshot.hotspot_break_remaining;
+    stats.hotspot_break_final = snapshot.hotspot_break_final;
+    stats.hotspot_break_subgroup = snapshot.hotspot_break_subgroup;
+    stats.hotspot_pruned_overlap_records = snapshot.hotspot_pruned_overlap_records;
     // Stamp with the frame serial from the async GPU readback so consumers
     // (e.g. the overflow auto-tuner) can detect stale stats.
     stats.frame_number = tile_renderer->get_overflow_stats_frame_serial();

@@ -110,6 +110,14 @@ func _sample_metrics(delta: float) -> void:
 	if not _raster_counters_enabled and renderer != null:
 		if renderer.has_method("set_debug_binning_counters_enabled"):
 			renderer.set_debug_binning_counters_enabled(true)
+		# Activate the runtime sample-stats gate too. The raster shader checks
+		# both the GS_COLLECT_RASTER_STATS define (compile-time, gated by
+		# set_debug_binning_counters_enabled) AND debug_flags[1] at runtime
+		# (set by either debug_show_splat_coverage or debug_show_performance_hud).
+		# We use show_splat_coverage because show_performance_hud has unrelated
+		# %u format errors in its GDScript HUD path.
+		if renderer.has_method("set_debug_show_splat_coverage"):
+			renderer.set_debug_show_splat_coverage(true)
 		_raster_counters_enabled = true
 	# Arm a sync CPU capture of tile_counts + tile_ranges once the scene has
 	# ramped enough to be interesting (frame counters are approximate).
@@ -195,6 +203,33 @@ func _sample_metrics(delta: float) -> void:
 			# This aims the probe at a GUARANTEED divergent tile (count>=range.y).
 			if clamp_valid and renderer.has_method("set_debug_probe_tile_idx"):
 				renderer.set_debug_probe_tile_idx(clamp_tile)
+			# Per-hotspot-tile raster cost. Auto-armed by the sync CPU capture in
+			# tile_renderer.cpp to the prior frame's max-range_y tile. iter/pix is
+			# the average per-pixel splat iteration count for the hotspot. contrib%
+			# is what fraction of those splats actually accumulated alpha. break_*
+			# is how often the per-pixel loop early-exited via alpha saturation.
+			# Decision rule:
+			#   low contrib + low break  -> needs hotspot-aware thinning/LOD/pre-cull
+			#   high contrib + low break -> needs raw tile-local work bounding
+			#   high break + huge iter   -> stronger/earlier subgroup termination
+			var hotspot_tile: int = int(stats.get("hotspot_tile_idx", 0))
+			var hotspot_pixels: int = int(stats.get("hotspot_pixels_sampled", 0))
+			var hotspot_iter: int = int(stats.get("hotspot_iterations", 0))
+			var hotspot_contrib: int = int(stats.get("hotspot_contributions", 0))
+			var hotspot_break_rem: int = int(stats.get("hotspot_break_remaining", 0))
+			var hotspot_break_fin: int = int(stats.get("hotspot_break_final", 0))
+			var hotspot_break_sub: int = int(stats.get("hotspot_break_subgroup", 0))
+			if hotspot_tile > 0:
+				var iter_per_pix := float(hotspot_iter) / float(maxi(hotspot_pixels, 1))
+				var contrib_pct := 100.0 * float(hotspot_contrib) / float(maxi(hotspot_iter, 1))
+				var break_rem_pct := 100.0 * float(hotspot_break_rem) / float(maxi(hotspot_pixels, 1))
+				var break_fin_pct := 100.0 * float(hotspot_break_fin) / float(maxi(hotspot_pixels, 1))
+				var break_sub_pct := 100.0 * float(hotspot_break_sub) / float(maxi(hotspot_pixels, 1))
+				print("[DIAG-BENCH-HOTSPOT-RASTER] tile=%d pixels=%d iter=%d contrib=%d iter/pix=%.0f contrib%%=%.1f break_rem%%=%.1f break_fin%%=%.1f break_sub%%=%.1f" % [
+					hotspot_tile, hotspot_pixels, hotspot_iter, hotspot_contrib, iter_per_pix, contrib_pct,
+					break_rem_pct, break_fin_pct, break_sub_pct])
+			var pruned: int = int(stats.get("hotspot_pruned_overlap_records", 0))
+			print("[DIAG-BENCH-HOTSPOT-PRUNE] pruned_overlap_records=%d count_pass_accepts=%d" % [pruned, count_accepts])
 		_diag8_count += 1
 
 

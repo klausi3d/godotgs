@@ -168,11 +168,35 @@ layout(set = 0, binding = 3, std430) buffer OverflowStats {
     uint first_clamp_tile_idx;
     uint first_clamp_range_y;               // range.y at the time of first clamp
     uint first_clamp_local_offset;          // local_offset at the time of first clamp
+    // Hotspot-tile raster cost probe. Host writes hotspot_tile_idx to nominate
+    // a single tile (typically the max-range_y tile from the previous frame).
+    // Raster pixels inside that tile accumulate the counters below at the same
+    // sample points that drive the global raster_* counters (center pixel of
+    // the tile by default). Decodes to:
+    //   iter/pix  = hotspot_iterations / hotspot_pixels_sampled
+    //   contrib%  = hotspot_contributions / hotspot_iterations
+    //   break%    = (hot_break_*) / hotspot_pixels_sampled
+    uint hotspot_tile_idx;                  // host-set (0 = disabled)
+    uint hotspot_pixels_sampled;            // raster stat sample points in hotspot
+    uint hotspot_iterations;                // splat iterations summed over pixels
+    uint hotspot_contributions;             // contributing splats summed over pixels
+    uint hotspot_break_remaining;           // subgroup/alpha-saturation break
+    uint hotspot_break_final;               // final-alpha break
+    uint hotspot_break_subgroup;            // subgroup early-exit break
+    // Hotspot-aware pre-raster cull (written in COUNT and EMIT whenever a
+    // (splat, tile) pair is dropped by gs_should_hotspot_prune_overlap).
+    uint hotspot_pruned_overlap_records;
 } overflow_stats;
 
 layout(set = 0, binding = 5, std430) buffer TileCounts {
     uint counts[];
 } tile_counts;
+
+// Previous-frame tile counts (ping-pong pair slot). Populated by last frame's
+// EMIT cursor == this tile's overlap record count. Read-only for this frame.
+layout(set = 0, binding = 19, std430) readonly buffer PrevTileCounts {
+    uint counts[];
+} prev_tile_counts;
 
 #ifdef GS_TILE_GLOBAL_SORT_EMIT_PASS
 layout(set = 0, binding = 2, std430) buffer GlobalSortKeys {
@@ -1036,12 +1060,20 @@ void main() {
     // Pass 1: count overlaps per tile (no keys/values emitted).
     atomicAdd(overflow_stats.count_pass_entered, 1u);
     uint probe_tile = overflow_stats.probe_tile_idx;
+    uint hotspot_pressure_threshold = gs_get_hotspot_pressure_threshold();
+    float hotspot_min_radius = gs_get_hotspot_min_radius_px();
     for (int ty = min_tile_y; ty <= max_tile_y; ++ty) {
         for (int tx = min_tile_x; tx <= max_tile_x; ++tx) {
             if (!gs_tile_intersects_projected_ellipse(screen_pos, conic, ellipse_sigma2, tx, ty)) {
                 continue;
             }
             uint tile_idx = uint(ty) * uint(params.tile_count.x) + uint(tx);
+            uint prev_count = prev_tile_counts.counts[tile_idx];
+            if (gs_should_hotspot_prune_overlap(prev_count, raw_min_radius_px,
+                    hotspot_pressure_threshold, hotspot_min_radius)) {
+                atomicAdd(overflow_stats.hotspot_pruned_overlap_records, 1u);
+                continue;
+            }
             if (!gs_keep_overlap_record(gaussian_idx, splat_ref.instance_id, tile_idx)) {
                 continue;
             }
@@ -1236,6 +1268,8 @@ void main() {
     uint emitted_overlap_count = 0u;
     atomicAdd(overflow_stats.emit_pass_entered, 1u);
     uint probe_tile = overflow_stats.probe_tile_idx;
+    uint hotspot_pressure_threshold = gs_get_hotspot_pressure_threshold();
+    float hotspot_min_radius = gs_get_hotspot_min_radius_px();
 
     // Pass 2: emit one overlap record per covered tile into the global key/value arrays.
     for (int ty = min_tile_y; ty <= max_tile_y; ++ty) {
@@ -1244,6 +1278,12 @@ void main() {
                 continue;
             }
             uint tile_idx = uint(ty) * uint(params.tile_count.x) + uint(tx);
+            uint prev_count = prev_tile_counts.counts[tile_idx];
+            if (gs_should_hotspot_prune_overlap(prev_count, raw_min_radius_px,
+                    hotspot_pressure_threshold, hotspot_min_radius)) {
+                atomicAdd(overflow_stats.hotspot_pruned_overlap_records, 1u);
+                continue;
+            }
             if (!gs_keep_overlap_record(gaussian_idx, splat_ref.instance_id, tile_idx)) {
                 continue;
             }
