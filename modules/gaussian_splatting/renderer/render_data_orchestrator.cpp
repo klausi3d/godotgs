@@ -581,6 +581,15 @@ Error GaussianSplatRenderer::restore_world_submission_runtime_state(const WorldS
 }
 
 Error GaussianSplatRenderer::apply_world_submission_contract(const WorldSubmissionContract &p_contract) {
+	// World submissions are built from a synchronous read of the project
+	// route policy in the world node (see gaussian_splat_world_3d.cpp).
+	// The renderer's cached route policy is otherwise refreshed lazily via
+	// the ProjectSettings settings_changed signal, which dispatches one
+	// frame later. Invalidate the cache eagerly here so that any same-turn
+	// build_frame_backend_plan() observes the same route policy the
+	// submission was constructed with, instead of a stale prior value.
+	_mark_streaming_route_policy_dirty();
+	_refresh_streaming_route_policy_cache();
 	set_lod_enabled(p_contract.lod_enabled);
 	set_lod_bias(p_contract.lod_bias);
 	set_lod_max_distance(p_contract.lod_max_distance);
