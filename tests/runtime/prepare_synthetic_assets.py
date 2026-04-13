@@ -16,8 +16,13 @@ import random
 import shutil
 import struct
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+RUNTIME_DIR = Path(__file__).resolve().parent
+if str(RUNTIME_DIR) not in sys.path:
+    sys.path.insert(0, str(RUNTIME_DIR))
 
 from open_world_chunked_asset_ladder import (
     MAIN_PROJECT_FIXTURE_ROOT,
