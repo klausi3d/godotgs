@@ -4,7 +4,7 @@
   "bootstrap_world_builder": {
     "builder_kind": "city_world_bootstrap",
     "camera_path_hint": "city_roam",
-    "chunk_size": 0.75,
+    "chunk_size": 10.0,
     "corridor_lanes": 20,
     "corridor_segments": 200,
     "instance_count": 4000,

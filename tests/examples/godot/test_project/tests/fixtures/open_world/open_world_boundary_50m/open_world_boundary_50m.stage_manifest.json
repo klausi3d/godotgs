@@ -4,7 +4,7 @@
   "bootstrap_world_builder": {
     "builder_kind": "boundary_world_bootstrap",
     "camera_path_hint": "boundary_crossing",
-    "chunk_size": 0.75,
+    "chunk_size": 10.0,
     "corridor_lanes": 20,
     "corridor_segments": 100,
     "instance_count": 2000,

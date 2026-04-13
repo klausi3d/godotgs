@@ -237,7 +237,7 @@ def _build_bootstrap_world_builder(spec: OpenWorldAssetSpec) -> dict[str, object
     instance_count = int(defaults["corridor_lanes"]) * int(defaults["corridor_segments"])
     return {
         "materialized_total_splats": instance_count * WORLD_SOURCE_ASSET_SPLATS,
-        "chunk_size": 0.75,
+        "chunk_size": 10.0,
         "corridor_lanes": int(defaults["corridor_lanes"]),
         "corridor_segments": int(defaults["corridor_segments"]),
         "lane_spacing": float(defaults["lane_spacing"]),
