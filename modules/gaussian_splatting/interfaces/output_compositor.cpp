@@ -1185,8 +1185,9 @@ void OutputCompositor::integrate_final_output(GaussianSplatRenderer *p_renderer,
         RID render_target_framebuffer;
 
         // Resolve the final presented viewport target separately from the pipeline's
-        // internal scene color texture. The depth-tested compute path must write to
-        // the former or its output will never reach the displayed framebuffer.
+        // internal scene color texture. The depth-tested compute path can only write
+        // directly to the presented target when the viewport is single-view and the
+        // render path is not relying on a later scale/upscale step.
         RID godot_render_target = render_buffers_rd->get_render_target();
         if (godot_render_target.is_valid()) {
             RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
@@ -1196,7 +1197,18 @@ void OutputCompositor::integrate_final_output(GaussianSplatRenderer *p_renderer,
             }
         }
 
-        const RID composite_target = present_render_target.is_valid() ? present_render_target : pipeline_render_target;
+        bool can_write_directly_to_present = false;
+        if (present_render_target.is_valid()) {
+            const bool single_view = render_buffers_rd->get_view_count() == 1;
+            const bool internal_matches_target = render_buffers_rd->get_internal_size() == render_buffers_rd->get_target_size();
+            const bool scaling_disabled = render_buffers_rd->get_scaling_3d_mode() == RS::VIEWPORT_SCALING_3D_MODE_OFF;
+            can_write_directly_to_present = single_view && internal_matches_target && scaling_disabled;
+        }
+
+        RID composite_target = pipeline_render_target;
+        if (!composite_target.is_valid() || can_write_directly_to_present) {
+            composite_target = present_render_target;
+        }
         output_cache.last_render_target = composite_target;
 
         bool composited = false;
