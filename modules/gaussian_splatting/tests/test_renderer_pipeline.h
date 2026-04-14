@@ -3092,6 +3092,135 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Scene composite keeps strict depth p
     }
 }
 
+TEST_CASE("[GaussianSplatting][RequiresGPU] Scene composite depth-test targets the presented viewport texture") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (rs == nullptr) {
+        MESSAGE("Skipping test - Rendering server unavailable");
+        return;
+    }
+
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    if (project_settings == nullptr) {
+        MESSAGE("Skipping test - ProjectSettings unavailable");
+        return;
+    }
+    const String composite_depth_setting = "rendering/gaussian_splatting/composite/depth_test";
+    ScopedProjectSetting composite_depth_guard(project_settings, composite_depth_setting);
+    project_settings->set_setting(composite_depth_setting, true);
+
+    ScopedGaussianManagerPipeline manager_scope;
+    GaussianSplatManager *manager = manager_scope.get();
+    if (manager == nullptr) {
+        MESSAGE("Skipping test - GaussianSplatManager unavailable");
+        return;
+    }
+
+    RenderingDevice *primary_rd = manager->get_primary_rendering_device();
+    if (!primary_rd) {
+        primary_rd = rs->create_local_rendering_device();
+    }
+    if (primary_rd == nullptr) {
+        MESSAGE("Skipping test - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianSplatRenderer> renderer;
+    renderer.instantiate(primary_rd);
+    CHECK(renderer.is_valid());
+    if (!renderer.is_valid()) {
+        return;
+    }
+    renderer->initialize();
+
+    const Vector2i resolution(320, 180);
+    RID render_target;
+    Ref<RenderSceneBuffersRD> render_buffers;
+    const bool render_buffers_ok = create_test_render_buffers(resolution, render_target, render_buffers);
+    CHECK(render_buffers_ok);
+    if (!render_buffers_ok) {
+        renderer.unref();
+        return;
+    }
+
+    RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
+    RID expected_present_target;
+    if (texture_storage != nullptr && render_target.is_valid()) {
+        expected_present_target = texture_storage->render_target_get_rd_texture(render_target);
+    }
+    RID internal_render_target = render_buffers->get_internal_texture();
+    CHECK(expected_present_target.is_valid());
+    CHECK(internal_render_target.is_valid());
+    CHECK(internal_render_target != expected_present_target);
+
+    RID scene_depth = render_buffers->get_depth_texture();
+    if (!scene_depth.is_valid()) {
+        MESSAGE("Skipping test - Scene depth texture unavailable");
+        renderer.unref();
+        if (texture_storage != nullptr && render_target.is_valid()) {
+            texture_storage->render_target_free(render_target);
+        }
+        return;
+    }
+
+    const uint32_t total_gaussians = GaussianStreamingSystem::CHUNK_SIZE;
+    LocalVector<Gaussian> gaussians;
+    fill_gaussians(gaussians, total_gaussians);
+
+    Ref<::GaussianData> data;
+    data.instantiate();
+    data->set_gaussians(gaussians);
+
+    renderer->set_max_splats(total_gaussians);
+    Error set_data_err = renderer->set_gaussian_data(data);
+    CHECK(set_data_err == OK);
+    if (set_data_err != OK) {
+        renderer.unref();
+        if (texture_storage != nullptr && render_target.is_valid()) {
+            texture_storage->render_target_free(render_target);
+        }
+        return;
+    }
+
+    RenderSceneDataRD scene_data;
+    scene_data.cam_transform = Transform3D(Basis(), Vector3(0.0f, 0.0f, 6.0f));
+    scene_data.cam_projection.set_perspective(65.0f, 16.0f / 9.0f, 0.1f, 200.0f);
+
+    RenderDataRD render_data;
+    render_data.scene_data = &scene_data;
+    render_data.render_buffers = render_buffers;
+
+    for (int frame = 0; frame < 2; frame++) {
+        renderer->render_scene_instance(&render_data);
+    }
+
+    RID final_output = renderer->get_final_texture();
+    RID cached_depth = renderer->test_get_cached_render_depth();
+    if (!final_output.is_valid() || !cached_depth.is_valid()) {
+        MESSAGE("Skipping test - Final output or cached depth unavailable");
+        renderer.unref();
+        if (texture_storage != nullptr && render_target.is_valid()) {
+            texture_storage->render_target_free(render_target);
+        }
+        return;
+    }
+
+    renderer->test_clear_output_viewport_blit_resources();
+    renderer->test_reset_output_viewport_copy_state();
+
+    RID resolved_render_target = internal_render_target;
+    renderer->test_integrate_final_output(&render_data, render_buffers.ptr(), final_output,
+            resolved_render_target, resolution, false, false, cached_depth);
+
+    CHECK(renderer->was_last_viewport_copy_successful());
+    CHECK(resolved_render_target == expected_present_target);
+
+    renderer.unref();
+
+    if (texture_storage != nullptr && render_target.is_valid()) {
+        texture_storage->render_target_free(render_target);
+    }
+}
+
 TEST_CASE("[GaussianSplatting][RequiresGPU] Cached render reuse requires cached depth when depth validation is requested") {
     REQUIRE_GPU_DEVICE();
 
