@@ -447,7 +447,11 @@ void GaussianSplatNode3D::_notification(int p_what) {
 
 void GaussianSplatNode3D::_validate_property(PropertyInfo &p_property) const {
     if (_is_renderer_shared_with_other_content(renderer)) {
-        if (p_property.name.begins_with("painterly/") || p_property.name == "rendering/color_grading" ||
+        // Color grading stays visible on every node even when the renderer is
+        // shared: each node pushes its own grading to the renderer (last
+        // write wins until per-submission grading lands). Painterly and
+        // debug overlays remain renderer-wide and are still hidden here.
+        if (p_property.name.begins_with("painterly/") ||
                 p_property.name == "debug/show_tile_grid" ||
                 p_property.name == "debug/show_density_heatmap" ||
                 p_property.name == "debug/show_performance_hud" ||
@@ -2079,11 +2083,9 @@ void GaussianSplatNode3D::_on_asset_changed() {
 
 void GaussianSplatNode3D::_on_color_grading_changed() {
     if (renderer.is_valid()) {
-        if (_is_renderer_shared_with_other_content(renderer)) {
-            renderer->set_color_grading(Ref<ColorGradingResource>());
-        } else {
-            renderer->set_color_grading(color_grading);
-        }
+        // Every node pushes its grading independently; when multiple nodes
+        // share a renderer, the most recently updated grading wins.
+        renderer->set_color_grading(color_grading);
         renderer->invalidate_cached_render();
     }
 }
@@ -2152,11 +2154,11 @@ void GaussianSplatNode3D::set_color_grading(const Ref<ColorGradingResource> &p_g
     }
 
     if (renderer.is_valid()) {
-        if (_is_renderer_shared_with_other_content(renderer)) {
-            renderer->set_color_grading(Ref<ColorGradingResource>());
-        } else {
-            renderer->set_color_grading(color_grading);
-        }
+        // Color grading is per-node: always push to the renderer regardless
+        // of whether the renderer is shared with other nodes or a world
+        // submission. Last-writer-wins when sharing, which is acceptable
+        // until per-submission grading is wired through the pipeline.
+        renderer->set_color_grading(color_grading);
         renderer->invalidate_cached_render();
     }
 

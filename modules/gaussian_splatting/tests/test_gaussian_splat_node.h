@@ -1221,7 +1221,7 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer ins
     memdelete(node_a);
 }
 
-TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer hides node-local color grading property") {
+TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Color grading property stays exposed when renderer is shared") {
     SceneTree *tree = SceneTree::get_singleton();
     REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
 
@@ -1240,7 +1240,6 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer hid
     root->add_child(node_b);
     tree->process(0.0);
 
-    // Shared renderer hides color_grading; requires GPU renderer to be available.
     Ref<GaussianSplatRenderer> renderer = node_a->get_renderer();
     if (!renderer.is_valid()) {
         MESSAGE("Skipping shared-renderer property check - renderer unavailable (headless mode)");
@@ -1251,11 +1250,12 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer hid
         return;
     }
 
-    CHECK_FALSE(is_property_editor_exposed(node_a, StringName("rendering/color_grading")));
-    CHECK_FALSE(is_property_editor_exposed(node_b, StringName("rendering/color_grading")));
+    // Color grading is per-node: the property must remain visible on every
+    // node, even when the renderer is shared between multiple instances.
+    CHECK(is_property_editor_exposed(node_a, StringName("rendering/color_grading")));
+    CHECK(is_property_editor_exposed(node_b, StringName("rendering/color_grading")));
 
-    // Remove the second node — shared renderer collapses to single-instance.
-    // Color grading property should become editor-visible again on the remaining node.
+    // It should also stay visible after the share collapses back to a single instance.
     root->remove_child(node_b);
     tree->process(0.0);
     CHECK(is_property_editor_exposed(node_a, StringName("rendering/color_grading")));
@@ -1265,7 +1265,7 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer hid
     memdelete(node_a);
 }
 
-TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] World submission blocks node color grading push to renderer") {
+TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Node color grading reaches renderer even with active world submission") {
     SceneTree *tree = SceneTree::get_singleton();
     REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
 
@@ -1304,25 +1304,23 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] World submission bl
     Ref<ColorGradingResource> grading = make_color_grading_resource();
     graded_node->set_color_grading(grading);
 
-    // The renderer is shared with an active world submission, so color
-    // grading must NOT leak to the renderer.
+    // Color grading is per-node: even with an active world submission
+    // sharing the renderer, the node's grading must reach the renderer
+    // and the inspector property must stay visible.
     CHECK_MESSAGE(graded_node->get_color_grading() == grading,
             "Node retains its local color grading");
-    CHECK_MESSAGE(!renderer->get_color_grading().is_valid(),
-            "Renderer color grading must be null when world submission is active");
+    CHECK_MESSAGE(renderer->get_color_grading() == grading,
+            "Renderer color grading must reflect the node's grading even with a world submission");
+    CHECK(is_property_editor_exposed(graded_node, StringName("rendering/color_grading")));
 
-    // Color grading property should be hidden in the inspector.
-    CHECK_FALSE(is_property_editor_exposed(graded_node, StringName("rendering/color_grading")));
-
-    // Remove the world node — renderer is no longer shared with world content.
+    // Property and propagation should also hold after the world submission is removed.
     world_node->clear_world();
     root->remove_child(world_node);
     tree->process(0.0);
 
-    // Now the splat node is the sole user. Re-push grading and verify it reaches the renderer.
     graded_node->set_color_grading(grading);
     CHECK_MESSAGE(renderer->get_color_grading() == grading,
-            "Color grading should reach renderer after world submission is removed");
+            "Color grading should still reach renderer after world submission is removed");
     CHECK(is_property_editor_exposed(graded_node, StringName("rendering/color_grading")));
 
     root->remove_child(graded_node);
@@ -1381,8 +1379,11 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer pre
     CHECK(node_a->is_painterly_enabled());
     CHECK(node_a->get_color_grading().is_valid());
     CHECK(node_a->get_color_grading() == grading);
+    // Painterly is still renderer-wide and gated while the renderer is shared.
     CHECK_FALSE(renderer->get_painterly_enabled());
-    CHECK(renderer->get_color_grading().is_null());
+    // Color grading is per-node and propagates to the renderer regardless of sharing
+    // (last-writer-wins when multiple nodes share a renderer).
+    CHECK(renderer->get_color_grading() == grading);
 
     root->remove_child(node_b);
     tree->process(0.0);
