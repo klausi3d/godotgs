@@ -773,27 +773,29 @@ Error BitonicSort::sort(RID keys_buffer, RID values_buffer, uint32_t count) {
     value_uniform.append_id(values_buffer);
     uniforms.push_back(value_uniform);
     
-    // Dont manually free uniform sets - they auto-free when buffer dependencies are freed
-    // (Godot PR 103113). Manual frees cause "invalid ID" if sets were already auto-freed.
-    uniform_set = RID();
-    uniform_owner = nullptr;
-    uniform_owner_generation = 0;
     RenderingDevice *uniform_device = resource_device;
     ERR_FAIL_NULL_V_MSG(uniform_device, ERR_CANT_CREATE, "Rendering device unavailable for BitonicSort uniform set");
-    uniform_set = uniform_device->uniform_set_create(uniforms, bitonic_shader, 0);
-    if (uniform_set.is_valid()) {
-        uniform_device->set_resource_name(uniform_set, "GS_BitonicSort_UniformSet");
-    }
-    uniform_owner = uniform_device;
-    uniform_owner_generation = uniform_device->get_device_instance_id();
 
-    // Begin compute list
+    // Begin compute list before allocating the uniform set so a compute-list
+    // failure does not orphan a freshly-created set.
     ComputeListID compute_list = compute_rd->compute_list_begin();
     if (compute_list == RD::INVALID_ID) {
         WARN_PRINT_ONCE("[BitonicSort] Failed to begin compute list; sort skipped.");
         is_sorting = false;
         return ERR_CANT_CREATE;
     }
+
+    // Dont manually free uniform sets - they auto-free when buffer dependencies are freed
+    // (Godot PR 103113). Manual frees cause "invalid ID" if sets were already auto-freed.
+    uniform_set = RID();
+    uniform_owner = nullptr;
+    uniform_owner_generation = 0;
+    uniform_set = uniform_device->uniform_set_create(uniforms, bitonic_shader, 0);
+    if (uniform_set.is_valid()) {
+        uniform_device->set_resource_name(uniform_set, "GS_BitonicSort_UniformSet");
+    }
+    uniform_owner = uniform_device;
+    uniform_owner_generation = uniform_device->get_device_instance_id();
     compute_rd->compute_list_bind_compute_pipeline(compute_list, bitonic_pipeline);
     compute_rd->compute_list_bind_uniform_set(compute_list, uniform_set, 0);
 
@@ -3143,6 +3145,15 @@ Error OneSweepSort::sort(RID keys_buffer, RID values_buffer, uint32_t count) {
         resource_rd->buffer_clear(chained_scan_buffer, 0, per_wg_hist_size);
         gs_device_utils::safe_submit_and_sync(resource_rd);
 
+        // Begin compute list before allocating per-pass uniform sets so a
+        // compute-list failure does not orphan freshly-created sets.
+        ComputeListID compute_list = compute_rd->compute_list_begin();
+        if (compute_list == RD::INVALID_ID) {
+            WARN_PRINT_ONCE("[OneSweepSort] Failed to begin compute list; sort skipped.");
+            is_sorting = false;
+            return ERR_CANT_CREATE;
+        }
+
         // Create uniform sets
         Vector<RD::Uniform> global_hist_uniforms;
         global_hist_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 0, current_keys));
@@ -3178,13 +3189,6 @@ Error OneSweepSort::sort(RID keys_buffer, RID values_buffer, uint32_t count) {
         RID scatter_uniform_set = resource_rd->uniform_set_create(scatter_uniforms, scatter_shader, 0);
         if (scatter_uniform_set.is_valid()) {
             resource_rd->set_resource_name(scatter_uniform_set, vformat("GS_OneSweep_ScatterSet_Pass%d", pass));
-        }
-
-        ComputeListID compute_list = compute_rd->compute_list_begin();
-        if (compute_list == RD::INVALID_ID) {
-            WARN_PRINT_ONCE("[OneSweepSort] Failed to begin compute list; sort skipped.");
-            is_sorting = false;
-            return ERR_CANT_CREATE;
         }
 
         // Phase 1: Global histogram
