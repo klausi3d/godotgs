@@ -1,6 +1,21 @@
 name: Release Builds
 
 on:
+  pull_request:
+    branches: [master, main, develop]
+    paths:
+      - "core/**"
+      - "drivers/**"
+      - "editor/**"
+      - "main/**"
+      - "modules/**"
+      - "platform/**"
+      - "scene/**"
+      - "servers/**"
+      - "thirdparty/**"
+      - "*.py"
+      - "SConstruct"
+      - ".github/workflows/release_builds.yml"
   push:
     branches: [master, main, develop]
     tags:
@@ -258,6 +273,9 @@ jobs:
     name: Build Windows Editor + Contributor Artifact
     runs-on: [self-hosted, Windows, X64, godotgs]
     needs: release_metadata
+    # Never run self-hosted Windows job on untrusted PR code. PR artifact
+    # validation is handled by the Linux job on GitHub-hosted runners.
+    if: github.event_name != 'pull_request'
     timeout-minutes: 120
     defaults:
       run:
@@ -395,7 +413,13 @@ jobs:
       - release_metadata
       - build_linux
       - build_windows
-    if: needs.release_metadata.outputs.publish == 'true'
+    # Publish as long as the Linux lane succeeded. A Windows runner outage
+    # must not prevent a Linux-only release; the Windows artifact is
+    # downloaded optionally below and included if available.
+    if: |
+      always() &&
+      needs.release_metadata.outputs.publish == 'true' &&
+      needs.build_linux.result == 'success'
     steps:
       - name: Download Linux contributor artifact
         uses: actions/download-artifact@v4
@@ -404,6 +428,7 @@ jobs:
           path: release-assets/linux
 
       - name: Download Windows contributor artifact
+        if: needs.build_windows.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: godotgs-windows-${{ needs.release_metadata.outputs.channel }}-${{ github.run_number }}
@@ -418,6 +443,7 @@ jobs:
           prerelease: ${{ needs.release_metadata.outputs.prerelease == 'true' }}
           draft: false
           generate_release_notes: true
+          fail_on_unmatched_files: false
           files: |
             release-assets/linux/godotgs-linux-x86_64-${{ needs.release_metadata.outputs.tag }}.tar.xz
             release-assets/linux/godotgs-linux-x86_64-${{ needs.release_metadata.outputs.tag }}.sha256
