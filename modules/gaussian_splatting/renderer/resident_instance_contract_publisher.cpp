@@ -247,6 +247,9 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 	{
 		const GaussianSplatRenderer::ResourceState &resource_state = p_renderer->get_resource_state();
 		const GaussianRenderPipeline::InstancePipelineBuffers &published_buffers = p_renderer->get_instance_pipeline_buffers();
+		auto owner_ok = [&](const RID &p_rid) {
+			return !p_rid.is_valid() || p_renderer->get_resource_owner(p_rid, rd) == rd;
+		};
 		if (p_renderer->get_instance_backend_policy() == GaussianRenderPipeline::InstanceBackendPolicy::RESIDENT &&
 				p_renderer->has_instance_pipeline_buffers() &&
 				p_renderer->has_instance_asset_remap() &&
@@ -255,7 +258,13 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 				GaussianSplatting::InstancePipelineContract::has_atlas_buffers(published_buffers) &&
 				GaussianSplatting::InstancePipelineContract::has_cull_buffers(published_buffers) &&
 				GaussianSplatting::InstancePipelineContract::has_sort_buffers(published_buffers) &&
-				GaussianSplatting::InstancePipelineContract::has_raster_buffers(published_buffers)) {
+				GaussianSplatting::InstancePipelineContract::has_raster_buffers(published_buffers) &&
+				owner_ok(resource_state.instance_visible_chunk_buffer) &&
+				owner_ok(resource_state.instance_splat_ref_buffer) &&
+				owner_ok(resource_state.instance_counter_buffer) &&
+				owner_ok(resource_state.instance_chunk_dispatch_buffer) &&
+				owner_ok(resource_state.instance_indirect_count_buffer) &&
+				owner_ok(resource_state.instance_count_buffer)) {
 			return true;
 		}
 	}
