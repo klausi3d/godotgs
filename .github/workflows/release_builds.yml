@@ -1,21 +1,6 @@
 name: Release Builds
 
 on:
-  pull_request:
-    branches: [master, main, develop]
-    paths:
-      - "core/**"
-      - "drivers/**"
-      - "editor/**"
-      - "main/**"
-      - "modules/**"
-      - "platform/**"
-      - "scene/**"
-      - "servers/**"
-      - "thirdparty/**"
-      - "*.py"
-      - "SConstruct"
-      - ".github/workflows/release_builds.yml"
   push:
     branches: [master, main, develop]
     tags:
