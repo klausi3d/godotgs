@@ -24,7 +24,7 @@ Define how executable builds are distributed from this repository and what guara
 
 | Trigger | Behavior |
 | --- | --- |
-| Pull request touching engine/module paths | Build Linux and Windows editors and upload contributor artifacts |
+| Pull request touching engine/module paths | Build the Linux editor on a GitHub-hosted runner and upload its contributor artifact. The Windows editor lane is intentionally skipped for pull requests because it runs on a self-hosted runner and must not execute untrusted PR code. |
 | Push to `master`/`main`/`develop` | Build Linux and Windows editors and upload contributor artifacts |
 | Nightly schedule (`30 2 * * *` UTC) | Build and publish nightly prerelease (`nightly-YYYYMMDD`) with Linux assets today and Windows assets once the first Windows publish lands, then prune old nightlies |
 | Tag push (`v*`) | Build and publish a versioned stable-tag release with Linux and Windows assets when that path is intentionally used |
