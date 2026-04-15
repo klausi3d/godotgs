@@ -228,6 +228,7 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 
 	uint64_t source_generation = 0x6a09e667f3bcc909ULL;
 	source_generation = _mix_generation(source_generation, has_primary_data ? uint64_t(primary_data->get_instance_id()) : 0ULL);
+	source_generation = _mix_generation(source_generation, has_primary_data ? primary_data->get_content_revision() : 0ULL);
 	const Ref<GPUCuller> &gpu_culler = p_renderer->get_subsystem_state().gpu_culler;
 	source_generation = _mix_generation(source_generation,
 			gpu_culler.is_valid() ? gpu_culler->get_state().static_chunks_revision : 0ULL);
@@ -240,6 +241,7 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 	for (const ResidentAssetDescriptor &asset : assets) {
 		source_generation = _mix_generation(source_generation, asset.submission_asset_id);
 		source_generation = _mix_generation(source_generation, asset.data.is_valid() ? uint64_t(asset.data->get_instance_id()) : 0ULL);
+		source_generation = _mix_generation(source_generation, asset.data.is_valid() ? asset.data->get_content_revision() : 0ULL);
 	}
 
 	{
