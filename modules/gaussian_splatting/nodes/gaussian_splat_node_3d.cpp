@@ -2116,6 +2116,12 @@ void GaussianSplatNode3D::_on_color_grading_changed() {
         // share a renderer, the most recently updated grading wins.
         renderer->set_color_grading(color_grading);
         renderer->invalidate_cached_render();
+        // Arm the data-ready replay guard: this explicit push satisfies the
+        // same invariant the _update_asset() first-data-ready replay would
+        // satisfy. Without arming the flag, a subsequent _update_asset call
+        // (hot-reload / reimport) on a shared renderer would re-push this
+        // node's grading and overwrite whichever node wrote last.
+        grading_pushed_for_current_data = true;
     }
 }
 
@@ -2189,6 +2195,13 @@ void GaussianSplatNode3D::set_color_grading(const Ref<ColorGradingResource> &p_g
         // until per-submission grading is wired through the pipeline.
         renderer->set_color_grading(color_grading);
         renderer->invalidate_cached_render();
+        // Arm the data-ready replay guard: an explicit user push satisfies
+        // the same invariant the _update_asset() first-data-ready replay
+        // would satisfy. Without arming the flag, a subsequent
+        // _update_asset call (hot-reload / reimport) on a shared renderer
+        // would re-push this node's grading and overwrite whichever node
+        // wrote last.
+        grading_pushed_for_current_data = true;
     }
 
     _mark_render_state_dirty();

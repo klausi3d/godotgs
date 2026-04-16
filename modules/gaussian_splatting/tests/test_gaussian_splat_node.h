@@ -1601,6 +1601,86 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Hot-reload of node 
     memdelete(node_a);
 }
 
+TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Setter after no-grading load arms guard so hot-reload does not re-clobber peer") {
+    SceneTree *tree = SceneTree::get_singleton();
+    REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+    Window *root = tree->get_root();
+    REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+    // Reproduces the post-fix scenario from PR #245 P1#8:
+    //   - node_a loads with NO grading (so ensure_renderer skips its push;
+    //     the data-ready guard would stay false without the setter arming
+    //     it).
+    //   - node_b loads with grading_b (ensure_renderer pushes grading_b).
+    //   - user later assigns grading_a via the setter on node_a.
+    //   - user later assigns grading_b via the setter on node_b (renderer
+    //     now reflects grading_b, the most recent setter write).
+    //   - hot-reload of node_a's asset runs _update_asset on node_a. With
+    //     the setter arming the guard, this must NOT re-push grading_a
+    //     and must leave grading_b on the renderer.
+    GaussianSplatNode3D *node_a = memnew(GaussianSplatNode3D);
+    GaussianSplatNode3D *node_b = memnew(GaussianSplatNode3D);
+    node_a->set_splat_asset(make_single_splat_asset(9401.0f));
+    node_b->set_splat_asset(make_single_splat_asset(9402.0f));
+
+    Ref<ColorGradingResource> grading_b_initial = make_color_grading_resource();
+    REQUIRE(grading_b_initial.is_valid());
+    grading_b_initial->set_exposure(0.6f);
+    node_b->set_color_grading(grading_b_initial);
+
+    root->add_child(node_a);
+    root->add_child(node_b);
+    tree->process(0.0);
+
+    Ref<GaussianSplatRenderer> renderer = node_a->get_renderer();
+    if (!renderer.is_valid()) {
+        MESSAGE("Skipping test - renderer unavailable (headless mode)");
+        root->remove_child(node_b);
+        root->remove_child(node_a);
+        memdelete(node_b);
+        memdelete(node_a);
+        return;
+    }
+    REQUIRE_MESSAGE(renderer == node_b->get_renderer(), "Both nodes must share the same renderer for this test");
+
+    Ref<ColorGradingResource> grading_a = make_color_grading_resource();
+    Ref<ColorGradingResource> grading_b = make_color_grading_resource();
+    REQUIRE(grading_a.is_valid());
+    REQUIRE(grading_b.is_valid());
+    grading_a->set_exposure(0.25f);
+    grading_b->set_exposure(0.75f);
+
+    // Setter on node_a: must push grading_a AND arm the guard, so that
+    // a later _update_asset on node_a doesn't re-push.
+    node_a->set_color_grading(grading_a);
+    tree->process(0.0);
+    CHECK_MESSAGE(renderer->get_color_grading() == grading_a,
+            "Renderer must reflect node_a's grading after explicit setter");
+
+    // Setter on node_b: most recent push, renderer = grading_b.
+    node_b->set_color_grading(grading_b);
+    tree->process(0.0);
+    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
+            "Renderer must reflect node_b's grading after its setter");
+
+    // Hot-reload of node_a's asset. Without the setter arming the guard,
+    // _update_asset on node_a would re-push grading_a and clobber
+    // grading_b. With the fix, the guard is true and no push happens.
+    Ref<GaussianSplatAsset> asset_a = node_a->get_splat_asset();
+    REQUIRE(asset_a.is_valid());
+    asset_a->emit_changed();
+    tree->process(0.0);
+
+    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
+            "Hot-reload of node_a's asset must not re-clobber node_b after setter armed the guard");
+
+    root->remove_child(node_b);
+    root->remove_child(node_a);
+    memdelete(node_b);
+    memdelete(node_a);
+}
+
 TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer full-fidelity override only follows attached assets") {
     SceneTree *tree = SceneTree::get_singleton();
     REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
