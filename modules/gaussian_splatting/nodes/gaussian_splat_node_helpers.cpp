@@ -1374,21 +1374,31 @@ void GaussianSplatNodeRendererHelper::ensure_renderer() {
             if (owner.renderer.is_valid()) {
                 apply_renderer_settings();
                 // Initial sync: push the cached color grading once when the
-                // renderer becomes available. set_color_grading() couldn't
-                // push earlier because the renderer was null (normal scene-
-                // deserialization path: property setter runs before ensure
-                // brings the renderer up). apply_renderer_settings() does
-                // not push grading per-frame to avoid the shared-renderer
-                // clobber, so this initial push is needed.
+                // renderer becomes available, gated on actually-rendering
+                // local source data only (NOT on ownership).
                 //
-                // No ownership gate: set_color_grading() pushes regardless
-                // of ownership (per-node grading is the design intent), so
-                // initial sync must mirror that. Otherwise a non-owner node
-                // sharing a renderer with an active world submission would
-                // silently drop its persisted grading. Last-writer-wins
-                // between distinct ensure_renderer() calls matches the
-                // setter's existing semantics.
-                owner.renderer->set_color_grading(owner.color_grading);
+                // Why local-source-data gate: an empty GaussianSplatNode3D
+                // with no asset/data but a saved rendering/color_grading
+                // would otherwise grab the shared world renderer on tree-
+                // entry and tint other renderer users that have no
+                // relationship to it. Same predicate as
+                // can_apply_renderer_settings()'s data-content check.
+                //
+                // Why NOT the full can_apply_renderer_settings(): that
+                // also requires renderer-settings ownership, which fails
+                // for a non-owner node sharing a renderer with an active
+                // world submission. set_color_grading() bypasses ownership
+                // (per-node grading is the design intent), so initial sync
+                // must mirror that: every node WITH content pushes its
+                // grading on initial sync. Last-writer-wins between
+                // distinct ensure_renderer() calls matches the setter's
+                // existing semantics.
+                const bool has_local_source_data = owner.renderer_data.is_valid() ||
+                        owner.splat_asset.is_valid() ||
+                        owner.runtime_asset.is_valid();
+                if (has_local_source_data) {
+                    owner.renderer->set_color_grading(owner.color_grading);
+                }
             }
         }
     }
