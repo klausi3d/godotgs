@@ -33,6 +33,7 @@
 #include "test_streaming_queue_pressure_controller.h"
 #include "test_sort_fallback_policy.h"
 #include "test_sort_benchmark_metrics.h"
+#include "test_streaming_quantization.h"
 #include "test_gaussian_splat_merge_utils.h"
 #include "test_gaussian_splat_world_io.h"
 #include "test_world_io_header_guards.h"
