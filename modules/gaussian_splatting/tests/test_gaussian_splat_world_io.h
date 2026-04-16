@@ -138,6 +138,28 @@ void _write_world_header_for_fixture(const Ref<FileAccess> &p_file,
     p_file->store_64(p_metadata_size);
 }
 
+Error _write_world_io_fixture(const String &p_path, bool p_with_metadata = true) {
+    Ref<GaussianData> gaussian_data;
+    gaussian_data.instantiate();
+    gaussian_data->set_gaussians(build_gaussians());
+
+    Ref<GaussianSplatWorld> world;
+    world.instantiate();
+    world->set_gaussian_data(gaussian_data);
+    world->set_bounds(gaussian_data->get_aabb());
+    world->set_static_chunks(build_chunks());
+
+    if (p_with_metadata) {
+        Dictionary metadata;
+        metadata[StringName("lod_levels")] = 2;
+        metadata[StringName("author")] = String("test");
+        world->set_metadata(metadata);
+    }
+
+    ResourceFormatSaverGaussianSplatWorld saver;
+    return saver.save(world, p_path);
+}
+
 } // namespace
 
 TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld direct format saver/loader") {
@@ -214,6 +236,147 @@ TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld direct format saver/loader")
     CHECK_EQ(chunks.size(), 2);
 
     // Cleanup
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] loader rejects metadata range beyond end of file") {
+    const String path = _make_world_io_fixture_path("metadata_overflow");
+    const Error save_err = _write_world_io_fixture(path, true);
+    CHECK_MESSAGE(save_err == OK, "Saving gsplatworld fixture should succeed.");
+    if (save_err != OK) {
+        _remove_world_io_fixture(path);
+        return;
+    }
+
+    Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ_WRITE);
+    CHECK_MESSAGE(file.is_valid(), "Fixture should be writable for metadata corruption.");
+    if (!file.is_valid()) {
+        _remove_world_io_fixture(path);
+        return;
+    }
+
+    const uint64_t file_len = file->get_length();
+    // Header fields: metadata_offset at byte 88, metadata_size at byte 96.
+    file->seek(88u);
+    file->store_64(file_len - 1u);
+    file->seek(96u);
+    file->store_64(8u);
+    const Error patch_err = file->get_error();
+    CHECK_MESSAGE(patch_err == OK, "Metadata corruption write should succeed.");
+    file.unref();
+
+    if (patch_err != OK) {
+        _remove_world_io_fixture(path);
+        return;
+    }
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error load_err = OK;
+    Ref<Resource> loaded = loader.load(path, "", &load_err);
+    CHECK_MESSAGE(!loaded.is_valid(), "Loader should reject metadata ranges that overflow file bounds.");
+    CHECK_EQ(load_err, ERR_FILE_CORRUPT);
+
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] compressed flag requires non-zero stored compressed payload size") {
+    const String path = _make_world_io_fixture_path("compressed_zero_size");
+    const Error save_err = _write_world_io_fixture(path, false);
+    CHECK_MESSAGE(save_err == OK, "Saving gsplatworld fixture should succeed.");
+    if (save_err != OK) {
+        _remove_world_io_fixture(path);
+        return;
+    }
+
+    Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ_WRITE);
+    CHECK_MESSAGE(file.is_valid(), "Fixture should be writable for compression-flag corruption.");
+    if (!file.is_valid()) {
+        _remove_world_io_fixture(path);
+        return;
+    }
+
+    // Header fields: flags at byte 8, gaussian_offset at byte 56.
+    file->seek(8u);
+    uint32_t flags = file->get_32();
+    flags |= (1u << 4u); // kFlagCompressed
+    file->seek(8u);
+    file->store_32(flags);
+
+    file->seek(56u);
+    const uint64_t gaussian_offset = file->get_64();
+    CHECK_MESSAGE(gaussian_offset + 8u <= file->get_length(),
+            "Fixture should contain enough gaussian payload bytes to patch compressed-size prefix.");
+    if (gaussian_offset + 8u > file->get_length()) {
+        _remove_world_io_fixture(path);
+        return;
+    }
+
+    file->seek(gaussian_offset);
+    file->store_64(0u); // Invalid because splat_count > 0.
+    const Error patch_err = file->get_error();
+    CHECK_MESSAGE(patch_err == OK, "Compression corruption write should succeed.");
+    file.unref();
+
+    if (patch_err != OK) {
+        _remove_world_io_fixture(path);
+        return;
+    }
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error load_err = OK;
+    Ref<Resource> loaded = loader.load(path, "", &load_err);
+    CHECK_MESSAGE(!loaded.is_valid(),
+            "Loader should reject compressed payloads whose stored compressed size is zero.");
+    CHECK_EQ(load_err, ERR_FILE_CORRUPT);
+
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] loader rejects chunk index ranges that overflow uint64 bounds") {
+    const String path = _make_world_io_fixture_path("chunk_index_overflow");
+    const Error save_err = _write_world_io_fixture(path, false);
+    CHECK_MESSAGE(save_err == OK, "Saving gsplatworld fixture should succeed.");
+    if (save_err != OK) {
+        _remove_world_io_fixture(path);
+        return;
+    }
+
+    Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ_WRITE);
+    CHECK_MESSAGE(file.is_valid(), "Fixture should be writable for chunk index corruption.");
+    if (!file.is_valid()) {
+        _remove_world_io_fixture(path);
+        return;
+    }
+
+    // Header field: chunk_table_offset at byte 72.
+    file->seek(72u);
+    const uint64_t chunk_table_offset = file->get_64();
+    CHECK_MESSAGE(chunk_table_offset + 56u <= file->get_length(),
+            "Fixture should contain at least one complete chunk record.");
+    if (chunk_table_offset + 56u > file->get_length()) {
+        _remove_world_io_fixture(path);
+        return;
+    }
+
+    // ChunkRecord layout: indices_offset starts at +40 bytes in each 56-byte record.
+    file->seek(chunk_table_offset + 40u);
+    file->store_64(uint64_t(-1)); // UINT64_MAX -> overflow once index_count is added.
+    const Error patch_err = file->get_error();
+    CHECK_MESSAGE(patch_err == OK, "Chunk index corruption write should succeed.");
+    file.unref();
+
+    if (patch_err != OK) {
+        _remove_world_io_fixture(path);
+        return;
+    }
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error load_err = OK;
+    Ref<Resource> loaded = loader.load(path, "", &load_err);
+    CHECK_MESSAGE(!loaded.is_valid(),
+            "Loader should reject chunk index ranges that overflow uint64 arithmetic.");
+    CHECK_EQ(load_err, ERR_FILE_CORRUPT);
+
     _remove_world_io_fixture(path);
 }
 
