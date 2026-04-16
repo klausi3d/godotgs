@@ -15,6 +15,7 @@
 
 // Include all test suites
 #include "test_gaussian_data.h"
+#include "test_gaussian_data_loader.h"
 #include "test_gpu_streaming.h"
 #include "test_gpu_sorting.h"
 #include "test_asset_dependency_manager.h"
