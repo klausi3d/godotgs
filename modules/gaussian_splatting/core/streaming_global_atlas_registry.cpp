@@ -12,6 +12,7 @@
 #include "../logger/gs_logger.h"
 #include <algorithm>
 #include <cfloat>
+#include <cstring>
 #include <cstdint>
 
 namespace {
@@ -34,9 +35,10 @@ bool _is_streaming_debug_enabled() {
 }
 
 void _clear_dirty_flags(LocalVector<uint8_t> &flags) {
-	for (uint32_t i = 0; i < flags.size(); i++) {
-		flags[i] = 0;
+	if (flags.is_empty()) {
+		return;
 	}
+	std::memset(flags.ptr(), 0, flags.size() * sizeof(uint8_t));
 }
 
 GaussianDCEncoding _resolve_data_dc_encoding(const Ref<GaussianData> &p_data) {
@@ -68,6 +70,47 @@ bool _ensure_placeholder_buffer(RenderingDevice *p_rd, RID &r_buffer, uint32_t &
 	p_rd->set_resource_name(r_buffer, p_name);
 	r_logical_size = 0;
 	return true;
+}
+
+ChunkMetaGPU _build_chunk_meta_gpu(const GaussianStreamingSystem::AtlasAssetState &asset,
+		const GaussianStreamingSystem::StreamingChunk &chunk, uint32_t p_chunk_idx,
+		bool p_per_chunk_quantization_enabled, uint32_t p_data_gpu_flags) {
+	ChunkMetaGPU meta = {};
+	const bool resident = chunk.is_loaded && !chunk.upload_pending && chunk.buffer_slot != UINT32_MAX;
+	const uint32_t effective_splat_count = MIN(chunk.effective_count, chunk.count);
+	const uint32_t sh_band_limit = uint32_t(CLAMP(chunk.sh_band_level, 0, 3));
+	if (resident) {
+		meta.atlas_base = chunk.buffer_slot * GaussianStreamingSystem::CHUNK_SIZE;
+		meta.splat_count = effective_splat_count;
+	} else {
+		meta.atlas_base = 0;
+		meta.splat_count = 0;
+	}
+	if (p_per_chunk_quantization_enabled) {
+		meta.quant_base = asset.quant_base + p_chunk_idx;
+		meta.quant_count = 1;
+	} else {
+		meta.quant_base = 0;
+		meta.quant_count = 0;
+	}
+
+	Vector3 center;
+	float radius = 0.0f;
+	if (chunk.count > 0) {
+		center = chunk.bounds.get_center();
+		Vector3 half = chunk.bounds.size * 0.5f;
+		radius = half.length();
+	}
+	meta.bounds_center_local[0] = center.x;
+	meta.bounds_center_local[1] = center.y;
+	meta.bounds_center_local[2] = center.z;
+	meta.bounds_radius_local = radius;
+
+	meta.asset_id = asset.dense_id;
+	meta.lod_level = chunk.current_lod_level;
+	meta.flags = p_data_gpu_flags;
+	meta.sh_limit = sh_band_limit;
+	return meta;
 }
 
 } // namespace
@@ -185,6 +228,7 @@ void StreamingGlobalAtlasRegistry::cleanup(RenderingDevice *p_rd) {
 void StreamingGlobalAtlasRegistry::build_cpu_state(GaussianStreamingSystem &system) {
 	asset_registry_dirty = false;
 	const bool log_enabled = _is_streaming_debug_enabled();
+	const bool per_chunk_quantization_enabled = system.is_per_chunk_quantization_enabled();
 
 	uint32_t total_chunks = 0;
 	max_chunk_count_per_asset = 0;
@@ -261,7 +305,8 @@ void StreamingGlobalAtlasRegistry::build_cpu_state(GaussianStreamingSystem &syst
 		AssetMetaGPU asset_meta = {};
 		asset_meta.lod_count = MAX(uint32_t(1), asset->lod_count);
 		asset_meta.sh_degree = asset->sh_degree;
-		asset_meta.flags = _pack_data_gpu_flags(asset->data);
+		const uint32_t data_gpu_flags = _pack_data_gpu_flags(asset->data);
+		asset_meta.flags = data_gpu_flags;
 
 		Vector3 asset_center = asset->bounds.get_center();
 		Vector3 asset_half = asset->bounds.size * 0.5f;
@@ -273,8 +318,8 @@ void StreamingGlobalAtlasRegistry::build_cpu_state(GaussianStreamingSystem &syst
 
 		asset_meta.chunk_index_base = asset->chunk_index_base;
 		asset_meta.chunk_index_count = asset->chunk_index_count;
-		asset_meta.quant_chunk_base = system.is_per_chunk_quantization_enabled() ? asset->quant_base : 0;
-		asset_meta.quant_chunk_count = system.is_per_chunk_quantization_enabled() ? asset->quant_count : 0;
+		asset_meta.quant_chunk_base = per_chunk_quantization_enabled ? asset->quant_base : 0;
+		asset_meta.quant_chunk_count = per_chunk_quantization_enabled ? asset->quant_count : 0;
 		asset_meta.lod_ranges[0].base = asset->chunk_index_base;
 		asset_meta.lod_ranges[0].count = asset->chunk_index_count;
 
@@ -292,7 +337,8 @@ void StreamingGlobalAtlasRegistry::build_cpu_state(GaussianStreamingSystem &syst
 			if (chunk_index_cursor < asset_chunk_index_cpu.size()) {
 				asset_chunk_index_cpu[chunk_index_cursor].chunk_id = global_idx;
 			}
-			update_chunk_meta_entry(system, asset_id, i);
+			chunk_meta_cpu[global_idx] = _build_chunk_meta_gpu(*asset, asset_chunks[i], i,
+					per_chunk_quantization_enabled, data_gpu_flags);
 			chunk_index_cursor++;
 		}
 
@@ -340,41 +386,10 @@ void StreamingGlobalAtlasRegistry::update_chunk_meta_entry(GaussianStreamingSyst
 	}
 
 	const GaussianStreamingSystem::StreamingChunk &chunk = asset_chunks[chunk_idx];
-	ChunkMetaGPU meta = {};
-	const bool resident = chunk.is_loaded && !chunk.upload_pending && chunk.buffer_slot != UINT32_MAX;
-	const uint32_t effective_splat_count = MIN(chunk.effective_count, chunk.count);
-	const uint32_t sh_band_limit = uint32_t(CLAMP(chunk.sh_band_level, 0, 3));
-	if (resident) {
-		meta.atlas_base = chunk.buffer_slot * GaussianStreamingSystem::CHUNK_SIZE;
-		meta.splat_count = effective_splat_count;
-	} else {
-		meta.atlas_base = 0;
-		meta.splat_count = 0;
-	}
-	if (system.is_per_chunk_quantization_enabled()) {
-		meta.quant_base = asset->quant_base + chunk_idx;
-		meta.quant_count = 1;
-	} else {
-		meta.quant_base = 0;
-		meta.quant_count = 0;
-	}
-
-	Vector3 center;
-	float radius = 0.0f;
-	if (chunk.count > 0) {
-		center = chunk.bounds.get_center();
-		Vector3 half = chunk.bounds.size * 0.5f;
-		radius = half.length();
-	}
-	meta.bounds_center_local[0] = center.x;
-	meta.bounds_center_local[1] = center.y;
-	meta.bounds_center_local[2] = center.z;
-	meta.bounds_radius_local = radius;
-
-	meta.asset_id = asset->dense_id;
-	meta.lod_level = chunk.current_lod_level;
-	meta.flags = _pack_data_gpu_flags(asset->data);
-	meta.sh_limit = sh_band_limit;
+	const bool per_chunk_quantization_enabled = system.is_per_chunk_quantization_enabled();
+	const uint32_t data_gpu_flags = _pack_data_gpu_flags(asset->data);
+	ChunkMetaGPU meta = _build_chunk_meta_gpu(*asset, chunk, chunk_idx,
+			per_chunk_quantization_enabled, data_gpu_flags);
 
 	// Track atlas-published chunk count delta.
 	const bool was_published = chunk_meta_cpu[global_idx].splat_count > 0;
@@ -582,11 +597,7 @@ void StreamingGlobalAtlasRegistry::sync_to_gpu(GaussianStreamingSystem &system, 
 					const uint32_t offset = range_start * sizeof(ChunkMetaGPU);
 					const uint32_t update_size = range_count * sizeof(ChunkMetaGPU);
 					p_rd->buffer_update(chunk_meta_buffer, offset, update_size, chunk_meta_cpu.ptr() + range_start);
-					for (uint32_t clear_idx = range_start; clear_idx <= range_end; clear_idx++) {
-						if (clear_idx < chunk_meta_dirty_flags.size()) {
-							chunk_meta_dirty_flags[clear_idx] = 0;
-						}
-					}
+					std::memset(chunk_meta_dirty_flags.ptr() + range_start, 0, range_count);
 
 					if (!at_end) {
 						range_start = idx;
