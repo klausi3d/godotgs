@@ -536,9 +536,10 @@ Error PLYLoader::parse_binary_data(Ref<FileAccess> file) {
         }
 
         const uint8_t *data = bulk_buffer.ptr();
+        const uint8_t *vertex = data;
         for (int i = 0; i < header.vertex_count; i++) {
-            const uint8_t *vertex = data + uint64_t(i) * uint64_t(vertex_size);
             parse_vertex(i, vertex);
+            vertex += vertex_size;
         }
     } else {
         Vector<uint8_t> chunk_buffer;
@@ -557,9 +558,10 @@ Error PLYLoader::parse_binary_data(Ref<FileAccess> file) {
             }
 
             const uint8_t *data = chunk_buffer.ptr();
+            const uint8_t *vertex = data;
             for (int local = 0; local < batch_vertices; local++) {
-                const uint8_t *vertex = data + uint64_t(local) * uint64_t(vertex_size);
                 parse_vertex(base_index + local, vertex);
+                vertex += vertex_size;
             }
 
             base_index += batch_vertices;
@@ -573,6 +575,7 @@ Error PLYLoader::parse_binary_data(Ref<FileAccess> file) {
 Error PLYLoader::parse_ascii_data(Ref<FileAccess> file) {
     gaussian_data->resize(header.vertex_count);
     const bool strict_ascii_parse = _is_ascii_strict_parse_enabled();
+    const int property_count = header.properties.size();
 
     // Check if normal properties exist to determine 2D mode
     bool has_normals = (find_property_index("nx") >= 0 &&
@@ -604,6 +607,79 @@ Error PLYLoader::parse_ascii_data(Ref<FileAccess> file) {
         }
     }
 
+    enum AsciiPropertySemantic : uint8_t {
+        ASCII_PROP_NONE = 0,
+        ASCII_PROP_X,
+        ASCII_PROP_Y,
+        ASCII_PROP_Z,
+        ASCII_PROP_SCALE_0,
+        ASCII_PROP_SCALE_1,
+        ASCII_PROP_SCALE_2,
+        ASCII_PROP_ROT_0,
+        ASCII_PROP_ROT_1,
+        ASCII_PROP_ROT_2,
+        ASCII_PROP_ROT_3,
+        ASCII_PROP_OPACITY,
+        ASCII_PROP_PALETTE_ID,
+        ASCII_PROP_BRUSH_OVERRIDE_ID,
+        ASCII_PROP_BRUSH_AXIS_U,
+        ASCII_PROP_BRUSH_AXIS_V,
+        ASCII_PROP_STROKE_AGE,
+        ASCII_PROP_NX,
+        ASCII_PROP_NY,
+        ASCII_PROP_NZ,
+    };
+
+    Vector<uint8_t> property_semantics;
+    property_semantics.resize(property_count);
+    {
+        uint8_t *semantics = property_semantics.ptrw();
+        for (int j = 0; j < property_count; j++) {
+            const String &name = header.properties[j].name;
+            uint8_t semantic = ASCII_PROP_NONE;
+            if (name == "x") {
+                semantic = ASCII_PROP_X;
+            } else if (name == "y") {
+                semantic = ASCII_PROP_Y;
+            } else if (name == "z") {
+                semantic = ASCII_PROP_Z;
+            } else if (name == "scale_0") {
+                semantic = ASCII_PROP_SCALE_0;
+            } else if (name == "scale_1") {
+                semantic = ASCII_PROP_SCALE_1;
+            } else if (name == "scale_2") {
+                semantic = ASCII_PROP_SCALE_2;
+            } else if (name == "rot_0") {
+                semantic = ASCII_PROP_ROT_0;
+            } else if (name == "rot_1") {
+                semantic = ASCII_PROP_ROT_1;
+            } else if (name == "rot_2") {
+                semantic = ASCII_PROP_ROT_2;
+            } else if (name == "rot_3") {
+                semantic = ASCII_PROP_ROT_3;
+            } else if (name == "opacity") {
+                semantic = ASCII_PROP_OPACITY;
+            } else if (name == "palette_id") {
+                semantic = ASCII_PROP_PALETTE_ID;
+            } else if (name == "brush_override_id") {
+                semantic = ASCII_PROP_BRUSH_OVERRIDE_ID;
+            } else if (name == "brush_axis_u") {
+                semantic = ASCII_PROP_BRUSH_AXIS_U;
+            } else if (name == "brush_axis_v") {
+                semantic = ASCII_PROP_BRUSH_AXIS_V;
+            } else if (name == "stroke_age") {
+                semantic = ASCII_PROP_STROKE_AGE;
+            } else if (name == "nx") {
+                semantic = ASCII_PROP_NX;
+            } else if (name == "ny") {
+                semantic = ASCII_PROP_NY;
+            } else if (name == "nz") {
+                semantic = ASCII_PROP_NZ;
+            }
+            semantics[j] = semantic;
+        }
+    }
+
     // ASCII parsing - simpler but slower
     for (int i = 0; i < header.vertex_count; i++) {
         if (file->eof_reached()) {
@@ -614,9 +690,9 @@ Error PLYLoader::parse_ascii_data(Ref<FileAccess> file) {
         // Split by any whitespace (spaces, tabs) for robust parsing
         Vector<String> values = line.split_spaces();
 
-        if (values.size() < header.properties.size()) {
+        if (values.size() < property_count) {
             String msg = vformat("[PLY ASCII] Malformed row at vertex index %d: expected at least %d fields, got %d.",
-                    i, header.properties.size(), values.size());
+                    i, property_count, values.size());
             if (strict_ascii_parse) {
                 GS_LOG_ERROR_DEFAULT(msg + " Treating file as corrupt.");
                 return ERR_FILE_CORRUPT;
@@ -642,7 +718,7 @@ Error PLYLoader::parse_ascii_data(Ref<FileAccess> file) {
         }
 
         // Parse based on property order
-        for (int j = 0; j < header.properties.size(); j++) {
+        for (int j = 0; j < property_count; j++) {
             const PLYProperty &prop = header.properties[j];
             const String &token = values[j];
             if (strict_ascii_parse && !token.is_valid_float()) {
@@ -652,44 +728,33 @@ Error PLYLoader::parse_ascii_data(Ref<FileAccess> file) {
             }
             float value = token.to_float();
 
-            if (prop.name == "x") {
-                g.position.x = value;
-            } else if (prop.name == "y") {
-                g.position.y = value;
-            } else if (prop.name == "z") {
-                g.position.z = value;
-            } else if (prop.name == "scale_0") {
-                g.scale.x = exp(value);
-            } else if (prop.name == "scale_1") {
-                g.scale.y = exp(value);
-            } else if (prop.name == "scale_2") {
-                g.scale.z = exp(value);
-            } else if (prop.name == "rot_0") {
-                g.rotation.w = value;
-            } else if (prop.name == "rot_1") {
-                g.rotation.x = value;
-            } else if (prop.name == "rot_2") {
-                g.rotation.y = value;
-            } else if (prop.name == "rot_3") {
-                g.rotation.z = value;
-            } else if (prop.name == "opacity") {
-                g.opacity = 1.0f / (1.0f + exp(-value));
-            } else if (prop.name == "palette_id") {
-                g.painterly_meta = gaussian_set_palette_id(g.painterly_meta, (uint16_t)CLAMP((int)value, 0, 65535));
-            } else if (prop.name == "brush_override_id") {
-                g.painterly_meta = gaussian_set_brush_override_id(g.painterly_meta, (uint16_t)CLAMP((int)value, 0, 65535));
-            } else if (prop.name == "brush_axis_u") {
-                g.brush_axes.x = value;
-            } else if (prop.name == "brush_axis_v") {
-                g.brush_axes.y = value;
-            } else if (prop.name == "stroke_age") {
-                g.stroke_age = value;
-            } else if (prop.name == "nx") {
-                g.normal.x = value;
-            } else if (prop.name == "ny") {
-                g.normal.y = value;
-            } else if (prop.name == "nz") {
-                g.normal.z = value;
+            switch (property_semantics[j]) {
+                case ASCII_PROP_X: g.position.x = value; break;
+                case ASCII_PROP_Y: g.position.y = value; break;
+                case ASCII_PROP_Z: g.position.z = value; break;
+                case ASCII_PROP_SCALE_0: g.scale.x = exp(value); break;
+                case ASCII_PROP_SCALE_1: g.scale.y = exp(value); break;
+                case ASCII_PROP_SCALE_2: g.scale.z = exp(value); break;
+                case ASCII_PROP_ROT_0: g.rotation.w = value; break;
+                case ASCII_PROP_ROT_1: g.rotation.x = value; break;
+                case ASCII_PROP_ROT_2: g.rotation.y = value; break;
+                case ASCII_PROP_ROT_3: g.rotation.z = value; break;
+                case ASCII_PROP_OPACITY: g.opacity = 1.0f / (1.0f + exp(-value)); break;
+                case ASCII_PROP_PALETTE_ID:
+                    g.painterly_meta = gaussian_set_palette_id(g.painterly_meta, (uint16_t)CLAMP((int)value, 0, 65535));
+                    break;
+                case ASCII_PROP_BRUSH_OVERRIDE_ID:
+                    g.painterly_meta = gaussian_set_brush_override_id(g.painterly_meta, (uint16_t)CLAMP((int)value, 0, 65535));
+                    break;
+                case ASCII_PROP_BRUSH_AXIS_U: g.brush_axes.x = value; break;
+                case ASCII_PROP_BRUSH_AXIS_V: g.brush_axes.y = value; break;
+                case ASCII_PROP_STROKE_AGE: g.stroke_age = value; break;
+                case ASCII_PROP_NX: g.normal.x = value; break;
+                case ASCII_PROP_NY: g.normal.y = value; break;
+                case ASCII_PROP_NZ: g.normal.z = value; break;
+                case ASCII_PROP_NONE:
+                default:
+                    break;
             }
         }
 
