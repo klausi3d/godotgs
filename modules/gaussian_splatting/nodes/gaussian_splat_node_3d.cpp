@@ -1547,6 +1547,22 @@ void GaussianSplatNode3D::_load_asset() {
 void GaussianSplatNode3D::_update_asset() {
     asset_helper.update_asset();
     update_gizmos();
+
+    // Replay cached color grading once data becomes available. Covers
+    // the async/auto-load path: node enters the tree before its asset
+    // is ready, so the ensure_renderer() initial-sync push is skipped
+    // (has_local_source_data is false at that point). When the asset
+    // arrives later and _update_asset runs (either from the first
+    // set_splat_asset() assignment or from the asset's "changed"
+    // signal via _on_asset_changed), the cached grading needs to
+    // reach the renderer here. Same gate as the initial-sync push:
+    // requires the renderer, a non-null grading, and at least one
+    // form of local source data so this never tints a peer's
+    // shared renderer when the node has no content.
+    if (renderer.is_valid() && color_grading.is_valid() &&
+            (renderer_data.is_valid() || splat_asset.is_valid() || runtime_asset.is_valid())) {
+        renderer->set_color_grading(color_grading);
+    }
 }
 
 void GaussianSplatNode3D::_clear_asset() {
