@@ -1760,12 +1760,12 @@ TEST_CASE("[Streaming Pipeline] Cancelled pending chunk loads do not count as ev
     const uint32_t asset_id = 808;
     system->register_asset(asset_id, create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE));
 
-    GaussianStreamingSystem::AtlasAssetState *asset = system->_test_get_asset_state(asset_id);
+    auto *asset = system->_test_get_asset_state(asset_id);
     REQUIRE(asset != nullptr);
-    LocalVector<GaussianStreamingSystem::StreamingChunk> &asset_chunks = system->_test_get_asset_chunks(*asset);
+    auto &asset_chunks = system->_test_get_asset_chunks(*asset);
     REQUIRE(asset_chunks.size() > 0);
 
-    GaussianStreamingSystem::StreamingChunk &chunk = asset_chunks[0];
+    auto &chunk = asset_chunks[0];
     const uint64_t chunk_key = system->_test_make_chunk_key(asset_id, 0);
     uint32_t buffer_slot = UINT32_MAX;
     REQUIRE(system->_test_atlas_allocator().allocate_slot(chunk_key, buffer_slot));
