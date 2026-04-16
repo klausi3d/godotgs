@@ -22,11 +22,19 @@ Visual captures for the user journey are still pending, so the linked workflow p
 
 <div class="grid cards" markdown>
 
+- __Download a nightly editor__
+
+    ---
+
+    Get a Linux tarball or Windows zip from GitHub Releases. macOS users still need a source build.
+
+    [Open downloads](downloads.md)
+
 - __Try in 5 minutes__
 
     ---
 
-    Use the latest Linux or Windows nightly editor for the shortest honest evaluation loop through the public evaluator. macOS users still need a source build.
+    Use the latest Linux or Windows nightly editor for the shortest honest evaluation loop through the public evaluator.
 
     [Open try in 5 minutes](try-in-5-minutes.md)
 
