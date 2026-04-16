@@ -61,6 +61,22 @@ TestRenderingDeviceHandle _get_test_rendering_device() {
     return { rd, false };
 }
 
+GaussianStreamingSystem::StreamingChunk _make_streaming_chunk(
+        const Vector3 &p_center,
+        bool p_is_loaded = false,
+        bool p_upload_pending = false,
+        uint32_t p_buffer_slot = UINT32_MAX) {
+    GaussianStreamingSystem::StreamingChunk chunk;
+    chunk.center = p_center;
+    chunk.bounds = AABB(p_center - Vector3(0.5f, 0.5f, 0.5f), Vector3(1.0f, 1.0f, 1.0f));
+    chunk.count = 32;
+    chunk.effective_count = 32;
+    chunk.is_loaded = p_is_loaded;
+    chunk.upload_pending = p_upload_pending;
+    chunk.buffer_slot = p_buffer_slot;
+    return chunk;
+}
+
 } // namespace
 
 TEST_CASE("[Streaming Pipeline] stop_pack_threads clears partial lifecycle state") {
@@ -359,4 +375,116 @@ TEST_CASE("[Streaming Pipeline] initialize_empty keeps atlas metadata buffers va
     CHECK(system->get_asset_meta_buffer().is_valid());
     CHECK(system->get_chunk_meta_buffer().is_valid());
     CHECK(system->get_asset_chunk_index_buffer().is_valid());
+}
+
+TEST_CASE("[Streaming Pipeline] visibility update preserves nearest-first ordering and mixed residency counts") {
+    GaussianStreamingSystem system;
+    auto &visibility = system.visibility;
+    visibility.chunk_frustum_culling_enabled = false;
+    visibility.chunk_frustum_padding = 1.0f;
+    visibility.chunk_radius_multiplier = 1.0f;
+
+    system.chunks.resize(3);
+    system.chunks[0] = _make_streaming_chunk(Vector3(10.0f, 0.0f, 0.0f), true, false, 7);
+    system.chunks[1] = _make_streaming_chunk(Vector3(2.0f, 0.0f, 0.0f), true, true, 3);
+    system.chunks[2] = _make_streaming_chunk(Vector3(5.0f, 0.0f, 0.0f), false, false, UINT32_MAX);
+
+    Transform3D camera_transform;
+    camera_transform.origin = Vector3(0.0f, 0.0f, 0.0f);
+    Projection projection;
+    projection.set_perspective(60.0f, 1.0f, 0.1f, 100.0f);
+
+    visibility.update_chunk_visibility(system, camera_transform, projection);
+
+    CHECK(visibility.culling_stats.total_chunks == 3);
+    CHECK(visibility.culling_stats.visible_chunks == 3);
+    CHECK(visibility.culling_stats.frustum_culled_chunks == 0);
+    CHECK(visibility.culling_stats.loaded_chunks == 2);
+    CHECK(visibility.culling_stats.resident_chunks == 1);
+    REQUIRE(visibility.visible_chunk_indices.size() == 3);
+    CHECK(visibility.visible_chunk_indices[0] == 1);
+    CHECK(visibility.visible_chunk_indices[1] == 2);
+    CHECK(visibility.visible_chunk_indices[2] == 0);
+    CHECK(system.chunks[0].is_visible);
+    CHECK(system.chunks[1].is_visible);
+    CHECK(system.chunks[2].is_visible);
+    CHECK(system.chunks[1].distance == doctest::Approx(2.0f));
+    CHECK(system.chunks[2].distance == doctest::Approx(5.0f));
+    CHECK(system.chunks[0].distance == doctest::Approx(10.0f));
+}
+
+TEST_CASE("[Streaming Pipeline] zero-visible recovery prefers local spatial-grid fallback") {
+    GaussianStreamingSystem system;
+    auto &visibility = system.visibility;
+    visibility.chunk_frustum_culling_enabled = true;
+
+    system.chunks.resize(3);
+    system.chunks[0] = _make_streaming_chunk(Vector3(1.0f, 0.0f, 0.0f), false, false, UINT32_MAX);
+    system.chunks[1] = _make_streaming_chunk(Vector3(6.0f, 0.0f, 0.0f), false, false, UINT32_MAX);
+    system.chunks[2] = _make_streaming_chunk(Vector3(5005.0f, 0.0f, 0.0f), false, false, UINT32_MAX);
+
+    for (uint32_t i = 0; i < system.chunks.size(); i++) {
+        system.chunks[i].is_visible = false;
+    }
+
+    visibility.spatial_grid.build(system.chunks.ptr(), system.chunks.size());
+    visibility.camera_tracker.has_previous_position = true;
+    visibility.camera_tracker.last_position = Vector3(0.0f, 0.0f, 0.0f);
+    visibility.culling_stats.total_chunks = system.chunks.size();
+    visibility.culling_stats.visible_chunks = 0;
+    visibility.culling_stats.frustum_culled_chunks = system.chunks.size();
+    visibility.zero_visible_recovery.zero_visible_consecutive_frames = 0;
+    visibility.zero_visible_recovery.recoveries_triggered = 0;
+    visibility.zero_visible_recovery.last_recovery_frame = UINT64_MAX;
+    system.budget.loaded_chunks_count = 0;
+    system.total_frame_count = 42;
+
+    visibility.handle_zero_visible_chunk_recovery(system);
+
+    CHECK(visibility.zero_visible_recovery.zero_visible_consecutive_frames == 1);
+    CHECK(visibility.zero_visible_recovery.recoveries_triggered == 1);
+    CHECK(visibility.zero_visible_recovery.last_recovery_frame == 42);
+    REQUIRE(visibility.visible_chunk_indices.size() == 2);
+    CHECK(visibility.visible_chunk_indices[0] == 0);
+    CHECK(visibility.visible_chunk_indices[1] == 1);
+    CHECK(system.chunks[0].is_visible);
+    CHECK(system.chunks[1].is_visible);
+    CHECK_FALSE(system.chunks[2].is_visible);
+    CHECK(visibility.culling_stats.visible_chunks == 2);
+    CHECK(visibility.culling_stats.frustum_culled_chunks == 1);
+}
+
+TEST_CASE("[Streaming Pipeline] prefetch candidate collection respects scan budget and pending skips") {
+    GaussianStreamingSystem system;
+    auto &visibility = system.visibility;
+
+    system.chunks.resize(5);
+    system.chunks[0] = _make_streaming_chunk(Vector3(1.0f, 0.0f, 0.0f), false, false, UINT32_MAX);
+    system.chunks[1] = _make_streaming_chunk(Vector3(2.0f, 0.0f, 0.0f), false, true, 1);
+    system.chunks[2] = _make_streaming_chunk(Vector3(3.0f, 0.0f, 0.0f), true, false, 2);
+    system.chunks[3] = _make_streaming_chunk(Vector3(30.0f, 0.0f, 0.0f), false, false, UINT32_MAX);
+    system.chunks[4] = _make_streaming_chunk(Vector3(4.0f, 0.0f, 0.0f), false, false, UINT32_MAX);
+
+    visibility.prefetch_lookahead_distance = 10.0f;
+    system.scheduler.max_prefetch_chunk_scan_per_frame = 5;
+    system.scheduler.prefetch_scan_budget_remaining_this_frame = 5;
+    system.scheduler.prefetch_scan_cursor = 0;
+    system.scheduler.last_prefetch_scan_count = 0;
+    system.scheduler.last_prefetch_candidate_count = 0;
+    system.scheduler.last_prefetch_upload_pending_skip_count = 0;
+    system.scheduler.last_prefetch_scan_budget_effective = 0;
+    system.scheduler.queue_pressure_candidate_scan_throttle_enabled = false;
+
+    LocalVector<uint32_t> candidates;
+    visibility.collect_prefetch_candidates(system, Vector3(0.0f, 0.0f, 0.0f), 2, 2, candidates);
+
+    REQUIRE(candidates.size() == 2);
+    CHECK(candidates[0] == 0);
+    CHECK(candidates[1] == UINT32_MAX);
+    CHECK(system.scheduler.prefetch_scan_cursor == 2);
+    CHECK(system.scheduler.prefetch_scan_budget_remaining_this_frame == 3);
+    CHECK(system.scheduler.last_prefetch_scan_count == 2);
+    CHECK(system.scheduler.last_prefetch_candidate_count == 1);
+    CHECK(system.scheduler.last_prefetch_upload_pending_skip_count == 1);
+    CHECK(system.scheduler.last_prefetch_scan_budget_effective == 2);
 }
