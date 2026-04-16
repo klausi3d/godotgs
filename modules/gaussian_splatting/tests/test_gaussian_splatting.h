@@ -52,6 +52,7 @@
 #include "test_sentinel_tier_defaults.h"
 #include "test_import_preset_catalog.h"
 #include "test_io_settings_utils.h"
+#include "test_streaming_upload_pipeline_cancellation.h"
 #include "generate_synthetic_ply_fixtures.h"
 
 namespace TestGaussianSplatting {
