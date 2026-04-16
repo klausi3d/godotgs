@@ -1601,6 +1601,140 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Hot-reload of node 
     memdelete(node_a);
 }
 
+TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Procedural set_splat_data path replays cached color grading once data is ready") {
+    SceneTree *tree = SceneTree::get_singleton();
+    REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+    Window *root = tree->get_root();
+    REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+    // PR #245 P1: set_splat_data() bypasses set_splat_asset/_update_asset.
+    // Without _replay_color_grading_if_pending() in _finalize_manual_splat_setup,
+    // a node that received its data procedurally would never have its
+    // cached color_grading reach the renderer until a manual setter call.
+    GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
+
+    Ref<ColorGradingResource> grading = make_color_grading_resource();
+    REQUIRE(grading.is_valid());
+    grading->set_exposure(0.42f);
+
+    // Cache grading BEFORE entering tree, BEFORE any data is set.
+    node->set_color_grading(grading);
+    CHECK(node->get_color_grading() == grading);
+
+    root->add_child(node);
+    tree->process(0.0);
+
+    // Now feed the node procedural data. This is the path the bot
+    // flagged: ensure_renderer fires with no data (skips push), then
+    // _finalize_manual_splat_setup runs with data present.
+    PackedVector3Array positions;
+    positions.push_back(Vector3(9500.0f, 0.0f, 0.0f));
+    PackedColorArray colors;
+    colors.push_back(Color(1.0f, 1.0f, 1.0f, 1.0f));
+    PackedVector3Array scales;
+    scales.push_back(Vector3(1.0f, 1.0f, 1.0f));
+    PackedFloat32Array opacities;
+    opacities.push_back(1.0f);
+    TypedArray<Quaternion> rotations;
+    rotations.push_back(Quaternion());
+    PackedFloat32Array sh;
+    PackedInt32Array palette_ids;
+    PackedInt32Array painterly_flags;
+    PackedVector3Array normals;
+    PackedVector2Array brush_axes;
+    PackedFloat32Array stroke_ages;
+
+    node->set_splat_data(positions, colors, scales, opacities, rotations,
+            sh, palette_ids, painterly_flags, normals, brush_axes, stroke_ages, false);
+    tree->process(0.0);
+
+    Ref<GaussianSplatRenderer> renderer = node->get_renderer();
+    if (!renderer.is_valid()) {
+        MESSAGE("Skipping test - renderer unavailable (headless mode)");
+        root->remove_child(node);
+        memdelete(node);
+        return;
+    }
+
+    CHECK_MESSAGE(renderer->get_color_grading() == grading,
+            "Renderer must reflect the cached color grading after procedural set_splat_data");
+
+    root->remove_child(node);
+    memdelete(node);
+}
+
+TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Tree exit/re-enter must not allow _update_asset to re-clobber peer") {
+    SceneTree *tree = SceneTree::get_singleton();
+    REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+    Window *root = tree->get_root();
+    REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+    // PR #245 P2: NOTIFICATION_EXIT_TREE used to reset the guard, but
+    // owner.renderer is not cleared on tree-exit; ensure_renderer's
+    // initial-sync branch only runs when renderer is null. So on
+    // re-entry the guard would stay false, and the next _update_asset
+    // (e.g. hot-reload) would re-push this node's grading and clobber
+    // a peer that wrote in the meantime.
+    GaussianSplatNode3D *node_a = memnew(GaussianSplatNode3D);
+    GaussianSplatNode3D *node_b = memnew(GaussianSplatNode3D);
+    node_a->set_splat_asset(make_single_splat_asset(9601.0f));
+    node_b->set_splat_asset(make_single_splat_asset(9602.0f));
+
+    Ref<ColorGradingResource> grading_a = make_color_grading_resource();
+    Ref<ColorGradingResource> grading_b = make_color_grading_resource();
+    REQUIRE(grading_a.is_valid());
+    REQUIRE(grading_b.is_valid());
+    grading_a->set_exposure(0.30f);
+    grading_b->set_exposure(0.80f);
+
+    node_a->set_color_grading(grading_a);
+    node_b->set_color_grading(grading_b);
+
+    root->add_child(node_a);
+    root->add_child(node_b);
+    tree->process(0.0);
+
+    Ref<GaussianSplatRenderer> renderer = node_a->get_renderer();
+    if (!renderer.is_valid()) {
+        MESSAGE("Skipping test - renderer unavailable (headless mode)");
+        root->remove_child(node_b);
+        root->remove_child(node_a);
+        memdelete(node_b);
+        memdelete(node_a);
+        return;
+    }
+    REQUIRE_MESSAGE(renderer == node_b->get_renderer(), "Both nodes must share the same renderer for this test");
+
+    // Last writer is node_b.
+    node_b->set_color_grading(grading_b);
+    tree->process(0.0);
+    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
+            "Renderer should reflect node_b's grading after explicit setter");
+
+    // Detach node_a, then re-attach it without changing its grading or
+    // its asset. Then trigger a hot-reload via emit_changed(). The guard
+    // must remain set so the implicit _update_asset push doesn't fire.
+    root->remove_child(node_a);
+    tree->process(0.0);
+    root->add_child(node_a);
+    tree->process(0.0);
+
+    Ref<GaussianSplatAsset> asset_a = node_a->get_splat_asset();
+    REQUIRE(asset_a.is_valid());
+    asset_a->emit_changed();
+    tree->process(0.0);
+
+    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
+            "After tree exit/re-enter and hot-reload of node_a, renderer must still hold node_b's grading");
+
+    root->remove_child(node_b);
+    root->remove_child(node_a);
+    memdelete(node_b);
+    memdelete(node_a);
+}
+
 TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Setter after no-grading load arms guard so hot-reload does not re-clobber peer") {
     SceneTree *tree = SceneTree::get_singleton();
     REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");

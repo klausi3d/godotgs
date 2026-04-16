@@ -368,10 +368,14 @@ void GaussianSplatNode3D::_notification_exit_tree() {
     renderer_helper.release_renderer_settings_ownership();
     _unregister_shared_renderer();
 
-    // Renderer relationship resets on tree-exit; next ensure_renderer pass
-    // (on re-entry) is responsible for the initial-sync push, which will
-    // re-arm this flag.
-    grading_pushed_for_current_data = false;
+    // NOTE: do NOT reset grading_pushed_for_current_data here. The
+    // owner.renderer reference is not cleared on tree-exit (only
+    // fetched when null in ensure_renderer), so the data-ready window
+    // for this renderer reference continues across exit/re-enter.
+    // Resetting here would let _update_asset re-clobber a peer's
+    // grading on a shared renderer after a transient detach. The flag
+    // is cleared in the right places: _clear_asset (data going away)
+    // and ensure_renderer (new renderer reference).
 
     // Release GPU storage when detached to avoid keeping allocations alive.
     // Storage will be reallocated on re-enter if needed.
@@ -842,6 +846,12 @@ void GaussianSplatNode3D::_finalize_manual_splat_setup(int splat_count) {
     _mark_render_state_dirty();
     update_gizmos();
     update_configuration_warnings();
+
+    // Procedural data path: set_splat_data bypasses set_splat_asset and
+    // _update_asset, so the cached color_grading would never reach the
+    // renderer for this node. Same first-data-ready replay as
+    // _update_asset. (Bot P1 on PR #245.)
+    _replay_color_grading_if_pending();
 }
 
 void GaussianSplatNode3D::set_quality_preset(QualityPreset p_preset) {
@@ -1552,22 +1562,32 @@ void GaussianSplatNode3D::_load_asset() {
 void GaussianSplatNode3D::_update_asset() {
     asset_helper.update_asset();
     update_gizmos();
+    _replay_color_grading_if_pending();
+}
 
-    // Replay cached color grading on the *first* transition from no-data to
-    // has-data within the current data-ready window. Covers the async/auto-
-    // load path: node enters the tree before its asset is ready, so the
-    // ensure_renderer() initial-sync push is skipped (no local source data
-    // at that point). When the asset arrives later and _update_asset runs
-    // from the first set_splat_asset() assignment, the cached grading needs
-    // to reach the renderer here.
+void GaussianSplatNode3D::_replay_color_grading_if_pending() {
+    // First-data-ready replay. Pushes the cached color_grading to the
+    // renderer exactly once per data-ready window, gated on the
+    // grading_pushed_for_current_data flag.
     //
-    // The grading_pushed_for_current_data gate is critical: _update_asset
-    // ALSO runs on the asset's "changed" signal (hot-reload / reimport via
-    // _on_asset_changed), and on a shared renderer an unconditional push
-    // here would let node A's reimport overwrite node B's grading even
+    // Why the flag matters: _update_asset (and the procedural
+    // _finalize_manual_splat_setup) can fire repeatedly — hot-reload /
+    // reimport via _on_asset_changed → _update_asset, multiple
+    // set_splat_data calls, etc. On a shared renderer, an unguarded push
+    // here would let node A's refresh overwrite node B's grading even
     // though no grading setter ran on either. The flag fires this push
-    // exactly once per data-ready window and is cleared by _clear_asset
-    // and NOTIFICATION_EXIT_TREE (the only paths that take data away).
+    // exactly once per data-ready window:
+    //  - cleared by _clear_asset (data going away)
+    //  - cleared inside ensure_renderer when a NEW renderer reference is
+    //    fetched (the old window ends)
+    //  - set by every push site (this helper, ensure_renderer initial-
+    //    sync, setter, signal handler) so subsequent implicit refreshes
+    //    don't re-push
+    //
+    // NOT cleared on NOTIFICATION_EXIT_TREE: owner.renderer reference
+    // persists across exit/re-enter, so the data-ready window persists
+    // too. Resetting here would let _update_asset re-clobber a peer
+    // after a transient detach. (Bot P2 on PR #245.)
     if (!grading_pushed_for_current_data && renderer.is_valid() && color_grading.is_valid() &&
             (renderer_data.is_valid() || splat_asset.is_valid() || runtime_asset.is_valid())) {
         renderer->set_color_grading(color_grading);

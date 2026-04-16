@@ -350,6 +350,16 @@ private:
 
     void _on_asset_changed();
     void _on_color_grading_changed();
+
+    // Push the cached color_grading to the renderer if it has not been
+    // pushed yet for the current data-ready window AND data is present.
+    // The first-data-ready replay path: covers async asset load
+    // (_update_asset after data finally arrives) and procedural data
+    // (_finalize_manual_splat_setup after set_splat_data). Skipping when
+    // the flag is already true prevents hot-reload / reimport from
+    // re-pushing this node's grading and clobbering a peer on a shared
+    // renderer.
+    void _replay_color_grading_if_pending();
     void _on_transform_changed();
     void _update_parent_visibility_tracking();
     void _clear_parent_visibility_tracking();

@@ -1371,6 +1371,13 @@ void GaussianSplatNodeRendererHelper::ensure_renderer() {
         GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
         if (director) {
             owner.renderer = director->get_shared_renderer(owner.get_world_3d().ptr());
+            // A new renderer reference begins a fresh data-ready window;
+            // any prior flag value referred to the previous reference and
+            // is no longer meaningful. The conditional push below re-arms
+            // the flag if it actually pushes. (Bot P2 on PR #245: tree-
+            // exit must NOT reset this flag because the renderer
+            // reference persists; only renderer-reference change should.)
+            owner.grading_pushed_for_current_data = false;
             if (owner.renderer.is_valid()) {
                 apply_renderer_settings();
                 // Initial sync: push the cached color grading once when the
