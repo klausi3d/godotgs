@@ -159,10 +159,11 @@ float KeyframeInterpolator::_cubic_bezier(float t, const Vector2& p1, const Vect
 }
 
 Vector3 KeyframeInterpolator::_cubic_bezier_vector3(float t, const Vector3& start, const Vector3& end, const Vector2& handle_a, const Vector2& handle_b) {
+    const float bezier_t = _cubic_bezier(t, handle_a, handle_b);
     Vector3 result;
-    result.x = start.x + (end.x - start.x) * _cubic_bezier(t, handle_a, handle_b);
-    result.y = start.y + (end.y - start.y) * _cubic_bezier(t, handle_a, handle_b);
-    result.z = start.z + (end.z - start.z) * _cubic_bezier(t, handle_a, handle_b);
+    result.x = start.x + (end.x - start.x) * bezier_t;
+    result.y = start.y + (end.y - start.y) * bezier_t;
+    result.z = start.z + (end.z - start.z) * bezier_t;
     return result;
 }
 
@@ -210,16 +211,19 @@ float KeyframeInterpolator::smoother_step(float t) {
 }
 
 int KeyframeInterpolator::add_keyframe_sorted(LocalVector<Keyframe>& keyframes, const Keyframe& keyframe) {
-    // Find insertion point
-    uint32_t insertion_point = 0;
-    for (uint32_t i = 0; i < keyframes.size(); i++) {
-        if (keyframes[i].time > keyframe.time) {
-            insertion_point = i;
-            break;
+    // Find insertion point (upper_bound by time) to keep equal-time keyframes stable.
+    uint32_t left = 0;
+    uint32_t right = keyframes.size();
+    while (left < right) {
+        const uint32_t mid = left + ((right - left) >> 1);
+        if (keyframes[mid].time <= keyframe.time) {
+            left = mid + 1;
+        } else {
+            right = mid;
         }
-        insertion_point = i + 1;
     }
 
+    const uint32_t insertion_point = left;
     keyframes.insert(insertion_point, keyframe);
     return insertion_point;
 }
