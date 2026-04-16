@@ -48,6 +48,7 @@
 #include "test_shadow_instance_subset.h"
 #include "test_scene_director_submission_scaffolding.h"
 #include "test_sentinel_tier_defaults.h"
+#include "test_import_preset_catalog.h"
 #include "generate_synthetic_ply_fixtures.h"
 
 namespace TestGaussianSplatting {
