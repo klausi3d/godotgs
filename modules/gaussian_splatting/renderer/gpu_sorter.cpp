@@ -726,7 +726,7 @@ void BitonicSort::dispatch_bitonic_pass(RenderingDevice *p_rd, RenderingDevice::
     p_rd->compute_list_set_push_constant(p_command_list, &params, sizeof(BitonicParams));
 
     // Calculate dispatch size
-    uint32_t num_threads = (num_elements + 1) / 2; // Each thread handles a pair
+    uint32_t num_threads = (num_elements + 1u) >> 1u; // Each thread handles a pair
     uint32_t num_groups = (num_threads + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
     
     // Dispatch compute
@@ -1159,10 +1159,12 @@ Error RadixSort::_create_pass_uniform_sets(RenderingDevice *resource_rd, const R
     uniform_owner = resource_rd;
     uniform_owner_generation = resource_rd->get_device_instance_id();
     uniform_sets.clear();
+    uniform_sets.reserve(6);
 
     auto create_histogram_set = [&](bool use_primary, RID &r_set, const char *suffix) -> Error {
         RID current_keys = use_primary ? keys_buffer : temp_keys_buffer;
         Vector<RD::Uniform> histogram_uniforms;
+        histogram_uniforms.reserve(3);
         histogram_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 0, current_keys));
         histogram_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 1, histogram_buffer));
         histogram_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 2, count_buffer));
@@ -1181,6 +1183,7 @@ Error RadixSort::_create_pass_uniform_sets(RenderingDevice *resource_rd, const R
         RID next_keys = use_primary ? temp_keys_buffer : keys_buffer;
         RID next_values = use_primary ? temp_values_buffer : values_buffer;
         Vector<RD::Uniform> scatter_uniforms;
+        scatter_uniforms.reserve(7);
         scatter_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 0, current_keys));
         scatter_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 1, next_keys));
         scatter_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 2, current_values));
@@ -1198,6 +1201,7 @@ Error RadixSort::_create_pass_uniform_sets(RenderingDevice *resource_rd, const R
     };
 
     Vector<RD::Uniform> wg_prefix_uniforms;
+    wg_prefix_uniforms.reserve(4);
     wg_prefix_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 0, histogram_buffer));
     wg_prefix_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 1, wg_prefix_buffer));
     wg_prefix_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 2, bin_counts_buffer));
@@ -1212,6 +1216,7 @@ Error RadixSort::_create_pass_uniform_sets(RenderingDevice *resource_rd, const R
     uniform_sets.push_back(r_sets.wg_prefix);
 
     Vector<RD::Uniform> bin_prefix_uniforms;
+    bin_prefix_uniforms.reserve(2);
     bin_prefix_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 0, bin_counts_buffer));
     bin_prefix_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 1, bin_prefix_buffer));
     r_sets.bin_prefix = resource_rd->uniform_set_create(bin_prefix_uniforms, variant->bin_prefix_shader, 0);
@@ -1353,13 +1358,14 @@ uint64_t RadixSort::_sort_async_internal(RID keys_buffer, RID values_buffer, uin
     }
 
     // Returns true on success, false if the even-pass invariant is violated.
-    auto record_commands = [this, variant, pass_uniform_sets, num_passes, workgroups](RenderingDevice *command_rd, ComputeListID compute_list) -> bool {
-	    for (uint32_t pass = 0; pass < num_passes; ++pass) {
-	        bool use_primary = (pass & 1) == 0;
+    auto record_commands = [this, variant, &pass_uniform_sets, num_passes, workgroups](RenderingDevice *command_rd, ComputeListID compute_list) -> bool {
+        uint32_t histogram_offset = 0;
+        uint32_t bin_offset = 0;
+        uint32_t bit_shift = 0;
+        for (uint32_t pass = 0; pass < num_passes; ++pass) {
+            bool use_primary = (pass & 1) == 0;
             RID histogram_set = use_primary ? pass_uniform_sets.histogram_even : pass_uniform_sets.histogram_odd;
             RID scatter_set = use_primary ? pass_uniform_sets.scatter_even : pass_uniform_sets.scatter_odd;
-            uint32_t histogram_offset = pass * histogram_stride;
-            uint32_t bin_offset = pass * variant->radix_size;
 
             // GPU Debug: Histogram pass
             {
@@ -1374,7 +1380,7 @@ uint64_t RadixSort::_sort_async_internal(RID keys_buffer, RID values_buffer, uin
                     uint32_t histogram_offset;
                     uint32_t workgroup_stride;
                     uint32_t _pad0;
-                } hist_params = { pass * variant->radix_bits, histogram_offset, workgroup_stride, 0 };
+                } hist_params = { bit_shift, histogram_offset, workgroup_stride, 0 };
 
                 command_rd->compute_list_set_push_constant(compute_list, &hist_params, sizeof(hist_params));
                 command_rd->compute_list_dispatch(compute_list, workgroups, 1, 1);
@@ -1398,13 +1404,16 @@ uint64_t RadixSort::_sort_async_internal(RID keys_buffer, RID values_buffer, uin
             // GPU Debug: Scatter pass
             {
                 _record_scatter_pass(command_rd, compute_list, variant, scatter_set,
-                        pass * variant->radix_bits, histogram_offset, workgroup_stride, bin_offset, workgroups, false, RID(),
+                        bit_shift, histogram_offset, workgroup_stride, bin_offset, workgroups, false, RID(),
                         "GS_RadixSort_Scatter");
             }
 
             if (pass + 1 < num_passes) {
                 command_rd->compute_list_add_barrier(compute_list);
             }
+            bit_shift += variant->radix_bits;
+            histogram_offset += histogram_stride;
+            bin_offset += variant->radix_size;
         }
 
         if ((num_passes & 1) != 0) {
@@ -2480,14 +2489,15 @@ uint64_t RadixSort::_sort_indirect_internal(RID keys_buffer, RID values_buffer, 
     }
 
     // Returns true on success, false if the even-pass invariant is violated.
-    auto record_commands = [this, variant, pass_uniform_sets, num_passes, workgroups,
+    auto record_commands = [this, variant, &pass_uniform_sets, num_passes, workgroups,
             use_indirect_dispatch, dispatch_args_buffer](RenderingDevice *command_rd, ComputeListID compute_list) -> bool {
+        uint32_t histogram_offset = 0;
+        uint32_t bin_offset = 0;
+        uint32_t bit_shift = 0;
         for (uint32_t pass = 0; pass < num_passes; ++pass) {
             bool use_primary = (pass & 1) == 0;
             RID histogram_set = use_primary ? pass_uniform_sets.histogram_even : pass_uniform_sets.histogram_odd;
             RID scatter_set = use_primary ? pass_uniform_sets.scatter_even : pass_uniform_sets.scatter_odd;
-            uint32_t histogram_offset = pass * histogram_stride;
-            uint32_t bin_offset = pass * variant->radix_size;
 
             // GPU Debug: Histogram pass (64-bit keys)
             {
@@ -2501,7 +2511,7 @@ uint64_t RadixSort::_sort_indirect_internal(RID keys_buffer, RID values_buffer, 
                     uint32_t histogram_offset;
                     uint32_t workgroup_stride;
                     uint32_t _pad0;
-                } hist_params = { pass * variant->radix_bits, histogram_offset, workgroup_stride, 0 };
+                } hist_params = { bit_shift, histogram_offset, workgroup_stride, 0 };
 
                 command_rd->compute_list_set_push_constant(compute_list, &hist_params, sizeof(hist_params));
                 if (use_indirect_dispatch) {
@@ -2529,13 +2539,16 @@ uint64_t RadixSort::_sort_indirect_internal(RID keys_buffer, RID values_buffer, 
             // GPU Debug: Scatter pass (64-bit keys)
             {
                 _record_scatter_pass(command_rd, compute_list, variant, scatter_set,
-                        pass * variant->radix_bits, histogram_offset, workgroup_stride, bin_offset, workgroups,
+                        bit_shift, histogram_offset, workgroup_stride, bin_offset, workgroups,
                         use_indirect_dispatch, dispatch_args_buffer, "GS_RadixSort64_Scatter");
             }
 
             if (pass + 1 < num_passes) {
                 command_rd->compute_list_add_barrier(compute_list);
             }
+            bit_shift += variant->radix_bits;
+            histogram_offset += histogram_stride;
+            bin_offset += variant->radix_size;
         }
 
         if ((num_passes & 1) != 0) {
