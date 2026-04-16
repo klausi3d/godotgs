@@ -1418,11 +1418,11 @@ void GaussianSplatNodeRendererHelper::apply_renderer_settings() {
     owner.renderer->set_painterly_stroke_length(owner.stroke_width);
     owner.renderer->set_painterly_gamma(MAX(owner.temporal_blend, 0.01f));
     owner.renderer->set_opacity_multiplier(owner.opacity);
-    // Color grading is per-node and always pushed to the renderer. When the
-    // renderer is shared (multi-instance or world submission), last-writer-
-    // wins applies; per-submission grading will be required to eliminate
-    // that limitation.
-    owner.renderer->set_color_grading(owner.color_grading);
+    // Color grading is intentionally NOT pushed here. set_color_grading() and
+    // _on_color_grading_changed() already push on the actual change events.
+    // Re-pushing every frame from this owner-only path would clobber a non-
+    // owner node's set_color_grading() call on the next frame, so per-node
+    // grading would never persist in shared-renderer scenes.
     {
         GaussianStreamingSystem::ConfigOverrides overrides;
 
