@@ -41,7 +41,7 @@ What's still broken:
 - `gs_lighting_common.glsl:57` — `sh_occlusion = max(sh_occlusion, 1.0 - shadow)` couples shadow state into the SH contribution
 - `tile_resolve.glsl:309-313` — resolve normal fallback is `view_dir` when `normal_sample` is degenerate
 - `tile_resolve.glsl:363-366` — base SH color multiplied by `sh_occlusion`
-- `tile_render_resolve.cpp:952-958` — no radiance/ambient cubemap binding for resolve path
+- The resolve pass already binds the scene reflection atlas (`tile_render_resolve.cpp:916-920`, `:1007-1011` fallback), so an ambient/radiance source IS available — the gap is in shader use, not in CPU plumbing
 
 ## 4. Design decisions needed
 
@@ -51,7 +51,7 @@ The implementer must choose one option per decision. Defaults are what I'd recom
 
 | Option | Description | Pros | Cons |
 |---|---|---|---|
-| A (default) | **World-up normal** for diffuse BRDF. No flipping. Use the blended `normal_sample` only for shadow direction. | Kills chrome noise and view-dependent shifts; behavior is deterministic per world position | Flat shading look — loses per-splat normal detail |
+| A (default) | **World-up normal** for both diffuse and specular BRDF. No flipping. Use the blended `normal_sample` only for shadow direction. | Kills chrome noise and view-dependent shifts; behavior is deterministic per world position | Flat shading look — loses per-splat normal detail |
 | B | **Blended normal, no flipping**. Trust the blended `normal_sample`, accept that dot(normal, light) can be negative (resulting in 0 NdotL). | Preserves per-splat surface detail | Silhouettes go dark because blended normals at silhouettes face away from light |
 | C | **Hybrid**: world-up for diffuse, blended for specular. | Keeps some per-splat shimmer without chrome noise | More moving parts; harder to reason about |
 
@@ -67,8 +67,8 @@ The implementer must choose one option per decision. Defaults are what I'd recom
 
 | Option | Description | Pros | Cons |
 |---|---|---|---|
-| A (default) | **Constant ambient term** read from scene env. No cubemap lookup. Small fixed contribution (~0.05-0.1) from the ambient color to prevent fully-black splats in shadow. | Simple, cheap, consistent across scenes | Not physically motivated; requires artist tuning |
-| B | **Radiance cubemap sample** at world-up (or at blended normal). | Physically-motivated, matches mesh rendering | Requires `resolve_radiance_texture` binding plumbing + sampler + format decisions |
+| A (default) | **Constant ambient term** read from `scene_data_block.data.ambient_light_color_energy` (already plumbed via the existing scene_data uniform set). Multiply RGB by the energy `.w` for the contribution. Small fallback (~0.05) when the scene env is missing. | Simple, cheap, no new buffers; uses existing scene env | Not physically motivated for outdoors HDR; requires artist tuning |
+| B | **Reflection-atlas sample** via the already-bound texture at `tile_render_resolve.cpp:916-920`. The cubemap is in the descriptor set; this option only adds the shader-side sample (sample at world-up or blended normal). | Physically motivated; matches mesh rendering; no new CPU plumbing | Cubemap may not be populated for all scenes; need fallback to scene env color |
 | C | Expose both, pick via project setting. | Flexibility | More surface area, more CI |
 
 ### 4.4 Fallback normal when `normal_sample` is degenerate
@@ -95,19 +95,17 @@ Files modified (estimated):
 
 - `modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl` — remove normal flips, remove `sh_occlusion` coupling. ~10 lines deleted, ~3 added.
 - `modules/gaussian_splatting/shaders/tile_resolve.glsl` — normal fallback, remove SH × occlusion multiplication, inject constant ambient. ~15 lines.
-- `modules/gaussian_splatting/renderer/tile_render_resolve.cpp` — add the ambient-color uniform plumbing. ~10 lines.
-- `modules/gaussian_splatting/renderer/tile_render_types.h` — add `constant_ambient` field to render-params layout. ~2 lines + layout version bump.
-- `modules/gaussian_splatting/tests/test_renderer_pipeline.h` — update `sizeof(TileRenderParamsGPU)` assertion.
-- `modules/gaussian_splatting/shaders/includes/gs_render_params.glsl` — add accessor + layout version bump.
+- (Option 4.3A) **No CPU plumbing needed** — the shader reads `scene_data_block.data.ambient_light_color_energy` from the already-bound scene_data uniform set. No new field on `TileRenderParamsGPU`, no layout version bump, no `sizeof` assertion change.
+- (Option 4.3B) `modules/gaussian_splatting/renderer/tile_render_resolve.cpp` — already binds reflection_atlas at `:916-920`; only need shader-side sample plumbing in `tile_resolve.glsl`. No new uniform binding.
 
-No new shaders, no new dispatch passes, no new buffers. The plumbing rides the existing resolve param path.
+No new shaders, no new dispatch passes, no new buffers. The plumbing rides the existing scene_data uniform set and the already-bound reflection atlas.
 
 ## 7. Integration with existing systems
 
 - **Compatible with PR #243's weighted_depth work**. The normal changes are decoupled from the depth-reconstruction path.
 - **Compatible with PR #241's cascade guards**. Shadow sampling still uses them; only the receiver_normal input changes.
 - **No interaction with PR #237's hotspot pruning**. Resolve runs after binning; the cull-time changes don't touch resolve logic.
-- **Resident instance contract** (PR #236 / 905eb1a0ab): ambient color is per-frame, not per-instance-contract — no cache key change needed.
+- **Resident instance contract** (PR #236 / 905eb1a0ab): ambient color is per-frame (read from scene_data each frame), not per-instance-contract — no cache key change needed.
 
 ## 8. Tests
 
@@ -138,7 +136,7 @@ If the implementer wants visibility into the new ambient term, add one optional 
 
 - **Visual regression on existing scenes**: dropping per-splat normal detail (Option 4.1A) WILL look different from current behavior on some assets. Worth an eyeball pass before committing.
 - **SH-in-shadow brightness**: removing the occlusion coupling (Option 4.2A) may make shadowed splats look "too bright" in some scenes that were relying on the accidental darkening.
-- **Ambient color source**: reading `scene_data_block.data.ambient_light_color` may not be populated for all scene types (environment-less scenes?). Need a fallback.
+- **Ambient color source**: `scene_data_block.data.ambient_light_color_energy` (rgb + intensity in `.w`) may not be populated for all scene types (environment-less scenes). Use a small constant fallback (~0.05) when the energy `.w` is zero or the scene has no environment.
 - **Backwards compatibility**: scenes authored under current (buggy) behavior may need re-tuning. The PR should note this in its release-channels doc update.
 
 ### Open questions (human decisions before implementation)
@@ -154,8 +152,8 @@ Ordered, each task small enough for one commit:
 - [ ] **1. Fallback normal**: change `tile_resolve.glsl:309-313` to use `vec3(0, 1, 0)` instead of `view_dir`. Add a test for the orbit-stability invariant. Commit.
 - [ ] **2. Remove normal flipping**: delete the `shadow_normal` and `h_normal` flip blocks in `gs_lighting_common.glsl:50-63`. For Option 4.1A, replace with a world-up normal for **both diffuse and specular** BRDF evaluation (matching §5 step 1). For Option 4.1C (hybrid), keep blended normal for specular only and document that choice in the PR. Commit.
 - [ ] **3. Remove SH occlusion coupling**: delete the `sh_occlusion = max(..., 1.0 - shadow)` line and the `sh_occlusion` multiplication at `tile_resolve.glsl:363-366`. Add the SH-color-in-shadow test. Commit.
-- [ ] **4. Constant ambient plumbing**: add field to `TileRenderParamsGPU`, bump `GS_RENDER_PARAMS_LAYOUT_VERSION`, update sizeof assertion in `test_renderer_pipeline.h`, plumb value from `tile_render_resolve.cpp` using scene env ambient color. Commit.
-- [ ] **5. Resolve shader ambient injection**: add `+ constant_ambient * base_color * alpha` (or equivalent) in the resolve composition step. Commit.
+- [ ] **4. Resolve shader ambient injection** (Option 4.3A — no CPU plumbing): in `tile_resolve.glsl`, add `+ scene_data_block.data.ambient_light_color_energy.rgb * scene_data_block.data.ambient_light_color_energy.w * base_color * alpha` (or equivalent) in the composition step, with a small constant fallback (~0.05) when the energy `.w` is zero. Commit.
+- [ ] **5. (deferred to Option 4.3B if pursued)** Add reflection-atlas sample in resolve shader using the already-bound texture from `tile_render_resolve.cpp:916-920`. No new CPU bindings. Skip if 4.3A is sufficient.
 - [ ] **6. Test scenes**: add a new `test_resolve_lighting.h` doctest file under `modules/gaussian_splatting/tests/` with the four unit-test cases from §8. Wire it into `test_gaussian_splatting.h`. Add the filter to `tests/ci/run_module_tests.py` per the pattern used by `Gaussian Diagnostics`/`Gaussian Logger` (PR #244). Commit.
 - [ ] **7. Docs**: update `docs/development/release-channels.md` or a new `docs/reference/resolve-lighting.md` to describe the new behavior. Commit.
 - [ ] **8. PR** against master. Title suggestion: `fix: stabilize resolve-mode lighting (normals, SH occlusion, ambient)`.
