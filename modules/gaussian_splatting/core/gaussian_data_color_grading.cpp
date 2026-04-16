@@ -14,28 +14,116 @@
 #include "../resources/color_grading_resource.h"
 #include "core/error/error_macros.h"
 
+namespace {
+
+struct ColorGradingCpuParams {
+    bool enabled = false;
+    float exposure_mult = 1.0f;
+    float temp_half = 0.0f;
+    float tint_half = 0.0f;
+    float tint_quarter = 0.0f;
+    float contrast = 1.0f;
+    float saturation = 1.0f;
+    float hue_shift_normalized = 0.0f;
+};
+
+static ColorGradingCpuParams _build_color_grading_cpu_params(const Ref<ColorGradingResource> &p_grading) {
+    ColorGradingCpuParams params;
+    params.enabled = p_grading->get_enabled();
+    if (!params.enabled) {
+        return params;
+    }
+
+    params.exposure_mult = Math::pow(2.0f, p_grading->get_exposure());
+    const float temp_factor = p_grading->get_temperature() * 0.01f;
+    const float tint_factor = p_grading->get_tint() * 0.01f;
+    params.temp_half = temp_factor * 0.5f;
+    params.tint_half = tint_factor * 0.5f;
+    params.tint_quarter = tint_factor * 0.25f;
+    params.contrast = p_grading->get_contrast();
+    params.saturation = p_grading->get_saturation();
+    params.hue_shift_normalized = p_grading->get_hue_shift() / 360.0f;
+    return params;
+}
+
+static Color _apply_color_grading_cpu_with_params(const Color &p_color, const ColorGradingCpuParams &p_params) {
+    Color result = p_color;
+
+    if (!p_params.enabled) {
+        return result;
+    }
+
+    // 1. Exposure
+    result.r *= p_params.exposure_mult;
+    result.g *= p_params.exposure_mult;
+    result.b *= p_params.exposure_mult;
+
+    // 2. Temperature & Tint
+    result.r += p_params.temp_half;
+    result.b -= p_params.temp_half;
+    result.g += p_params.tint_half;
+    result.r -= p_params.tint_quarter;
+    result.b -= p_params.tint_quarter;
+
+    result.r = MAX(result.r, 0.0f);
+    result.g = MAX(result.g, 0.0f);
+    result.b = MAX(result.b, 0.0f);
+
+    // 3. Contrast
+    result.r = (result.r - 0.5f) * p_params.contrast + 0.5f;
+    result.g = (result.g - 0.5f) * p_params.contrast + 0.5f;
+    result.b = (result.b - 0.5f) * p_params.contrast + 0.5f;
+
+    // 4. Saturation & Hue shift (RGB -> HSV -> adjust -> RGB)
+    float h = result.get_h();
+    float s = result.get_s();
+    float v = result.get_v();
+
+    // Adjust saturation
+    s *= p_params.saturation;
+    s = CLAMP(s, 0.0f, 1.0f);
+
+    // Adjust hue
+    h += p_params.hue_shift_normalized;
+    h = Math::fposmod(h, 1.0f); // Wrap around
+
+    result = Color::from_hsv(h, s, v);
+
+    // Final clamp
+    result.r = CLAMP(result.r, 0.0f, 65504.0f);
+    result.g = CLAMP(result.g, 0.0f, 65504.0f);
+    result.b = CLAMP(result.b, 0.0f, 65504.0f);
+
+    return result;
+}
+
+} // namespace
+
 Error GaussianData::bake_color_grading(const Ref<ColorGradingResource> &p_grading) {
     ERR_FAIL_COND_V(!p_grading.is_valid(), ERR_INVALID_PARAMETER);
     RWLockWrite lock(data_rwlock);
-    ERR_FAIL_COND_V(gaussians.size() == 0, ERR_INVALID_DATA);
+    const uint32_t gaussian_count = gaussians.size();
+    ERR_FAIL_COND_V(gaussian_count == 0, ERR_INVALID_DATA);
 
     // Backup original SH DC coefficients (only once)
     if (!bake_info.is_baked) {
-        bake_info.original_sh_dc.resize(gaussians.size());
-        for (uint32_t i = 0; i < gaussians.size(); i++) {
+        bake_info.original_sh_dc.resize(gaussian_count);
+        for (uint32_t i = 0; i < gaussian_count; i++) {
             bake_info.original_sh_dc[i] = gaussians[i].sh_dc;
         }
     }
 
+    const ColorGradingCpuParams grading_params = _build_color_grading_cpu_params(p_grading);
+
     // Apply color grading to each Gaussian's DC coefficients
-    for (uint32_t i = 0; i < gaussians.size(); i++) {
+    for (uint32_t i = 0; i < gaussian_count; i++) {
         Gaussian &g = gaussians[i];
 
         // Extract base color from SH DC coefficients
         Color base_color = g.sh_dc;
 
         // Apply color grading
-        Color graded_color = apply_color_grading_cpu(base_color, p_grading);
+        Color graded_color = _apply_color_grading_cpu_with_params(base_color, grading_params);
 
         // Write back to SH DC coefficients (preserve alpha)
         g.sh_dc.r = graded_color.r;
@@ -59,10 +147,11 @@ void GaussianData::restore_original_colors() {
         return;  // Nothing to restore
     }
 
-    ERR_FAIL_COND(bake_info.original_sh_dc.size() != gaussians.size());
+    const uint32_t gaussian_count = gaussians.size();
+    ERR_FAIL_COND(bake_info.original_sh_dc.size() != gaussian_count);
 
     // Restore original SH DC coefficients
-    for (uint32_t i = 0; i < gaussians.size(); i++) {
+    for (uint32_t i = 0; i < gaussian_count; i++) {
         gaussians[i].sh_dc = bake_info.original_sh_dc[i];
     }
 
@@ -74,56 +163,6 @@ void GaussianData::restore_original_colors() {
 }
 
 Color GaussianData::apply_color_grading_cpu(const Color &p_color, const Ref<ColorGradingResource> &p_grading) {
-    Color result = p_color;
-
-    if (!p_grading->get_enabled()) {
-        return result;
-    }
-
-    // 1. Exposure
-    float exposure_mult = Math::pow(2.0f, p_grading->get_exposure());
-    result.r *= exposure_mult;
-    result.g *= exposure_mult;
-    result.b *= exposure_mult;
-
-    // 2. Temperature & Tint
-    float temp_factor = p_grading->get_temperature() * 0.01f;
-    float tint_factor = p_grading->get_tint() * 0.01f;
-
-    result.r += temp_factor * 0.5f;
-    result.b -= temp_factor * 0.5f;
-    result.g += tint_factor * 0.5f;
-    result.r -= tint_factor * 0.25f;
-    result.b -= tint_factor * 0.25f;
-
-    result.r = MAX(result.r, 0.0f);
-    result.g = MAX(result.g, 0.0f);
-    result.b = MAX(result.b, 0.0f);
-
-    // 3. Contrast
-    result.r = (result.r - 0.5f) * p_grading->get_contrast() + 0.5f;
-    result.g = (result.g - 0.5f) * p_grading->get_contrast() + 0.5f;
-    result.b = (result.b - 0.5f) * p_grading->get_contrast() + 0.5f;
-
-    // 4. Saturation & Hue shift (RGB -> HSV -> adjust -> RGB)
-    float h = result.get_h();
-    float s = result.get_s();
-    float v = result.get_v();
-
-    // Adjust saturation
-    s *= p_grading->get_saturation();
-    s = CLAMP(s, 0.0f, 1.0f);
-
-    // Adjust hue
-    h += (p_grading->get_hue_shift() / 360.0f);
-    h = Math::fposmod(h, 1.0f);  // Wrap around
-
-    result = Color::from_hsv(h, s, v);
-
-    // Final clamp
-    result.r = CLAMP(result.r, 0.0f, 65504.0f);
-    result.g = CLAMP(result.g, 0.0f, 65504.0f);
-    result.b = CLAMP(result.b, 0.0f, 65504.0f);
-
-    return result;
+    const ColorGradingCpuParams grading_params = _build_color_grading_cpu_params(p_grading);
+    return _apply_color_grading_cpu_with_params(p_color, grading_params);
 }
