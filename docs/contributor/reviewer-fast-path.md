@@ -15,7 +15,7 @@ This path is for reviewers, maintainers, and contributors who want to understand
 
 ## What To Check
 
-1. Confirm the project is still Alpha and that the preferred public evaluation path is Linux nightly. The workflow now packages Windows, but the visible public Windows release has not landed yet.
+1. Confirm the project is still Alpha and that nightly Linux and Windows editor builds are the public evaluation path. macOS still requires a source build.
 2. Read `ENGINE_PATCHES.md` before opening engine-root changes.
 3. Inspect `modules/gaussian_splatting/` for the module implementation that owns the fork delta.
 4. Use the sample project in `tests/examples/godot/test_project` to verify the current runtime path.
