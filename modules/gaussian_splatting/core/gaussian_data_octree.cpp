@@ -106,13 +106,29 @@ void GaussianData::_subdivide_octree_node(uint32_t node_idx, int max_depth, uint
         return;
     }
 
-    // Calculate the largest Gaussian radius in this node
+    struct GaussianBoundsEntry {
+        uint32_t idx = 0;
+        AABB bounds;
+    };
+
+    // Precompute Gaussian bounds once for this node so child overlap checks
+    // can reuse them instead of rebuilding AABBs for every child octant.
+    LocalVector<GaussianBoundsEntry> gaussian_bounds;
+    gaussian_bounds.resize(node.indices.size());
+
+    // Calculate the largest Gaussian radius in this node.
     float max_gaussian_radius = 0.0f;
-    for (uint32_t idx : node.indices) {
+    for (uint32_t i = 0; i < node.indices.size(); i++) {
+        const uint32_t idx = node.indices[i];
         const Gaussian &g = gaussians[idx];
         float max_scale = MAX(MAX(g.scale.x, g.scale.y), g.scale.z);
         float radius = max_scale * 3.0f; // 3-sigma coverage
         max_gaussian_radius = MAX(max_gaussian_radius, radius);
+
+        const Vector3 radius_vector(radius, radius, radius);
+        GaussianBoundsEntry &entry = gaussian_bounds[i];
+        entry.idx = idx;
+        entry.bounds = AABB(g.position - radius_vector, radius_vector * 2.0f);
     }
 
     // Stop subdivision if node is smaller than the largest Gaussian
@@ -134,7 +150,8 @@ void GaussianData::_subdivide_octree_node(uint32_t node_idx, int max_depth, uint
 
     // Track if we created any children
     bool has_children = false;
-    LocalVector<uint32_t> indices_moved_to_children; // Track which indices actually went to children
+    HashSet<uint32_t> moved_set; // Track which indices actually moved to created children.
+    moved_set.reserve(node.indices.size());
 
     // Create 8 children
     for (int i = 0; i < 8; i++) {
@@ -151,18 +168,10 @@ void GaussianData::_subdivide_octree_node(uint32_t node_idx, int max_depth, uint
 
         // Partition gaussians into this child
         // Check if Gaussian overlaps child bounds (considering scale)
-        for (uint32_t idx : node.indices) {
-            const Gaussian &g = gaussians[idx];
-
-            // Create bounding box for Gaussian considering its scale
-            float max_scale = MAX(MAX(g.scale.x, g.scale.y), g.scale.z);
-            float radius = max_scale * 3.0f; // 3-sigma coverage
-            AABB gaussian_bounds(g.position - Vector3(radius, radius, radius),
-                                Vector3(radius * 2, radius * 2, radius * 2));
-
-            // Check if Gaussian bounds overlap with child bounds
-            if (child.bounds.intersects(gaussian_bounds)) {
-                child.indices.push_back(idx);
+        for (uint32_t j = 0; j < gaussian_bounds.size(); j++) {
+            const GaussianBoundsEntry &entry = gaussian_bounds[j];
+            if (child.bounds.intersects(entry.bounds)) {
+                child.indices.push_back(entry.idx);
             }
         }
 
@@ -176,9 +185,8 @@ void GaussianData::_subdivide_octree_node(uint32_t node_idx, int max_depth, uint
                 continue;
             }
 
-            // Track which indices are actually moving to a child
             for (uint32_t idx : child.indices) {
-                indices_moved_to_children.push_back(idx);
+                moved_set.insert(idx);
             }
 
             uint32_t child_idx = octree.size();
@@ -203,12 +211,6 @@ void GaussianData::_subdivide_octree_node(uint32_t node_idx, int max_depth, uint
     // Clear only the indices that were actually moved to children
     // Keep any indices that were skipped due to the 95% threshold
     if (has_children) {
-        // Build a set of moved indices for efficient lookup
-        HashSet<uint32_t> moved_set;
-        for (uint32_t idx : indices_moved_to_children) {
-            moved_set.insert(idx);
-        }
-
         // Keep only indices that weren't moved to children
         LocalVector<uint32_t> remaining_indices;
         for (uint32_t idx : octree[node_idx].indices) {
