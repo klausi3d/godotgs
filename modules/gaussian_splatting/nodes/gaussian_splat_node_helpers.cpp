@@ -1380,9 +1380,15 @@ void GaussianSplatNodeRendererHelper::ensure_renderer() {
                 // brings the renderer up). apply_renderer_settings() does
                 // not push grading per-frame to avoid the shared-renderer
                 // clobber, so this initial push is needed.
-                if (can_apply_renderer_settings()) {
-                    owner.renderer->set_color_grading(owner.color_grading);
-                }
+                //
+                // No ownership gate: set_color_grading() pushes regardless
+                // of ownership (per-node grading is the design intent), so
+                // initial sync must mirror that. Otherwise a non-owner node
+                // sharing a renderer with an active world submission would
+                // silently drop its persisted grading. Last-writer-wins
+                // between distinct ensure_renderer() calls matches the
+                // setter's existing semantics.
+                owner.renderer->set_color_grading(owner.color_grading);
             }
         }
     }
