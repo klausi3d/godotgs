@@ -3408,3 +3408,145 @@ TEST_CASE("[Streaming Pipeline] Combined pressure with in-flight pack jobs valid
     CHECK(summary.reason == String(StreamingQueuePressureController::REASON_QUEUE_AND_CAPS));
     CHECK(StreamingQueuePressureController::validate_summary_invariants(summary, sample));
 }
+
+TEST_CASE("[Streaming Pipeline][Visibility] Zero-visible startup recovery is one-shot and nearest-first") {
+    GaussianStreamingSystem system;
+    system.chunks.resize(3);
+
+    auto configure_chunk = [](GaussianStreamingTypes::StreamingChunk &p_chunk, const Vector3 &p_center) {
+        p_chunk = GaussianStreamingTypes::StreamingChunk();
+        p_chunk.center = p_center;
+        p_chunk.bounds = AABB(p_center - Vector3(0.5f, 0.5f, 0.5f), Vector3(1.0f, 1.0f, 1.0f));
+        p_chunk.count = 32;
+    };
+    configure_chunk(system.chunks[0], Vector3(0.0f, 0.0f, 30.0f));
+    configure_chunk(system.chunks[1], Vector3(0.0f, 0.0f, 10.0f));
+    configure_chunk(system.chunks[2], Vector3(0.0f, 0.0f, 20.0f));
+
+    StreamingVisibilityController controller;
+    controller.update_camera_tracking(Vector3(0.0f, 0.0f, 0.0f), 1.0f / 60.0f);
+
+    Projection projection;
+    projection.set_perspective(70.0f, 1.0f, 0.1f, 4.0f);
+    Transform3D camera_transform;
+
+    controller.update_chunk_visibility(system, camera_transform, projection);
+    CHECK(controller.culling_stats.visible_chunks == 0);
+    CHECK(controller.visible_chunk_indices.size() == 0);
+
+    controller.handle_zero_visible_chunk_recovery(system);
+    CHECK(controller.zero_visible_recovery.recoveries_triggered == 1);
+    CHECK(controller.culling_stats.visible_chunks == 3);
+    CHECK(controller.visible_chunk_indices.size() == 3);
+    CHECK(controller.visible_chunk_indices[0] == 1);
+    CHECK(controller.visible_chunk_indices[1] == 2);
+    CHECK(controller.visible_chunk_indices[2] == 0);
+    CHECK(system.chunks[0].is_visible);
+    CHECK(system.chunks[1].is_visible);
+    CHECK(system.chunks[2].is_visible);
+
+    system.begin_frame();
+    controller.update_chunk_visibility(system, camera_transform, projection);
+    CHECK(controller.culling_stats.visible_chunks == 0);
+    controller.handle_zero_visible_chunk_recovery(system);
+
+    CHECK(controller.zero_visible_recovery.recoveries_triggered == 1);
+    CHECK(controller.visible_chunk_indices.size() == 0);
+    CHECK_FALSE(system.chunks[0].is_visible);
+    CHECK_FALSE(system.chunks[1].is_visible);
+    CHECK_FALSE(system.chunks[2].is_visible);
+}
+
+TEST_CASE("[Streaming Pipeline][Visibility] Persistent zero-visible recovery obeys trigger frames") {
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    if (project_settings == nullptr) {
+        MESSAGE("Skipping test - ProjectSettings unavailable");
+        return;
+    }
+
+    const String mode_setting = "rendering/gaussian_splatting/streaming/zero_visible_recovery_mode";
+    const String trigger_setting = "rendering/gaussian_splatting/streaming/zero_visible_recovery_trigger_frames";
+    const String cooldown_setting = "rendering/gaussian_splatting/streaming/zero_visible_recovery_cooldown_frames";
+    ScopedProjectSettingRestore mode_guard(project_settings, mode_setting);
+    ScopedProjectSettingRestore trigger_guard(project_settings, trigger_setting);
+    ScopedProjectSettingRestore cooldown_guard(project_settings, cooldown_setting);
+
+    project_settings->set_setting(mode_setting, true);
+    project_settings->set_setting(trigger_setting, int64_t(2));
+    project_settings->set_setting(cooldown_setting, int64_t(0));
+
+    GaussianStreamingSystem system;
+    system.chunks.resize(2);
+    for (uint32_t i = 0; i < system.chunks.size(); i++) {
+        GaussianStreamingTypes::StreamingChunk chunk;
+        chunk.center = Vector3(0.0f, 0.0f, 12.0f + float(i) * 4.0f);
+        chunk.bounds = AABB(chunk.center - Vector3(0.5f, 0.5f, 0.5f), Vector3(1.0f, 1.0f, 1.0f));
+        chunk.count = 8;
+        system.chunks[i] = chunk;
+    }
+
+    StreamingVisibilityController controller;
+    controller.load_zero_visible_recovery_config_from_project_settings();
+    controller.update_camera_tracking(Vector3(0.0f, 0.0f, 0.0f), 1.0f / 60.0f);
+
+    Projection projection;
+    projection.set_perspective(70.0f, 1.0f, 0.1f, 4.0f);
+    Transform3D camera_transform;
+
+    system.begin_frame();
+    controller.update_chunk_visibility(system, camera_transform, projection);
+    controller.handle_zero_visible_chunk_recovery(system);
+    CHECK(controller.zero_visible_recovery.recoveries_triggered == 1);
+
+    system.begin_frame();
+    controller.update_chunk_visibility(system, camera_transform, projection);
+    controller.handle_zero_visible_chunk_recovery(system);
+
+    CHECK(controller.zero_visible_recovery.zero_visible_consecutive_frames == 2);
+    CHECK(controller.zero_visible_recovery.recoveries_triggered == 2);
+    CHECK(controller.visible_chunk_indices.size() == 2);
+    CHECK(system.chunks[0].is_visible);
+    CHECK(system.chunks[1].is_visible);
+}
+
+TEST_CASE("[Streaming Pipeline][Visibility] Prefetch candidate scan skips loaded and upload-pending chunks") {
+    GaussianStreamingSystem system;
+    system.chunks.resize(5);
+
+    auto configure_chunk = [](GaussianStreamingTypes::StreamingChunk &p_chunk, const Vector3 &p_center) {
+        p_chunk = GaussianStreamingTypes::StreamingChunk();
+        p_chunk.center = p_center;
+        p_chunk.bounds = AABB(p_center - Vector3(0.5f, 0.5f, 0.5f), Vector3(1.0f, 1.0f, 1.0f));
+        p_chunk.count = 16;
+    };
+
+    configure_chunk(system.chunks[0], Vector3(1.0f, 0.0f, 0.0f));
+    configure_chunk(system.chunks[1], Vector3(5.0f, 0.0f, 0.0f));
+    configure_chunk(system.chunks[2], Vector3(10.0f, 0.0f, 0.0f)); // outside threshold
+    configure_chunk(system.chunks[3], Vector3(2.0f, 0.0f, 0.0f)); // upload pending
+    configure_chunk(system.chunks[4], Vector3(3.0f, 0.0f, 0.0f)); // already loaded
+    system.chunks[3].upload_pending = true;
+    system.chunks[4].is_loaded = true;
+
+    system.scheduler.max_prefetch_chunk_scan_per_frame = 0;
+    system.scheduler.prefetch_scan_cursor = 0;
+    system.scheduler.last_prefetch_scan_count = 0;
+    system.scheduler.last_prefetch_candidate_count = 0;
+    system.scheduler.last_prefetch_upload_pending_skip_count = 0;
+    system.scheduler.prefetch_scan_budget_remaining_this_frame = 0;
+
+    StreamingVisibilityController controller;
+    controller.prefetch_lookahead_distance = 6.0f;
+
+    LocalVector<uint32_t> candidates;
+    controller.collect_prefetch_candidates(system, Vector3(0.0f, 0.0f, 0.0f), 2, UINT32_MAX, candidates);
+
+    CHECK(candidates.size() == 2);
+    const bool has_chunk_0 = candidates[0] == 0 || candidates[1] == 0;
+    const bool has_chunk_1 = candidates[0] == 1 || candidates[1] == 1;
+    CHECK(has_chunk_0);
+    CHECK(has_chunk_1);
+    CHECK(system.scheduler.last_prefetch_scan_count == 5);
+    CHECK(system.scheduler.last_prefetch_candidate_count == 2);
+    CHECK(system.scheduler.last_prefetch_upload_pending_skip_count == 1);
+}
