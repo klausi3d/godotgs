@@ -83,7 +83,7 @@ The implementer must choose one option per decision. Defaults are what I'd recom
 
 Minimal, coherent v1:
 
-1. **BRDF path**: replace normal flipping in `gs_lighting_common.glsl:50-63` with a world-up normal for diffuse. Specular path takes the blended normal as-is (to preserve material feel).
+1. **BRDF path**: replace normal flipping in `gs_lighting_common.glsl:50-63` with a world-up normal for **both diffuse and specular**. This is strict Option 4.1A — no per-splat blended normal feeds the BRDF at all, which is what fully kills view-dependent chrome noise. (If the implementer wants to keep blended normal for specular only, that's the hybrid Option 4.1C; document the choice in the PR description and accept the partial chrome noise it preserves.)
 2. **Shadow sampling**: uses blended `normal_sample` for receiver-bias direction (current), but `shadow_normal` is NOT flipped. If `dot(normal, light) < 0`, the splat is treated as facing away from the light → shadow term is 1.0 (unshadowed) but `NdotL = 0` on the diffuse side. Simpler than the current dual-flip logic.
 3. **SH occlusion**: delete the `sh_occlusion = max(sh_occlusion, 1.0 - shadow)` line at `gs_lighting_common.glsl:57`. Remove the multiplication at `tile_resolve.glsl:363-366`. Base SH color applied at full strength.
 4. **Ambient**: add a `hvec3 constant_ambient` uniform to the resolve params (value read from scene env ambient color × intensity). Add at `tile_resolve.glsl` before the shading composition.
