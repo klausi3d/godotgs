@@ -1,0 +1,167 @@
+# Resolve-Mode Lighting Redesign Spec
+
+**Status**: design, not implemented
+**Target**: post-tier-2 master (`e53d60ff77` or later)
+**Supersedes**: the deferred portions of PR #220's resolve-lighting overhaul that were intentionally dropped during the PR #243 salvage
+
+## 1. Summary
+
+The Gaussian splatting resolve pass produces per-pixel lit output from blended splat fragments. PR #220 reported three resolve-mode lighting artifacts (chrome noise, dark patches, view-dependent brightness shifts) and bundled the fixes with a larger redesign that never fully landed. PR #243 ported the safe subset (weighted receiver depth, α-coverage weighting, SH double-scale fix, cascade-validity guards); the remaining normal-handling, ambient, and SH-occlusion changes were explicitly deferred because they require behavior decisions and cross-scene verification.
+
+This spec defines the deferred work as a single focused design task. **It is not a cherry-pick.** The original commits targeted a slightly older codebase; the intent survives, the specific code needs re-derivation against current master.
+
+### Not in scope
+- Compositor default-policy flip (`depth_test=false`, relaxed scene-depth) — separate concern, separate PR.
+- Color grading per-node independence — addressed by the color-grading fix PR.
+- Per-splat SH precision or DC decode — already resolved on master.
+
+## 2. Problems to solve
+
+| ID | Symptom | Where it manifests |
+|---|---|---|
+| 1 | **Chrome/sparkle noise** on brightly lit resolve output under camera motion | Orbit camera around a scene with a strong directional light; specular-like flicker on overlap regions |
+| 2 | **Dark patches** on silhouettes and overlap regions of shadowed splats | Static shadowed scene with overlapping splats; dark halos at silhouettes |
+| 3 | **View-dependent brightness shifts** on static lighting | Orbit camera with no light-direction change; splat brightness changes as the camera moves |
+
+Common cause: all three trace back to the resolve lighting pipeline using *per-pixel blended/flipped normals* that change with view angle and overlap depth. The BRDF evaluation is sensitive to normal direction, and the `sh_occlusion` term couples shadow strength into the base color multiplier, which amplifies artifacts under heavy shadow.
+
+## 3. Current state on master
+
+What's already landed (from PR #243 and adjacent merges):
+
+- `tile_raster_common.glsl:662-672` — raster accumulates α-weighted `weighted_depth`, output to `lighting_depth` for stable PSSM cascade selection
+- `tile_resolve.glsl:175,267-273` — resolve reconstructs lighting/shadow positions from `lighting_depth`
+- `tile_resolve.glsl:380-381` — direct-light contribution is α-coverage weighted, not α² weighted
+- `gs_directional_shadow.glsl:54-125` — cascade-range guards with graceful fallback to next cascade for blend_splits
+
+What's still broken:
+
+- `gs_lighting_common.glsl:50-54` — `shadow_normal` flipped if `dot(normal, light_dir) < 0`
+- `gs_lighting_common.glsl:60-63` — `h_normal` flipped the same way before BRDF evaluation
+- `gs_lighting_common.glsl:57` — `sh_occlusion = max(sh_occlusion, 1.0 - shadow)` couples shadow state into the SH contribution
+- `tile_resolve.glsl:309-313` — resolve normal fallback is `view_dir` when `normal_sample` is degenerate
+- `tile_resolve.glsl:363-366` — base SH color multiplied by `sh_occlusion`
+- `tile_render_resolve.cpp:952-958` — no radiance/ambient cubemap binding for resolve path
+
+## 4. Design decisions needed
+
+The implementer must choose one option per decision. Defaults are what I'd recommend, but each has tradeoffs worth a reviewer thinking through before code lands.
+
+### 4.1 Normal handling for BRDF evaluation
+
+| Option | Description | Pros | Cons |
+|---|---|---|---|
+| A (default) | **World-up normal** for diffuse BRDF. No flipping. Use the blended `normal_sample` only for shadow direction. | Kills chrome noise and view-dependent shifts; behavior is deterministic per world position | Flat shading look — loses per-splat normal detail |
+| B | **Blended normal, no flipping**. Trust the blended `normal_sample`, accept that dot(normal, light) can be negative (resulting in 0 NdotL). | Preserves per-splat surface detail | Silhouettes go dark because blended normals at silhouettes face away from light |
+| C | **Hybrid**: world-up for diffuse, blended for specular. | Keeps some per-splat shimmer without chrome noise | More moving parts; harder to reason about |
+
+### 4.2 SH occlusion handling
+
+| Option | Description | Pros | Cons |
+|---|---|---|---|
+| A (default) | **Remove the `sh_occlusion` coupling**. Base SH color is always applied at full strength; shadow only affects the direct-light term. | Fixes dark patches caused by SH * shadow multiplication | Shadowed splats look brighter (show more baked color) — may or may not match intended look |
+| B | Keep `sh_occlusion` but scale it softer (e.g., `sh_occlusion * 0.5` instead of `max(..., 1.0 - shadow)`). | Preserves some darken-in-shadow behavior | Tunable magic number; scene-dependent |
+| C | Let each node expose a per-node `sh_shadow_coupling` parameter. | Scene artist control | Adds a param, adds surface area |
+
+### 4.3 Ambient / indirect contribution
+
+| Option | Description | Pros | Cons |
+|---|---|---|---|
+| A (default) | **Constant ambient term** read from scene env. No cubemap lookup. Small fixed contribution (~0.05-0.1) from the ambient color to prevent fully-black splats in shadow. | Simple, cheap, consistent across scenes | Not physically motivated; requires artist tuning |
+| B | **Radiance cubemap sample** at world-up (or at blended normal). | Physically-motivated, matches mesh rendering | Requires `resolve_radiance_texture` binding plumbing + sampler + format decisions |
+| C | Expose both, pick via project setting. | Flexibility | More surface area, more CI |
+
+### 4.4 Fallback normal when `normal_sample` is degenerate
+
+| Option | Description | Pros | Cons |
+|---|---|---|---|
+| A (default) | **World-up (`vec3(0,1,0)`)** as degenerate fallback. | View-independent; eliminates the view-dir artifact | Incorrect for walls / sideways surfaces |
+| B | Keep current `view_dir` fallback. | Matches current behavior | Produces view-dependent artifacts — Issue 3 |
+| C | Blend with surface tangent somehow. | Smarter | Not obviously better; complexity |
+
+## 5. Proposed approach (if you pick all "A" options)
+
+Minimal, coherent v1:
+
+1. **BRDF path**: replace normal flipping in `gs_lighting_common.glsl:50-63` with a world-up normal for diffuse. Specular path takes the blended normal as-is (to preserve material feel).
+2. **Shadow sampling**: uses blended `normal_sample` for receiver-bias direction (current), but `shadow_normal` is NOT flipped. If `dot(normal, light) < 0`, the splat is treated as facing away from the light → shadow term is 1.0 (unshadowed) but `NdotL = 0` on the diffuse side. Simpler than the current dual-flip logic.
+3. **SH occlusion**: delete the `sh_occlusion = max(sh_occlusion, 1.0 - shadow)` line at `gs_lighting_common.glsl:57`. Remove the multiplication at `tile_resolve.glsl:363-366`. Base SH color applied at full strength.
+4. **Ambient**: add a `hvec3 constant_ambient` uniform to the resolve params (value read from scene env ambient color × intensity). Add at `tile_resolve.glsl` before the shading composition.
+5. **Normal fallback**: at `tile_resolve.glsl:309-313`, change the fallback from `view_dir` to `vec3(0, 1, 0)`.
+
+## 6. Shader / dispatch changes
+
+Files modified (estimated):
+
+- `modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl` — remove normal flips, remove `sh_occlusion` coupling. ~10 lines deleted, ~3 added.
+- `modules/gaussian_splatting/shaders/tile_resolve.glsl` — normal fallback, remove SH × occlusion multiplication, inject constant ambient. ~15 lines.
+- `modules/gaussian_splatting/renderer/tile_render_resolve.cpp` — add the ambient-color uniform plumbing. ~10 lines.
+- `modules/gaussian_splatting/renderer/tile_render_types.h` — add `constant_ambient` field to render-params layout. ~2 lines + layout version bump.
+- `modules/gaussian_splatting/tests/test_renderer_pipeline.h` — update `sizeof(TileRenderParamsGPU)` assertion.
+- `modules/gaussian_splatting/shaders/includes/gs_render_params.glsl` — add accessor + layout version bump.
+
+No new shaders, no new dispatch passes, no new buffers. The plumbing rides the existing resolve param path.
+
+## 7. Integration with existing systems
+
+- **Compatible with PR #243's weighted_depth work**. The normal changes are decoupled from the depth-reconstruction path.
+- **Compatible with PR #241's cascade guards**. Shadow sampling still uses them; only the receiver_normal input changes.
+- **No interaction with PR #237's hotspot pruning**. Resolve runs after binning; the cull-time changes don't touch resolve logic.
+- **Resident instance contract** (PR #236 / 905eb1a0ab): ambient color is per-frame, not per-instance-contract — no cache key change needed.
+
+## 8. Tests
+
+### New unit-test cases (in `tests/test_renderer_pipeline.h` or a new `test_resolve_lighting.h`)
+
+- **Normal-stability under camera orbit**: render a single lit splat at 12 camera angles around a fixed position, measure output color variance. Variance should be below a threshold (e.g. < 5%) for Option 4.1A.
+- **SH color preserved in full shadow**: render a brightly-colored splat fully occluded by a shadow caster, assert output contains the base color at > 80% strength (current master: ~0% due to SH × occlusion).
+- **No dark halos at silhouettes**: render a cluster of overlapping splats under one directional light, check pixels at silhouette edges for brightness continuity with interior.
+- **Normal fallback doesn't flip with view**: render a splat whose `normal_sample` is degenerate (zero-length write from raster) at two opposing camera angles; output should be identical.
+
+### Regression coverage
+- Keep the existing resolve-mode tests passing. If any test locks current (buggy) behavior explicitly, update it.
+- Re-run PR #243's tests to confirm weighted-depth path isn't regressed.
+
+### Manual verification scenes
+- A dream_memory-style scene with ~200k visible splats, directional light, overlapping tiles — eyeball under camera orbit.
+- A single-splat test scene at known position under known light — smoke test for each decision option.
+
+## 9. Metrics
+
+No new GPU monitors needed — the change is in-shader with no dispatch boundary changes. The existing `gpu_time_resolve_ms` monitor will reflect any performance delta.
+
+If the implementer wants visibility into the new ambient term, add one optional line to `Performance` custom monitors: `gaussian_splatting/resolve_ambient_intensity` (scalar, reflecting the current `constant_ambient.x + .y + .z`).
+
+## 10. Risks and open questions
+
+### Risks
+
+- **Visual regression on existing scenes**: dropping per-splat normal detail (Option 4.1A) WILL look different from current behavior on some assets. Worth an eyeball pass before committing.
+- **SH-in-shadow brightness**: removing the occlusion coupling (Option 4.2A) may make shadowed splats look "too bright" in some scenes that were relying on the accidental darkening.
+- **Ambient color source**: reading `scene_data_block.data.ambient_light_color` may not be populated for all scene types (environment-less scenes?). Need a fallback.
+- **Backwards compatibility**: scenes authored under current (buggy) behavior may need re-tuning. The PR should note this in its release-channels doc update.
+
+### Open questions (human decisions before implementation)
+
+1. **Pick one option from each of 4.1, 4.2, 4.3, 4.4** — the "A defaults" above are recommendations, not commitments. The spec stays valid regardless of choice; the implementation checklist below expands based on the choice.
+2. **Feature flag?** Should the new behavior be gated behind a project setting (`rendering/gaussian_splatting/resolve/lighting_mode`) with a default flip, or hard-replace the old path? Recommendation: hard-replace. The "old behavior" is a bug, not a feature.
+3. **Sizing of the constant ambient**: where does the value come from? Scene env color × intensity? A new project setting with a default? A per-node scalar?
+
+## 11. Implementation checklist
+
+Ordered, each task small enough for one commit:
+
+- [ ] **1. Fallback normal**: change `tile_resolve.glsl:309-313` to use `vec3(0, 1, 0)` instead of `view_dir`. Add a test for the orbit-stability invariant. Commit.
+- [ ] **2. Remove normal flipping**: delete the `shadow_normal` and `h_normal` flip blocks in `gs_lighting_common.glsl:50-63`. Add the world-up diffuse normal if Option 4.1A. Commit.
+- [ ] **3. Remove SH occlusion coupling**: delete the `sh_occlusion = max(..., 1.0 - shadow)` line and the `sh_occlusion` multiplication at `tile_resolve.glsl:363-366`. Add the SH-color-in-shadow test. Commit.
+- [ ] **4. Constant ambient plumbing**: add field to `TileRenderParamsGPU`, bump `GS_RENDER_PARAMS_LAYOUT_VERSION`, update sizeof assertion in `test_renderer_pipeline.h`, plumb value from `tile_render_resolve.cpp` using scene env ambient color. Commit.
+- [ ] **5. Resolve shader ambient injection**: add `+ constant_ambient * base_color * alpha` (or equivalent) in the resolve composition step. Commit.
+- [ ] **6. Test scenes**: add a new `test_resolve_lighting.h` doctest file under `modules/gaussian_splatting/tests/` with the four unit-test cases from §8. Wire it into `test_gaussian_splatting.h`. Add the filter to `tests/ci/run_module_tests.py` per the pattern used by `Gaussian Diagnostics`/`Gaussian Logger` (PR #244). Commit.
+- [ ] **7. Docs**: update `docs/development/release-channels.md` or a new `docs/reference/resolve-lighting.md` to describe the new behavior. Commit.
+- [ ] **8. PR** against master. Title suggestion: `fix: stabilize resolve-mode lighting (normals, SH occlusion, ambient)`.
+
+## 12. Future work (out of scope)
+
+- Per-node ambient color override (if artists want scene-local control).
+- Full radiance cubemap sample for ambient (Option 4.3B) — if the constant ambient approach proves insufficient.
+- Cluster-domain lighting precompute — could tie in with the separately-specified cluster-culling work.
