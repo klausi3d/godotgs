@@ -2715,6 +2715,7 @@ void TileRenderer::_compute_density_metrics(const uint32_t *p_counts, uint32_t p
 	uint32_t min_non_empty = std::numeric_limits<uint32_t>::max();
 	uint32_t non_empty_tiles = 0;
 	uint64_t non_empty_splat_sum = 0;
+	const float inv_effective_capacity = 1.0f / float(MAX<uint32_t>(1u, p_effective_capacity));
 
 	r_density_metrics.density_histogram.fill(0);
 	r_stats.empty_tiles = 0;
@@ -2729,7 +2730,7 @@ void TileRenderer::_compute_density_metrics(const uint32_t *p_counts, uint32_t p
 			non_empty_splat_sum += splat_count;
 			min_non_empty = MIN(min_non_empty, splat_count);
 
-			const float normalized = float(splat_count) / float(MAX<uint32_t>(1u, p_effective_capacity));
+			const float normalized = float(splat_count) * inv_effective_capacity;
 			if (normalized <= 0.25f) {
 				r_density_metrics.density_histogram[1]++;
 			} else if (normalized <= 0.5f) {
