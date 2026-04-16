@@ -54,4 +54,22 @@ TEST_CASE("[GaussianSplatting][Importer] unknown preset names fall back to deskt
 	CHECK(fallback.default_thumbnail_size == desktop.default_thumbnail_size);
 }
 
+TEST_CASE("[GaussianSplatting][Importer] mobile and development presets preserve import safety defaults") {
+	const GaussianImportPresetDefinition &mobile = gaussian_get_import_preset_by_name("mobile");
+	const GaussianImportPresetDefinition &desktop = gaussian_get_import_preset_by_name("desktop");
+	const GaussianImportPresetDefinition &development = gaussian_get_import_preset_by_name("development");
+
+	CHECK(mobile.quantize_positions);
+	CHECK(mobile.quantize_colors);
+	CHECK(mobile.quantize_scales);
+	CHECK(mobile.quantize_rotations);
+	CHECK(mobile.pack_opacity);
+	CHECK(mobile.density_multiplier < desktop.density_multiplier);
+
+	CHECK_FALSE(development.enable_lod);
+	CHECK_FALSE(development.optimize_for_gpu);
+	CHECK_EQ(development.default_asset_type, 1);
+	CHECK_EQ(development.max_splats, 0);
+}
+
 } // namespace TestGaussianSplatting
