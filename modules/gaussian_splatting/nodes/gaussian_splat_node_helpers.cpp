@@ -1434,11 +1434,17 @@ void GaussianSplatNodeRendererHelper::apply_renderer_settings() {
     owner.renderer->set_painterly_stroke_length(owner.stroke_width);
     owner.renderer->set_painterly_gamma(MAX(owner.temporal_blend, 0.01f));
     owner.renderer->set_opacity_multiplier(owner.opacity);
-    // Color grading is intentionally NOT pushed here. set_color_grading() and
-    // _on_color_grading_changed() already push on the actual change events.
-    // Re-pushing every frame from this owner-only path would clobber a non-
-    // owner node's set_color_grading() call on the next frame, so per-node
-    // grading would never persist in shared-renderer scenes.
+    // Color grading per-frame push is gated on single-owner. Pushing while
+    // sharing would clobber another node's set_color_grading() call (the
+    // original P1 fix). Skipping always means a sharing-collapse transition
+    // (e.g. another node leaving) leaves the renderer with the departed
+    // node's last grading and never restores the remaining owner's
+    // (the third P1 fix). Single-owner per-frame push covers both: it
+    // resyncs after a transition without ever clobbering anyone, since by
+    // definition no other node could have written.
+    if (!_is_renderer_shared_with_other_content(owner)) {
+        owner.renderer->set_color_grading(owner.color_grading);
+    }
     {
         GaussianStreamingSystem::ConfigOverrides overrides;
 
