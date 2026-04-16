@@ -174,6 +174,14 @@ private:
     // shared renderer. Detached or data-less edits can re-arm a pending replay by
     // setting this back to false.
     bool grading_pushed_for_current_data = false;
+    // Tracks an explicit user grading edit (setter or resource "changed" signal)
+    // that could not be pushed immediately because the node was detached or had
+    // no local source data. Persists until the node next becomes active content
+    // and the cached color_grading — including null — is delivered to the
+    // renderer. Distinguishes user-explicit intent (which is allowed to push
+    // null and override peers under last-writer-wins) from implicit init replay
+    // (which must reject null to avoid wiping a peer that already pushed).
+    bool grading_explicit_pending = false;
 
     // Performance monitoring
     uint32_t visible_splat_count = 0;

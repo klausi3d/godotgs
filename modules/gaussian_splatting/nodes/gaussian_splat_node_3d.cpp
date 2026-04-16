@@ -1585,6 +1585,9 @@ bool GaussianSplatNode3D::_push_color_grading_to_renderer(bool p_allow_null) {
     renderer->set_color_grading(color_grading);
     renderer->invalidate_cached_render();
     grading_pushed_for_current_data = true;
+    // The push satisfies any pending explicit edit too; clear so a later
+    // replay does not re-fire and clobber a peer that wrote in between.
+    grading_explicit_pending = false;
     return true;
 }
 
@@ -1612,7 +1615,19 @@ void GaussianSplatNode3D::_replay_color_grading_if_pending() {
     // too. Resetting here would let _update_asset re-clobber a peer after a
     // transient detach. Detached edits re-arm the replay by explicitly
     // clearing the flag in the setter/signal paths instead.
-    if (!grading_pushed_for_current_data) {
+    //
+    // Two-track replay:
+    //   - grading_explicit_pending: a user setter/signal call could not
+    //     push immediately (detached, or no data yet). User intent must
+    //     reach the renderer once the node activates, INCLUDING null
+    //     grading — last-writer-wins applies to explicit edits.
+    //   - grading_pushed_for_current_data: implicit init replay. Only
+    //     fires for non-null grading because pushing null implicitly
+    //     would wipe a peer's already-pushed grading on a shared
+    //     renderer (the original "empty node hijacks renderer" P1).
+    if (grading_explicit_pending) {
+        _push_color_grading_to_renderer(true);
+    } else if (!grading_pushed_for_current_data) {
         _push_color_grading_to_renderer(false);
     }
 }
@@ -2154,10 +2169,14 @@ void GaussianSplatNode3D::_on_asset_changed() {
 
 void GaussianSplatNode3D::_on_color_grading_changed() {
     if (!_push_color_grading_to_renderer(true)) {
-        // Detached or data-less resource edits should not mutate a shared
-        // renderer immediately. Keep a pending replay only for non-null
-        // grading; implicit paths must not clear a peer's grading.
-        grading_pushed_for_current_data = color_grading.is_null();
+        // Detached or data-less resource mutation: queue an explicit
+        // replay so the user's change (including null) reaches the
+        // renderer when this node next becomes active content. Arming
+        // the implicit-replay flag too keeps both replay tracks in
+        // sync; the explicit track wins because the replay helper
+        // checks it first.
+        grading_explicit_pending = true;
+        grading_pushed_for_current_data = false;
     }
 }
 
@@ -2225,11 +2244,17 @@ void GaussianSplatNode3D::set_color_grading(const Ref<ColorGradingResource> &p_g
     }
 
     if (!_push_color_grading_to_renderer(true)) {
-        // Cache detached/data-less edits locally and replay them only after
-        // the node becomes active content again. Null grading is still only
-        // propagated by explicit active pushes or the single-owner renderer
-        // settings path; implicit init/replay must not clear peers.
-        grading_pushed_for_current_data = color_grading.is_null();
+        // Detached or data-less setter: queue an explicit replay so the
+        // user's edit (including null) reaches the renderer once this
+        // node becomes active content. Without this, an explicit
+        // set_color_grading(null) made while detached would never reach
+        // the renderer because the implicit replay path rejects null
+        // (to protect peers from passive-init clobbering). Arming the
+        // implicit-replay flag too keeps both replay tracks in sync;
+        // the explicit track wins because the replay helper checks it
+        // first.
+        grading_explicit_pending = true;
+        grading_pushed_for_current_data = false;
     }
 
     _mark_render_state_dirty();

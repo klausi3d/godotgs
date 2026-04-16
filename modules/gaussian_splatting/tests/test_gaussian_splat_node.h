@@ -1942,6 +1942,80 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Detached color grad
     memdelete(node_a);
 }
 
+TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Detached set_color_grading(null) replays on re-enter and overrides peer") {
+    SceneTree *tree = SceneTree::get_singleton();
+    REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+    Window *root = tree->get_root();
+    REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+    // PR #245 Codex follow-up P2: previously, setting color_grading=null
+    // on a detached node armed grading_pushed_for_current_data=true
+    // (because color_grading.is_null()), which suppressed the implicit
+    // replay. The replay also rejected null. Result: the explicit null
+    // assignment was silently lost — last-writer-wins was broken when
+    // the latest writer wrote null while detached.
+    GaussianSplatNode3D *node_a = memnew(GaussianSplatNode3D);
+    GaussianSplatNode3D *node_b = memnew(GaussianSplatNode3D);
+    node_a->set_splat_asset(make_single_splat_asset(9801.0f));
+    node_b->set_splat_asset(make_single_splat_asset(9802.0f));
+
+    Ref<ColorGradingResource> grading_a = make_color_grading_resource();
+    Ref<ColorGradingResource> grading_b = make_color_grading_resource();
+    REQUIRE(grading_a.is_valid());
+    REQUIRE(grading_b.is_valid());
+    grading_a->set_exposure(0.40f);
+    grading_b->set_exposure(0.90f);
+
+    node_a->set_color_grading(grading_a);
+    node_b->set_color_grading(grading_b);
+
+    root->add_child(node_a);
+    root->add_child(node_b);
+    tree->process(0.0);
+
+    Ref<GaussianSplatRenderer> renderer = node_a->get_renderer();
+    if (!renderer.is_valid()) {
+        MESSAGE("Skipping test - renderer unavailable (headless mode)");
+        root->remove_child(node_b);
+        root->remove_child(node_a);
+        memdelete(node_b);
+        memdelete(node_a);
+        return;
+    }
+    REQUIRE_MESSAGE(renderer == node_b->get_renderer(), "Both nodes must share the same renderer for this test");
+
+    // Both nodes pushed; renderer reflects whichever ensure_renderer ran
+    // last. Assert via explicit setter so the test is deterministic.
+    node_b->set_color_grading(grading_b);
+    tree->process(0.0);
+    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
+            "Renderer should reflect node_b's grading before node_a detaches");
+
+    // Detach node_a, then explicitly clear its grading via setter.
+    root->remove_child(node_a);
+    tree->process(0.0);
+
+    node_a->set_color_grading(Ref<ColorGradingResource>());
+    tree->process(0.0);
+    // Detached null setter must NOT touch the renderer immediately.
+    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
+            "Detached set_color_grading(null) on node_a must not mutate the shared renderer immediately");
+
+    // Re-attach node_a. The explicit-pending replay must apply node_a's
+    // null grading (last-writer-wins) and clear the renderer's grading.
+    root->add_child(node_a);
+    tree->process(0.0);
+
+    CHECK_MESSAGE(renderer->get_color_grading().is_null(),
+            "Re-entering node_a after explicit set_color_grading(null) must apply the null and override node_b's grading");
+
+    root->remove_child(node_b);
+    root->remove_child(node_a);
+    memdelete(node_b);
+    memdelete(node_a);
+}
+
 TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer full-fidelity override only follows attached assets") {
     SceneTree *tree = SceneTree::get_singleton();
     REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
