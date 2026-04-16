@@ -182,6 +182,9 @@ void GaussianSplatContainer::_merge_children_internal() {
     Vector<GaussianSplatMergeSource> sources;
 
     const int child_count = get_child_count();
+    sources.reserve(child_count);
+    static const StringName gaussian_2d_mode_key("gaussian_2d_mode");
+
     for (int i = 0; i < child_count; i++) {
         Node *child = get_child(i);
         GaussianSplatNode3D *splat_node = Object::cast_to<GaussianSplatNode3D>(child);
@@ -208,7 +211,7 @@ void GaussianSplatContainer::_merge_children_internal() {
                 ? splat_node->get_global_transform()
                 : splat_node->get_transform();
         Dictionary import_metadata = asset->get_import_metadata();
-        const bool import_is_2d = import_metadata.has(StringName("gaussian_2d_mode")) && (bool)import_metadata[StringName("gaussian_2d_mode")];
+        const bool import_is_2d = (bool)import_metadata.get(gaussian_2d_mode_key, false);
         source.is_2d = import_is_2d;
         sources.push_back(source);
     }
@@ -231,8 +234,9 @@ void GaussianSplatContainer::_merge_children_internal() {
 
 PackedInt32Array GaussianSplatContainer::get_chunk_sizes() const {
     PackedInt32Array result;
-    result.resize(merged_chunks.size());
-    for (int i = 0; i < merged_chunks.size(); i++) {
+    const int chunk_count = merged_chunks.size();
+    result.resize(chunk_count);
+    for (int i = 0; i < chunk_count; i++) {
         result.set(i, merged_chunks[i].indices.size());
     }
     return result;
@@ -240,8 +244,9 @@ PackedInt32Array GaussianSplatContainer::get_chunk_sizes() const {
 
 Array GaussianSplatContainer::get_chunk_aabbs() const {
     Array result;
-    result.resize(merged_chunks.size());
-    for (int i = 0; i < merged_chunks.size(); i++) {
+    const int chunk_count = merged_chunks.size();
+    result.resize(chunk_count);
+    for (int i = 0; i < chunk_count; i++) {
         result[i] = merged_chunks[i].bounds;
     }
     return result;
