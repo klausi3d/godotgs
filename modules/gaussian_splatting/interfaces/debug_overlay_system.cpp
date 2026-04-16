@@ -8,6 +8,18 @@
 #include "../renderer/render_route_labels.h"
 #include "gpu_sorting_pipeline.h"
 
+namespace {
+const StringName KEY_SH_CACHE_HITS("sh_cache_hits");
+const StringName KEY_SH_CACHE_UPDATES("sh_cache_updates");
+const StringName KEY_SH_CACHE_FORCED_UPDATES("sh_cache_forced_updates");
+const StringName KEY_SH_CACHE_HIT_RATE("sh_cache_hit_rate");
+const StringName KEY_BUFFER_COUNT("buffer_count");
+const StringName KEY_TOTAL_GAUSSIANS("total_gaussians");
+const StringName KEY_REPORTED_GAUSSIANS("reported_gaussians");
+const StringName KEY_TOTAL_MEMORY_MB("total_memory_mb");
+const StringName KEY_REPORTED_MEMORY_MB("reported_memory_mb");
+} // namespace
+
 DebugOverlayOptions DebugOverlayQueryView::get_options() const {
     return system ? system->get_options() : DebugOverlayOptions();
 }
@@ -500,6 +512,7 @@ void DebugOverlaySystem::rebuild_renderer_performance_hud_lines(const DebugOverl
     auto &debug_state = *p_sink.debug_state;
 
     debug_state.hud_lines.clear();
+    debug_state.hud_lines.reserve(48);
 
     if (debug_state_view.show_performance_hud) {
         debug_state.hud_lines.push_back(vformat("Route: %s",
@@ -628,13 +641,13 @@ void DebugOverlaySystem::rebuild_renderer_performance_hud_lines(const DebugOverl
         debug_state.hud_lines.push_back(vformat("GPU Raster: %.2f ms", performance_state.metrics.gpu_tile_raster_time_ms));
         debug_state.hud_lines.push_back(vformat("GPU Memory: %.2f MB", performance_state.metrics.gpu_memory_usage_mb));
 
-        const Dictionary binning = get_binning_debug_counters();
+        const Dictionary &binning = binning_counters;
         if (!binning.is_empty()) {
             debug_state.hud_lines.push_back(vformat("Binning counters: hits=%lld updates=%lld forced=%lld hitrate=%.2f",
-                    int64_t(binning.get("sh_cache_hits", int64_t(0))),
-                    int64_t(binning.get("sh_cache_updates", int64_t(0))),
-                    int64_t(binning.get("sh_cache_forced_updates", int64_t(0))),
-                    double(binning.get("sh_cache_hit_rate", 0.0))));
+                    int64_t(binning.get(KEY_SH_CACHE_HITS, int64_t(0))),
+                    int64_t(binning.get(KEY_SH_CACHE_UPDATES, int64_t(0))),
+                    int64_t(binning.get(KEY_SH_CACHE_FORCED_UPDATES, int64_t(0))),
+                    double(binning.get(KEY_SH_CACHE_HIT_RATE, 0.0))));
         }
 
 
@@ -687,11 +700,11 @@ void DebugOverlaySystem::rebuild_renderer_performance_hud_lines(const DebugOverl
 
         if (GaussianSplatManager *mgr = GaussianSplatManager::get_singleton()) {
             Dictionary stats = mgr->get_global_stats();
-            int buffer_count = stats.get(StringName("buffer_count"), 0);
-            double total_gaussians = stats.get(StringName("total_gaussians"), 0.0);
-            double reported_gaussians = stats.get(StringName("reported_gaussians"), 0.0);
-            double total_memory = stats.get(StringName("total_memory_mb"), 0.0);
-            double reported_memory = stats.get(StringName("reported_memory_mb"), 0.0);
+            int buffer_count = stats.get(KEY_BUFFER_COUNT, 0);
+            double total_gaussians = stats.get(KEY_TOTAL_GAUSSIANS, 0.0);
+            double reported_gaussians = stats.get(KEY_REPORTED_GAUSSIANS, 0.0);
+            double total_memory = stats.get(KEY_TOTAL_MEMORY_MB, 0.0);
+            double reported_memory = stats.get(KEY_REPORTED_MEMORY_MB, 0.0);
             debug_state.hud_lines.push_back(vformat("GPU Buffers: %d", buffer_count));
             debug_state.hud_lines.push_back(vformat("Resident Splats: %.0f / %.0f", reported_gaussians, total_gaussians));
             debug_state.hud_lines.push_back(vformat("Resident Memory: %.2f / %.2f MB", reported_memory, total_memory));
