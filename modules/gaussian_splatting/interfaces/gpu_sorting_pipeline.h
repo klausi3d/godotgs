@@ -83,8 +83,12 @@ public:
     // test_gpu_sorting_pipeline_readback used to reach this state directly —
     // the macro leaks into transitively-included core templates and triggers
     // GCC ODR errors on Linux.
-    SortReadbackState &_test_sort_readback_state() { return sort_readback_state; }
-    InstanceCountReadbackState &_test_instance_count_readback_state() { return instance_count_readback_state; }
+    // SortReadbackState / InstanceCountReadbackState are nested types declared
+    // later in the class body (in the private section), so they aren't yet
+    // visible at this point — `auto &` defers type deduction until the function
+    // body is parsed (after the class is complete).
+    auto &_test_sort_readback_state() { return sort_readback_state; }
+    auto &_test_instance_count_readback_state() { return instance_count_readback_state; }
     ISortResultSink *_test_get_sort_result_sink() const { return sort_result_sink; }
     void _test_set_last_instance_visible_splat_count_state(uint32_t p_count, bool p_valid, uint32_t p_frame) {
         last_instance_visible_splat_count = p_count;

@@ -301,13 +301,22 @@ public:
         return _make_chunk_key(p_asset_id, p_chunk_id);
     }
     GaussianAtlasAllocator &_test_atlas_allocator() { return atlas_allocator; }
-    StreamingGlobalAtlasRegistry &_test_global_atlas_registry() { return global_atlas_registry; }
     bool _test_begin_chunk_upload(uint32_t p_asset_id, uint32_t p_chunk_idx, StreamingChunk &p_chunk, uint32_t p_buffer_slot) {
         return _begin_chunk_upload(p_asset_id, p_chunk_idx, p_chunk, p_buffer_slot);
     }
     void _test_evict_unrequested_chunks(uint32_t p_asset_id, AtlasAssetState &p_asset, LocalVector<StreamingChunk> &p_asset_chunks) {
         _evict_unrequested_chunks(p_asset_id, p_asset, p_asset_chunks);
     }
+    // Field-level accessors for the global atlas registry. Returning the
+    // registry by reference would expose private fields the registry's
+    // friendship with this class doesn't grant onward — these forward only
+    // the specific fields tests need, through this class's own friendship.
+    bool _test_get_atlas_registry_dirty() const { return global_atlas_registry.asset_registry_dirty; }
+    bool _test_get_chunk_meta_dirty_all() const { return global_atlas_registry.chunk_meta_dirty_all; }
+    const LocalVector<uint32_t> &_test_get_chunk_meta_dirty_indices() const { return global_atlas_registry.chunk_meta_dirty_indices; }
+    RID _test_get_registry_asset_meta_buffer() const { return global_atlas_registry.asset_meta_buffer; }
+    RID _test_get_registry_chunk_meta_buffer() const { return global_atlas_registry.chunk_meta_buffer; }
+    RID _test_get_registry_asset_chunk_index_buffer() const { return global_atlas_registry.asset_chunk_index_buffer; }
 #endif
 
     // Distance-based LOD (Octree-GS) - chunk-level LOD selection and reduction

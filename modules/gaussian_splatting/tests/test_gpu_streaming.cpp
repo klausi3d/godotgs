@@ -1812,10 +1812,9 @@ TEST_CASE("[Streaming Pipeline] Invalid chunk meta dirty marks force a safe atla
     const uint64_t generation_before = system->get_atlas_generation();
     system->_test_mark_chunk_meta_dirty(asset_id, 99);
 
-    auto &registry = system->_test_global_atlas_registry();
-    CHECK(registry.asset_registry_dirty);
-    CHECK(registry.chunk_meta_dirty_all);
-    CHECK(registry.chunk_meta_dirty_indices.is_empty());
+    CHECK(system->_test_get_atlas_registry_dirty());
+    CHECK(system->_test_get_chunk_meta_dirty_all());
+    CHECK(system->_test_get_chunk_meta_dirty_indices().is_empty());
 
     system->_test_sync_global_atlas_state(rd);
 
@@ -1861,10 +1860,9 @@ TEST_CASE("[Streaming Pipeline] Dirty atlas publication is invalidated when GPU 
     CHECK_FALSE(system->get_asset_meta_buffer().is_valid());
     CHECK_FALSE(system->get_chunk_meta_buffer().is_valid());
     CHECK_FALSE(system->get_asset_chunk_index_buffer().is_valid());
-    auto &reset_registry = system->_test_global_atlas_registry();
-    CHECK_FALSE(reset_registry.asset_meta_buffer.is_valid());
-    CHECK_FALSE(reset_registry.chunk_meta_buffer.is_valid());
-    CHECK_FALSE(reset_registry.asset_chunk_index_buffer.is_valid());
+    CHECK_FALSE(system->_test_get_registry_asset_meta_buffer().is_valid());
+    CHECK_FALSE(system->_test_get_registry_chunk_meta_buffer().is_valid());
+    CHECK_FALSE(system->_test_get_registry_asset_chunk_index_buffer().is_valid());
     CHECK(system->get_atlas_generation() == generation_before);
 
     system->_test_sync_global_atlas_state(rd);
