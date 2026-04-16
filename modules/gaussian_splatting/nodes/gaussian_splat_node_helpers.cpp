@@ -1325,8 +1325,7 @@ bool GaussianSplatNodeRendererHelper::can_apply_renderer_settings() const {
         return false;
     }
 
-    const bool has_local_source_data = owner.renderer_data.is_valid() || owner.splat_asset.is_valid() || owner.runtime_asset.is_valid();
-    if (!has_local_source_data) {
+    if (!owner._has_local_source_data()) {
         return false;
     }
 
@@ -1380,46 +1379,7 @@ void GaussianSplatNodeRendererHelper::ensure_renderer() {
             owner.grading_pushed_for_current_data = false;
             if (owner.renderer.is_valid()) {
                 apply_renderer_settings();
-                // Initial sync: push the cached color grading once when the
-                // renderer becomes available, gated on actually-rendering
-                // local source data only (NOT on ownership).
-                //
-                // Why local-source-data gate: an empty GaussianSplatNode3D
-                // with no asset/data but a saved rendering/color_grading
-                // would otherwise grab the shared world renderer on tree-
-                // entry and tint other renderer users that have no
-                // relationship to it. Same predicate as
-                // can_apply_renderer_settings()'s data-content check.
-                //
-                // Why NOT the full can_apply_renderer_settings(): that
-                // also requires renderer-settings ownership, which fails
-                // for a non-owner node sharing a renderer with an active
-                // world submission. set_color_grading() bypasses ownership
-                // (per-node grading is the design intent), so initial sync
-                // must mirror that: every node WITH content pushes its
-                // grading on initial sync. Last-writer-wins between
-                // distinct ensure_renderer() calls matches the setter's
-                // existing semantics.
-                const bool has_local_source_data = owner.renderer_data.is_valid() ||
-                        owner.splat_asset.is_valid() ||
-                        owner.runtime_asset.is_valid();
-                // Only push if this node actually has its own grading. A
-                // null cached grading would otherwise wipe another node's
-                // already-pushed grading when multiple nodes initialize
-                // through ensure_renderer() in sequence on the same
-                // shared renderer (e.g. node A loads first and pushes
-                // grading X, then node B with no grading loads and would
-                // push null, clearing X). Setter and signal-handler paths
-                // can still push null deliberately because those reflect
-                // explicit runtime user actions, not implicit init.
-                if (has_local_source_data && owner.color_grading.is_valid()) {
-                    owner.renderer->set_color_grading(owner.color_grading);
-                    // Mark the data-ready replay window as already-served so the
-                    // _update_asset() first-data-ready push (which fires on every
-                    // asset refresh including hot-reload) doesn't re-push and
-                    // overwrite a peer's grading on a shared renderer.
-                    owner.grading_pushed_for_current_data = true;
-                }
+                owner._replay_color_grading_if_pending();
             }
         }
     }

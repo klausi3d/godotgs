@@ -168,12 +168,11 @@ private:
     // Color grading
     Ref<class ColorGradingResource> color_grading;
     // Tracks whether the cached color_grading has already been pushed to the
-    // shared renderer for the current data-ready window. Set by ensure_renderer's
-    // initial-sync push and by _update_asset's first-data-ready push; cleared on
-    // _clear_asset (data going away) and tree-exit (renderer relationship reset).
-    // Prevents per-asset-refresh _update_asset calls from re-pushing this node's
-    // grading and clobbering a peer's grading on a shared renderer during
-    // hot-reload / reimport.
+    // current renderer/data window while this node was active content. Cleared
+    // when the node loses its data or renderer relationship; left intact across
+    // detach/re-attach so passive tree transitions do not re-clobber peers on a
+    // shared renderer. Detached or data-less edits can re-arm a pending replay by
+    // setting this back to false.
     bool grading_pushed_for_current_data = false;
 
     // Performance monitoring
@@ -350,15 +349,16 @@ private:
 
     void _on_asset_changed();
     void _on_color_grading_changed();
+    bool _has_local_source_data() const;
+    bool _can_push_color_grading_to_renderer() const;
+    bool _push_color_grading_to_renderer(bool p_allow_null);
 
     // Push the cached color_grading to the renderer if it has not been
-    // pushed yet for the current data-ready window AND data is present.
-    // The first-data-ready replay path: covers async asset load
-    // (_update_asset after data finally arrives) and procedural data
-    // (_finalize_manual_splat_setup after set_splat_data). Skipping when
-    // the flag is already true prevents hot-reload / reimport from
-    // re-pushing this node's grading and clobbering a peer on a shared
-    // renderer.
+    // pushed yet for the current renderer/data window AND the node is active
+    // content. The replay path covers async asset load, procedural data
+    // setup, and deferred sync after detached edits. Skipping when the flag
+    // is already true prevents hot-reload / reimport from re-pushing this
+    // node's grading and clobbering a peer on a shared renderer.
     void _replay_color_grading_if_pending();
     void _on_transform_changed();
     void _update_parent_visibility_tracking();

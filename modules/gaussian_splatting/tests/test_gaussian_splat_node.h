@@ -1815,6 +1815,133 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Setter after no-gra
     memdelete(node_a);
 }
 
+TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Detached asset refresh and reassignment must not clobber active peer color grading") {
+    SceneTree *tree = SceneTree::get_singleton();
+    REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+    Window *root = tree->get_root();
+    REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+    GaussianSplatNode3D *node_a = memnew(GaussianSplatNode3D);
+    GaussianSplatNode3D *node_b = memnew(GaussianSplatNode3D);
+    node_a->set_splat_asset(make_single_splat_asset(9701.0f));
+    node_b->set_splat_asset(make_single_splat_asset(9702.0f));
+
+    Ref<ColorGradingResource> grading_a = make_color_grading_resource();
+    Ref<ColorGradingResource> grading_b = make_color_grading_resource();
+    REQUIRE(grading_a.is_valid());
+    REQUIRE(grading_b.is_valid());
+    grading_a->set_exposure(0.2f);
+    grading_b->set_exposure(0.9f);
+
+    node_a->set_color_grading(grading_a);
+    node_b->set_color_grading(grading_b);
+
+    root->add_child(node_a);
+    root->add_child(node_b);
+    tree->process(0.0);
+
+    Ref<GaussianSplatRenderer> renderer = node_a->get_renderer();
+    if (!renderer.is_valid()) {
+        MESSAGE("Skipping test - renderer unavailable (headless mode)");
+        root->remove_child(node_b);
+        root->remove_child(node_a);
+        memdelete(node_b);
+        memdelete(node_a);
+        return;
+    }
+    REQUIRE_MESSAGE(renderer == node_b->get_renderer(), "Both nodes must share the same renderer for this test");
+
+    node_b->set_color_grading(grading_b);
+    tree->process(0.0);
+    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
+            "Renderer should reflect node_b's grading before node_a is detached");
+
+    root->remove_child(node_a);
+    tree->process(0.0);
+
+    Ref<GaussianSplatAsset> detached_asset = node_a->get_splat_asset();
+    REQUIRE(detached_asset.is_valid());
+    detached_asset->emit_changed();
+    tree->process(0.0);
+    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
+            "Detached hot-reload of node_a must not overwrite node_b's grading");
+
+    Ref<GaussianSplatAsset> replacement_asset = make_single_splat_asset(9703.0f);
+    REQUIRE(replacement_asset.is_valid());
+    node_a->set_splat_asset(replacement_asset);
+    tree->process(0.0);
+    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
+            "Detached set_splat_asset() on node_a must not overwrite node_b's grading");
+
+    root->remove_child(node_b);
+    memdelete(node_b);
+    memdelete(node_a);
+}
+
+TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Detached color grading resource changes replay only after re-enter") {
+    SceneTree *tree = SceneTree::get_singleton();
+    REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+    Window *root = tree->get_root();
+    REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+    GaussianSplatNode3D *node_a = memnew(GaussianSplatNode3D);
+    GaussianSplatNode3D *node_b = memnew(GaussianSplatNode3D);
+    node_a->set_splat_asset(make_single_splat_asset(9711.0f));
+    node_b->set_splat_asset(make_single_splat_asset(9712.0f));
+
+    Ref<ColorGradingResource> grading_a = make_color_grading_resource();
+    Ref<ColorGradingResource> grading_b = make_color_grading_resource();
+    REQUIRE(grading_a.is_valid());
+    REQUIRE(grading_b.is_valid());
+    grading_a->set_exposure(0.35f);
+    grading_b->set_exposure(0.85f);
+
+    node_a->set_color_grading(grading_a);
+    node_b->set_color_grading(grading_b);
+
+    root->add_child(node_a);
+    root->add_child(node_b);
+    tree->process(0.0);
+
+    Ref<GaussianSplatRenderer> renderer = node_a->get_renderer();
+    if (!renderer.is_valid()) {
+        MESSAGE("Skipping test - renderer unavailable (headless mode)");
+        root->remove_child(node_b);
+        root->remove_child(node_a);
+        memdelete(node_b);
+        memdelete(node_a);
+        return;
+    }
+    REQUIRE_MESSAGE(renderer == node_b->get_renderer(), "Both nodes must share the same renderer for this test");
+
+    node_b->set_color_grading(grading_b);
+    tree->process(0.0);
+    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
+            "Renderer should reflect node_b's grading before node_a is detached");
+
+    root->remove_child(node_a);
+    tree->process(0.0);
+
+    grading_a->set_exposure(1.25f);
+    tree->process(0.0);
+    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
+            "Detached grading resource changes on node_a must not overwrite node_b immediately");
+
+    root->add_child(node_a);
+    tree->process(0.0);
+    REQUIRE(renderer->get_color_grading().is_valid());
+    CHECK_MESSAGE(renderer->get_color_grading() == grading_a,
+            "Re-entering node_a should replay its pending grading change exactly once");
+    CHECK(renderer->get_color_grading()->get_exposure() == doctest::Approx(1.25f));
+
+    root->remove_child(node_b);
+    root->remove_child(node_a);
+    memdelete(node_b);
+    memdelete(node_a);
+}
+
 TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer full-fidelity override only follows attached assets") {
     SceneTree *tree = SceneTree::get_singleton();
     REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
