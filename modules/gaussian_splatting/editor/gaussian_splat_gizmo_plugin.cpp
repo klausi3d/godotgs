@@ -202,18 +202,24 @@ void GaussianSplatGizmoPlugin::draw_lod_radius(EditorNode3DGizmo *p_gizmo, Gauss
 
     // Draw circles at different LOD distances
     const int segments = 48;
+    const float angle_step = Math::TAU / float(segments);
     const float lod_distances[] = { max_distance * 0.25f, max_distance * 0.5f, max_distance };
     const Vector3 center = p_node->get_aabb().get_center();
+    float cos_table[segments + 1];
+    float sin_table[segments + 1];
+    for (int i = 0; i <= segments; i++) {
+        const float angle = float(i) * angle_step;
+        cos_table[i] = Math::cos(angle);
+        sin_table[i] = Math::sin(angle);
+    }
 
     for (int lod = 0; lod < 3; lod++) {
         Vector<Vector3> circle_points;
         float radius = MAX(0.01f, lod_distances[lod]);
 
         for (int i = 1; i <= segments; i++) {
-            float prev_angle = ((i - 1) / float(segments)) * Math::TAU;
-            float angle = (i / float(segments)) * Math::TAU;
-            Vector3 from(center.x + radius * cos(prev_angle), center.y, center.z + radius * sin(prev_angle));
-            Vector3 to(center.x + radius * cos(angle), center.y, center.z + radius * sin(angle));
+            Vector3 from(center.x + radius * cos_table[i - 1], center.y, center.z + radius * sin_table[i - 1]);
+            Vector3 to(center.x + radius * cos_table[i], center.y, center.z + radius * sin_table[i]);
             circle_points.push_back(from);
             circle_points.push_back(to);
         }
@@ -346,21 +352,29 @@ void GaussianSplatGizmoPlugin::draw_splat_preview(EditorNode3DGizmo *p_gizmo, Ga
     }
 
     const float cross_size = MAX(0.01f, p_node->get_aabb().get_longest_axis_size() * 0.01f);
+    const int position_count = positions.size();
+    const int color_count = colors.size();
+    const float splat_count_inv = splat_count > 0 ? 1.0f / float(splat_count) : 0.0f;
+    const Vector3 cross_x(cross_size, 0, 0);
+    const Vector3 cross_y(0, cross_size, 0);
+    const Vector3 cross_z(0, 0, cross_size);
 
     if (mode == GaussianSplatNode3D::DEBUG_DRAW_POINTS) {
         Vector<Vector3> point_lines;
-        for (int i = 0; i < splat_count && point_lines.size() / 6 < max_preview_points; i += step) {
+        int preview_count = 0;
+        for (int i = 0; i < splat_count && preview_count < max_preview_points; i += step) {
             int idx = i * 3;
-            if (idx + 2 >= positions.size()) {
+            if (idx + 2 >= position_count) {
                 break;
             }
             Vector3 point(positions[idx], positions[idx + 1], positions[idx + 2]);
-            point_lines.push_back(point - Vector3(cross_size, 0, 0));
-            point_lines.push_back(point + Vector3(cross_size, 0, 0));
-            point_lines.push_back(point - Vector3(0, cross_size, 0));
-            point_lines.push_back(point + Vector3(0, cross_size, 0));
-            point_lines.push_back(point - Vector3(0, 0, cross_size));
-            point_lines.push_back(point + Vector3(0, 0, cross_size));
+            point_lines.push_back(point - cross_x);
+            point_lines.push_back(point + cross_x);
+            point_lines.push_back(point - cross_y);
+            point_lines.push_back(point + cross_y);
+            point_lines.push_back(point - cross_z);
+            point_lines.push_back(point + cross_z);
+            preview_count++;
         }
 
         if (!point_lines.is_empty()) {
@@ -372,28 +386,30 @@ void GaussianSplatGizmoPlugin::draw_splat_preview(EditorNode3DGizmo *p_gizmo, Ga
 
     if (mode == GaussianSplatNode3D::DEBUG_DRAW_HEATMAP) {
         Vector<Vector3> heatmap_lines[3];
-        for (int i = 0; i < splat_count && (heatmap_lines[0].size() + heatmap_lines[1].size() + heatmap_lines[2].size()) / 6 < max_preview_points; i += step) {
+        int preview_count = 0;
+        for (int i = 0; i < splat_count && preview_count < max_preview_points; i += step) {
             int idx = i * 3;
-            if (idx + 2 >= positions.size()) {
+            if (idx + 2 >= position_count) {
                 break;
             }
 
             Vector3 point(positions[idx], positions[idx + 1], positions[idx + 2]);
             float intensity = 0.0f;
-            if (i < colors.size()) {
+            if (i < color_count) {
                 intensity = colors[i].get_luminance();
             } else {
-                intensity = float(i) / float(splat_count);
+                intensity = float(i) * splat_count_inv;
             }
             int bucket = intensity < 0.33f ? 0 : (intensity < 0.66f ? 1 : 2);
 
             Vector<Vector3> &target = heatmap_lines[bucket];
-            target.push_back(point - Vector3(cross_size, 0, 0));
-            target.push_back(point + Vector3(cross_size, 0, 0));
-            target.push_back(point - Vector3(0, cross_size, 0));
-            target.push_back(point + Vector3(0, cross_size, 0));
-            target.push_back(point - Vector3(0, 0, cross_size));
-            target.push_back(point + Vector3(0, 0, cross_size));
+            target.push_back(point - cross_x);
+            target.push_back(point + cross_x);
+            target.push_back(point - cross_y);
+            target.push_back(point + cross_y);
+            target.push_back(point - cross_z);
+            target.push_back(point + cross_z);
+            preview_count++;
         }
 
         for (int i = 0; i < 3; i++) {
