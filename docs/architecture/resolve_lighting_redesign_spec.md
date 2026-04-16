@@ -152,7 +152,7 @@ If the implementer wants visibility into the new ambient term, add one optional 
 Ordered, each task small enough for one commit:
 
 - [ ] **1. Fallback normal**: change `tile_resolve.glsl:309-313` to use `vec3(0, 1, 0)` instead of `view_dir`. Add a test for the orbit-stability invariant. Commit.
-- [ ] **2. Remove normal flipping**: delete the `shadow_normal` and `h_normal` flip blocks in `gs_lighting_common.glsl:50-63`. Add the world-up diffuse normal if Option 4.1A. Commit.
+- [ ] **2. Remove normal flipping**: delete the `shadow_normal` and `h_normal` flip blocks in `gs_lighting_common.glsl:50-63`. For Option 4.1A, replace with a world-up normal for **both diffuse and specular** BRDF evaluation (matching §5 step 1). For Option 4.1C (hybrid), keep blended normal for specular only and document that choice in the PR. Commit.
 - [ ] **3. Remove SH occlusion coupling**: delete the `sh_occlusion = max(..., 1.0 - shadow)` line and the `sh_occlusion` multiplication at `tile_resolve.glsl:363-366`. Add the SH-color-in-shadow test. Commit.
 - [ ] **4. Constant ambient plumbing**: add field to `TileRenderParamsGPU`, bump `GS_RENDER_PARAMS_LAYOUT_VERSION`, update sizeof assertion in `test_renderer_pipeline.h`, plumb value from `tile_render_resolve.cpp` using scene env ambient color. Commit.
 - [ ] **5. Resolve shader ambient injection**: add `+ constant_ambient * base_color * alpha` (or equivalent) in the resolve composition step. Commit.
