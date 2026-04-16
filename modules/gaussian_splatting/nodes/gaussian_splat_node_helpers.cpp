@@ -1396,7 +1396,16 @@ void GaussianSplatNodeRendererHelper::ensure_renderer() {
                 const bool has_local_source_data = owner.renderer_data.is_valid() ||
                         owner.splat_asset.is_valid() ||
                         owner.runtime_asset.is_valid();
-                if (has_local_source_data) {
+                // Only push if this node actually has its own grading. A
+                // null cached grading would otherwise wipe another node's
+                // already-pushed grading when multiple nodes initialize
+                // through ensure_renderer() in sequence on the same
+                // shared renderer (e.g. node A loads first and pushes
+                // grading X, then node B with no grading loads and would
+                // push null, clearing X). Setter and signal-handler paths
+                // can still push null deliberately because those reflect
+                // explicit runtime user actions, not implicit init.
+                if (has_local_source_data && owner.color_grading.is_valid()) {
                     owner.renderer->set_color_grading(owner.color_grading);
                 }
             }
