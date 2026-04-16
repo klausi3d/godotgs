@@ -35,6 +35,7 @@
 #include "test_sort_benchmark_metrics.h"
 #include "test_gaussian_splat_merge_utils.h"
 #include "test_gaussian_splat_world_io.h"
+#include "test_world_io_header_guards.h"
 #include "test_view_transform.h"
 #include "test_memory_leak_detection.h"
 #include "test_synthetic_splat_generators.h"
