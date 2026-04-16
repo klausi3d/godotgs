@@ -88,7 +88,7 @@ Storage for the first implementation is in-memory/GPU only. Extending `.gsplatwo
 
 ## 8. Tests
 
-- Add `modules/gaussian_splatting/tests/test_cluster_culling.h` and include it from `tests/test_gaussian_splatting.h`.
+- Add `modules/gaussian_splatting/tests/test_cluster_culling.h` and include it from `modules/gaussian_splatting/tests/test_gaussian_splatting.h`.
 - Add a GPU integration case beside `test_gpu_streaming.cpp` coverage that publishes tier-2 buffers, runs cluster off/on, and compares the resulting visible splat set with hotspot pruning disabled.
 - Invariants:
   - visible splat set must match the non-cluster path for the same frame inputs
