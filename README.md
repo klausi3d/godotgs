@@ -7,7 +7,7 @@ GodotGS is a Godot 4.5 fork with an in-tree Gaussian Splatting module for import
 
 Nightly editor builds for Linux and Windows are published as prereleases on GitHub. Pick the latest:
 
-- **[Latest nightly release](https://github.com/klausi3D/godotGS/releases/latest)** — `godotgs-windows-x86_64-<date>.zip` for Windows, `godotgs-linux-x86_64-<date>.tar.xz` for Linux
+- **[GitHub Releases](https://github.com/klausi3D/godotGS/releases)** — pick the most recent `nightly-YYYYMMDD` entry at the top. Each nightly includes `godotgs-windows-x86_64-<date>.zip` for Windows and `godotgs-linux-x86_64-<date>.tar.xz` for Linux.
 - macOS users currently need to [build from source](docs/BUILDING.md)
 
 No named stable (`v*`) release is published yet, so nightly is the only public install path today. See [Release Channels](docs/development/release-channels.md) for the full publishing model.

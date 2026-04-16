@@ -4,7 +4,7 @@ This is the shortest honest path to a visible result: download the latest nightl
 
 ## 1. Get the Nightly Editor
 
-Open the [latest nightly release](https://github.com/klausi3D/godotGS/releases/latest) and download the archive that matches your platform:
+Open the [GitHub Releases](https://github.com/klausi3D/godotGS/releases) page, pick the most recent `nightly-YYYYMMDD` entry at the top of the list, and download the archive that matches your platform:
 
 - **Linux:** `godotgs-linux-x86_64-<date>.tar.xz`
 - **Windows:** `godotgs-windows-x86_64-<date>.zip` (contains both the GUI editor and the console wrapper — pick whichever fits your workflow)

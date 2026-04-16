@@ -4,7 +4,7 @@ Public binaries for godotGS are published as nightly prereleases on GitHub. Ther
 
 ## Latest Nightly
 
-[**Open the latest nightly release**](https://github.com/klausi3D/godotGS/releases/latest)
+[**Open the Releases page**](https://github.com/klausi3D/godotGS/releases) and pick the most recent `nightly-YYYYMMDD` entry at the top. (There is no stable `v*` release yet, so GitHub's "latest release" shortcut does not resolve to a nightly; always use the list.)
 
 Each nightly contains the editor for both supported platforms plus integrity files:
 
