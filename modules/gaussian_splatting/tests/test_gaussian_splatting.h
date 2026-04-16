@@ -30,6 +30,7 @@
 #include "test_logger_rate_limit.h"
 #include "test_vram_budget_regulator.h"
 #include "test_renderer_pipeline.h"
+#include "test_streaming_queue_pressure_controller.h"
 #include "test_sort_fallback_policy.h"
 #include "test_sort_benchmark_metrics.h"
 #include "test_gaussian_splat_merge_utils.h"
