@@ -86,7 +86,7 @@ Minimal, coherent v1:
 1. **BRDF path**: replace normal flipping in `gs_lighting_common.glsl:50-63` with a world-up normal for **both diffuse and specular**. This is strict Option 4.1A — no per-splat blended normal feeds the BRDF at all, which is what fully kills view-dependent chrome noise. (If the implementer wants to keep blended normal for specular only, that's the hybrid Option 4.1C; document the choice in the PR description and accept the partial chrome noise it preserves.)
 2. **Shadow sampling**: uses blended `normal_sample` for receiver-bias direction (current), but `shadow_normal` is NOT flipped. If `dot(normal, light) < 0`, the splat is treated as facing away from the light → shadow term is 1.0 (unshadowed) but `NdotL = 0` on the diffuse side. Simpler than the current dual-flip logic.
 3. **SH occlusion**: delete the `sh_occlusion = max(sh_occlusion, 1.0 - shadow)` line at `gs_lighting_common.glsl:57`. Remove the multiplication at `tile_resolve.glsl:363-366`. Base SH color applied at full strength.
-4. **Ambient**: add a `hvec3 constant_ambient` uniform to the resolve params (value read from scene env ambient color × intensity). Add at `tile_resolve.glsl` before the shading composition.
+4. **Ambient**: in `tile_resolve.glsl`, read `scene_data_block.data.ambient_light_color_energy.rgb` directly from the already-bound scene_data uniform set and add it into the shading composition. **No new resolve-param uniform, no `TileRenderParamsGPU` field, no CPU plumbing** — this is Option 4.3A. The RGB channels are already energy-premultiplied at UBO build time (`render_scene_data_rd.cpp:172-182`); do not multiply by `.w`. Matches mesh-shading paths in `forward_clustered/scene_forward_clustered.glsl`.
 5. **Normal fallback**: at `tile_resolve.glsl:309-313`, change the fallback from `view_dir` to `vec3(0, 1, 0)`.
 
 ## 6. Shader / dispatch changes
@@ -128,7 +128,7 @@ No new shaders, no new dispatch passes, no new buffers. The plumbing rides the e
 
 No new GPU monitors needed — the change is in-shader with no dispatch boundary changes. The existing `gpu_time_resolve_ms` monitor will reflect any performance delta.
 
-If the implementer wants visibility into the new ambient term, add one optional line to `Performance` custom monitors: `gaussian_splatting/resolve_ambient_intensity` (scalar, reflecting the current `constant_ambient.x + .y + .z`).
+If the implementer wants visibility into the new ambient term, add one optional line to `Performance` custom monitors: `gaussian_splatting/resolve_ambient_intensity` (scalar, reflecting `dot(scene_data_block.data.ambient_light_color_energy.rgb, vec3(1.0))` at the moment of the last submission).
 
 ## 10. Risks and open questions
 
@@ -143,7 +143,7 @@ If the implementer wants visibility into the new ambient term, add one optional 
 
 1. **Pick one option from each of 4.1, 4.2, 4.3, 4.4** — the "A defaults" above are recommendations, not commitments. The spec stays valid regardless of choice; the implementation checklist below expands based on the choice.
 2. **Feature flag?** Should the new behavior be gated behind a project setting (`rendering/gaussian_splatting/resolve/lighting_mode`) with a default flip, or hard-replace the old path? Recommendation: hard-replace. The "old behavior" is a bug, not a feature.
-3. **Sizing of the constant ambient**: where does the value come from? Scene env color × intensity? A new project setting with a default? A per-node scalar?
+3. **Sizing of the constant ambient**: resolved in favor of Option 4.3A — value comes from `scene_data_block.data.ambient_light_color_energy.rgb` (already energy-premultiplied at UBO build time). No new project setting or per-node scalar in v1; revisit if artists need scene-local override (see §12).
 
 ## 11. Implementation checklist
 
