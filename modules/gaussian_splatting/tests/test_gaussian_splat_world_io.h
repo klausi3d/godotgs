@@ -11,8 +11,16 @@
 #include "core/io/resource_saver.h"
 #include "core/os/os.h"
 
+#include <cstdint>
+
 
 namespace {
+
+static constexpr uint32_t TEST_WORLD_MAGIC = 0x57505347; // "GSPW".
+static constexpr uint32_t TEST_WORLD_VERSION = 1;
+static constexpr uint32_t TEST_WORLD_FLAG_HAS_CHUNKS = 1u << 2u;
+static constexpr uint32_t TEST_WORLD_FLAG_COMPRESSED = 1u << 4u;
+static constexpr uint64_t TEST_WORLD_HEADER_SIZE = 104u;
 
 Gaussian make_gaussian(const Vector3 &p_position, const Color &p_dc) {
     Gaussian g;
@@ -90,6 +98,44 @@ String _make_world_io_fixture_path(const String &p_prefix) {
 
 void _remove_world_io_fixture(const String &p_path) {
     DirAccess::remove_absolute(p_path);
+}
+
+void _store_vec3_for_fixture(const Ref<FileAccess> &p_file, const Vector3 &p_value) {
+    p_file->store_float(p_value.x);
+    p_file->store_float(p_value.y);
+    p_file->store_float(p_value.z);
+}
+
+void _write_world_header_for_fixture(const Ref<FileAccess> &p_file,
+        uint32_t p_magic,
+        uint32_t p_flags,
+        uint32_t p_splat_count,
+        uint32_t p_sh_degree,
+        uint32_t p_sh_first_order,
+        uint32_t p_sh_high_order,
+        uint32_t p_chunk_count,
+        uint64_t p_gaussian_offset,
+        uint64_t p_sh_offset,
+        uint64_t p_chunk_table_offset,
+        uint64_t p_indices_offset,
+        uint64_t p_metadata_offset = 0,
+        uint64_t p_metadata_size = 0) {
+    p_file->store_32(p_magic);
+    p_file->store_32(TEST_WORLD_VERSION);
+    p_file->store_32(p_flags);
+    p_file->store_32(p_splat_count);
+    p_file->store_32(p_sh_degree);
+    p_file->store_32(p_sh_first_order);
+    p_file->store_32(p_sh_high_order);
+    _store_vec3_for_fixture(p_file, Vector3());
+    _store_vec3_for_fixture(p_file, Vector3());
+    p_file->store_32(p_chunk_count);
+    p_file->store_64(p_gaussian_offset);
+    p_file->store_64(p_sh_offset);
+    p_file->store_64(p_chunk_table_offset);
+    p_file->store_64(p_indices_offset);
+    p_file->store_64(p_metadata_offset);
+    p_file->store_64(p_metadata_size);
 }
 
 } // namespace
@@ -273,5 +319,118 @@ TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld save/load round-trip") {
     CHECK(int(loaded_metadata[StringName("lod_levels")]) == 2);
 
     // Cleanup
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] loader rejects files smaller than header") {
+    const String path = _make_world_io_fixture_path("truncated_header");
+    Ref<FileAccess> file = FileAccess::open(path, FileAccess::WRITE);
+    REQUIRE(file.is_valid());
+    file->store_32(TEST_WORLD_MAGIC);
+    file->store_32(TEST_WORLD_VERSION);
+    file.unref();
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error load_err = OK;
+    Ref<Resource> loaded = loader.load(path, "", &load_err);
+    CHECK_FALSE(loaded.is_valid());
+    CHECK_EQ(load_err, ERR_FILE_CORRUPT);
+
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] loader rejects unrecognized world magic") {
+    const String path = _make_world_io_fixture_path("bad_magic");
+    Ref<FileAccess> file = FileAccess::open(path, FileAccess::WRITE);
+    REQUIRE(file.is_valid());
+    _write_world_header_for_fixture(
+            file,
+            0x12345678u,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            TEST_WORLD_HEADER_SIZE,
+            TEST_WORLD_HEADER_SIZE,
+            TEST_WORLD_HEADER_SIZE,
+            TEST_WORLD_HEADER_SIZE);
+    file.unref();
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error load_err = OK;
+    Ref<Resource> loaded = loader.load(path, "", &load_err);
+    CHECK_FALSE(loaded.is_valid());
+    CHECK_EQ(load_err, ERR_FILE_UNRECOGNIZED);
+
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] loader rejects compressed payload with empty stream") {
+    const String path = _make_world_io_fixture_path("compressed_zero_payload");
+    Ref<FileAccess> file = FileAccess::open(path, FileAccess::WRITE);
+    REQUIRE(file.is_valid());
+    _write_world_header_for_fixture(
+            file,
+            TEST_WORLD_MAGIC,
+            TEST_WORLD_FLAG_COMPRESSED,
+            1,
+            0,
+            0,
+            0,
+            0,
+            TEST_WORLD_HEADER_SIZE,
+            TEST_WORLD_HEADER_SIZE + sizeof(uint64_t),
+            TEST_WORLD_HEADER_SIZE + sizeof(uint64_t),
+            TEST_WORLD_HEADER_SIZE + sizeof(uint64_t));
+    file->store_64(0); // Invalid compressed size for non-empty gaussian payload.
+    file.unref();
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error load_err = OK;
+    Ref<Resource> loaded = loader.load(path, "", &load_err);
+    CHECK_FALSE(loaded.is_valid());
+    CHECK_EQ(load_err, ERR_FILE_CORRUPT);
+
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] loader rejects chunk index range overflow") {
+    const String path = _make_world_io_fixture_path("chunk_index_overflow");
+    Ref<FileAccess> file = FileAccess::open(path, FileAccess::WRITE);
+    REQUIRE(file.is_valid());
+    _write_world_header_for_fixture(
+            file,
+            TEST_WORLD_MAGIC,
+            TEST_WORLD_FLAG_HAS_CHUNKS,
+            0,
+            0,
+            0,
+            0,
+            1,
+            TEST_WORLD_HEADER_SIZE,
+            TEST_WORLD_HEADER_SIZE,
+            TEST_WORLD_HEADER_SIZE,
+            TEST_WORLD_HEADER_SIZE + 56u);
+
+    // Chunk record payload follows the same layout as writer side:
+    // bounds_pos, bounds_size, center, radius, indices_offset, index_count, reserved.
+    _store_vec3_for_fixture(file, Vector3());
+    _store_vec3_for_fixture(file, Vector3(1.0f, 1.0f, 1.0f));
+    _store_vec3_for_fixture(file, Vector3());
+    file->store_float(1.0f);
+    file->store_64(UINT64_MAX);
+    file->store_32(1);
+    file->store_32(0);
+    file->store_32(0); // Ensure indices_offset < file_length.
+    file.unref();
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error load_err = OK;
+    Ref<Resource> loaded = loader.load(path, "", &load_err);
+    CHECK_FALSE(loaded.is_valid());
+    CHECK_EQ(load_err, ERR_FILE_CORRUPT);
+
     _remove_world_io_fixture(path);
 }
