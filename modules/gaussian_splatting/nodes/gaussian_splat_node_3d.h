@@ -167,6 +167,14 @@ private:
 
     // Color grading
     Ref<class ColorGradingResource> color_grading;
+    // Tracks whether the cached color_grading has already been pushed to the
+    // shared renderer for the current data-ready window. Set by ensure_renderer's
+    // initial-sync push and by _update_asset's first-data-ready push; cleared on
+    // _clear_asset (data going away) and tree-exit (renderer relationship reset).
+    // Prevents per-asset-refresh _update_asset calls from re-pushing this node's
+    // grading and clobbering a peer's grading on a shared renderer during
+    // hot-reload / reimport.
+    bool grading_pushed_for_current_data = false;
 
     // Performance monitoring
     uint32_t visible_splat_count = 0;

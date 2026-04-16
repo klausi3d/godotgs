@@ -1407,6 +1407,11 @@ void GaussianSplatNodeRendererHelper::ensure_renderer() {
                 // explicit runtime user actions, not implicit init.
                 if (has_local_source_data && owner.color_grading.is_valid()) {
                     owner.renderer->set_color_grading(owner.color_grading);
+                    // Mark the data-ready replay window as already-served so the
+                    // _update_asset() first-data-ready push (which fires on every
+                    // asset refresh including hot-reload) doesn't re-push and
+                    // overwrite a peer's grading on a shared renderer.
+                    owner.grading_pushed_for_current_data = true;
                 }
             }
         }

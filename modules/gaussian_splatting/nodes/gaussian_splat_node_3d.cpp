@@ -368,6 +368,11 @@ void GaussianSplatNode3D::_notification_exit_tree() {
     renderer_helper.release_renderer_settings_ownership();
     _unregister_shared_renderer();
 
+    // Renderer relationship resets on tree-exit; next ensure_renderer pass
+    // (on re-entry) is responsible for the initial-sync push, which will
+    // re-arm this flag.
+    grading_pushed_for_current_data = false;
+
     // Release GPU storage when detached to avoid keeping allocations alive.
     // Storage will be reallocated on re-enter if needed.
     _release_gaussian_base();
@@ -1548,25 +1553,33 @@ void GaussianSplatNode3D::_update_asset() {
     asset_helper.update_asset();
     update_gizmos();
 
-    // Replay cached color grading once data becomes available. Covers
-    // the async/auto-load path: node enters the tree before its asset
-    // is ready, so the ensure_renderer() initial-sync push is skipped
-    // (has_local_source_data is false at that point). When the asset
-    // arrives later and _update_asset runs (either from the first
-    // set_splat_asset() assignment or from the asset's "changed"
-    // signal via _on_asset_changed), the cached grading needs to
-    // reach the renderer here. Same gate as the initial-sync push:
-    // requires the renderer, a non-null grading, and at least one
-    // form of local source data so this never tints a peer's
-    // shared renderer when the node has no content.
-    if (renderer.is_valid() && color_grading.is_valid() &&
+    // Replay cached color grading on the *first* transition from no-data to
+    // has-data within the current data-ready window. Covers the async/auto-
+    // load path: node enters the tree before its asset is ready, so the
+    // ensure_renderer() initial-sync push is skipped (no local source data
+    // at that point). When the asset arrives later and _update_asset runs
+    // from the first set_splat_asset() assignment, the cached grading needs
+    // to reach the renderer here.
+    //
+    // The grading_pushed_for_current_data gate is critical: _update_asset
+    // ALSO runs on the asset's "changed" signal (hot-reload / reimport via
+    // _on_asset_changed), and on a shared renderer an unconditional push
+    // here would let node A's reimport overwrite node B's grading even
+    // though no grading setter ran on either. The flag fires this push
+    // exactly once per data-ready window and is cleared by _clear_asset
+    // and NOTIFICATION_EXIT_TREE (the only paths that take data away).
+    if (!grading_pushed_for_current_data && renderer.is_valid() && color_grading.is_valid() &&
             (renderer_data.is_valid() || splat_asset.is_valid() || runtime_asset.is_valid())) {
         renderer->set_color_grading(color_grading);
+        grading_pushed_for_current_data = true;
     }
 }
 
 void GaussianSplatNode3D::_clear_asset() {
     asset_helper.clear_asset();
+    // Data is going away — next data-ready transition (new asset, async load
+    // completion, or hot-reload after a reset) should push grading once again.
+    grading_pushed_for_current_data = false;
 }
 
 void GaussianSplatNode3D::_update_bounds() {
