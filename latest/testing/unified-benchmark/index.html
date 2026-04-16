@@ -16,7 +16,7 @@
       
       
       <link rel="icon" href="../../assets/branding/godotgs-mark.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.6">
     
     
       
@@ -380,6 +380,8 @@
       
         
       
+        
+      
     
     
     
@@ -432,6 +434,34 @@
           </label>
           <ul class="md-nav__list" data-md-scrollfix="">
             
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/downloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Downloads
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
               
             
               
@@ -504,7 +534,7 @@
   <span class="md-ellipsis">
     
   
-    First Run
+    Public Evaluator
   
 
     
@@ -1755,9 +1785,7 @@
 <p>The benchmark is report-only and ends with tuning suggestions based on measured behavior.</p>
 <h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">¶</a></h2>
 <h3 id="editor-one-button">Editor / one-button<a class="headerlink" href="#editor-one-button" title="Permanent link">¶</a></h3>
-<p><code>tests/examples/godot/test_project/project.godot</code> now uses:</p>
-<p><code>run/main_scene="res://scenes/benchmark_unified.tscn"</code></p>
-<p>So pressing Play in the sample project launches the unified benchmark directly.</p>
+<p>The sample project no longer boots into the unified benchmark scene by default. Press Play in the sample project to open <code>res://scenes/public_evaluator.tscn</code>. Open <code>res://scenes/benchmark_unified.tscn</code> explicitly when you want to run the benchmark lane.</p>
 <h3 id="cli">CLI<a class="headerlink" href="#cli" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code>./bin/godot.linuxbsd.editor.dev.x86_64<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--path<span class="w"> </span>tests/examples/godot/test_project<span class="w"> </span><span class="se">\</span>
@@ -1802,7 +1830,7 @@
 </ul>
 <p>The benchmark does not hard-fail on low performance; it always reports and suggests.</p>
 <h2 id="small-baseline-comparison">Small Baseline Comparison<a class="headerlink" href="#small-baseline-comparison" title="Permanent link">¶</a></h2>
-<p>For apples-to-apples high-FPS comparison against the heavy unified scene, run:</p>
+<p>For apples-to-apples high-FPS comparison against the heavy unified scene, run the benchmark scene explicitly:</p>
 <div class="highlight"><pre><span></span><code>./bin/godot.linuxbsd.editor.dev.x86_64<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--path<span class="w"> </span>tests/examples/godot/test_project<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--scene<span class="w"> </span>res://scenes/benchmark_small_baseline.tscn<span class="w"> </span><span class="se">\</span>
@@ -1811,10 +1839,10 @@
 </code></pre></div>
 <p>Default report output is <code>user://benchmark_small_baseline_results.json</code>.</p>
 <h2 id="suite-runner">Suite Runner<a class="headerlink" href="#suite-runner" title="Permanent link">¶</a></h2>
-<p>For multi-lane benchmark runs (scene set + aggregate report), use:</p>
-<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>tests/runtime/run_benchmark_suite.py<span class="w"> </span>--profile<span class="w"> </span>quick<span class="w"> </span>--generate-dummy-assets
+<p>For multi-lane benchmark runs, use the contributor-facing benchmark runner in <a href="../benchmark-suite/">Benchmark Runner</a>. It runs lane scenes one by one, launching one Godot subprocess per lane, and aggregates the lane JSON outputs into a suite report once the benchmark fixture and manifest set have been staged into the sample project checkout:</p>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>tests/runtime/run_benchmark.py<span class="w"> </span>--profile<span class="w"> </span>quick<span class="w"> </span>--generate-dummy-assets
 </code></pre></div>
-<p>See <a href="../benchmark-suite/">Benchmark Suite Runner</a> for profiles, lane list, and asset override workflow.</p>
+<p>See <a href="../benchmark-suite/">Benchmark Runner</a> for profiles, lane list, and asset override workflow.</p>
 <h2 id="controls">Controls<a class="headerlink" href="#controls" title="Permanent link">¶</a></h2>
 <ul>
 <li><code>Esc</code>: quit</li>
@@ -1840,7 +1868,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 6, 2026 07:00:00 UTC">April 6, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 16, 2026 21:13:33 UTC">April 16, 2026</span>
   </span>
 
     

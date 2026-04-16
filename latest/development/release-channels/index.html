@@ -16,7 +16,7 @@
       
       
       <link rel="icon" href="../../assets/branding/godotgs-mark.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.6">
     
     
       
@@ -380,6 +380,8 @@
       
         
       
+        
+      
     
     
     
@@ -432,6 +434,34 @@
           </label>
           <ul class="md-nav__list" data-md-scrollfix="">
             
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/downloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Downloads
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
               
             
               
@@ -504,7 +534,7 @@
   <span class="md-ellipsis">
     
   
-    First Run
+    Public Evaluator
   
 
     
@@ -1721,8 +1751,8 @@
 <ul>
 <li>Public GitHub releases are currently nightlies first.</li>
 <li>The stable <code>v*</code> publish path exists in automation, but it is not the default public install track.</li>
-<li>Public binaries currently cover the Linux editor only.</li>
-<li>Preferred evaluation path: use the latest Linux nightly if it fits your environment, otherwise build from source.</li>
+<li>Visible public binaries cover the Linux editor (<code>tar.xz</code>) and the Windows editor (<code>zip</code>).</li>
+<li>Preferred evaluation path: use the latest Linux or Windows nightly. macOS still requires building from source.</li>
 </ul>
 <h2 id="channels">Channels<a class="headerlink" href="#channels" title="Permanent link">¶</a></h2>
 <table>
@@ -1739,14 +1769,14 @@
 <tr>
 <td>CI artifact</td>
 <td><code>.github/workflows/release_builds.yml</code> on PR/push</td>
-<td>Exists for contributors, not as a public install surface</td>
+<td>Builds Linux and Windows contributor artifacts, not a public install surface</td>
 <td>Contributors validating branch changes</td>
 <td>No compatibility guarantee; debugging/testing only</td>
 </tr>
 <tr>
 <td>Nightly prerelease</td>
 <td><code>.github/workflows/release_builds.yml</code> schedule/manual with <code>publish_channel=nightly</code></td>
-<td>Primary visible public binary channel at present</td>
+<td>Primary visible public binary channel at present; publishes Linux and Windows editor assets every night</td>
 <td>Early testers validating latest integration changes</td>
 <td>May break at any time; not for production</td>
 </tr>
@@ -1770,19 +1800,19 @@
 <tbody>
 <tr>
 <td>Pull request touching engine/module paths</td>
-<td>Build Linux editor and upload contributor artifact</td>
+<td>Build the Linux editor on a GitHub-hosted runner and upload its contributor artifact. The Windows editor lane is intentionally skipped for pull requests because it runs on a self-hosted runner and must not execute untrusted PR code.</td>
 </tr>
 <tr>
 <td>Push to <code>master</code>/<code>main</code>/<code>develop</code></td>
-<td>Build Linux editor and upload contributor artifact</td>
+<td>Build Linux and Windows editors and upload contributor artifacts</td>
 </tr>
 <tr>
 <td>Nightly schedule (<code>30 2 * * *</code> UTC)</td>
-<td>Build and publish nightly prerelease (<code>nightly-YYYYMMDD</code>) then prune old nightlies</td>
+<td>Build and publish nightly prerelease (<code>nightly-YYYYMMDD</code>) with Linux and Windows editor assets, then prune old nightlies</td>
 </tr>
 <tr>
 <td>Tag push (<code>v*</code>)</td>
-<td>Build and publish a versioned stable-tag release when that path is intentionally used</td>
+<td>Build and publish a versioned stable-tag release with Linux and Windows assets when that path is intentionally used</td>
 </tr>
 <tr>
 <td>Manual dispatch</td>
@@ -1794,7 +1824,8 @@
 <p>Each publish includes:</p>
 <ul>
 <li>Linux editor tarball (<code>godotgs-linux-x86_64-&lt;tag-or-sha&gt;.tar.xz</code>)</li>
-<li>SHA-256 checksum file</li>
+<li>Windows editor zip (<code>godotgs-windows-x86_64-&lt;tag-or-sha&gt;.zip</code>)</li>
+<li>SHA-256 checksum files</li>
 <li><code>BUILD-INFO.txt</code> metadata (channel, commit, binary name, generation timestamp)</li>
 </ul>
 <h2 id="current-limits-and-caveats">Current Limits and Caveats<a class="headerlink" href="#current-limits-and-caveats" title="Permanent link">¶</a></h2>
@@ -1824,7 +1855,7 @@
 </tr>
 <tr>
 <td>Platform coverage (current)</td>
-<td>Linux editor binary only; Windows and macOS currently require source builds</td>
+<td>Visible public binaries cover Linux and Windows editors; macOS currently requires source builds</td>
 </tr>
 </tbody>
 </table>
@@ -1855,7 +1886,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 6, 2026 06:59:53 UTC">April 6, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 16, 2026 21:13:25 UTC">April 16, 2026</span>
   </span>
 
     

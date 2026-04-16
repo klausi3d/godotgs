@@ -20,7 +20,7 @@
       
       
       <link rel="icon" href="../../assets/branding/godotgs-mark.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.6">
     
     
       
@@ -386,6 +386,8 @@
       
         
       
+        
+      
     
     
     
@@ -438,6 +440,34 @@
           </label>
           <ul class="md-nav__list" data-md-scrollfix="">
             
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/downloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Downloads
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
               
             
               
@@ -510,7 +540,7 @@
   <span class="md-ellipsis">
     
   
-    First Run
+    Public Evaluator
   
 
     
@@ -1582,6 +1612,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ci-surfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CI Surfaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proof-ladder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proof Ladder
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#large-world-proof-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Large-World Proof Contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#suite-coverage" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1880,6 +1943,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ci-surfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CI Surfaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proof-ladder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proof Ladder
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#large-world-proof-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Large-World Proof Contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#suite-coverage" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1988,9 +2084,11 @@
 <p>Use this as the single benchmark entrypoint:</p>
 <div class="highlight"><pre><span></span><code>python3<span class="w"> </span>tests/runtime/run_benchmark.py<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--godot-binary<span class="w"> </span>./bin/godot.linuxbsd.editor.dev.x86_64<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--project-path<span class="w"> </span>./tests/examples/godot/test_project
+<span class="w">  </span>--project-path<span class="w"> </span>./tests/examples/godot/test_project<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--profile<span class="w"> </span>performance
 </code></pre></div>
-<p><code>--profile</code> defaults to <code>everything</code>.</p>
+<p>For ad hoc local exploration, <code>--profile</code> still defaults to <code>everything</code>. For benchmark evidence
+and Tier 2 closeout, <code>--profile performance</code> is the canonical lane set.</p>
 <h2 id="current-public-snapshot">Current Public Snapshot<a class="headerlink" href="#current-public-snapshot" title="Permanent link">¶</a></h2>
 <p>The current committed public result is a single low-noise raster baseline row:</p>
 <table>
@@ -2035,17 +2133,195 @@
 <ul>
 <li><code>everything</code>: suite lanes + unified + small baseline + synthetic scenes</li>
 <li><code>quick</code>: shortened smoke profile</li>
-<li><code>performance</code>: suite-focused performance profile</li>
+<li><code>performance</code>: canonical benchmark evidence profile</li>
 <li><code>synthetic-only</code>: synthetic scenes only</li>
 <li><code>ab-only</code>: instance pipeline serial vs single-pass lanes</li>
 </ul>
 <h2 id="asset-policy">Asset Policy<a class="headerlink" href="#asset-policy" title="Permanent link">¶</a></h2>
 <p>Asset generation and mapping are canonicalized through:</p>
 <ul>
-<li><code>tests/runtime/prepare_synthetic_assets.py</code></li>
 <li><code>tests/fixtures/benchmark_asset_manifest.json</code></li>
 </ul>
-<p>The benchmark runner calls synthetic asset preparation automatically before execution.</p>
+<p>The benchmark runner resolves assets through the project-local benchmark manifest by default.
+That manifest now carries both:</p>
+<ul>
+<li>the concrete asset path resolution order</li>
+<li>the declared asset/evidence classification for each lane</li>
+</ul>
+<p>Use the classifications literally:</p>
+<ul>
+<li><code>real_chunked</code>: representative chunked-scene benchmark evidence</li>
+<li><code>deterministic_synthetic</code>: synthetic support lane</li>
+<li><code>lightweight_smoke</code>: lightweight smoke/support lane, not representative large-scene evidence</li>
+</ul>
+<p>Run synthetic asset preparation before benchmark collection whenever fixture or manifest state may
+be stale:</p>
+<p></p><div class="highlight"><pre><span></span><code>python3<span class="w"> </span>tests/runtime/prepare_synthetic_assets.py<span class="w"> </span>--quiet
+</code></pre></div>
+Streaming-named lanes that still resolve to <code>test_splats.ply</code> are intentionally classified as
+<code>lightweight_smoke</code>; they are useful for proof-shape smoke coverage, but they are not chunked
+large-scene evidence.<p></p>
+<h2 id="ci-surfaces">CI Surfaces<a class="headerlink" href="#ci-surfaces" title="Permanent link">¶</a></h2>
+<p><code>streaming-gpu-ci</code> is the only blocking GPU-backed streaming gate. The benchmark proof
+surfaces below are evidence-only and should not be treated as a second streaming gate.</p>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Runner command</th>
+<th>Scope</th>
+<th>Blocking?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>streaming-gpu-ci</code></td>
+<td><code>python3 tests/runtime/run_runtime_validation.py --profile streaming-gpu-ci</code></td>
+<td>Runtime validation for residency and world-streaming regressions</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>openworld-proof-dev</code></td>
+<td><code>python3 tests/runtime/run_benchmark.py --profile performance --lane open_world_corridor_proof --lane city_flyover</code></td>
+<td><code>20M corridor</code> candidate + boundary-crossing smoke support</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>openworld-proof-weekly</code></td>
+<td><code>python3 tests/runtime/run_benchmark.py --profile performance --lane long_soak</code></td>
+<td>City-roam soak smoke support</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<h2 id="proof-ladder">Proof Ladder<a class="headerlink" href="#proof-ladder" title="Permanent link">¶</a></h2>
+<p>The current large-world proof ladder is intentionally split between:</p>
+<ul>
+<li>one dedicated world-consuming bootstrap benchmark lane</li>
+<li>the staged chunked asset contract for the wider ladder</li>
+<li>the existing runtime probes</li>
+</ul>
+<p>No shared <code>GaussianSplatAsset</code> benchmark lane should reference the chunked ladder. The only
+committed runnable benchmark surface is the dedicated <code>open_world_corridor_proof</code> lane, which
+consumes the staged corridor contract and builds a local <code>GaussianSplatWorld</code> runtime surface
+at the declared 20M total-splat scale.</p>
+<table>
+<thead>
+<tr>
+<th>Proof role</th>
+<th>Surface</th>
+<th>Failure intent</th>
+<th>Current evidence class</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>proof_corridor_return_bootstrap</code></td>
+<td><code>open_world_corridor_proof</code></td>
+<td>Fail when the dedicated world-consuming 20M corridor surface cannot consume the staged contract and produce a runnable large-world chunked path.</td>
+<td><code>chunked_open_world_candidate</code></td>
+</tr>
+<tr>
+<td><code>proof_support_corridor_churn_smoke</code></td>
+<td><code>streaming_corridor</code></td>
+<td>Catch corridor-shaped churn regressions before the real chunked corridor lane is promoted.</td>
+<td><code>lightweight_smoke</code></td>
+</tr>
+<tr>
+<td><code>proof_support_boundary_crossing_smoke</code></td>
+<td><code>city_flyover</code></td>
+<td>Catch large visibility-shift / boundary-crossing regressions on the existing smoke surface.</td>
+<td><code>lightweight_smoke</code></td>
+</tr>
+<tr>
+<td><code>proof_support_city_roam_soak_smoke</code></td>
+<td><code>long_soak</code></td>
+<td>Catch revisit / soak regressions on the current smoke surface before the city-scale chunked lane is validated.</td>
+<td><code>lightweight_smoke</code></td>
+</tr>
+<tr>
+<td><code>runtime_budget_churn_probe</code></td>
+<td><code>tests/runtime/test_gpu_streaming_eviction_churn_probe.gd</code></td>
+<td>Fail on budget-driven churn collapse, queue starvation, or stalled forward progress under tight VRAM.</td>
+<td>Runtime probe</td>
+</tr>
+<tr>
+<td><code>runtime_corridor_return_gate</code></td>
+<td><code>tests/runtime/test_world_streaming_gate.gd</code></td>
+<td>Fail when forward and return phases never reach real streamed readiness under the streaming route.</td>
+<td>Runtime gate</td>
+</tr>
+<tr>
+<td><code>runtime_large_tier_stress</code></td>
+<td><code>tests/runtime/test_gpu_streaming_stress.gd</code></td>
+<td>Fail when large-tier streaming loses first-visible, residency, or frame-budget stability.</td>
+<td>Runtime stress</td>
+</tr>
+</tbody>
+</table>
+<p>Mixed-residency and multi-asset hub scenarios remain evidence-only and are intentionally outside
+the blocking proof ladder for <code>Phase 4C.1</code>.</p>
+<p>The benchmark lanes above compose the evidence surfaces as follows:</p>
+<ul>
+<li><code>openworld-proof-dev</code> = <code>open_world_corridor_proof</code> + <code>city_flyover</code></li>
+<li><code>openworld-proof-weekly</code> = <code>long_soak</code></li>
+<li>only <code>open_world_corridor_proof</code> is a large-world candidate lane today; <code>city_flyover</code> and <code>long_soak</code> remain smoke-support surfaces until the <code>50M boundary</code> and <code>100M city</code> lanes are runnable</li>
+<li>both surfaces are benchmark evidence only, while <code>streaming-gpu-ci</code> remains the only blocking gate</li>
+</ul>
+<h2 id="large-world-proof-contract">Large-World Proof Contract<a class="headerlink" href="#large-world-proof-contract" title="Permanent link">¶</a></h2>
+<p>The benchmark proof contract is emitted per lane in runner JSON via:</p>
+<ul>
+<li><code>proof_contract</code></li>
+<li><code>proof_metrics</code></li>
+<li><code>proof_status</code></li>
+<li><code>proof_failures</code></li>
+<li><code>proof_warnings</code></li>
+<li><code>proof_missing_telemetry</code></li>
+</ul>
+<p>Status meaning is intentionally narrow:</p>
+<ul>
+<li><code>pass</code>: lane met correctness and soft-budget thresholds</li>
+<li><code>warn</code>: correctness contract passed, but soft-budget thresholds exceeded</li>
+<li><code>fail</code>: correctness / streaming-behavior contract failed</li>
+<li><code>missing_telemetry</code>: runner could not audit one or more required proof metrics</li>
+</ul>
+<p>The contract is currently locked for these ladder lanes:</p>
+<table>
+<thead>
+<tr>
+<th>Lane</th>
+<th>Proof role</th>
+<th>Correctness / streaming behavior thresholds</th>
+<th>Soft budget warnings</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>open_world_corridor_proof</code></td>
+<td>Corridor return</td>
+<td><code>first_visible_ms &lt;= 3500</code>, <code>residency_ratio &gt;= 0.70</code>, <code>queue_pressure_frames &lt;= 32</code>, <code>no_progress_frames &lt;= 6</code>, <code>scan_starved_frames &lt;= 6</code>, <code>vram_cap_hit_frames &lt;= 0</code></td>
+<td><code>frame_p95_ms &lt;= 95</code>, <code>frame_p95_to_avg_ratio &lt;= 2.25</code>, <code>chunk_loads_per_frame.p95 &lt;= 10</code>, <code>chunk_evictions_per_frame.p95 &lt;= 4</code></td>
+</tr>
+<tr>
+<td><code>city_flyover</code></td>
+<td>Boundary crossing</td>
+<td><code>first_visible_ms &lt;= 4500</code>, <code>residency_ratio &gt;= 0.65</code>, <code>queue_pressure_frames &lt;= 48</code>, <code>no_progress_frames &lt;= 12</code>, <code>scan_starved_frames &lt;= 12</code>, <code>vram_cap_hit_frames &lt;= 4</code></td>
+<td><code>frame_p95_ms &lt;= 120</code>, <code>frame_p95_to_avg_ratio &lt;= 2.50</code>, <code>chunk_loads_per_frame.p95 &lt;= 12</code>, <code>chunk_evictions_per_frame.p95 &lt;= 8</code></td>
+</tr>
+<tr>
+<td><code>long_soak</code></td>
+<td>City roam + soak</td>
+<td><code>first_visible_ms &lt;= 6000</code>, <code>residency_ratio &gt;= 0.75</code>, <code>queue_pressure_frames &lt;= 96</code>, <code>no_progress_frames &lt;= 24</code>, <code>scan_starved_frames &lt;= 20</code>, <code>vram_cap_hit_frames &lt;= 8</code></td>
+<td><code>frame_p95_ms &lt;= 135</code>, <code>frame_p95_to_avg_ratio &lt;= 2.60</code>, <code>chunk_loads_per_frame.p95 &lt;= 8</code>, <code>chunk_evictions_per_frame.p95 &lt;= 10</code></td>
+</tr>
+</tbody>
+</table>
+<p>Metric intent:</p>
+<ul>
+<li>correctness thresholds are meant to capture lost visibility, stalled forward progress, or residency collapse</li>
+<li>soft budget warnings are meant to flag machine-noise-sensitive frame spikes or bursty load/eviction pressure without turning one noisy run into a hard blocker</li>
+<li>missing telemetry is a separate review condition because an unauditable lane is not valid proof evidence</li>
+</ul>
 <h2 id="suite-coverage">Suite Coverage<a class="headerlink" href="#suite-coverage" title="Permanent link">¶</a></h2>
 <p>These are the user-relevant lanes already encoded in the suite and available for publication once committed results exist:</p>
 <table>
@@ -2053,6 +2329,8 @@
 <tr>
 <th>Lane</th>
 <th>Purpose</th>
+<th>Asset class</th>
+<th>Evidence role</th>
 <th>Current publication status</th>
 </tr>
 </thead>
@@ -2060,35 +2338,67 @@
 <tr>
 <td><code>static_baseline</code></td>
 <td>Low-noise raster baseline</td>
+<td><code>lightweight_smoke</code></td>
+<td>Published baseline</td>
 <td>Published</td>
 </tr>
 <tr>
+<td><code>open_world_corridor_proof</code></td>
+<td>Dedicated world-consuming 20M corridor proof</td>
+<td><code>chunked_open_world_candidate</code></td>
+<td><code>proof_corridor_return_bootstrap</code></td>
+<td>Suite-only</td>
+</tr>
+<tr>
 <td><code>streaming_corridor</code></td>
-<td>Camera sweep stressing chunk turnover</td>
+<td>Corridor churn smoke support</td>
+<td><code>lightweight_smoke</code></td>
+<td><code>proof_support_corridor_churn_smoke</code></td>
 <td>Suite-only</td>
 </tr>
 <tr>
 <td><code>city_flyover</code></td>
-<td>High-altitude visibility-change stress</td>
+<td>Boundary-crossing smoke support</td>
+<td><code>lightweight_smoke</code></td>
+<td><code>proof_support_boundary_crossing_smoke</code></td>
 <td>Suite-only</td>
 </tr>
 <tr>
 <td><code>instance_storm</code></td>
 <td>Many-instance submission pressure</td>
+<td><code>lightweight_smoke</code></td>
+<td>Suite support</td>
 <td>Suite-only</td>
 </tr>
 <tr>
 <td><code>lighting_stress</code></td>
 <td>Animated light and shading stress</td>
+<td><code>lightweight_smoke</code></td>
+<td>Suite support</td>
+<td>Suite-only</td>
+</tr>
+<tr>
+<td><code>long_soak</code></td>
+<td>City-roam soak smoke support</td>
+<td><code>lightweight_smoke</code></td>
+<td><code>proof_support_city_roam_soak_smoke</code></td>
 <td>Suite-only</td>
 </tr>
 <tr>
 <td><code>unified_composite</code></td>
-<td>Integrated all-systems composite lane</td>
+<td>Integrated composite smoke support</td>
+<td><code>lightweight_smoke</code></td>
+<td><code>proof_support_integrated_composite_smoke</code></td>
 <td>Suite-only</td>
 </tr>
 </tbody>
 </table>
+<p>No currently documented benchmark lane should be cited as representative chunked streaming
+evidence unless its manifest classification is upgraded to <code>real_chunked</code>. The dedicated
+<code>open_world_corridor_proof</code> lane is a runnable large-world candidate surface at the declared
+20M scale, but it is not yet promoted <code>real_chunked</code> proof evidence, and the rest of the
+canonical open-world ladder remains staged-contract-only until it exposes benchmark-consumable
+asset paths.</p>
 <h2 id="outputs">Outputs<a class="headerlink" href="#outputs" title="Permanent link">¶</a></h2>
 <p>Default output directory:</p>
 <p><code>tests/output/benchmark_suite/&lt;timestamp&gt;/</code></p>
@@ -2176,7 +2486,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 6, 2026 07:00:00 UTC">April 6, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 16, 2026 21:13:33 UTC">April 16, 2026</span>
   </span>
 
     
