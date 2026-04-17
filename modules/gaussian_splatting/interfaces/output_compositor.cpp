@@ -925,12 +925,8 @@ bool OutputCompositor::copy_to_framebuffer(const FramebufferCopyParams &p_params
         viewport_size = Size2i(1920, 1080); // Fallback
     }
 
-    // Get source texture format to determine sRGB handling
-    RenderingDevice *check_rd = main_rd;
-    bool srgb_destination = false;
-    if (check_rd) {
-        srgb_destination = _is_texture_srgb(check_rd, p_params.source_texture);
-    }
+    // This path copies into the main viewport's post-tonemap framebuffer, which is sRGB.
+    bool srgb_destination = true;
 
     Rect2i dest_rect(Vector2i(0, 0), Size2i(viewport_size.x, viewport_size.y));
     Rect2 src_rect(Vector2(0.0f, 0.0f), Vector2(1.0f, 1.0f));

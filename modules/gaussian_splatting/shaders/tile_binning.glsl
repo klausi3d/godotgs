@@ -1148,12 +1148,7 @@ void main() {
 
             hvec3 h_normal_base = hvec3(normal_view);
             hvec3 h_view = hvec3(view_dir);
-            // Use neutral grey albedo for lighting by default. If indirect SH is disabled,
-            // fall back to SH color as albedo so splat colors still show up.
-            hvec3 h_albedo = hvec3(0.5);
-            if (params.lighting_config.y <= 0.001) {
-                h_albedo = hvec3(sh_albedo);
-            }
+            hvec3 h_albedo = hvec3(sh_albedo);
             half roughness = half(1.0);
             half metallic = half(0.0);
             half specular = half(0.5);
@@ -1207,13 +1202,15 @@ void main() {
             vec3 direct = vec3(diffuse_light + specular_light) * params.lighting_config.x;
             final_color += direct;
 
-            // Accumulate engine ambient light from WorldEnvironment.
-            // SH DC provides baked indirect, but Godot's ambient_light_color_energy
-            // is a separate runtime contribution that meshes receive and splats should match.
+            // Blend engine ambient out as SH indirect approaches full strength to avoid
+            // double-counting baked indirect from the SH DC term.
             SceneData scene_data = scene_data_block.data;
             if (bool(scene_data.flags & SCENE_DATA_FLAGS_USE_AMBIENT_LIGHT)) {
-                vec3 ambient = scene_data.ambient_light_color_energy.rgb * scene_data.ambient_light_color_energy.a;
-                final_color += ambient * vec3(h_albedo);
+                float ambient_blend = 1.0 - clamp(params.lighting_config.y, 0.0, 1.0);
+                if (ambient_blend > 0.0) {
+                    vec3 ambient = scene_data.ambient_light_color_energy.rgb * scene_data.ambient_light_color_energy.a;
+                    final_color += ambient * vec3(h_albedo) * ambient_blend;
+                }
             }
         }
     }
