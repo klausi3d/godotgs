@@ -2742,14 +2742,6 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 	if (rb_data.is_valid()) {
 		_debug_draw_cluster(rb);
 
-#ifdef MODULE_GAUSSIAN_SPLATTING_ENABLED
-		if (!p_render_data->gaussian_splat_renderers.is_empty()) {
-			RENDER_TIMESTAMP("Gaussian Splats");
-			render_gaussian_splats_forward(*p_render_data);
-			commit_gaussian_splats(*p_render_data);
-		}
-#endif
-
 		RENDER_TIMESTAMP("Tonemap");
 
 		_render_buffers_post_process_and_tonemap(p_render_data);
