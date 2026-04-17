@@ -66,7 +66,6 @@ These larger files are excluded via `.gitignore` to keep the repository lightwei
 
 ### 6. Test Runner
 - **Primary script**: `tests/ci/run_baseline_qa.py` - The main CI test orchestrator
-- **Convenience wrapper**: `run_all_tests.py` - Delegates to `tests/ci/run_baseline_qa.py`
 - **Capabilities**:
   - Orchestrates all test suites
   - Generates comprehensive reports
@@ -93,14 +92,13 @@ python generate_test_data.py
 
 ### Run All Tests
 ```bash
-# Wrapper around tests/ci/run_baseline_qa.py
-python run_all_tests.py
+python tests/ci/run_baseline_qa.py
 ```
 
 ### Run Specific Category
 ```bash
 # Options: ply, pipeline, sorting, runtime, module, qa
-python run_all_tests.py --category pipeline
+python tests/ci/run_baseline_qa.py --category pipeline
 ```
 
 ### Run Demo Scene
@@ -134,10 +132,10 @@ The `.github/workflows/test_phase4.yml` workflow runs:
 ### Local CI
 ```bash
 # Run quick validation
-python run_all_tests.py --quick
+python tests/ci/run_baseline_qa.py --quick
 
 # Full validation before commit
-python run_all_tests.py
+python tests/ci/run_baseline_qa.py
 ```
 
 ## Test Reports
@@ -200,7 +198,6 @@ test_data/
 ├── test_phase4_integration.gd   # Integration tests
 ├── benchmark_performance.py     # Performance benchmarks
 ├── validate_visual_quality.py   # Visual validation
-├── run_all_tests.py             # Wrapper for tests/ci/run_baseline_qa.py
 ├── gaussian_splat_demo.tscn     # Interactive demo
 ├── demo_controller.gd           # Demo logic
 ├── README.md                    # This file
