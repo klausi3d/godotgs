@@ -144,6 +144,11 @@ void main() {
     vec4 source_linear = source_color;
     vec4 destination_linear = destination_color;
 
+    if (params.composite_with_destination != 0 && source_linear.a <= 0.0) {
+        imageStore(u_destination_image, destination_coord, destination_color);
+        return;
+    }
+
     if (params.destination_is_srgb != 0 && params.composite_with_destination != 0) {
         destination_linear.rgb = srgb_to_linear(destination_linear.rgb);
     }
