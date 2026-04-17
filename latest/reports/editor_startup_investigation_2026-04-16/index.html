@@ -7,7 +7,7 @@
       
       
       
-        <link rel="canonical" href="https://klausi3d.github.io/godotGS/latest/architecture/lighting-system/">
+        <link rel="canonical" href="https://klausi3d.github.io/godotGS/latest/reports/editor_startup_investigation_2026-04-16/">
       
       
       
@@ -20,7 +20,7 @@
     
     
       
-        <title>Lighting System Architecture - Godot Gaussian Splatting Docs</title>
+        <title>Editor Startup Investigation (2026-04-16) - Godot Gaussian Splatting Docs</title>
       
     
     
@@ -81,7 +81,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#lighting-system-architecture" class="md-skip">
+        <a href="#editor-startup-investigation-2026-04-16" class="md-skip">
           Skip to content
         </a>
       
@@ -120,7 +120,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Lighting System Architecture
+              Editor Startup Investigation (2026-04-16)
             
           </span>
         </div>
@@ -1503,7 +1503,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../overview/" class="md-nav__link">
+      <a href="../../architecture/overview/" class="md-nav__link">
         
   
   
@@ -1642,10 +1642,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
-  <a href="#canonical-sources" class="md-nav__link">
+  <a href="#summary" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Canonical Sources
+        Summary
       
     </span>
   </a>
@@ -1653,49 +1653,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#control-surfaces" class="md-nav__link">
+  <a href="#benchmark-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Control Surfaces
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Control Surfaces">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#project-settings-global" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Project Settings (Global)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#node-controls-per-node" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Node Controls (Per-Node)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#data-flow-cpu-to-gpu" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Data Flow: CPU to GPU
+        Benchmark data
       
     </span>
   </a>
@@ -1703,10 +1664,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#direct-lighting-path" class="md-nav__link">
+  <a href="#where-the-21s-cold-window-actually-goes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Direct Lighting Path
+        Where the 21s cold window actually goes
       
     </span>
   </a>
@@ -1714,10 +1675,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#clustered-vs-unclustered-lights" class="md-nav__link">
+  <a href="#what-does-not-appear-to-be-happening" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Clustered vs Unclustered Lights
+        What does not appear to be happening
       
     </span>
   </a>
@@ -1725,49 +1686,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#shadow-system" class="md-nav__link">
+  <a href="#why-the-user-may-perceive-a-recent-slowdown" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Shadow System
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Shadow System">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#runtime-shadow-sampling" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Runtime Shadow Sampling
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#directional-shadow-atlas-path" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Directional Shadow Atlas Path
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#current-constraint-soft-shadows-in-compute-path" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Current Constraint: Soft Shadows in Compute Path
+        Why the user may perceive a recent slowdown
       
     </span>
   </a>
@@ -1775,10 +1697,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#related-docs" class="md-nav__link">
+  <a href="#what-was-changed-in-this-commit" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Related Docs
+        What was changed in this commit
       
     </span>
   </a>
@@ -1811,84 +1733,216 @@
   
 
 
-<h1 id="lighting-system-architecture">Lighting System Architecture<a class="headerlink" href="#lighting-system-architecture" title="Permanent link">¶</a></h1>
-<p>This document explains how lighting and shadow controls flow from settings and node state into GPU parameters and shader execution.</p>
-<h2 id="canonical-sources">Canonical Sources<a class="headerlink" href="#canonical-sources" title="Permanent link">¶</a></h2>
+<h1 id="editor-startup-investigation-2026-04-16">Editor Startup Investigation (2026-04-16)<a class="headerlink" href="#editor-startup-investigation-2026-04-16" title="Permanent link">¶</a></h1>
+<h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">¶</a></h2>
+<p>Investigated a reported regression where the Godot editor in this fork
+became "slow to start up and noticeably laggy/unresponsive in the last
+1-2 days." Working from the benchmark snapshot captured at
+<code>.tmp-editor-bench.json</code> (cold run: <code>[Servers] Rendering = 21.30s</code>,
+<code>Main::Setup2 = 24.85s</code>), measured master HEAD (<code>b93ba6ef92</code>) against
+the suspected baseline <code>7c9a815f03</code> (streaming tier 2 / #229) on
+Windows, dev_build, debug_symbols, with a full rebuild for each.</p>
+<p><strong>No startup regression was found between the two commits.</strong> Cold
+startup cost is essentially identical (within &lt;1%), and the dominant
+cost is shader compilation during Godot's <code>rendering_server-&gt;init()</code> —
+engine-internal work that the Gaussian Splatting module does not
+contribute to.</p>
+<h2 id="benchmark-data">Benchmark data<a class="headerlink" href="#benchmark-data" title="Permanent link">¶</a></h2>
+<p>Measurements taken with:</p>
+<div class="highlight"><pre><span></span><code>bin/godot.windows.editor.dev.x86_64.console.exe \
+  --path tests/examples/godot/test_project \
+  --benchmark --quit-after 1
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>#229 cold</th>
+<th>HEAD cold</th>
+<th>HEAD warm (2nd run)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[Servers] Rendering</code></td>
+<td>21.44s</td>
+<td>20.72s</td>
+<td>3.10s</td>
+</tr>
+<tr>
+<td><code>[Servers]</code> (total)</td>
+<td>23.35s</td>
+<td>22.57s</td>
+<td>5.03s</td>
+</tr>
+<tr>
+<td><code>[Startup] Main::Setup2</code></td>
+<td>24.67s</td>
+<td>24.30s</td>
+<td>6.32s</td>
+</tr>
+</tbody>
+</table>
+<p>Cold / warm distinction: "cold" = shader cache (<code>AppData\Roaming\Godot\
+app_userdata\GaussianSplattingTest\shader_cache</code>) wiped before run;
+"warm" = cache from a prior successful run present.</p>
+<p>The user's bench file (<code>.tmp-editor-bench.json</code>) at 21.30s rendering
+matches the cold profile almost exactly. HEAD is actually very slightly
+faster than #229 on both cold and warm runs, so the observation that
+the editor became <em>slower</em> in the last 1-2 days is not supported by
+measurement on the two reference commits.</p>
+<h2 id="where-the-21s-cold-window-actually-goes">Where the 21s cold window actually goes<a class="headerlink" href="#where-the-21s-cold-window-actually-goes" title="Permanent link">¶</a></h2>
+<p>With <code>--verbose --benchmark</code> against a wiped cache, every shader
+emits a <code>Shader '&lt;name&gt;' ... SHA256: ...</code> / <code>Shader cache miss for
+&lt;name&gt;/...</code> line in order of compilation. Cross-referencing the
+benchmark closing line (<code>- Rendering: 20626.087 msec.</code>) with the
+shader log shows that the following shaders compile <strong>before</strong> the
+Rendering benchmark closes (all engine-internal Godot shaders, not
+ours):</p>
 <ul>
-<li>Lighting defaults and renderer integration: <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp">../../modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp</a></li>
-<li>Lighting/shadow parameter assembly in stage setup: <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/renderer/render_pipeline_stages.cpp">../../modules/gaussian_splatting/renderer/render_pipeline_stages.cpp</a></li>
-<li>GPU param packing (<code>TileRenderParamsGPU</code>): <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/renderer/tile_render_stages.cpp">../../modules/gaussian_splatting/renderer/tile_render_stages.cpp</a></li>
-<li>GPU param layout contract: <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/renderer/gaussian_gpu_layout.h">../../modules/gaussian_splatting/renderer/gaussian_gpu_layout.h</a></li>
-<li>Lighting bridge and shadow sampling shaders: <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/shaders/includes/gs_lighting_bridge.glsl">../../modules/gaussian_splatting/shaders/includes/gs_lighting_bridge.glsl</a>, <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl">../../modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl</a>, <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/shaders/includes/gs_directional_shadow.glsl">../../modules/gaussian_splatting/shaders/includes/gs_directional_shadow.glsl</a></li>
-<li>Resolve pass shader: <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/shaders/tile_resolve.glsl">../../modules/gaussian_splatting/shaders/tile_resolve.glsl</a></li>
+<li>Canvas: <code>CanvasSdfShaderRD</code>, <code>CanvasShaderRD</code>, <code>CanvasOcclusionShaderRD</code></li>
+<li>Scene skeleton/particles: <code>SkeletonShaderRD</code>, <code>SortShaderRD</code>,
+  <code>ParticlesShaderRD</code>, <code>ParticlesCopyShaderRD</code></li>
+<li>Forward+ core: <code>ClusterRenderShaderRD</code>, <code>ClusterStoreShaderRD</code>,
+  <code>ClusterDebugShaderRD</code>, <code>SceneForwardClusteredShaderRD</code> (4 groups,
+  3 variants each on the hot path)</li>
+<li>PBR/Normals: <code>BestFitNormalShaderRD</code>, <code>IntegrateDfgShaderRD</code></li>
+<li>Resolve/TAA/FSR2/FSR: <code>ResolveShaderRD</code>, <code>TaaResolveShaderRD</code>,
+  <code>Fsr2*ShaderRD</code> (8 stages), <code>FsrUpscaleShaderRD</code></li>
+<li>Screen-space effects: <code>SsEffectsDownsampleShaderRD</code>, <code>Ssil*ShaderRD</code>
+  (4), <code>Ssao*ShaderRD</code> (4), <code>ScreenSpaceReflection*ShaderRD</code> (3)</li>
+<li>SSS/Sky/GI: <code>SubsurfaceScatteringShaderRD</code>, <code>SkyShaderRD</code>,
+  <code>VoxelGi*ShaderRD</code> (2), <code>Sdfgi*ShaderRD</code> (5), <code>GiShaderRD</code></li>
+<li>Volumetric: <code>VolumetricFog*ShaderRD</code> (2 × 4 groups)</li>
+<li>Post: <code>BokehDofShaderRD</code>, <code>Copy*ShaderRD</code> (2), <code>Cubemap*ShaderRD</code>
+  (3), <code>SpecularMergeShaderRD</code>, <code>ShadowFrustumShaderRD</code>,
+  <code>MotionVectorsShaderRD</code>, <code>LuminanceReduceShaderRD</code>, <code>Smaa*ShaderRD</code>
+  (3), <code>TonemapShaderRD</code>, <code>VrsShaderRD</code>, <code>BlitShaderRD</code></li>
 </ul>
-<h2 id="control-surfaces">Control Surfaces<a class="headerlink" href="#control-surfaces" title="Permanent link">¶</a></h2>
-<h3 id="project-settings-global">Project Settings (Global)<a class="headerlink" href="#project-settings-global" title="Permanent link">¶</a></h3>
-<p>Primary global lighting controls are initialized under <code>rendering/gaussian_splatting/lighting/*</code>:</p>
+<p>That is ~50 engine shaders compiling serially under dev_build with
+debug_symbols, which is the known-slow mode for shader compilation
+because the GLSL compiler runs at low optimization inside an
+unoptimized Godot. At roughly 300-500 ms per shader on cold cache,
+20-21s is consistent.</p>
+<p><strong>Our module's shaders compile <em>after</em> the Rendering benchmark
+closes</strong>, during scene load / first render_scene_instance — the
+verbose output confirms <code>SobelOutlineShaderRD</code>, <code>BrushAccumulateShaderRD</code>,
+<code>GaussianSplatShaderRD</code>, <code>TileBinningShaderRD</code>, <code>TileRasterizerShaderRD</code>,
+<code>TileRasterizerComputeShaderRD</code>, <code>TilePrefixScanShaderRD</code>,
+<code>TileResolveShaderRD</code>, <code>FrustumCullShaderRD</code>, <code>DepthComputeShaderRD</code>,
+<code>InstanceCountClampShaderRD</code>, <code>InstanceChunkDispatchShaderRD</code> all
+print after <code>- Rendering: 20626.087 msec.</code>. These compiles land in
+<code>[Startup] Load Game</code> / <code>Main::Start</code>, not in <code>[Servers] Rendering</code>.</p>
+<h2 id="what-does-not-appear-to-be-happening">What does not appear to be happening<a class="headerlink" href="#what-does-not-appear-to-be-happening" title="Permanent link">¶</a></h2>
 <ul>
-<li><code>direct_light_scale</code></li>
-<li><code>indirect_sh_scale</code></li>
-<li><code>shadow_strength</code></li>
-<li><code>dc_logit</code></li>
-<li><code>shadow_receiver_bias_scale</code></li>
-<li><code>shadow_receiver_bias_min</code></li>
-<li><code>shadow_receiver_bias_max</code></li>
+<li>No heavy work in <code>register_types.cpp</code> at <code>MODULE_INITIALIZATION_LEVEL_SERVERS</code>
+  (the module doesn't hook that level at all — only SCENE and EDITOR).</li>
+<li>No filesystem scans, no eager RID allocation, no forced shader
+  precompile in our <code>GaussianSplatManager::initialize_module()</code> — it's
+  just <code>GLOBAL_DEF</code> calls and a <code>gs::sorting_settings::*</code> registration.</li>
+<li>No static constructors / <code>__attribute__((constructor))</code> in the module
+  that would fire before <code>main()</code> and block rendering server init.</li>
+<li><code>servers/rendering/renderer_rd/</code> has had <strong>zero</strong> non-trivial changes
+  from us in the last 30 days (one <code>WARN_PRINT_ONCE</code> and an
+  include-hook style fix). The <code>GaussianSplatStorage</code> ctor is
+  trivial.</li>
 </ul>
-<p>See defaults setup in <code>GaussianSplatRenderer::_initialize_lighting_project_settings_defaults</code>.</p>
-<h3 id="node-controls-per-node">Node Controls (Per-Node)<a class="headerlink" href="#node-controls-per-node" title="Permanent link">¶</a></h3>
-<p>Node-level controls that directly affect lighting/shadow-related behavior:</p>
-<ul>
-<li><code>rendering/cast_shadow</code></li>
-<li><code>rendering/color_grading</code></li>
-<li><code>rendering/wind_*</code> override controls for animation deformation inputs</li>
-</ul>
-<p>Source: <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp">../../modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp</a></p>
-<h2 id="data-flow-cpu-to-gpu">Data Flow: CPU to GPU<a class="headerlink" href="#data-flow-cpu-to-gpu" title="Permanent link">¶</a></h2>
+<h2 id="why-the-user-may-perceive-a-recent-slowdown">Why the user may perceive a recent slowdown<a class="headerlink" href="#why-the-user-may-perceive-a-recent-slowdown" title="Permanent link">¶</a></h2>
+<p>Three plausible explanations, none a code regression in the last 1-2
+days:</p>
 <ol>
-<li><code>render_pipeline_stages.cpp</code> reads project settings and assembles <code>TileRenderer::RenderParams</code>.</li>
-<li><code>tile_render_stages.cpp</code> packs these values into <code>TileRenderParamsGPU</code>.</li>
-<li><code>gaussian_gpu_layout.h</code> defines the authoritative memory layout and semantic fields: <code>lighting_config</code>, <code>shadow_strength</code>, <code>shadow_bias_config</code>, <code>lighting_mode</code>, and <code>light_counts</code>.</li>
-<li>Resolve/cull/raster shaders consume these fields.</li>
+<li>
+<p><strong>Shader cache thrash from commit-switching.</strong> Godot keys shader
+   caches by source SHA256 + driver id. If the user has been switching
+   between branches with shader-source churn
+   (<code>shaders/includes/gs_render_params.glsl</code>, <code>tile_binning.glsl</code>,
+   <code>tile_rasterizer_compute.glsl</code>, <code>tile_resolve.glsl</code>,
+   <code>gs_directional_shadow.glsl</code>, <code>gs_culling_utils.glsl</code> all changed
+   between #229 and HEAD), each switch forces a cold window on our
+   shaders. Godot engine shaders stay cached across our switches, but
+   ~12 of our custom shaders recompile per switch.</p>
+</li>
+<li>
+<p><strong>Stuck headless-import zombies.</strong> When I landed on this worktree,
+   two <code>bin/godot.windows.editor.dev.x86_64(.console).exe --headless
+   --import --path tests/examples/godot/test_project</code> processes
+   (PIDs 42020 and 63672) were still running and were holding a lock
+   on the editor binary (<code>Zugriff verweigert</code> on <code>scons</code> link step).
+   A stuck headless import on the same project blocks later editor
+   launches from acquiring the project or completes the import on top
+   of the new run, each of which looks like "the editor is frozen"
+   from the user's side. Killing both unlocked the build and editor
+   launch. Worth checking <code>Task-Manager</code> for leftover
+   <code>godot.windows.editor.dev.x86_64*.exe</code> processes next time this
+   gets reported.</p>
+</li>
+<li>
+<p><strong>dev_build overhead amplified by project state.</strong> With an empty
+   <code>.godot/imported/</code> (which this worktree's test project had), the
+   first editor open has to import every resource under the project —
+   and PRs #229 and #240 introduced 8 synthetic <code>.ply</code> fixtures under
+   <code>tests/examples/godot/test_project/tests/fixtures/</code> (sizes up to
+   1.6 MB). Those imports are the first thing
+   <code>EditorFileSystem</code> will do after startup benchmarks close,
+   contributing to a laggy-feeling post-splash experience. The
+   benchmark file does not capture this because import happens after
+   <code>Main::Setup2</code>. If this is the observed slowness, it's one-time
+   per fresh worktree, not a progressive regression.</p>
+</li>
 </ol>
-<h2 id="direct-lighting-path">Direct Lighting Path<a class="headerlink" href="#direct-lighting-path" title="Permanent link">¶</a></h2>
-<p>Resolve-stage direct lighting runs in <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/shaders/tile_resolve.glsl">tile_resolve.glsl</a>, using scene data, light buffers, and shadow helpers.</p>
-<p><code>lighting_mode.x</code> controls where direct lighting is applied:</p>
+<h2 id="what-was-changed-in-this-commit">What was changed in this commit<a class="headerlink" href="#what-was-changed-in-this-commit" title="Permanent link">¶</a></h2>
+<p>Removed leftover <code>[DIAG-*]</code> <code>print_line</code> blocks that were introduced
+under the "corridor black screen investigation" (added as part of PR</p>
+<h1 id="229-at-a7e950de79-these-use-a-static-int-_diag_n-0-if">229, at <code>a7e950de79</code>). These use a `static int _diag_N = 0; if<a class="headerlink" href="#229-at-a7e950de79-these-use-a-static-int-_diag_n-0-if" title="Permanent link">¶</a></h1>
+<p>(++... &lt;= N || ... % 60 == 0) print_line(...)<code>pattern — classic
+temporary-debug style — and fire on the per-frame render path
+(</code>render_scene_instance<code>,</code>_select_backend_plan<code>,</code>_record_raster_metrics<code>,</code>_dispatch_raster`, etc.). They are <em>not</em>
+the cause of the 21s cold startup, but they make the stdout of a
+running editor noisy forever (one line per second roughly, per
+diagnostic) and they survived past the investigation they were
+created for.</p>
+<p>Files touched:</p>
 <ul>
-<li><code>0</code>: resolve</li>
-<li><code>1</code>: per-splat</li>
-<li><code>2</code>: both</li>
+<li><code>modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp</code> —
+  removed <code>[DIAG-RESIDENT]</code>, <code>[DIAG-RSI]</code>, <code>[DIAG-ROUTE]</code>.</li>
+<li><code>modules/gaussian_splatting/renderer/render_pipeline_stages.cpp</code> —
+  removed <code>[DIAG-RASTER]</code>, <code>[DIAG-DISPATCH]</code>, <code>[DIAG-RRESULT]</code>.</li>
+<li><code>modules/gaussian_splatting/interfaces/output_compositor.cpp</code> —
+  removed <code>[DIAG-COPY-DEVICE]</code>, <code>[DIAG-COMPOSITOR]</code>,
+  <code>[DIAG-COMPOSITOR2]</code>; also the now-unused <code>godot_rd</code> local.</li>
+<li><code>modules/gaussian_splatting/core/gaussian_streaming.cpp</code> — removed
+  <code>[DIAG-SYNC-LOAD]</code> (pack/success variants) and <code>[DIAG-UPLOAD]</code>.</li>
 </ul>
-<p>Field semantics are defined in <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/renderer/gaussian_gpu_layout.h">../../modules/gaussian_splatting/renderer/gaussian_gpu_layout.h</a>.</p>
-<h2 id="clustered-vs-unclustered-lights">Clustered vs Unclustered Lights<a class="headerlink" href="#clustered-vs-unclustered-lights" title="Permanent link">¶</a></h2>
-<p>Cluster usage is determined by cluster buffer/config availability and <code>light_counts.z</code> semantics in GPU params.</p>
+<p>The module already has a gated debug infrastructure
+(<code>enable_pipeline_trace</code>, <code>enable_frame_logging</code>, 38+ instrumentation
+points via <code>render_debug_state_orchestrator</code>, and a <code>gs_debug_trace</code>
+data-flow system). All of it is off by default and is the
+supported way to reproduce what the DIAG prints were giving. See
+<code>CLAUDE.md#Debugging Rendering Issues</code> for how to enable.</p>
+<h2 id="what-is-still-open">What is still open<a class="headerlink" href="#what-is-still-open" title="Permanent link">¶</a></h2>
 <ul>
-<li>Cluster decision helper in shader: <code>gs_use_clustered_lights()</code> in <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl">../../modules/gaussian_splatting/shaders/includes/gs_lighting_common.glsl</a></li>
-<li>Debug override (force unclustered): <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/renderer/gpu_debug_utils.h">../../modules/gaussian_splatting/renderer/gpu_debug_utils.h</a></li>
-</ul>
-<h2 id="shadow-system">Shadow System<a class="headerlink" href="#shadow-system" title="Permanent link">¶</a></h2>
-<h3 id="runtime-shadow-sampling">Runtime Shadow Sampling<a class="headerlink" href="#runtime-shadow-sampling" title="Permanent link">¶</a></h3>
-<p>Shadow factors are computed per light type in <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/shaders/includes/gs_directional_shadow.glsl">../../modules/gaussian_splatting/shaders/includes/gs_directional_shadow.glsl</a>:</p>
-<ul>
-<li>directional: <code>gs_directional_shadow</code></li>
-<li>omni: <code>gs_omni_shadow_factor</code></li>
-<li>spot: <code>gs_spot_shadow_factor</code></li>
-</ul>
-<h3 id="directional-shadow-atlas-path">Directional Shadow Atlas Path<a class="headerlink" href="#directional-shadow-atlas-path" title="Permanent link">¶</a></h3>
-<p>Directional shadow maps are rendered and blitted through:</p>
-<ul>
-<li><code>GaussianSplatRenderer::render_directional_shadow_map</code></li>
-<li>shadow output compositor setup</li>
-<li>shadow blit pipeline resources</li>
-</ul>
-<p>Source: <a href="https://github.com/klausi3D/godotGS/blob/38cd86178e7e9333eac009ed7ac4bd4775bcfa55/modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp">../../modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp</a></p>
-<h2 id="current-constraint-soft-shadows-in-compute-path">Current Constraint: Soft Shadows in Compute Path<a class="headerlink" href="#current-constraint-soft-shadows-in-compute-path" title="Permanent link">¶</a></h2>
-<p><code>gs_lighting_bridge.glsl</code> explicitly disables soft-shadow sampling in the compute compatibility path (<code>sc_*_shadow_samples()</code> return <code>0</code>). This is a current design constraint, not a documentation omission.</p>
-<h2 id="related-docs">Related Docs<a class="headerlink" href="#related-docs" title="Permanent link">¶</a></h2>
-<ul>
-<li><a href="../overview/">Architecture overview</a></li>
-<li><a href="../render-pipeline/">Render pipeline architecture</a></li>
-<li><a href="../../reference/project-settings/">Project settings reference</a></li>
-<li><a href="../../api/shader_reference/">Generated shader inventory</a></li>
+<li>
+<p>The <strong>warm</strong> <code>[Servers] Rendering = 3.1s</code> is higher than a vanilla
+  Godot editor on the same hardware (expected &lt;1s). Roughly 2s of
+  overhead is attributable to having the Gaussian Splatting module
+  linked in — I did not nail down whether this is shader-cache IO,
+  <code>RendererCompositorRD</code> storage setup, or something the dev_build
+  asserts amplify. For normal use this is fine and it's not a
+  recent regression, but if the user wants startup tighter, the next
+  thing to profile is the <code>RendererCompositorRD::RendererCompositorRD()</code>
+  ctor and <code>scene-&gt;init()</code> call.</p>
+</li>
+<li>
+<p><strong>Editor-time FPS floor</strong>. During <code>--quit-after 300</code> I observed
+  the editor running at 7-9 FPS while previewing
+  <code>public_evaluator.tscn</code>. This is a dev_build symptom (scene
+  previews with a <code>GaussianSplatWorld3D</code> ride the full pipeline even
+  when just 5 splats are visible); it is not a new regression to my
+  knowledge but is worth flagging if the user considers 8 FPS in the
+  editor to be the "laggy/unresponsive" symptom. Next steps if it is:
+  capture a frame with RenderDoc while the editor is idle on that
+  scene and look at the per-dispatch cost.</p>
+</li>
 </ul>
 
 
@@ -1910,7 +1964,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 17, 2026 07:34:05 UTC">April 17, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 17, 2026 07:34:14 UTC">April 17, 2026</span>
   </span>
 
     
