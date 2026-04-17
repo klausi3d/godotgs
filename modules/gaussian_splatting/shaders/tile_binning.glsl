@@ -1145,6 +1145,7 @@ void main() {
             vec3 view_dir = view_dir_scene;
 
             vec2 uv = screen_pos / max(params.viewport_size, vec2(1.0));
+            gs_frag_coord_substitute = vec4(screen_pos, 0.0, 0.0);
 
             hvec3 h_normal_base = hvec3(normal_view);
             hvec3 h_view = hvec3(view_dir);
@@ -1208,7 +1209,7 @@ void main() {
             if (bool(scene_data.flags & SCENE_DATA_FLAGS_USE_AMBIENT_LIGHT)) {
                 float ambient_blend = 1.0 - clamp(params.lighting_config.y, 0.0, 1.0);
                 if (ambient_blend > 0.0) {
-                    vec3 ambient = scene_data.ambient_light_color_energy.rgb * scene_data.ambient_light_color_energy.a;
+                    vec3 ambient = scene_data.ambient_light_color_energy.rgb;
                     final_color += ambient * vec3(h_albedo) * ambient_blend;
                 }
             }

@@ -327,7 +327,7 @@ RasterResult TileRasterizer::render(const RasterParams &p_params) {
         result.has_depth = result.depth_texture.is_valid();
         result.depth_copy_compatible = result.has_depth && tile_renderer->is_depth_copy_compatible();
 
-        RenderingDevice *contract_device = render_device ? render_device : _get_contract_main_device(device_manager);
+        RenderingDevice *contract_device = _get_contract_main_device(device_manager);
         RenderDeviceManager *manager_ptr = device_manager.is_valid() ? device_manager.ptr() : nullptr;
 
         OutputOwnershipContractResult color_contract = _enforce_texture_owner_contract(
@@ -398,7 +398,7 @@ RasterResult TileRasterizer::render_direct(RenderingDevice *p_device, const Tile
         result.has_depth = result.depth_texture.is_valid();
         result.depth_copy_compatible = result.has_depth && tile_renderer->is_depth_copy_compatible();
 
-        RenderingDevice *contract_device = render_device ? render_device : _get_contract_main_device(device_manager);
+        RenderingDevice *contract_device = _get_contract_main_device(device_manager);
         RenderDeviceManager *manager_ptr = device_manager.is_valid() ? device_manager.ptr() : nullptr;
 
         OutputOwnershipContractResult color_contract = _enforce_texture_owner_contract(

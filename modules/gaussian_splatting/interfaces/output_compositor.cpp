@@ -925,8 +925,10 @@ bool OutputCompositor::copy_to_framebuffer(const FramebufferCopyParams &p_params
         viewport_size = Size2i(1920, 1080); // Fallback
     }
 
-    // This path copies into the main viewport's post-tonemap framebuffer, which is sRGB.
-    bool srgb_destination = true;
+    bool srgb_destination = false;
+    if (p_params.destination_texture.is_valid()) {
+        srgb_destination = _is_texture_srgb(main_rd, p_params.destination_texture);
+    }
 
     Rect2i dest_rect(Vector2i(0, 0), Size2i(viewport_size.x, viewport_size.y));
     Rect2 src_rect(Vector2(0.0f, 0.0f), Vector2(1.0f, 1.0f));
@@ -1214,6 +1216,7 @@ void OutputCompositor::integrate_final_output(GaussianSplatRenderer *p_renderer,
                 FramebufferCopyParams params;
                 params.source_texture = p_final_output;
                 params.framebuffer = render_target_framebuffer;
+                params.destination_texture = present_render_target;
                 params.viewport_size = viewport_size;
                 params.composite_with_destination = true;
                 params.source_is_premultiplied = true;

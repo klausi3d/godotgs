@@ -166,6 +166,8 @@ void main() {
         return;
     }
 
+    gs_frag_coord_substitute = vec4(vec2(gl_GlobalInvocationID.xy), 0.0, 0.0);
+
     vec2 viewport_size = vec2(max(resolve_params.viewport_width, 1), max(resolve_params.viewport_height, 1));
     vec2 uv = (vec2(coord) + vec2(0.5)) / viewport_size;
 
