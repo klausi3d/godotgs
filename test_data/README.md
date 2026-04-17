@@ -92,12 +92,14 @@ python generate_test_data.py
 
 ### Run All Tests
 ```bash
+# Run from repository root (not test_data/)
+cd ..
 python tests/ci/run_baseline_qa.py
 ```
 
 ### Run Specific Category
 ```bash
-# Options: ply, pipeline, sorting, runtime, module, qa
+# From repository root — options: ply, pipeline, sorting, runtime, module, qa
 python tests/ci/run_baseline_qa.py --category pipeline
 ```
 
@@ -131,7 +133,7 @@ The `.github/workflows/test_phase4.yml` workflow runs:
 
 ### Local CI
 ```bash
-# Run quick validation
+# From repository root
 python tests/ci/run_baseline_qa.py --quick
 
 # Full validation before commit
