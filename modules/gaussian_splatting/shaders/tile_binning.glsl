@@ -1206,6 +1206,15 @@ void main() {
             diffuse_light *= (half(1.0) - metallic);
             vec3 direct = vec3(diffuse_light + specular_light) * params.lighting_config.x;
             final_color += direct;
+
+            // Accumulate engine ambient light from WorldEnvironment.
+            // SH DC provides baked indirect, but Godot's ambient_light_color_energy
+            // is a separate runtime contribution that meshes receive and splats should match.
+            SceneData scene_data = scene_data_block.data;
+            if (bool(scene_data.flags & SCENE_DATA_FLAGS_USE_AMBIENT_LIGHT)) {
+                vec3 ambient = scene_data.ambient_light_color_energy.rgb * scene_data.ambient_light_color_energy.a;
+                final_color += ambient * vec3(h_albedo);
+            }
         }
     }
 
