@@ -7829,59 +7829,59 @@
 </ul>
 <h2 id="modulesgaussian_splattinginterfacesgpu_sorting_pipelinecpp">modules/gaussian_splatting/interfaces/gpu_sorting_pipeline.cpp<a class="headerlink" href="#modulesgaussian_splattinginterfacesgpu_sorting_pipelinecpp" title="Permanent link">¶</a></h2>
 <ul>
-<li>line 32: static String <em>inject_sort_pad_depth_define(const String &amp;p</em>...</li>
-<li>line 51: static String _inject_quantization_define(const String &amp;p_so...</li>
-<li>line 73: static bool _get_bool_setting(ProjectSettings *ps, const Str...</li>
-<li>line 77: static float _get_float_setting(ProjectSettings *ps, const S...</li>
-<li>line 81: static String _get_remap_compute_source() {...</li>
-<li>line 119: static uint32_t _get_sort_key_stride_bytes() {...</li>
-<li>line 124: static SortOperationErrorCode _map_preflight_error(SortPrefl...</li>
-<li>line 149: static SortRendererFallbackPolicy _fallback_policy_for_error...</li>
-<li>line 184: static uint64_t _get_sort_buffer_byte_limit() {...</li>
-<li>line 189: static bool _resize_sort_byte_vectors(Vector<uint8_t> &amp;r_key...</uint8_t></li>
-<li>line 237: static Vector<uint8_t> _read_buffer_data_slice(RenderingDevi...</uint8_t></li>
-<li>line 348: void GPUSortingPipeline::_bind_methods() {...</li>
-<li>line 359: Error GPUSortingPipeline::initialize(RenderingDevice *p_devi...</li>
-<li>line 384: void GPUSortingPipeline::shutdown() {...</li>
-<li>line 410: void GPUSortingPipeline::set_sort_result_sink(ISortResultSin...</li>
-<li>line 414: void GPUSortingPipeline::set_sort_buffer_host_context(ISortB...</li>
-<li>line 418: void GPUSortingPipeline::set_device_manager(Ref&lt;RenderDevice...</li>
-<li>line 476: void GPUSortingPipeline::set_forced_sort_algorithm(GPUSorter...</li>
-<li>line 487: void GPUSortingPipeline::_track_resource(const RID &amp;p_rid, R...</li>
-<li>line 493: void GPUSortingPipeline::_forget_resource(const RID &amp;p_rid) ...</li>
-<li>line 499: void GPUSortingPipeline::_free_owned_resource(RenderingDevic...</li>
-<li>line 510: void GPUSortingPipeline::rebuild_sorter(uint32_t p_capacity)...</li>
-<li>line 556: Ref<igpusorter> GPUSortingPipeline::rebuild_sorter_if_needed...</igpusorter></li>
-<li>line 579: String GPUSortingPipeline::get_algorithm_name() const {...</li>
-<li>line 586: uint32_t GPUSortingPipeline::get_max_elements() const {...</li>
-<li>line 593: void GPUSortingPipeline::release_buffers() {...</li>
-<li>line 653: void GPUSortingPipeline::ensure_buffers(uint32_t p_required_...</li>
-<li>line 755: bool GPUSortingPipeline::_publish_sorted_results(const Vecto...</li>
-<li>line 801: void GPUSortingPipeline::_on_sort_readback(const Vector&lt;uint...</li>
-<li>line 810: void GPUSortingPipeline::_on_instance_count_readback(const V...</li>
-<li>line 839: void GPUSortingPipeline::_reset_instance_count_readback_stat...</li>
-<li>line 897: SortBufferHandles GPUSortingPipeline::get_buffer_handles() c...</li>
-<li>line 906: void GPUSortingPipeline::release_sort_buffers() {...</li>
-<li>line 976: void GPUSortingPipeline::set_external_sort_indices(RID p_buf...</li>
-<li>line 1011: void GPUSortingPipeline::clear_external_sort_indices() {...</li>
-<li>line 1019: void GPUSortingPipeline::set_instance_pipeline_inputs(const ...</li>
-<li>line 1024: void GPUSortingPipeline::clear_instance_pipeline_inputs() {...</li>
-<li>line 1033: void GPUSortingPipeline::ensure_sort_buffers(uint32_t p_requ...</li>
-<li>line 1167: void GPUSortingPipeline::ensure_depth_resources(RenderingDev...</li>
-<li>line 1267: void GPUSortingPipeline::_ensure_instance_param_buffer(Rende...</li>
-<li>line 1296: void GPUSortingPipeline::_ensure_instance_count_resources(Re...</li>
-<li>line 1392: void GPUSortingPipeline::_ensure_instance_chunk_dispatch_res...</li>
-<li>line 1488: void GPUSortingPipeline::ensure_remap_resources(RenderingDev...</li>
-<li>line 1541: void GPUSortingPipeline::ensure_gather_resources(RenderingDe...</li>
-<li>line 1603: void main() {...</li>
-<li>line 1654: void GPUSortingPipeline::queue_depth_submission(RenderingDev...</li>
-<li>line 2037: bool GPUSortingPipeline::_sort_instance_pipeline(const Trans...</li>
-<li>line 2770: bool GPUSortingPipeline::sort_gaussians_gpu(const Transform3...</li>
-<li>line 2787: SortOperationResult GPUSortingPipeline::sort(const SortOpera...</li>
-<li>line 2885: SortOperationResult GPUSortingPipeline::sort_async(const Sor...</li>
-<li>line 2957: void GPUSortingPipeline::wait_for_completion() {...</li>
-<li>line 2964: float GPUSortingPipeline::get_last_sort_time_ms() const {...</li>
-<li>line 2971: SortingMetrics GPUSortingPipeline::get_metrics() const {...</li>
+<li>line 33: static String <em>inject_sort_pad_depth_define(const String &amp;p</em>...</li>
+<li>line 52: static String _inject_quantization_define(const String &amp;p_so...</li>
+<li>line 74: static bool _get_bool_setting(ProjectSettings *ps, const Str...</li>
+<li>line 78: static float _get_float_setting(ProjectSettings *ps, const S...</li>
+<li>line 82: static String _get_remap_compute_source() {...</li>
+<li>line 120: static uint32_t _get_sort_key_stride_bytes() {...</li>
+<li>line 125: static SortOperationErrorCode _map_preflight_error(SortPrefl...</li>
+<li>line 150: static SortRendererFallbackPolicy _fallback_policy_for_error...</li>
+<li>line 185: static uint64_t _get_sort_buffer_byte_limit() {...</li>
+<li>line 190: static bool _resize_sort_byte_vectors(Vector<uint8_t> &amp;r_key...</uint8_t></li>
+<li>line 238: static Vector<uint8_t> _read_buffer_data_slice(RenderingDevi...</uint8_t></li>
+<li>line 349: void GPUSortingPipeline::_bind_methods() {...</li>
+<li>line 360: Error GPUSortingPipeline::initialize(RenderingDevice *p_devi...</li>
+<li>line 385: void GPUSortingPipeline::shutdown() {...</li>
+<li>line 411: void GPUSortingPipeline::set_sort_result_sink(ISortResultSin...</li>
+<li>line 415: void GPUSortingPipeline::set_sort_buffer_host_context(ISortB...</li>
+<li>line 419: void GPUSortingPipeline::set_device_manager(Ref&lt;RenderDevice...</li>
+<li>line 477: void GPUSortingPipeline::set_forced_sort_algorithm(GPUSorter...</li>
+<li>line 488: void GPUSortingPipeline::_track_resource(const RID &amp;p_rid, R...</li>
+<li>line 494: void GPUSortingPipeline::_forget_resource(const RID &amp;p_rid) ...</li>
+<li>line 500: void GPUSortingPipeline::_free_owned_resource(RenderingDevic...</li>
+<li>line 511: void GPUSortingPipeline::rebuild_sorter(uint32_t p_capacity)...</li>
+<li>line 557: Ref<igpusorter> GPUSortingPipeline::rebuild_sorter_if_needed...</igpusorter></li>
+<li>line 580: String GPUSortingPipeline::get_algorithm_name() const {...</li>
+<li>line 587: uint32_t GPUSortingPipeline::get_max_elements() const {...</li>
+<li>line 594: void GPUSortingPipeline::release_buffers() {...</li>
+<li>line 654: void GPUSortingPipeline::ensure_buffers(uint32_t p_required_...</li>
+<li>line 756: bool GPUSortingPipeline::_publish_sorted_results(const Vecto...</li>
+<li>line 802: void GPUSortingPipeline::_on_sort_readback(const Vector&lt;uint...</li>
+<li>line 811: void GPUSortingPipeline::_on_instance_count_readback(const V...</li>
+<li>line 840: void GPUSortingPipeline::_reset_instance_count_readback_stat...</li>
+<li>line 898: SortBufferHandles GPUSortingPipeline::get_buffer_handles() c...</li>
+<li>line 907: void GPUSortingPipeline::release_sort_buffers() {...</li>
+<li>line 977: void GPUSortingPipeline::set_external_sort_indices(RID p_buf...</li>
+<li>line 1012: void GPUSortingPipeline::clear_external_sort_indices() {...</li>
+<li>line 1020: void GPUSortingPipeline::set_instance_pipeline_inputs(const ...</li>
+<li>line 1025: void GPUSortingPipeline::clear_instance_pipeline_inputs() {...</li>
+<li>line 1034: void GPUSortingPipeline::ensure_sort_buffers(uint32_t p_requ...</li>
+<li>line 1168: void GPUSortingPipeline::ensure_depth_resources(RenderingDev...</li>
+<li>line 1268: void GPUSortingPipeline::_ensure_instance_param_buffer(Rende...</li>
+<li>line 1297: void GPUSortingPipeline::_ensure_instance_count_resources(Re...</li>
+<li>line 1393: void GPUSortingPipeline::_ensure_instance_chunk_dispatch_res...</li>
+<li>line 1489: void GPUSortingPipeline::ensure_remap_resources(RenderingDev...</li>
+<li>line 1542: void GPUSortingPipeline::ensure_gather_resources(RenderingDe...</li>
+<li>line 1604: void main() {...</li>
+<li>line 1655: void GPUSortingPipeline::queue_depth_submission(RenderingDev...</li>
+<li>line 2038: bool GPUSortingPipeline::_sort_instance_pipeline(const Trans...</li>
+<li>line 2771: bool GPUSortingPipeline::sort_gaussians_gpu(const Transform3...</li>
+<li>line 2788: SortOperationResult GPUSortingPipeline::sort(const SortOpera...</li>
+<li>line 2886: SortOperationResult GPUSortingPipeline::sort_async(const Sor...</li>
+<li>line 2958: void GPUSortingPipeline::wait_for_completion() {...</li>
+<li>line 2965: float GPUSortingPipeline::get_last_sort_time_ms() const {...</li>
+<li>line 2972: SortingMetrics GPUSortingPipeline::get_metrics() const {...</li>
 </ul>
 <h2 id="modulesgaussian_splattingrenderertile_render_adaptive_controllerh">modules/gaussian_splatting/renderer/tile_render_adaptive_controller.h<a class="headerlink" href="#modulesgaussian_splattingrenderertile_render_adaptive_controllerh" title="Permanent link">¶</a></h2>
 <ul>
@@ -8344,8 +8344,8 @@
 <li>line 148: static void _record_adaptive_overlap_raw_usage(TileRenderer:...</li>
 <li>line 162: static bool _adaptive_overlap_budget_has_history(const TileR...</li>
 <li>line 181: static uint32_t _get_adaptive_overlap_budget_suggestion(cons...</li>
-<li>line 195: static uint32_t _get_adaptive_overlap_budget_floor(const Til...</li>
-<li>line 210: static uint32_t _update_adaptive_overlap_budget(const TileRe...</li>
+<li>line 195: static uint32_t _get_adaptive_overlap_budget_floor(TileRende...</li>
+<li>line 210: static uint32_t _update_adaptive_overlap_budget(TileRenderer...</li>
 <li>line 281: RID run() {...</li>
 <li>line 315: bool _has_dispatch_work() const {...</li>
 <li>line 322: void _prepare_next_tile_counts_if_needed() {...</li>
@@ -10532,7 +10532,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 17, 2026 07:34:14 UTC">April 17, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 17, 2026 07:37:06 UTC">April 17, 2026</span>
   </span>
 
     

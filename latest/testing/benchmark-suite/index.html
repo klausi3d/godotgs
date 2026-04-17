@@ -1579,10 +1579,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#single-process-execution" class="md-nav__link">
+  <a href="#runner-execution" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Single-Process Execution
+        Runner Execution
       
     </span>
   </a>
@@ -1910,10 +1910,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#single-process-execution" class="md-nav__link">
+  <a href="#runner-execution" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Single-Process Execution
+        Runner Execution
       
     </span>
   </a>
@@ -2123,12 +2123,9 @@ and Tier 2 closeout, <code>--profile performance</code> is the canonical lane se
 <li><code>--fail-fast</code></li>
 </ul>
 <p>Compatibility extras are still accepted (<code>--capture-lane</code>, <code>--no-captures</code>, <code>--no-dashboard</code>) but the command above is the supported path.</p>
-<h2 id="single-process-execution">Single-Process Execution<a class="headerlink" href="#single-process-execution" title="Permanent link">¶</a></h2>
-<p><code>run_benchmark.py</code> launches one Godot process and delegates all lanes to:</p>
-<ul>
-<li><code>res://scenes/benchmark_orchestrator.tscn</code></li>
-</ul>
-<p>The orchestrator loads each lane scene sequentially in-process and writes lane JSON reports with the existing suite-compatible structure.</p>
+<h2 id="runner-execution">Runner Execution<a class="headerlink" href="#runner-execution" title="Permanent link">¶</a></h2>
+<p><code>tests/runtime/run_benchmark.py</code> is the canonical entry point.</p>
+<p>It launches one Godot subprocess per benchmark lane, writes per-lane JSON and log files into the selected output directory, then aggregates those lane results into the suite report and summary.</p>
 <h2 id="profiles">Profiles<a class="headerlink" href="#profiles" title="Permanent link">¶</a></h2>
 <ul>
 <li><code>everything</code>: suite lanes + unified + small baseline + synthetic scenes</li>
@@ -2406,9 +2403,8 @@ asset paths.</p>
 <ul>
 <li><code>benchmark_suite_report.json</code></li>
 <li><code>benchmark_suite_summary.md</code></li>
-<li><code>benchmark_orchestrator.log</code></li>
-<li><code>benchmark_orchestrator_report.json</code></li>
 <li><code>&lt;lane_id&gt;.json</code> per lane</li>
+<li><code>&lt;lane_id&gt;.log</code> per lane</li>
 <li>optional dashboard artifacts (<code>benchmark_suite_dashboard.html</code>, <code>benchmark_suite_*.svg</code>)</li>
 </ul>
 <p>The public docs surface should prefer the snapshot table above for the current committed result and keep the charts focused on the exported lane data.</p>
@@ -2486,7 +2482,7 @@ asset paths.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 17, 2026 07:34:16 UTC">April 17, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 17, 2026 07:37:07 UTC">April 17, 2026</span>
   </span>
 
     
