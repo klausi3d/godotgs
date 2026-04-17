@@ -1536,18 +1536,7 @@ void RendererSceneRenderRD::render_scene(const Ref<RenderSceneBuffers> &p_render
 	//calls _pre_opaque_render between depth pre-pass and opaque pass
 	_render_scene(&render_data, clear_color);
 
-#ifdef MODULE_GAUSSIAN_SPLATTING_ENABLED
-		if (!render_data.gaussian_splat_renderers.is_empty()) {
-			if (kLogForwardPlusGaussian) {
-				// print_line(vformat("[Forward+] Rendering %d gaussian splat renderers after scene.", render_data.gaussian_splat_renderers.size()));
-			}
-			render_gaussian_splats_forward(render_data);
-			if (kLogForwardPlusGaussian) {
-				// print_line("[Forward+] Committing gaussian splat renderers immediately after post-scene render.");
-			}
-			commit_gaussian_splats(render_data);
-		}
-#endif
+	// GS render + commit moved to render_forward_clustered.cpp before tonemap.
 
 }
 
