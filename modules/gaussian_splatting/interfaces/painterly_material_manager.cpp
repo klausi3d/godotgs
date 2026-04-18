@@ -3,30 +3,9 @@
 
 #include "painterly_material_manager.h"
 #include "../logger/gs_logger.h"
+#include "../renderer/resource_owner_mismatch_contract.h"
 #include "servers/rendering/rendering_device.h"
-#include "servers/rendering_server.h"
 #include <cstring>
-
-namespace {
-// Only dereference the cached RenderingDevice if we can prove it is still live
-// by matching it against RenderingServer's current device. This guards
-// destructor-time teardown against a stale cached pointer (the device may be
-// destroyed before our ref-counted lifetime ends).
-bool _is_rd_alive(RenderingDevice *p_rd) {
-    if (!p_rd) {
-        return false;
-    }
-    if (RenderingServer *rs = RenderingServer::get_singleton()) {
-        if (rs->get_rendering_device() == p_rd) {
-            return true;
-        }
-    }
-    if (RenderingDevice::get_singleton() == p_rd) {
-        return true;
-    }
-    return false;
-}
-} // namespace
 
 void PainterlyMaterialManager::_bind_methods() {
     ClassDB::bind_method(D_METHOD("is_dirty"), &PainterlyMaterialManager::is_dirty);
@@ -48,6 +27,10 @@ Error PainterlyMaterialManager::initialize(RenderingDevice *p_device) {
     }
 
     rd = p_device;
+    // Record the device's instance id so clear_resources() can validate the
+    // cached pointer before dereferencing it. See is_device_generation_valid()
+    // for the pattern used elsewhere in the module (gpu_sorter, bitonic sort).
+    rd_device_id = p_device->get_device_instance_id();
     initialized = true;
     return OK;
 }
@@ -58,6 +41,7 @@ void PainterlyMaterialManager::shutdown() {
 
     initialized = false;
     rd = nullptr;
+    rd_device_id = 0;
 }
 
 void PainterlyMaterialManager::set_material(const Ref<PainterlyMaterial> &p_material) {
@@ -100,7 +84,9 @@ void PainterlyMaterialManager::clear_resources() {
     stroke_density_sample_count = 0;
     stroke_density_buffer_size = 0;
 
-    if (stroke_density_buffer.is_valid() && _is_rd_alive(rd) && rd->buffer_is_valid(stroke_density_buffer)) {
+    if (stroke_density_buffer.is_valid() &&
+            ResourceOwnerMismatchContract::is_device_generation_valid(rd, rd_device_id) &&
+            rd->buffer_is_valid(stroke_density_buffer)) {
         rd->free(stroke_density_buffer);
     }
     stroke_density_buffer = RID();
