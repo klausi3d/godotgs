@@ -3039,6 +3039,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#modulesgaussian_splattinginterfacesrender_device_managercpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/interfaces/render_device_manager.cpp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingrendererrender_sorting_orchestratorcpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3175,17 +3186,6 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/renderer/shader_compilation_helper.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#modulesgaussian_splattinginterfacesrender_device_managercpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/interfaces/render_device_manager.cpp
       
     </span>
   </a>
@@ -4029,6 +4029,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#modulesgaussian_splattinginterfacespainterly_material_managercpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/interfaces/painterly_material_manager.cpp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingtestsrun_gpu_validationcpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4106,10 +4117,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingteststest_ply_importerh" class="md-nav__link">
+  <a href="#modulesgaussian_splattingrenderergpu_sortercpp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        modules/gaussian_splatting/tests/test_ply_importer.h
+        modules/gaussian_splatting/renderer/gpu_sorter.cpp
       
     </span>
   </a>
@@ -4117,10 +4128,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrenderergpu_sortercpp" class="md-nav__link">
+  <a href="#modulesgaussian_splattingteststest_ply_importerh" class="md-nav__link">
     <span class="md-ellipsis">
       
-        modules/gaussian_splatting/renderer/gpu_sorter.cpp
+        modules/gaussian_splatting/tests/test_ply_importer.h
       
     </span>
   </a>
@@ -4242,17 +4253,6 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/lod/lod_config.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#modulesgaussian_splattinginterfacespainterly_material_managercpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/interfaces/painterly_material_manager.cpp
       
     </span>
   </a>
@@ -7427,6 +7427,27 @@
 <li>line 53: uint64_t SurfaceSplatGenerator::hash_config(const Config &amp;p_...</li>
 <li>line 75: LocalVector<gaussian> SurfaceSplatGenerator::generate(const ...</gaussian></li>
 </ul>
+<h2 id="modulesgaussian_splattinginterfacesrender_device_managercpp">modules/gaussian_splatting/interfaces/render_device_manager.cpp<a class="headerlink" href="#modulesgaussian_splattinginterfacesrender_device_managercpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 10: static bool _is_main_rendering_device(RenderingDevice *p_dev...</li>
+<li>line 41: static bool <em>matches_known_resource_type(RenderingDevice *p</em>...</li>
+<li>line 80: void RenderDeviceManager::_bind_methods() {...</li>
+<li>line 91: Error RenderDeviceManager::initialize(RenderingDevice *p_pri...</li>
+<li>line 119: void RenderDeviceManager::shutdown() {...</li>
+<li>line 140: DeviceContext RenderDeviceManager::get_context() const {...</li>
+<li>line 217: bool RenderDeviceManager::ensure_rendering_device(const char...</li>
+<li>line 236: bool RenderDeviceManager::ensure_submission_device(const cha...</li>
+<li>line 257: void RenderDeviceManager::track_resource(const RID &amp;p_rid, R...</li>
+<li>line 366: void RenderDeviceManager::forget_resource(const RID &amp;p_rid) ...</li>
+<li>line 385: void RenderDeviceManager::free_owned_resource(RenderingDevic...</li>
+<li>line 534: void RenderDeviceManager::track_texture(const RID &amp;p_texture...</li>
+<li>line 560: void RenderDeviceManager::submit_and_sync(RenderingDevice *p...</li>
+<li>line 568: void RenderDeviceManager::push_texture_trace(const String &amp;p...</li>
+<li>line 589: void RenderDeviceManager::push_cross_device_operation(const ...</li>
+<li>line 610: void RenderDeviceManager::clear_diagnostics() {...</li>
+<li>line 627: bool RenderDeviceManager::_is_main_rendering_device(Renderin...</li>
+<li>line 659: void RenderDeviceManager::synchronize_tile_submission(Render...</li>
+</ul>
 <h2 id="modulesgaussian_splattingrendererrender_sorting_orchestratorcpp">modules/gaussian_splatting/renderer/render_sorting_orchestrator.cpp<a class="headerlink" href="#modulesgaussian_splattingrendererrender_sorting_orchestratorcpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 34: static bool _is_sort_camera_move_significant(const Transform...</li>
@@ -7691,27 +7712,6 @@
 <li>line 535: Vector<string> ShaderCompilationManager::_build_binning_coun...</string></li>
 <li>line 563: String ShaderCompilationManager::_get_first_n_lines(const St...</li>
 <li>line 591: String ShaderCompilationManager::_format_shader_define_list(...</li>
-</ul>
-<h2 id="modulesgaussian_splattinginterfacesrender_device_managercpp">modules/gaussian_splatting/interfaces/render_device_manager.cpp<a class="headerlink" href="#modulesgaussian_splattinginterfacesrender_device_managercpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 10: static bool _is_main_rendering_device(RenderingDevice *p_dev...</li>
-<li>line 41: static bool <em>matches_known_resource_type(RenderingDevice *p</em>...</li>
-<li>line 80: void RenderDeviceManager::_bind_methods() {...</li>
-<li>line 91: Error RenderDeviceManager::initialize(RenderingDevice *p_pri...</li>
-<li>line 119: void RenderDeviceManager::shutdown() {...</li>
-<li>line 140: DeviceContext RenderDeviceManager::get_context() const {...</li>
-<li>line 217: bool RenderDeviceManager::ensure_rendering_device(const char...</li>
-<li>line 236: bool RenderDeviceManager::ensure_submission_device(const cha...</li>
-<li>line 257: void RenderDeviceManager::track_resource(const RID &amp;p_rid, R...</li>
-<li>line 366: void RenderDeviceManager::forget_resource(const RID &amp;p_rid) ...</li>
-<li>line 385: void RenderDeviceManager::free_owned_resource(RenderingDevic...</li>
-<li>line 532: void RenderDeviceManager::track_texture(const RID &amp;p_texture...</li>
-<li>line 558: void RenderDeviceManager::submit_and_sync(RenderingDevice *p...</li>
-<li>line 566: void RenderDeviceManager::push_texture_trace(const String &amp;p...</li>
-<li>line 587: void RenderDeviceManager::push_cross_device_operation(const ...</li>
-<li>line 608: void RenderDeviceManager::clear_diagnostics() {...</li>
-<li>line 625: bool RenderDeviceManager::_is_main_rendering_device(Renderin...</li>
-<li>line 657: void RenderDeviceManager::synchronize_tile_submission(Render...</li>
 </ul>
 <h2 id="modulesgaussian_splattingnodesgaussian_splat_debug_hudcpp">modules/gaussian_splatting/nodes/gaussian_splat_debug_hud.cpp<a class="headerlink" href="#modulesgaussian_splattingnodesgaussian_splat_debug_hudcpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -9375,6 +9375,19 @@
 <li>line 1332: bool MemoryValidationTests::test_oom_handling() {...</li>
 <li>line 1349: bool MemoryValidationTests::test_leak_detection() {...</li>
 </ul>
+<h2 id="modulesgaussian_splattinginterfacespainterly_material_managercpp">modules/gaussian_splatting/interfaces/painterly_material_manager.cpp<a class="headerlink" href="#modulesgaussian_splattinginterfacespainterly_material_managercpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 10: void PainterlyMaterialManager::_bind_methods() {...</li>
+<li>line 24: Error PainterlyMaterialManager::initialize(RenderingDevice *...</li>
+<li>line 38: void PainterlyMaterialManager::shutdown() {...</li>
+<li>line 47: void PainterlyMaterialManager::set_material(const Ref&lt;Painte...</li>
+<li>line 68: void PainterlyMaterialManager::clear_material() {...</li>
+<li>line 76: void PainterlyMaterialManager::_on_material_changed() {...</li>
+<li>line 81: void PainterlyMaterialManager::clear_resources() {...</li>
+<li>line 95: void PainterlyMaterialManager::update_resources() {...</li>
+<li>line 191: PainterlyMaterialResources PainterlyMaterialManager::get_res...</li>
+<li>line 207: Vector<string> PainterlyMaterialManager::get_missing_resourc...</string></li>
+</ul>
 <h2 id="modulesgaussian_splattingtestsrun_gpu_validationcpp">modules/gaussian_splatting/tests/run_gpu_validation.cpp<a class="headerlink" href="#modulesgaussian_splattingtestsrun_gpu_validationcpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 32: void print_header() {...</li>
@@ -9502,11 +9515,6 @@
 <li>line 67: bool was_skipped() const { return status == StageStatus::SKI...</li>
 <li>line 128: void clear() {...</li>
 </ul>
-<h2 id="modulesgaussian_splattingteststest_ply_importerh">modules/gaussian_splatting/tests/test_ply_importer.h<a class="headerlink" href="#modulesgaussian_splattingteststest_ply_importerh" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 35: String _make_ply_fixture_path(const String &amp;p_prefix) {...</li>
-<li>line 41: void _remove_ply_fixture(const String &amp;p_path) {...</li>
-</ul>
 <h2 id="modulesgaussian_splattingrenderergpu_sortercpp">modules/gaussian_splatting/renderer/gpu_sorter.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderergpu_sortercpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 95: static void _free_uniform_sets(RenderingDevice *p_owner, Loc...</li>
@@ -9535,53 +9543,58 @@
 <li>line 671: void BitonicSort::shutdown() {...</li>
 <li>line 716: void BitonicSort::dispatch_bitonic_pass(RenderingDevice *p_r...</li>
 <li>line 736: Error BitonicSort::sort(RID keys_buffer, RID values_buffer, ...</li>
-<li>line 887: uint64_t BitonicSort::sort_async(RID keys_buffer, RID values...</li>
-<li>line 899: bool BitonicSort::is_ready() const {...</li>
-<li>line 903: void BitonicSort::wait_for_completion() {...</li>
-<li>line 1137: void RadixSort::_bind_methods() {...</li>
-<li>line 1141: void RadixSort::<em>reset_pass_uniform_sets(PassUniformSets &amp;p</em>...</li>
-<li>line 1239: SortPreflightResult RadixSort::_validate_sort_preflight(RID ...</li>
-<li>line 1456: Error RadixSort::create_variant(RenderingDevice *device, uin...</li>
-<li>line 1509: uint get_radix(uvec2 key, uint shift) {...</li>
-<li>line 1523: uint get_radix(uint key, uint shift) {...</li>
-<li>line 1631: void main() {...</li>
-<li>line 1710: void main() {...</li>
-<li>line 1767: void main() {...</li>
-<li>line 1849: void main() {...</li>
-<li>line 1976: uint32_t RadixSort::get_workgroup_count(uint32_t element_cou...</li>
-<li>line 1980: Error RadixSort::initialize(RenderingDevice *p_rd, uint32_t ...</li>
-<li>line 2138: void main() {...</li>
-<li>line 2176: void RadixSort::_cleanup_partial_init(RenderingDevice *p_rd)...</li>
-<li>line 2271: void RadixSort::shutdown() {...</li>
-<li>line 2337: Error RadixSort::sort(RID keys_buffer, RID values_buffer, ui...</li>
-<li>line 2348: Error RadixSort::sort_indirect(RID keys_buffer, RID values_b...</li>
-<li>line 2367: uint64_t RadixSort::sort_indirect_async(RID keys_buffer, RID...</li>
-<li>line 2382: uint64_t RadixSort::sort_async(RID keys_buffer, RID values_b...</li>
-<li>line 2399: uint64_t RadixSort::_sort_indirect_internal(RID keys_buffer,...</li>
-<li>line 2589: bool RadixSort::is_ready() const {...</li>
-<li>line 2593: void RadixSort::wait_for_completion() {...</li>
-<li>line 2629: void OneSweepSort::_bind_methods() {...</li>
-<li>line 2633: Error OneSweepSort::initialize(RenderingDevice *p_rd, uint32...</li>
-<li>line 2696: void main() {...</li>
-<li>line 2769: void main() {...</li>
-<li>line 2858: void main() {...</li>
-<li>line 2934: void main() {...</li>
-<li>line 3032: void OneSweepSort::shutdown() {...</li>
-<li>line 3110: Error OneSweepSort::sort(RID keys_buffer, RID values_buffer,...</li>
-<li>line 3282: uint64_t OneSweepSort::sort_async(RID keys_buffer, RID value...</li>
-<li>line 3290: bool OneSweepSort::is_ready() const {...</li>
-<li>line 3294: void OneSweepSort::wait_for_completion() {...</li>
-<li>line 3310: bool BitonicSort::is_supported(RenderingDevice *p_rd) {...</li>
-<li>line 3315: SorterCapabilities BitonicSort::get_capabilities() {...</li>
-<li>line 3326: bool RadixSort::is_supported(RenderingDevice *p_rd) {...</li>
-<li>line 3334: SorterCapabilities RadixSort::get_capabilities() {...</li>
-<li>line 3350: bool OneSweepSort::is_supported(RenderingDevice *p_rd) {...</li>
-<li>line 3360: SorterCapabilities OneSweepSort::get_capabilities() {...</li>
-<li>line 3370: static AlgorithmProbe _probe_algorithm(GPUSorterFactory::Sor...</li>
-<li>line 3400: bool GPUSorterFactory::probe_is_supported(SortingAlgorithm a...</li>
-<li>line 3404: bool GPUSorterFactory::probe_supports_indirect(SortingAlgori...</li>
-<li>line 3408: bool GPUSorterFactory::probe_supports_indirect(SortingAlgori...</li>
-<li>line 3412: SorterCapabilities GPUSorterFactory::probe_capabilities(Sort...</li>
+<li>line 888: uint64_t BitonicSort::sort_async(RID keys_buffer, RID values...</li>
+<li>line 900: bool BitonicSort::is_ready() const {...</li>
+<li>line 904: void BitonicSort::wait_for_completion() {...</li>
+<li>line 1138: void RadixSort::_bind_methods() {...</li>
+<li>line 1142: void RadixSort::<em>reset_pass_uniform_sets(PassUniformSets &amp;p</em>...</li>
+<li>line 1240: SortPreflightResult RadixSort::_validate_sort_preflight(RID ...</li>
+<li>line 1457: Error RadixSort::create_variant(RenderingDevice *device, uin...</li>
+<li>line 1510: uint get_radix(uvec2 key, uint shift) {...</li>
+<li>line 1524: uint get_radix(uint key, uint shift) {...</li>
+<li>line 1632: void main() {...</li>
+<li>line 1711: void main() {...</li>
+<li>line 1768: void main() {...</li>
+<li>line 1850: void main() {...</li>
+<li>line 1977: uint32_t RadixSort::get_workgroup_count(uint32_t element_cou...</li>
+<li>line 1981: Error RadixSort::initialize(RenderingDevice *p_rd, uint32_t ...</li>
+<li>line 2139: void main() {...</li>
+<li>line 2177: void RadixSort::_cleanup_partial_init(RenderingDevice *p_rd)...</li>
+<li>line 2272: void RadixSort::shutdown() {...</li>
+<li>line 2338: Error RadixSort::sort(RID keys_buffer, RID values_buffer, ui...</li>
+<li>line 2349: Error RadixSort::sort_indirect(RID keys_buffer, RID values_b...</li>
+<li>line 2368: uint64_t RadixSort::sort_indirect_async(RID keys_buffer, RID...</li>
+<li>line 2383: uint64_t RadixSort::sort_async(RID keys_buffer, RID values_b...</li>
+<li>line 2400: uint64_t RadixSort::_sort_indirect_internal(RID keys_buffer,...</li>
+<li>line 2590: bool RadixSort::is_ready() const {...</li>
+<li>line 2594: void RadixSort::wait_for_completion() {...</li>
+<li>line 2630: void OneSweepSort::_bind_methods() {...</li>
+<li>line 2634: Error OneSweepSort::initialize(RenderingDevice *p_rd, uint32...</li>
+<li>line 2697: void main() {...</li>
+<li>line 2770: void main() {...</li>
+<li>line 2859: void main() {...</li>
+<li>line 2935: void main() {...</li>
+<li>line 3033: void OneSweepSort::shutdown() {...</li>
+<li>line 3111: Error OneSweepSort::sort(RID keys_buffer, RID values_buffer,...</li>
+<li>line 3283: uint64_t OneSweepSort::sort_async(RID keys_buffer, RID value...</li>
+<li>line 3291: bool OneSweepSort::is_ready() const {...</li>
+<li>line 3295: void OneSweepSort::wait_for_completion() {...</li>
+<li>line 3309: bool BitonicSort::is_supported(RenderingDevice *p_rd) {...</li>
+<li>line 3314: SorterCapabilities BitonicSort::get_capabilities() {...</li>
+<li>line 3325: bool RadixSort::is_supported(RenderingDevice *p_rd) {...</li>
+<li>line 3333: SorterCapabilities RadixSort::get_capabilities() {...</li>
+<li>line 3349: bool OneSweepSort::is_supported(RenderingDevice *p_rd) {...</li>
+<li>line 3359: SorterCapabilities OneSweepSort::get_capabilities() {...</li>
+<li>line 3369: static AlgorithmProbe _probe_algorithm(GPUSorterFactory::Sor...</li>
+<li>line 3399: bool GPUSorterFactory::probe_is_supported(SortingAlgorithm a...</li>
+<li>line 3403: bool GPUSorterFactory::probe_supports_indirect(SortingAlgori...</li>
+<li>line 3407: bool GPUSorterFactory::probe_supports_indirect(SortingAlgori...</li>
+<li>line 3411: SorterCapabilities GPUSorterFactory::probe_capabilities(Sort...</li>
+</ul>
+<h2 id="modulesgaussian_splattingteststest_ply_importerh">modules/gaussian_splatting/tests/test_ply_importer.h<a class="headerlink" href="#modulesgaussian_splattingteststest_ply_importerh" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 35: String _make_ply_fixture_path(const String &amp;p_prefix) {...</li>
+<li>line 41: void _remove_ply_fixture(const String &amp;p_path) {...</li>
 </ul>
 <h2 id="testsexamplesgodottest_projectsceneslighting_testgd">tests/examples/godot/test_project/scenes/lighting_test.gd<a class="headerlink" href="#testsexamplesgodottest_projectsceneslighting_testgd" title="Permanent link">¶</a></h2>
 <ul>
@@ -9701,19 +9714,6 @@
 <li>line 302: String LODDebugStats::to_string() const {...</li>
 <li>line 330: void initialize_lod_config() {...</li>
 <li>line 339: void register_lod_project_settings() {...</li>
-</ul>
-<h2 id="modulesgaussian_splattinginterfacespainterly_material_managercpp">modules/gaussian_splatting/interfaces/painterly_material_manager.cpp<a class="headerlink" href="#modulesgaussian_splattinginterfacespainterly_material_managercpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 8: void PainterlyMaterialManager::_bind_methods() {...</li>
-<li>line 22: Error PainterlyMaterialManager::initialize(RenderingDevice *...</li>
-<li>line 32: void PainterlyMaterialManager::shutdown() {...</li>
-<li>line 40: void PainterlyMaterialManager::set_material(const Ref&lt;Painte...</li>
-<li>line 61: void PainterlyMaterialManager::clear_material() {...</li>
-<li>line 69: void PainterlyMaterialManager::_on_material_changed() {...</li>
-<li>line 74: void PainterlyMaterialManager::clear_resources() {...</li>
-<li>line 87: void PainterlyMaterialManager::update_resources() {...</li>
-<li>line 183: PainterlyMaterialResources PainterlyMaterialManager::get_res...</li>
-<li>line 199: Vector<string> PainterlyMaterialManager::get_missing_resourc...</string></li>
 </ul>
 <h2 id="modulesgaussian_splattingcoregaussian_data_iocpp">modules/gaussian_splatting/core/gaussian_data_io.cpp<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_data_iocpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -10549,7 +10549,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 17, 2026 16:37:42 UTC">April 17, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 18, 2026 15:27:01 UTC">April 18, 2026</span>
   </span>
 
     
