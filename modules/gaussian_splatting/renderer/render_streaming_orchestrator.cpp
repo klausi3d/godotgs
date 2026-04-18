@@ -50,6 +50,7 @@ static uint64_t _compute_instance_pipeline_resource_fingerprint(const ResourceSt
 	generation = _mix_u32_generation(generation, p_resource_state.instance_buffer_capacity);
 	generation = _mix_rid_generation(generation, p_resource_state.instance_grading_buffer);
 	generation = _mix_u32_generation(generation, p_resource_state.instance_grading_buffer_capacity);
+	generation = _mix_content_generation(generation, p_resource_state.instance_grading_defaults_generation);
 	generation = _mix_rid_generation(generation, p_resource_state.instance_visible_chunk_buffer);
 	generation = _mix_u32_generation(generation, p_resource_state.instance_visible_chunk_capacity);
 	generation = _mix_rid_generation(generation, p_resource_state.instance_splat_ref_buffer);
@@ -114,6 +115,7 @@ static uint64_t _compute_instance_pipeline_upload_fingerprint(const ResourceStat
 	generation = _mix_u32_generation(generation, p_resource_state.instance_buffer_capacity);
 	generation = _mix_rid_generation(generation, p_resource_state.instance_grading_buffer);
 	generation = _mix_u32_generation(generation, p_resource_state.instance_grading_buffer_capacity);
+	generation = _mix_content_generation(generation, p_resource_state.instance_grading_defaults_generation);
 	generation = _mix_u32_generation(generation, p_buffers.instance_count);
 	generation = _mix_content_generation(generation, _compute_instance_asset_remap_fingerprint(p_remap));
 	return generation;
@@ -1910,6 +1912,13 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 					if (!renderer->update_instance_grading_buffer(gradings)) {
 						buffers = renderer->get_instance_pipeline_buffers();
 						renderer->clear_instance_pipeline_buffers();
+						// Reset the upload fingerprint so the next frame's upload_changed
+						// comparison forces a retry. Without this, a transient OOM / device
+						// hiccup becomes sticky — upload_changed would stay false and the
+						// grading SSBO would never re-upload until an unrelated generation
+						// change happens to flip the fingerprint.
+						resource_state_mut.instance_pipeline_upload_fingerprint = 0;
+						resource_state_mut.instance_pipeline_upload_generation = 0;
 					} else {
 						buffers = renderer->get_instance_pipeline_buffers();
 					}

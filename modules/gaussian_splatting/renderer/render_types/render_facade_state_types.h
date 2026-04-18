@@ -56,6 +56,12 @@ struct ResourceState {
 	// shader can always index up to instance_buffer_capacity.
 	RID instance_grading_buffer;
 	uint32_t instance_grading_buffer_capacity = 0;
+	// Bumped whenever the renderer-wide color_grading default changes. Included
+	// in the upload fingerprint so renderer-only / direct-data flows (no director
+	// SharedWorld) still force a grading SSBO re-upload when the default mutates.
+	// Without this, fallback-graded rows keep stale GPU values until an unrelated
+	// topology change re-runs the publisher.
+	uint64_t instance_grading_defaults_generation = 0;
 	RID instance_visible_chunk_buffer;
 	uint32_t instance_visible_chunk_capacity = 0;
 	RID instance_splat_ref_buffer;

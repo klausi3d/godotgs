@@ -547,7 +547,8 @@ void GaussianSplatSceneDirector::_prune_world_if_unused(const RID &p_scenario) {
 void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref<GaussianSplatAsset> &p_asset,
         const Transform3D &p_transform, float p_opacity, float p_lod_bias, uint32_t p_flags, bool p_casts_shadow,
         float p_wind_intensity, uint32_t p_wind_mode, const Vector3 &p_wind_direction, float p_wind_frequency,
-        bool p_visible, bool p_has_desired_residency_hint, int32_t p_desired_residency_hint) {
+        bool p_visible, bool p_has_desired_residency_hint, int32_t p_desired_residency_hint,
+        float p_effect_position_scale, float p_effect_opacity_scale) {
 	MutexLock lock(world_mutex);
 	SharedWorld *world = _get_world_for_instance(p_node_id);
 	if (!world) {
@@ -569,6 +570,8 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 	const float wind_intensity = MAX(0.0f, p_wind_intensity);
 	const uint32_t wind_mode = MIN(p_wind_mode, (uint32_t)INSTANCE_WIND_FORCE_ENABLED);
 	const float wind_frequency = MAX(0.0f, p_wind_frequency);
+	const float effect_position_scale = MAX(0.0f, p_effect_position_scale);
+	const float effect_opacity_scale = MAX(0.0f, p_effect_opacity_scale);
 	if (asset_id == 0) {
 		GaussianSplatting::debug_trace_record_event("instance_reg", "FAIL: asset_id=0", true);
 		return;
@@ -624,6 +627,14 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 			record.wind_frequency = wind_frequency;
 			dirty = true;
 		}
+		if (!Math::is_equal_approx(record.effect_position_scale, effect_position_scale)) {
+			record.effect_position_scale = effect_position_scale;
+			dirty = true;
+		}
+		if (!Math::is_equal_approx(record.effect_opacity_scale, effect_opacity_scale)) {
+			record.effect_opacity_scale = effect_opacity_scale;
+			dirty = true;
+		}
 		if (record.has_desired_residency_hint != p_has_desired_residency_hint) {
 			record.has_desired_residency_hint = p_has_desired_residency_hint;
 			dirty = true;
@@ -676,6 +687,8 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 	record.wind_mode = wind_mode;
 	record.wind_direction = p_wind_direction;
 	record.wind_frequency = wind_frequency;
+	record.effect_position_scale = effect_position_scale;
+	record.effect_opacity_scale = effect_opacity_scale;
 	record.asset_id = asset_id;
 	record.flags = p_flags;
 	record.last_lod = 0;
@@ -721,7 +734,8 @@ void GaussianSplatSceneDirector::update_instance_transform(ObjectID p_node_id, c
 void GaussianSplatSceneDirector::update_instance_params(ObjectID p_node_id, float p_opacity, float p_lod_bias,
 		uint32_t p_flags, bool p_casts_shadow, float p_wind_intensity, uint32_t p_wind_mode,
 		const Vector3 &p_wind_direction, float p_wind_frequency, bool p_visible,
-		bool p_has_desired_residency_hint, int32_t p_desired_residency_hint) {
+		bool p_has_desired_residency_hint, int32_t p_desired_residency_hint,
+		float p_effect_position_scale, float p_effect_opacity_scale) {
 	MutexLock lock(world_mutex);
 	SharedWorld *world = _get_world_for_instance(p_node_id);
 	if (!world) {
@@ -740,6 +754,8 @@ void GaussianSplatSceneDirector::update_instance_params(ObjectID p_node_id, floa
 	const float wind_intensity = MAX(0.0f, p_wind_intensity);
 	const uint32_t wind_mode = MIN(p_wind_mode, (uint32_t)INSTANCE_WIND_FORCE_ENABLED);
 	const float wind_frequency = MAX(0.0f, p_wind_frequency);
+	const float effect_position_scale = MAX(0.0f, p_effect_position_scale);
+	const float effect_opacity_scale = MAX(0.0f, p_effect_opacity_scale);
 	bool dirty = false;
 	bool asset_selection_dirty = false;
 	if (!Math::is_equal_approx(record.opacity, p_opacity)) {
@@ -778,6 +794,14 @@ void GaussianSplatSceneDirector::update_instance_params(ObjectID p_node_id, floa
 	}
 	if (!Math::is_equal_approx(record.wind_frequency, wind_frequency)) {
 		record.wind_frequency = wind_frequency;
+		dirty = true;
+	}
+	if (!Math::is_equal_approx(record.effect_position_scale, effect_position_scale)) {
+		record.effect_position_scale = effect_position_scale;
+		dirty = true;
+	}
+	if (!Math::is_equal_approx(record.effect_opacity_scale, effect_opacity_scale)) {
+		record.effect_opacity_scale = effect_opacity_scale;
 		dirty = true;
 	}
 	if (record.has_desired_residency_hint != p_has_desired_residency_hint) {
@@ -831,10 +855,12 @@ void GaussianSplatSceneDirector::unregister_instance(ObjectID p_node_id) {
 void GaussianSplatSceneDirector::register_instance_submission(ObjectID p_node_id, const Ref<GaussianSplatAsset> &p_asset,
 		const Transform3D &p_transform, float p_opacity, float p_lod_bias, uint32_t p_flags, bool p_casts_shadow,
 		float p_wind_intensity, uint32_t p_wind_mode, const Vector3 &p_wind_direction, float p_wind_frequency,
-		bool p_visible, bool p_has_desired_residency_hint, int32_t p_desired_residency_hint) {
+		bool p_visible, bool p_has_desired_residency_hint, int32_t p_desired_residency_hint,
+		float p_effect_position_scale, float p_effect_opacity_scale) {
 	register_instance(p_node_id, p_asset, p_transform, p_opacity, p_lod_bias, p_flags, p_casts_shadow,
 			p_wind_intensity, p_wind_mode, p_wind_direction, p_wind_frequency, p_visible,
-			p_has_desired_residency_hint, p_desired_residency_hint);
+			p_has_desired_residency_hint, p_desired_residency_hint, p_effect_position_scale,
+			p_effect_opacity_scale);
 }
 
 void GaussianSplatSceneDirector::update_instance_submission_transform(ObjectID p_node_id, const Transform3D &p_transform) {
@@ -844,10 +870,12 @@ void GaussianSplatSceneDirector::update_instance_submission_transform(ObjectID p
 void GaussianSplatSceneDirector::update_instance_submission_params(ObjectID p_node_id, float p_opacity, float p_lod_bias,
 		uint32_t p_flags, bool p_casts_shadow, float p_wind_intensity, uint32_t p_wind_mode,
 		const Vector3 &p_wind_direction, float p_wind_frequency, bool p_visible,
-		bool p_has_desired_residency_hint, int32_t p_desired_residency_hint) {
+		bool p_has_desired_residency_hint, int32_t p_desired_residency_hint,
+		float p_effect_position_scale, float p_effect_opacity_scale) {
 	update_instance_params(p_node_id, p_opacity, p_lod_bias, p_flags, p_casts_shadow, p_wind_intensity,
 			p_wind_mode, p_wind_direction, p_wind_frequency, p_visible,
-			p_has_desired_residency_hint, p_desired_residency_hint);
+			p_has_desired_residency_hint, p_desired_residency_hint, p_effect_position_scale,
+			p_effect_opacity_scale);
 }
 
 void GaussianSplatSceneDirector::unregister_instance_submission(ObjectID p_node_id) {
@@ -879,6 +907,8 @@ bool GaussianSplatSceneDirector::get_instance_submission(ObjectID p_node_id, Ins
 		r_submission->wind_mode = record.wind_mode;
 		r_submission->wind_direction = record.wind_direction;
 		r_submission->wind_frequency = record.wind_frequency;
+		r_submission->effect_position_scale = record.effect_position_scale;
+		r_submission->effect_opacity_scale = record.effect_opacity_scale;
 		r_submission->flags = record.flags;
 		r_submission->last_lod = record.last_lod;
 		r_submission->casts_shadow = record.casts_shadow;
@@ -1110,6 +1140,10 @@ void GaussianSplatSceneDirector::build_instance_buffer(LocalVector<InstanceDataG
 			entry.wind_params[1] = record.wind_direction.y;
 			entry.wind_params[2] = record.wind_direction.z;
 			entry.wind_params[3] = record.wind_frequency;
+			entry.effect_params[0] = record.effect_position_scale;
+			entry.effect_params[1] = record.effect_opacity_scale;
+			entry.effect_params[2] = 0.0f;
+			entry.effect_params[3] = 0.0f;
 
 			out.push_back(entry);
 		}
@@ -1152,6 +1186,8 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 			entry.wind_params[1] = 0.0f;
 			entry.wind_params[2] = 0.0f;
 			entry.wind_params[3] = 1.0f;
+			entry.effect_params[0] = 1.0f;
+			entry.effect_params[1] = 1.0f;
 			out.push_back(entry);
 		}
 		return;
@@ -1235,6 +1271,10 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 		entry.wind_params[1] = record.wind_direction.y;
 		entry.wind_params[2] = record.wind_direction.z;
 		entry.wind_params[3] = record.wind_frequency;
+		entry.effect_params[0] = record.effect_position_scale;
+		entry.effect_params[1] = record.effect_opacity_scale;
+		entry.effect_params[2] = 0.0f;
+		entry.effect_params[3] = 0.0f;
 
 		out.push_back(entry);
 		if (trace_enabled) {
@@ -1399,6 +1439,11 @@ void GaussianSplatSceneDirector::invalidate_grading_for_renderer(const GaussianS
 	MutexLock lock(world_mutex);
 	SharedWorld *world = const_cast<SharedWorld *>(_find_world_for_renderer(p_renderer));
 	if (!world) {
+		// Renderer-only / direct-data flow: no SharedWorld to bump. The caller
+		// (RenderConfigOrchestrator::set_color_grading) also bumps the renderer's
+		// `instance_grading_defaults_generation` counter which the streaming
+		// upload fingerprint includes, so the grading SSBO still re-uploads
+		// next frame even without a director entry.
 		return;
 	}
 	// Bump the instance generation so build_instance_grading_buffer_for_renderer
