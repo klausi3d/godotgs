@@ -8,6 +8,7 @@
 #include "gaussian_splat_manager.h"
 #include "../renderer/gaussian_gpu_layout.h"
 #include "../renderer/render_debug_state_orchestrator.h"
+#include "../resources/color_grading_resource.h"
 #include "scene/3d/node_3d.h"
 
 static bool _is_scene_director_log_enabled() {
@@ -1270,6 +1271,186 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 					skipped_instances > 0);
 		}
 	}
+}
+
+// Shared grading→GPU conversion. Mirrors the enabled/disabled logic used by
+// TileRenderParamsBuilder::build_params so the binding-stage shader sees identical
+// parameter semantics whether it reads the legacy UBO default or the new SSBO.
+static void _fill_instance_grading_entry(const Ref<ColorGradingResource> &p_grading, InstanceGradingGPU &r_entry) {
+	if (p_grading.is_valid() && p_grading->get_enabled()) {
+		r_entry.primary[0] = 1.0f; // enabled = true
+		r_entry.primary[1] = p_grading->get_exposure();
+		r_entry.primary[2] = p_grading->get_contrast();
+		r_entry.primary[3] = p_grading->get_saturation();
+		r_entry.secondary[0] = p_grading->get_temperature();
+		r_entry.secondary[1] = p_grading->get_tint();
+		r_entry.secondary[2] = p_grading->get_hue_shift();
+		r_entry.secondary[3] = 0.0f; // reserved
+	} else {
+		r_entry.primary[0] = 0.0f; // enabled = false
+		r_entry.primary[1] = 0.0f; // exposure = 0
+		r_entry.primary[2] = 1.0f; // contrast = 1
+		r_entry.primary[3] = 1.0f; // saturation = 1
+		r_entry.secondary[0] = 0.0f; // temperature
+		r_entry.secondary[1] = 0.0f; // tint
+		r_entry.secondary[2] = 0.0f; // hue_shift
+		r_entry.secondary[3] = 0.0f; // reserved
+	}
+}
+
+void GaussianSplatSceneDirector::build_instance_grading_buffer_for_renderer(const GaussianSplatRenderer *p_renderer,
+		LocalVector<InstanceGradingGPU> &out, bool p_shadow_casters_only) const {
+	MutexLock lock(world_mutex);
+	out.clear();
+
+	const SharedWorld *world = _find_world_for_renderer(p_renderer);
+	// Renderer-wide fallback; mirrors the legacy single-slot RenderConfig::color_grading
+	// semantics when a record has no per-instance grading ref. Passed by value to the
+	// helper so the renderer read is confined to this function.
+	Ref<ColorGradingResource> renderer_default;
+	if (p_renderer) {
+		renderer_default = const_cast<GaussianSplatRenderer *>(p_renderer)->get_color_grading();
+	}
+
+	if (!world) {
+		return;
+	}
+
+	// World-submission single-instance shim: mirrors the same path in
+	// build_instance_buffer_for_renderer so the shader always has a 1-row
+	// grading buffer indexable at splat_ref.instance_id == 0.
+	if (world->instances.is_empty()) {
+		if (world->world_submission.active &&
+				world->world_submission.gaussian_data.is_valid() &&
+				world->world_submission.gaussian_data->get_count() > 0) {
+			InstanceGradingGPU entry = {};
+			_fill_instance_grading_entry(renderer_default, entry);
+			out.push_back(entry);
+		}
+		return;
+	}
+
+	out.reserve(world->instances.size());
+	for (const InstanceRecord &record : world->instances) {
+		if (!record.visible) {
+			continue;
+		}
+		if (p_shadow_casters_only && !record.casts_shadow) {
+			continue;
+		}
+		const SharedWorld::AssetRecord *asset_record = world->asset_records.getptr(record.asset_id);
+		if (!asset_record || asset_record->data.is_null()) {
+			// Must match build_instance_buffer_for_renderer's skip logic exactly
+			// so rows stay 1:1 with instance_id.
+			continue;
+		}
+		InstanceGradingGPU entry = {};
+		const Ref<ColorGradingResource> &grading = record.color_grading.is_valid()
+				? record.color_grading
+				: renderer_default;
+		_fill_instance_grading_entry(grading, entry);
+		out.push_back(entry);
+	}
+}
+
+void GaussianSplatSceneDirector::update_instance_color_grading(ObjectID p_node_id,
+		const Ref<ColorGradingResource> &p_grading) {
+	MutexLock lock(world_mutex);
+	SharedWorld *world = _find_world_for_instance(p_node_id);
+	if (!world) {
+		return;
+	}
+	const uint32_t *pidx = world->instance_lookup.getptr(p_node_id);
+	if (!pidx) {
+		return;
+	}
+	InstanceRecord &record = world->instances[*pidx];
+	if (record.color_grading == p_grading) {
+		return;
+	}
+	record.color_grading = p_grading;
+	record.dirty = true;
+	// Bump the instance generation so downstream caches (sort/raster) see the
+	// change. Asset generation stays put — we did not touch asset topology.
+	_bump_instance_generation(world->instance_generation);
+}
+
+Ref<ColorGradingResource> GaussianSplatSceneDirector::get_instance_color_grading(ObjectID p_node_id) const {
+	MutexLock lock(world_mutex);
+	const SharedWorld *world = const_cast<GaussianSplatSceneDirector *>(this)->_find_world_for_instance(p_node_id);
+	if (!world) {
+		return Ref<ColorGradingResource>();
+	}
+	const uint32_t *pidx = world->instance_lookup.getptr(p_node_id);
+	if (!pidx) {
+		return Ref<ColorGradingResource>();
+	}
+	return world->instances[*pidx].color_grading;
+}
+
+uint64_t GaussianSplatSceneDirector::compute_color_grading_signature_for_renderer(
+		const GaussianSplatRenderer *p_renderer) const {
+	// FNV-1a-esque rolling hash over every per-instance grading tied to the renderer,
+	// including the renderer-wide default used as the fallback. The sort/raster cache
+	// invalidation path hashes this in, so any node grading edit busts the cache.
+	MutexLock lock(world_mutex);
+	uint64_t seed = 1469598103934665603ull;
+	auto mix_u64 = [&](uint64_t v) {
+		seed ^= v;
+		seed *= 1099511628211ull;
+	};
+	auto mix_f = [&](float f) {
+		union {
+			float f;
+			uint32_t u;
+		} c = { f };
+		mix_u64(uint64_t(c.u));
+	};
+	auto mix_grading = [&](const Ref<ColorGradingResource> &g) {
+		if (!g.is_valid()) {
+			mix_u64(0ull);
+			return;
+		}
+		mix_u64(1ull);
+		mix_u64(reinterpret_cast<uint64_t>(g.ptr()));
+		mix_u64(g->get_enabled() ? 1ull : 0ull);
+		mix_f(g->get_exposure());
+		mix_f(g->get_contrast());
+		mix_f(g->get_saturation());
+		mix_f(g->get_temperature());
+		mix_f(g->get_tint());
+		mix_f(g->get_hue_shift());
+	};
+
+	Ref<ColorGradingResource> renderer_default;
+	if (p_renderer) {
+		renderer_default = const_cast<GaussianSplatRenderer *>(p_renderer)->get_color_grading();
+	}
+	mix_grading(renderer_default);
+
+	const SharedWorld *world = _find_world_for_renderer(p_renderer);
+	if (!world) {
+		return seed;
+	}
+
+	if (world->instances.is_empty()) {
+		// World-submission shim uses the renderer default; already mixed.
+		return seed;
+	}
+
+	for (const InstanceRecord &record : world->instances) {
+		// Mirror the visibility/asset filters from build_instance_grading_buffer_for_renderer
+		// so signature reflects the exact set of gradings the shader will see.
+		if (!record.visible) {
+			continue;
+		}
+		const SharedWorld::AssetRecord *asset_record = world->asset_records.getptr(record.asset_id);
+		if (!asset_record || asset_record->data.is_null()) {
+			continue;
+		}
+		mix_grading(record.color_grading.is_valid() ? record.color_grading : renderer_default);
+	}
+	return seed;
 }
 
 uint64_t GaussianSplatSceneDirector::get_instance_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const {

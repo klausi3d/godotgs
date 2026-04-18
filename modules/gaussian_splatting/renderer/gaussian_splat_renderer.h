@@ -789,6 +789,9 @@ public:
     Error apply_world_submission_contract(const WorldSubmissionContract &p_contract);
     void clear_world_submission_contract();
     bool update_instance_buffer(LocalVector<InstanceDataGPU> &p_instances, const PublishedInstanceAssetRemap &p_remap);
+    // Upload the per-instance color grading SSBO. Called alongside update_instance_buffer
+    // from both the resident and streaming contract-publish paths.
+    bool update_instance_grading_buffer(const LocalVector<InstanceGradingGPU> &p_gradings);
     int get_cached_streaming_route_policy();
     const String &get_cached_streaming_route_policy_source();
 

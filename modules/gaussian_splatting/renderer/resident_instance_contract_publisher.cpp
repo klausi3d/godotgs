@@ -635,6 +635,35 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 		return false;
 	}
 
+	// Upload per-instance color grading. Walks the same director instance list so rows
+	// line up 1:1 with SplatRefGPU.instance_id. Must run whenever instance_buffer is
+	// re-uploaded because the instance list may have changed rows.
+	{
+		LocalVector<InstanceGradingGPU> gradings;
+		if (director != nullptr) {
+			director->build_instance_grading_buffer_for_renderer(p_renderer, gradings,
+					p_renderer->is_shadow_instance_filter_enabled());
+		}
+		if (gradings.is_empty() && !instances.is_empty()) {
+			// Fallback when director has no records but we injected a primary-resident
+			// fallback instance above. Mirror the instance row count so the shader
+			// always has a valid row to index.
+			gradings.resize(instances.size());
+			for (uint32_t i = 0; i < gradings.size(); ++i) {
+				gradings[i] = InstanceGradingGPU{};
+				gradings[i].primary[2] = 1.0f; // contrast neutral
+				gradings[i].primary[3] = 1.0f; // saturation neutral
+			}
+		}
+		if (!p_renderer->update_instance_grading_buffer(gradings)) {
+			if (r_reason) {
+				*r_reason = "resident_grading_upload_failed";
+			}
+			p_renderer->clear_instance_pipeline_buffers();
+			return false;
+		}
+	}
+
 	const GaussianRenderPipeline::InstancePipelineBuffers &published_buffers = p_renderer->get_instance_pipeline_buffers();
 	InvariantViolationReason violation_reason = InvariantViolationReason::NONE;
 	if (!GaussianSplatting::InstancePipelineContract::has_atlas_buffers(published_buffers)) {

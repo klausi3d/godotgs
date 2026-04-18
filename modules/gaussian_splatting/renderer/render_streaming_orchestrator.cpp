@@ -47,6 +47,8 @@ static uint64_t _compute_instance_pipeline_resource_fingerprint(const ResourceSt
 	uint64_t generation = 0x6a09e667f3bcc909ULL;
 	generation = _mix_rid_generation(generation, p_resource_state.instance_buffer);
 	generation = _mix_u32_generation(generation, p_resource_state.instance_buffer_capacity);
+	generation = _mix_rid_generation(generation, p_resource_state.instance_grading_buffer);
+	generation = _mix_u32_generation(generation, p_resource_state.instance_grading_buffer_capacity);
 	generation = _mix_rid_generation(generation, p_resource_state.instance_visible_chunk_buffer);
 	generation = _mix_u32_generation(generation, p_resource_state.instance_visible_chunk_capacity);
 	generation = _mix_rid_generation(generation, p_resource_state.instance_splat_ref_buffer);
@@ -109,6 +111,8 @@ static uint64_t _compute_instance_pipeline_upload_fingerprint(const ResourceStat
 	uint64_t generation = 0xbb67ae8584caa73bULL;
 	generation = _mix_rid_generation(generation, p_resource_state.instance_buffer);
 	generation = _mix_u32_generation(generation, p_resource_state.instance_buffer_capacity);
+	generation = _mix_rid_generation(generation, p_resource_state.instance_grading_buffer);
+	generation = _mix_u32_generation(generation, p_resource_state.instance_grading_buffer_capacity);
 	generation = _mix_u32_generation(generation, p_buffers.instance_count);
 	generation = _mix_content_generation(generation, _compute_instance_asset_remap_fingerprint(p_remap));
 	return generation;
@@ -1879,6 +1883,15 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 					buffers = renderer->get_instance_pipeline_buffers();
 					renderer->clear_instance_pipeline_buffers();
 				} else {
+					// Per-instance color grading SSBO runs parallel to instance_buffer and must
+					// be refreshed on the same cadence. The buffer capacity is sized by the
+					// renderer, so this tolerates the empty-director (shim) case too.
+					LocalVector<InstanceGradingGPU> gradings;
+					if (director) {
+						director->build_instance_grading_buffer_for_renderer(renderer, gradings,
+								renderer->is_shadow_instance_filter_enabled());
+					}
+					renderer->update_instance_grading_buffer(gradings);
 					buffers = renderer->get_instance_pipeline_buffers();
 				}
 			} else if (!contract_changed) {

@@ -19,6 +19,8 @@
 #include "../lod/lod_config.h"
 #include "../renderer/gaussian_splat_renderer.h"
 
+class ColorGradingResource;
+
 class GaussianSplatSceneDirector : public Object {
     GDCLASS(GaussianSplatSceneDirector, Object);
 
@@ -52,6 +54,7 @@ public:
         bool visible = true;
         bool has_desired_residency_hint = false;
         int32_t desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT;
+        Ref<ColorGradingResource> color_grading;
     };
 
     struct WorldSubmission {
@@ -96,6 +99,22 @@ public:
     void build_instance_buffer(LocalVector<InstanceDataGPU> &out) const;
 	void build_instance_buffer_for_renderer(const GaussianSplatRenderer *p_renderer, LocalVector<InstanceDataGPU> &out,
 			bool p_shadow_casters_only = false) const;
+	// Build the per-instance color grading SSBO for the supplied renderer. Walks the same
+	// instance list as build_instance_buffer_for_renderer; falls back to the renderer's
+	// RenderConfig::color_grading when a record has no per-instance ref. When no director
+	// instances exist but the renderer is active (early setup / legacy world-submission shim),
+	// produces a 1-row buffer so the shader always has a valid index.
+	void build_instance_grading_buffer_for_renderer(const GaussianSplatRenderer *p_renderer,
+			LocalVector<InstanceGradingGPU> &out, bool p_shadow_casters_only = false) const;
+	// Per-instance color grading setter. Stores the grading ref on the record identified
+	// by node_id; the next frame's build_instance_grading_buffer_for_renderer picks it up.
+	// No-op when the node is unregistered.
+	void update_instance_color_grading(ObjectID p_node_id, const Ref<ColorGradingResource> &p_grading);
+	// Accessor for tests and diagnostics.
+	Ref<ColorGradingResource> get_instance_color_grading(ObjectID p_node_id) const;
+	// Hash every per-instance grading bound to this renderer. Used by the sort/raster cache
+	// invalidation path so any node's grading edit busts the cache.
+	uint64_t compute_color_grading_signature_for_renderer(const GaussianSplatRenderer *p_renderer) const;
 	uint32_t get_instance_count_for_renderer(const GaussianSplatRenderer *p_renderer) const;
 	uint64_t get_instance_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
 	uint64_t get_instance_asset_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
@@ -156,6 +175,7 @@ private:
         bool has_desired_residency_hint = false;
         int32_t desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT;
         bool dirty = true;
+        Ref<ColorGradingResource> color_grading;
 	};
 
     struct SharedWorld {

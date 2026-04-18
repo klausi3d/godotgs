@@ -95,6 +95,21 @@ static_assert(offsetof(InstanceDataGPU, ids) == 64, "InstanceDataGPU.ids offset 
 static_assert(offsetof(InstanceDataGPU, lod) == 72, "InstanceDataGPU.lod offset mismatch");
 static_assert(offsetof(InstanceDataGPU, wind_params) == 80, "InstanceDataGPU.wind_params offset mismatch");
 
+// Per-instance color grading (std430). Indexed by SplatRefGPU.instance_id, parallel to
+// InstanceDataGPU. Populated by GaussianSplatSceneDirector::build_instance_grading_buffer_for_renderer.
+//
+// primary:   x = enabled (0/1), y = exposure, z = contrast, w = saturation
+// secondary: x = temperature,   y = tint,     z = hue_shift, w = reserved
+struct InstanceGradingGPU {
+    float primary[4];
+    float secondary[4];
+};
+
+static_assert(sizeof(InstanceGradingGPU) == 32, "InstanceGradingGPU must be 32 bytes");
+static_assert(alignof(InstanceGradingGPU) <= 16, "InstanceGradingGPU alignment must not exceed 16 bytes");
+static_assert(offsetof(InstanceGradingGPU, primary) == 0, "InstanceGradingGPU.primary offset mismatch");
+static_assert(offsetof(InstanceGradingGPU, secondary) == 16, "InstanceGradingGPU.secondary offset mismatch");
+
 // Per-asset metadata table.
 struct AssetLodRangeGPU {
     uint32_t base;               // base into AssetChunkIndexBuffer

@@ -50,6 +50,12 @@ struct ResourceState {
 	GPUBufferManager::DeferredDeletionQueue deletion_queue;
 	RID instance_buffer;
 	uint32_t instance_buffer_capacity = 0;
+	// Sibling SSBO to instance_buffer: one InstanceGradingGPU row per instance, indexed
+	// by SplatRefGPU.instance_id. Rebuilt alongside the instance buffer whenever instance
+	// topology or grading parameters change. Sized to the same capacity (rows) so the
+	// shader can always index up to instance_buffer_capacity.
+	RID instance_grading_buffer;
+	uint32_t instance_grading_buffer_capacity = 0;
 	RID instance_visible_chunk_buffer;
 	uint32_t instance_visible_chunk_capacity = 0;
 	RID instance_splat_ref_buffer;
