@@ -24,6 +24,7 @@
 #include "../logger/gs_debug_trace.h"
 #include "../logger/gs_logger.h"
 #include "../resources/color_grading_resource.h"
+#include "../core/gaussian_splat_scene_director.h"
 #include "gpu_sorting_config.h"
 #include "instance_pipeline_contract.h"
 #include "pipeline_feature_set.h"
@@ -257,25 +258,37 @@ static uint64_t _hash_color(const Color &p_color, uint64_t p_seed) {
 	return p_seed;
 }
 
-static uint64_t _compute_color_grading_signature(const GaussianSplatRenderer::RenderConfig &p_render_config) {
+static uint64_t _compute_color_grading_signature(const GaussianSplatRenderer::RenderConfig &p_render_config,
+		const GaussianSplatRenderer *p_renderer) {
+	// Render-mode + opacity are still per-renderer inputs to the cache signature.
 	uint64_t seed = HASH_MURMUR3_SEED;
 	seed = _hash_u64(static_cast<uint64_t>(p_render_config.render_mode), seed);
 	seed = _hash_float_bits(p_render_config.opacity_multiplier, seed);
 
-	const Ref<ColorGradingResource> &grading = p_render_config.color_grading;
-	if (!grading.is_valid()) {
-		return _hash_u64(0ull, seed);
+	// Mix every per-instance grading tied to this renderer so any node's grading edit
+	// busts the sort/raster cache. The director hash also incorporates the renderer-wide
+	// default (used as fallback when a record has no per-instance ref), so we don't
+	// need to hash p_render_config.color_grading separately.
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	if (director && p_renderer) {
+		seed = _hash_u64(director->compute_color_grading_signature_for_renderer(p_renderer), seed);
+	} else {
+		// Fallback to the legacy single-slot hash when the director is not accessible
+		// (tests, tear-down paths).
+		const Ref<ColorGradingResource> &grading = p_render_config.color_grading;
+		if (!grading.is_valid()) {
+			return _hash_u64(0ull, seed);
+		}
+		seed = _hash_u64(1ull, seed);
+		seed = _hash_u64(reinterpret_cast<uint64_t>(grading.ptr()), seed);
+		seed = _hash_bool(grading->get_enabled(), seed);
+		seed = _hash_float_bits(grading->get_exposure(), seed);
+		seed = _hash_float_bits(grading->get_contrast(), seed);
+		seed = _hash_float_bits(grading->get_saturation(), seed);
+		seed = _hash_float_bits(grading->get_temperature(), seed);
+		seed = _hash_float_bits(grading->get_tint(), seed);
+		seed = _hash_float_bits(grading->get_hue_shift(), seed);
 	}
-
-	seed = _hash_u64(1ull, seed);
-	seed = _hash_u64(reinterpret_cast<uint64_t>(grading.ptr()), seed);
-	seed = _hash_bool(grading->get_enabled(), seed);
-	seed = _hash_float_bits(grading->get_exposure(), seed);
-	seed = _hash_float_bits(grading->get_contrast(), seed);
-	seed = _hash_float_bits(grading->get_saturation(), seed);
-	seed = _hash_float_bits(grading->get_temperature(), seed);
-	seed = _hash_float_bits(grading->get_tint(), seed);
-	seed = _hash_float_bits(grading->get_hue_shift(), seed);
 	return seed;
 }
 
@@ -1308,7 +1321,7 @@ struct RenderPipelineStages::RasterCompositeStage {
 		}
 		raster_input.content_generation = renderer->get_instance_pipeline_content_generation();
 		raster_input.cull_config_signature = _compute_cull_config_signature(*renderer, state_view);
-		raster_input.color_grading_signature = _compute_color_grading_signature(state_view.get_render_config_view());
+		raster_input.color_grading_signature = _compute_color_grading_signature(state_view.get_render_config_view(), renderer);
 		raster_input.lighting_signature = _compute_lighting_signature(p_context.render_data, p_context.frame_id);
 		raster_input.metrics = p_context.metrics;
 		raster_input.state_view = &state_view;
