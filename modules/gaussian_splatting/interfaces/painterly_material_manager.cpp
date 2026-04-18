@@ -3,7 +3,30 @@
 
 #include "painterly_material_manager.h"
 #include "../logger/gs_logger.h"
+#include "servers/rendering/rendering_device.h"
+#include "servers/rendering_server.h"
 #include <cstring>
+
+namespace {
+// Only dereference the cached RenderingDevice if we can prove it is still live
+// by matching it against RenderingServer's current device. This guards
+// destructor-time teardown against a stale cached pointer (the device may be
+// destroyed before our ref-counted lifetime ends).
+bool _is_rd_alive(RenderingDevice *p_rd) {
+    if (!p_rd) {
+        return false;
+    }
+    if (RenderingServer *rs = RenderingServer::get_singleton()) {
+        if (rs->get_rendering_device() == p_rd) {
+            return true;
+        }
+    }
+    if (RenderingDevice::get_singleton() == p_rd) {
+        return true;
+    }
+    return false;
+}
+} // namespace
 
 void PainterlyMaterialManager::_bind_methods() {
     ClassDB::bind_method(D_METHOD("is_dirty"), &PainterlyMaterialManager::is_dirty);
@@ -77,7 +100,7 @@ void PainterlyMaterialManager::clear_resources() {
     stroke_density_sample_count = 0;
     stroke_density_buffer_size = 0;
 
-    if (stroke_density_buffer.is_valid() && rd && rd->buffer_is_valid(stroke_density_buffer)) {
+    if (stroke_density_buffer.is_valid() && _is_rd_alive(rd) && rd->buffer_is_valid(stroke_density_buffer)) {
         rd->free(stroke_density_buffer);
     }
     stroke_density_buffer = RID();

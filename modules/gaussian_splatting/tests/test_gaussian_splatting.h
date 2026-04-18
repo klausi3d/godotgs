@@ -19,6 +19,7 @@
 #include "test_gpu_sorting.h"
 #include "test_asset_dependency_manager.h"
 #include "test_batched_async_readback.h"
+#include "test_render_device_manager_ownership.h"
 #include "test_compute_infrastructure.h"
 #include "test_phase1_integration.h"
 #include "test_painterly_pipeline.h"
