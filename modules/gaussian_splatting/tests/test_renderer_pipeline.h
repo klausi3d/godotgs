@@ -370,6 +370,7 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Instance cull failures without fallb
 TEST_CASE("[GaussianSplatting] GPU layout contract invariants remain stable") {
     CHECK(GS_RENDER_PARAMS_LAYOUT_VERSION == 18u);
     CHECK(sizeof(InstanceDataGPU) == size_t(112));
+    CHECK(offsetof(InstanceDataGPU, effect_params) == size_t(96));
     CHECK(sizeof(AssetMetaGPU) == size_t(112));
     CHECK(sizeof(ChunkMetaGPU) == size_t(64));
     CHECK(sizeof(SplatRefGPU) == size_t(8));
@@ -377,6 +378,7 @@ TEST_CASE("[GaussianSplatting] GPU layout contract invariants remain stable") {
     CHECK(sizeof(PackedGaussianF16) == size_t(144));
     CHECK(sizeof(PackedGaussianQuantized) == size_t(80));
     CHECK(sizeof(TileRenderParamsGPU) == size_t(752));
+    CHECK(offsetof(TileRenderParamsGPU, effector_opacity_config) == size_t(720));
 
     CHECK(offsetof(PackedGaussian, rotation) == size_t(32));
     CHECK(offsetof(PackedGaussian, sh) == size_t(48));

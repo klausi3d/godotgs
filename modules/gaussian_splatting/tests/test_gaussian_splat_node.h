@@ -1137,8 +1137,14 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer ins
     }
     CHECK(instance_buffer[node_a_index].params[0] == doctest::Approx(1.0f));
     CHECK(instance_buffer[node_b_index].params[0] == doctest::Approx(1.0f));
+    CHECK(instance_buffer[node_a_index].effect_params[0] == doctest::Approx(1.0f));
+    CHECK(instance_buffer[node_a_index].effect_params[1] == doctest::Approx(1.0f));
+    CHECK(instance_buffer[node_b_index].effect_params[0] == doctest::Approx(1.0f));
+    CHECK(instance_buffer[node_b_index].effect_params[1] == doctest::Approx(1.0f));
 
     node_b->set_opacity(0.25f);
+    node_b->set_effect_position_scale(0.5f);
+    node_b->set_effect_opacity_scale(0.2f);
     tree->process(0.0);
     director->build_instance_buffer_for_renderer(renderer_a.ptr(), instance_buffer);
     node_a_index = find_instance_index_by_translation_x(instance_buffer, node_a_x);
@@ -1152,8 +1158,12 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer ins
     }
     CHECK(instance_buffer[node_a_index].params[0] == doctest::Approx(1.0f));
     CHECK(instance_buffer[node_b_index].params[0] == doctest::Approx(0.25f));
+    CHECK(instance_buffer[node_b_index].effect_params[0] == doctest::Approx(0.5f));
+    CHECK(instance_buffer[node_b_index].effect_params[1] == doctest::Approx(0.2f));
 
     node_a->set_opacity(0.6f);
+    node_a->set_effect_position_scale(1.7f);
+    node_a->set_effect_opacity_scale(0.9f);
     tree->process(0.0);
     director->build_instance_buffer_for_renderer(renderer_a.ptr(), instance_buffer);
     node_a_index = find_instance_index_by_translation_x(instance_buffer, node_a_x);
@@ -1167,6 +1177,10 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer ins
     }
     CHECK(instance_buffer[node_a_index].params[0] == doctest::Approx(0.6f));
     CHECK(instance_buffer[node_b_index].params[0] == doctest::Approx(0.25f));
+    CHECK(instance_buffer[node_a_index].effect_params[0] == doctest::Approx(1.7f));
+    CHECK(instance_buffer[node_a_index].effect_params[1] == doctest::Approx(0.9f));
+    CHECK(instance_buffer[node_b_index].effect_params[0] == doctest::Approx(0.5f));
+    CHECK(instance_buffer[node_b_index].effect_params[1] == doctest::Approx(0.2f));
 
     root->remove_child(node_b);
     root->remove_child(node_a);
