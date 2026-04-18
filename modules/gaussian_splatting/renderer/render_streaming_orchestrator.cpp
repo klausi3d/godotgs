@@ -1570,6 +1570,8 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 		fallback_instance.wind_params[1] = 0.0f;
 		fallback_instance.wind_params[2] = 0.0f;
 		fallback_instance.wind_params[3] = 1.0f;
+		fallback_instance.effect_params[0] = 1.0f;
+		fallback_instance.effect_params[1] = 1.0f;
 		instance_pipeline_instance_cache.push_back(fallback_instance);
 		if (trace_enabled) {
 			GaussianSplatting::debug_trace_record_event("instance_pipeline",

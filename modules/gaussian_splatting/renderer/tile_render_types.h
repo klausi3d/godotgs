@@ -381,6 +381,10 @@ struct TileRenderParams {
 	float sphere_effector_strength = 0.0f;
 	float sphere_effector_falloff = 2.0f;
 	float sphere_effector_frequency = 2.0f;
+	bool sphere_effector_affect_position = true;
+	bool sphere_effector_affect_opacity = false;
+	float sphere_effector_opacity_strength = 1.0f;
+	float sphere_effector_target_opacity = 0.0f;
 	Ref<class ColorGradingResource> color_grading;
 	// Instance rotation inverse for SH view direction correction.
 	// When a GaussianSplatNode3D has a rotation transform, SH coefficients (stored in

@@ -1013,6 +1013,10 @@ void GaussianSplatManager::initialize_module() {
     GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_strength", 0.0f);
     GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_falloff", 2.0f);
     GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_frequency", 2.0f);
+    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_affect_position", true);
+    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_affect_opacity", false);
+    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_opacity_strength", 1.0f);
+    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_target_opacity", 0.0f);
 
     // Culling and LOD settings from PR #146
     GLOBAL_DEF("rendering/gaussian_splatting/culling/octree_max_depth", 8);

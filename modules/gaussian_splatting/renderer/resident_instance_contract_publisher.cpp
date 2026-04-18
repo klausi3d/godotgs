@@ -284,6 +284,8 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 		fallback_instance.params[1] = 1.0f;
 		fallback_instance.params[2] = 1.0f;
 		fallback_instance.wind_params[3] = 1.0f;
+		fallback_instance.effect_params[0] = 1.0f;
+		fallback_instance.effect_params[1] = 1.0f;
 		fallback_instance.ids[0] = kPrimaryResidentAssetId;
 		fallback_instance.ids[1] = GS_INSTANCE_FLAG_ROTATION_IDENTITY |
 				GS_INSTANCE_FLAG_SCALE_IDENTITY |

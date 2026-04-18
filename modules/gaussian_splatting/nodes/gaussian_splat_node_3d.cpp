@@ -163,6 +163,14 @@ void GaussianSplatNode3D::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_opacity"), &GaussianSplatNode3D::get_opacity);
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rendering/opacity", PROPERTY_HINT_RANGE, "0.0,1.0,0.01"), "set_opacity", "get_opacity");
 
+    ClassDB::bind_method(D_METHOD("set_effect_position_scale", "scale"), &GaussianSplatNode3D::set_effect_position_scale);
+    ClassDB::bind_method(D_METHOD("get_effect_position_scale"), &GaussianSplatNode3D::get_effect_position_scale);
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rendering/effect_position_scale", PROPERTY_HINT_RANGE, "0.0,4.0,0.01,or_greater"), "set_effect_position_scale", "get_effect_position_scale");
+
+    ClassDB::bind_method(D_METHOD("set_effect_opacity_scale", "scale"), &GaussianSplatNode3D::set_effect_opacity_scale);
+    ClassDB::bind_method(D_METHOD("get_effect_opacity_scale"), &GaussianSplatNode3D::get_effect_opacity_scale);
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rendering/effect_opacity_scale", PROPERTY_HINT_RANGE, "0.0,4.0,0.01,or_greater"), "set_effect_opacity_scale", "get_effect_opacity_scale");
+
     ClassDB::bind_method(D_METHOD("set_wind_override_enabled", "enabled"), &GaussianSplatNode3D::set_wind_override_enabled);
     ClassDB::bind_method(D_METHOD("is_wind_override_enabled"), &GaussianSplatNode3D::is_wind_override_enabled);
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "rendering/wind_override_enabled"), "set_wind_override_enabled", "is_wind_override_enabled");
@@ -1025,10 +1033,34 @@ void GaussianSplatNode3D::set_use_occlusion_culling(bool p_enabled) {
 }
 
 void GaussianSplatNode3D::set_opacity(float p_opacity) {
-    opacity = CLAMP(p_opacity, 0.0f, 1.0f);
-    if (renderer.is_valid()) {
-        _apply_renderer_settings();
+    float next_opacity = p_opacity;
+    if (!Math::is_finite(next_opacity)) {
+        WARN_PRINT("[GaussianSplatNode3D] Ignoring non-finite opacity; resetting to 1.0.");
+        next_opacity = 1.0f;
     }
+    opacity = CLAMP(next_opacity, 0.0f, 1.0f);
+    _mark_render_state_dirty();
+    _update_instance_params_in_director();
+}
+
+void GaussianSplatNode3D::set_effect_position_scale(float p_scale) {
+    float next_scale = p_scale;
+    if (!Math::is_finite(next_scale)) {
+        WARN_PRINT("[GaussianSplatNode3D] Ignoring non-finite effect_position_scale; resetting to 1.0.");
+        next_scale = 1.0f;
+    }
+    effect_position_scale = MAX(next_scale, 0.0f);
+    _mark_render_state_dirty();
+    _update_instance_params_in_director();
+}
+
+void GaussianSplatNode3D::set_effect_opacity_scale(float p_scale) {
+    float next_scale = p_scale;
+    if (!Math::is_finite(next_scale)) {
+        WARN_PRINT("[GaussianSplatNode3D] Ignoring non-finite effect_opacity_scale; resetting to 1.0.");
+        next_scale = 1.0f;
+    }
+    effect_opacity_scale = MAX(next_scale, 0.0f);
     _mark_render_state_dirty();
     _update_instance_params_in_director();
 }
@@ -2111,7 +2143,8 @@ void GaussianSplatNode3D::_register_instance_in_director() {
             _get_instance_wind_direction(), _get_instance_wind_frequency(),
             parent_visible && visible_in_viewport && is_visible_in_tree(),
             /*has_desired_residency_hint=*/true,
-            GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
+            GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT,
+            effect_position_scale, effect_opacity_scale);
     // Push color grading to the freshly-registered director record so it lands
     // in the InstanceGradingGPU row on the next buffer rebuild. Without this,
     // the earlier setter/signal attempts that fired before registration were
@@ -2144,7 +2177,8 @@ void GaussianSplatNode3D::_update_instance_params_in_director() {
                 _get_instance_wind_direction(), _get_instance_wind_frequency(),
                 parent_visible && visible_in_viewport && is_visible_in_tree(),
                 /*has_desired_residency_hint=*/true,
-                GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
+                GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT,
+                effect_position_scale, effect_opacity_scale);
     }
     if (renderer.is_valid()) {
         renderer->invalidate_cached_render();

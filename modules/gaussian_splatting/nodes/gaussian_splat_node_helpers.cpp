@@ -1424,7 +1424,6 @@ void GaussianSplatNodeRendererHelper::apply_renderer_settings() {
     owner.renderer->set_painterly_stroke_opacity(owner.stroke_opacity);
     owner.renderer->set_painterly_stroke_length(owner.stroke_width);
     owner.renderer->set_painterly_gamma(MAX(owner.temporal_blend, 0.01f));
-    owner.renderer->set_opacity_multiplier(owner.opacity);
     // Per-instance color grading — routed through the scene director. The director
     // stores grading on the node's InstanceRecord, then the director's build step
     // produces one InstanceGradingGPU row per instance indexed by

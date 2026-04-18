@@ -16,6 +16,7 @@ struct InstanceDataGPU {
     uvec2 ids;               // x = asset_id, y = flags
     uvec2 lod;               // x = resolved_lod_level, y = reserved
     vec4 wind_params;        // xyz = wind direction override (0,0,0=infer global), w = wind frequency scale
+    vec4 effect_params;      // x = position response scale, y = opacity response scale, z/w = reserved
 };
 
 // Instance flag bits (ids.y).
@@ -102,7 +103,7 @@ struct InstanceGradingGPU {
     vec4 secondary;
 };
 
-const uint GS_INSTANCE_DATA_GPU_SIZE = 96u;
+const uint GS_INSTANCE_DATA_GPU_SIZE = 112u;
 const uint GS_ASSET_LOD_RANGE_GPU_SIZE = 8u;
 const uint GS_ASSET_META_GPU_SIZE = 48u + 8u * GS_MAX_ASSET_LODS;
 const uint GS_CHUNK_META_GPU_SIZE = 64u;

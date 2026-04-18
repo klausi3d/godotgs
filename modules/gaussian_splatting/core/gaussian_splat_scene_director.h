@@ -48,6 +48,8 @@ public:
         uint32_t wind_mode = INSTANCE_WIND_INHERIT;
         Vector3 wind_direction = Vector3();
         float wind_frequency = 1.0f;
+        float effect_position_scale = 1.0f;
+        float effect_opacity_scale = 1.0f;
         uint32_t flags = 0;
         uint32_t last_lod = 0;
         bool casts_shadow = false;
@@ -85,13 +87,15 @@ public:
 			float p_wind_intensity = 1.0f, uint32_t p_wind_mode = INSTANCE_WIND_INHERIT,
 			const Vector3 &p_wind_direction = Vector3(), float p_wind_frequency = 1.0f,
 			bool p_visible = true, bool p_has_desired_residency_hint = false,
-			int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT);
+			int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT,
+			float p_effect_position_scale = 1.0f, float p_effect_opacity_scale = 1.0f);
 	void update_instance_transform(ObjectID p_node_id, const Transform3D &p_transform);
 	void update_instance_params(ObjectID p_node_id, float p_opacity, float p_lod_bias, uint32_t p_flags, bool p_casts_shadow = false,
 			float p_wind_intensity = 1.0f, uint32_t p_wind_mode = INSTANCE_WIND_INHERIT,
 			const Vector3 &p_wind_direction = Vector3(), float p_wind_frequency = 1.0f,
 			bool p_visible = true, bool p_has_desired_residency_hint = false,
-			int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT);
+			int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT,
+			float p_effect_position_scale = 1.0f, float p_effect_opacity_scale = 1.0f);
 	void unregister_instance(ObjectID p_node_id);
 	void update_instance_lods(const Vector3 &p_camera_pos, const LODConfig &p_lod_config, float p_hysteresis_zone);
     void update_instance_lods_for_renderer(const GaussianSplatRenderer *p_renderer, const Vector3 &p_camera_pos,
@@ -151,14 +155,16 @@ public:
             uint32_t p_wind_mode = INSTANCE_WIND_INHERIT, const Vector3 &p_wind_direction = Vector3(),
             float p_wind_frequency = 1.0f, bool p_visible = true,
             bool p_has_desired_residency_hint = false,
-            int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT);
+            int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT,
+            float p_effect_position_scale = 1.0f, float p_effect_opacity_scale = 1.0f);
     void update_instance_submission_transform(ObjectID p_node_id, const Transform3D &p_transform);
     void update_instance_submission_params(ObjectID p_node_id, float p_opacity, float p_lod_bias, uint32_t p_flags,
             bool p_casts_shadow = false, float p_wind_intensity = 1.0f,
             uint32_t p_wind_mode = INSTANCE_WIND_INHERIT, const Vector3 &p_wind_direction = Vector3(),
             float p_wind_frequency = 1.0f, bool p_visible = true,
             bool p_has_desired_residency_hint = false,
-            int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT);
+            int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT,
+            float p_effect_position_scale = 1.0f, float p_effect_opacity_scale = 1.0f);
     void unregister_instance_submission(ObjectID p_node_id);
     bool get_instance_submission(ObjectID p_node_id, InstanceSubmission *r_submission) const;
 
@@ -194,6 +200,8 @@ private:
         uint32_t wind_mode = INSTANCE_WIND_INHERIT;
 		Vector3 wind_direction = Vector3();
 		float wind_frequency = 1.0f;
+		float effect_position_scale = 1.0f;
+		float effect_opacity_scale = 1.0f;
 		uint32_t asset_id = 0;
 		uint32_t flags = 0;
         uint32_t last_lod = 0;

@@ -1,6 +1,6 @@
 #ifndef GS_RENDER_PARAMS_GLSL
 #define GS_RENDER_PARAMS_GLSL
-#define GS_RENDER_PARAMS_LAYOUT_VERSION 17 // Keep in sync with gaussian_gpu_layout.h
+#define GS_RENDER_PARAMS_LAYOUT_VERSION 18 // Keep in sync with gaussian_gpu_layout.h
 
 // Instance pipeline only: uses SplatRef indirection and asset-local quantization.
 
@@ -94,9 +94,12 @@ layout(set = 1, binding = 0, std140) uniform RenderParams {
     vec4 wind_time_config;
     // Single global sphere effector (foundation for capped multi-effector support):
     // effector_sphere: xyz = center (world), w = radius
-    // effector_config: x = enabled (0/1), y = displacement strength (meters), z = falloff exponent, w = reserved
+    // effector_config: x = enabled (0/1), y = displacement strength (meters), z = falloff exponent, w = frequency (Hz)
     vec4 effector_sphere;
     vec4 effector_config;
+    // effector_opacity_config: x = affect_position (0/1), y = affect_opacity (0/1),
+    // z = opacity_strength (0..1), w = target_opacity (0..1)
+    vec4 effector_opacity_config;
     // Hotspot-aware pre-raster cull (deterministic, shared by COUNT and EMIT):
     // x = hotspot_pressure_threshold (absolute previous-frame tile count; 0 disables)
     // y = hotspot_min_radius_px (raw minor-axis radius threshold for pruning)

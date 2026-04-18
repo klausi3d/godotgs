@@ -86,6 +86,7 @@ layout(set = 0, binding = 9, std140) uniform Params {
     vec4 wind_time_config;
     vec4 effector_sphere;
     vec4 effector_config;
+    vec4 effector_opacity_config;
     vec4 frustum_planes[6];
     vec4 camera_position_ortho; // xyz = camera position, w = orthographic flag
     vec4 cull_screen_distance; // x = pixel_scale_y, y = tiny_splat_radius_px, z = min_screen_threshold_px, w = max_distance_sq
@@ -171,16 +172,19 @@ void main() {
     float instance_intensity = max(instance.params.z, 0.0);
     float instance_wind_mode = instance.params.w;
     uint stable_seed = atlas_index ^ (visible_chunk.instance_id * 0x9e3779b9u);
-    world_position = gs_apply_wind_deformation(world_position,
+    GSDeformationResult deformation = gs_apply_wind_deformation(world_position,
             stable_seed,
             gaussian.opacity,
             instance_intensity,
             instance_wind_mode,
             instance.wind_params,
+            instance.effect_params,
             params.wind_dir_strength,
             params.wind_time_config,
             params.effector_sphere,
-            params.effector_config);
+            params.effector_config,
+            params.effector_opacity_config);
+    world_position = deformation.position;
 
     float local_radius = max(max(abs(local_scale.x), abs(local_scale.y)), abs(local_scale.z));
     if (local_radius <= 0.0) {

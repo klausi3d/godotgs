@@ -689,16 +689,19 @@ void main() {
     float instance_intensity = max(instance.params.z, 0.0);
     float instance_wind_mode = instance.params.w;
     uint stable_seed = gaussian_idx ^ (splat_ref.instance_id * 0x9e3779b9u);
-    world_position = gs_apply_wind_deformation(world_position,
+    GSDeformationResult deformation = gs_apply_wind_deformation(world_position,
             stable_seed,
             g.opacity,
             instance_intensity,
             instance_wind_mode,
             instance.wind_params,
+            instance.effect_params,
             params.wind_dir_strength,
             params.wind_time_config,
             params.effector_sphere,
-            params.effector_config);
+            params.effector_config,
+            params.effector_opacity_config);
+    world_position = deformation.position;
     vec3 world_scale = (instance_flags & GS_INSTANCE_FLAG_SCALE_IDENTITY) != 0u
             ? local_scale
             : local_scale * uniform_scale;
@@ -823,7 +826,8 @@ void main() {
         float visibility_threshold = gs_get_visibility_threshold();
         // Use the base opacity (before any fades) for radius calculation
         // This ensures consistent culling regardless of size/aspect fades
-        float base_opacity_for_culling = clamp(g.opacity * params.opacity_multiplier, 0.0, 1.0);
+        float base_opacity_for_culling = clamp(max(g.opacity, deformation.opacity) * instance.params.x *
+                params.opacity_multiplier, 0.0, 1.0);
 
         // Compute opacity-aware sigma (number of standard deviations to extend)
         effective_sigma = compute_opacity_aware_sigma(base_opacity_for_culling, visibility_threshold, max_sigma);
@@ -1053,7 +1057,8 @@ void main() {
 #endif
 
     // Use the fade computed earlier for opacity; we already skipped if nearly invisible.
-    float base_opacity = clamp(g.opacity * params.opacity_multiplier * size_fade * aspect_fade * lens_fade, 0.0, 0.99);
+    float base_opacity = clamp(deformation.opacity * instance.params.x * params.opacity_multiplier *
+            size_fade * aspect_fade * lens_fade, 0.0, 0.99);
 
     // Evaluate SH for view-dependent color using configurable band level
     vec3 view_dir = normalize(params.camera_position.xyz - g.position);

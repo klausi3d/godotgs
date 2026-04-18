@@ -159,6 +159,8 @@ private:
     bool use_frustum_culling = true;
     bool use_occlusion_culling = true; // Legacy serialized compatibility only (not an exposed node property).
     float opacity = 1.0f;
+    float effect_position_scale = 1.0f;
+    float effect_opacity_scale = 1.0f;
     bool wind_override_enabled = false;
     bool wind_enabled = true;
     float wind_strength = 1.0f;
@@ -599,9 +601,17 @@ public:
     void set_use_occlusion_culling(bool p_enabled);
     bool is_occlusion_culling_enabled() const { return use_occlusion_culling; }
 
-    /** @brief Sets global opacity multiplier for all splats. */
+    /** @brief Sets the per-instance opacity multiplier for this node. */
     void set_opacity(float p_opacity);
     float get_opacity() const { return opacity; }
+
+    /** @brief Scales sphere-driven position deformation for this node. */
+    void set_effect_position_scale(float p_scale);
+    float get_effect_position_scale() const { return effect_position_scale; }
+
+    /** @brief Scales sphere-driven opacity modulation for this node. */
+    void set_effect_opacity_scale(float p_scale);
+    float get_effect_opacity_scale() const { return effect_opacity_scale; }
 
     /** @brief Enables per-instance wind overrides for this node. */
     void set_wind_override_enabled(bool p_enabled);
