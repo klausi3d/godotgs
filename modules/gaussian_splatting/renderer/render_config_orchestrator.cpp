@@ -48,17 +48,14 @@ void RenderConfigOrchestrator::set_color_grading(const Ref<ColorGradingResource>
 		(renderer->*runtime_ports.invalidate_cached_render)();
 		// Per-instance grading path: records without an explicit per-instance
 		// grading ref fall back to this renderer-wide default at build time.
-		// Bump the director's instance generation so the grading SSBO rebuilds
-		// next frame with the new fallback values (world-bound case).
+		// The director's invalidate call bumps both the world's instance
+		// generation (if present) AND the renderer's grading defaults counter
+		// that the streaming/resident upload fingerprints include — so the
+		// SSBO re-uploads on the next frame for both world-bound and direct-
+		// data flows.
 		if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
 			director->invalidate_grading_for_renderer(renderer);
 		}
-		// Renderer-only / direct-data flows have no SharedWorld — bumping the
-		// director generation above is a no-op there. Bump a per-renderer
-		// counter that is folded into the streaming upload fingerprint so the
-		// next frame treats this as a changed upload and re-runs the grading
-		// buffer write.
-		renderer->get_resource_state().instance_grading_defaults_generation++;
 	}
 }
 

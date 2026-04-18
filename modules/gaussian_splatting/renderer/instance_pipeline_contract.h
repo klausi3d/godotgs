@@ -52,6 +52,7 @@ enum class InvariantViolationReason : uint8_t {
 
 	RASTER_ATLAS_GAUSSIAN_BUFFER_MISSING,
 	RASTER_INSTANCE_BUFFER_MISSING,
+	RASTER_INSTANCE_GRADING_BUFFER_MISSING,
 	RASTER_SPLAT_REF_BUFFER_MISSING,
 	RASTER_INSTANCE_COUNT_BUFFER_MISSING,
 	RASTER_QUANTIZATION_BUFFER_MISSING,
@@ -116,6 +117,7 @@ inline InvariantViolationClass get_violation_class(InvariantViolationReason p_re
 
 		case InvariantViolationReason::RASTER_ATLAS_GAUSSIAN_BUFFER_MISSING:
 		case InvariantViolationReason::RASTER_INSTANCE_BUFFER_MISSING:
+		case InvariantViolationReason::RASTER_INSTANCE_GRADING_BUFFER_MISSING:
 		case InvariantViolationReason::RASTER_SPLAT_REF_BUFFER_MISSING:
 		case InvariantViolationReason::RASTER_INSTANCE_COUNT_BUFFER_MISSING:
 		case InvariantViolationReason::RASTER_QUANTIZATION_BUFFER_MISSING:
@@ -217,6 +219,8 @@ inline const char *get_violation_reason_name(InvariantViolationReason p_reason) 
 			return "raster_atlas_gaussian_buffer_missing";
 		case InvariantViolationReason::RASTER_INSTANCE_BUFFER_MISSING:
 			return "raster_instance_buffer_missing";
+		case InvariantViolationReason::RASTER_INSTANCE_GRADING_BUFFER_MISSING:
+			return "raster_instance_grading_buffer_missing";
 		case InvariantViolationReason::RASTER_SPLAT_REF_BUFFER_MISSING:
 			return "raster_splat_ref_buffer_missing";
 		case InvariantViolationReason::RASTER_INSTANCE_COUNT_BUFFER_MISSING:
@@ -368,6 +372,14 @@ inline InvariantViolationReason first_raster_violation(const GaussianSplatRender
 	}
 	if (!p_buffers.instance_buffer.is_valid()) {
 		return InvariantViolationReason::RASTER_INSTANCE_BUFFER_MISSING;
+	}
+	// Tile binning binds `instance_grading_buffer` at set=0 binding=20 and reads
+	// per-splat grading via `splat_ref.instance_id`. It is a hard requirement for
+	// raster readiness — without this check a caller can pass has_raster_buffers()
+	// yet still trip the runtime ERR_FAIL_COND in tile_render_binning.cpp at bind
+	// time, producing late ERR_UNCONFIGURED failures and fallback loops.
+	if (!p_buffers.instance_grading_buffer.is_valid()) {
+		return InvariantViolationReason::RASTER_INSTANCE_GRADING_BUFFER_MISSING;
 	}
 	if (!p_buffers.splat_ref_buffer.is_valid()) {
 		return InvariantViolationReason::RASTER_SPLAT_REF_BUFFER_MISSING;

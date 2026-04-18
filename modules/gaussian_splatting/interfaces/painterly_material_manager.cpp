@@ -167,7 +167,9 @@ void PainterlyMaterialManager::update_resources() {
                               (stroke_density_buffer_size != required_size);
 
         if (needs_recreation) {
-            if (stroke_density_buffer.is_valid() && rd->buffer_is_valid(stroke_density_buffer)) {
+            if (stroke_density_buffer.is_valid() &&
+                    ResourceOwnerMismatchContract::is_device_generation_valid(rd, rd_device_id) &&
+                    rd->buffer_is_valid(stroke_density_buffer)) {
                 rd->free(stroke_density_buffer);
             }
             stroke_density_buffer = RID();

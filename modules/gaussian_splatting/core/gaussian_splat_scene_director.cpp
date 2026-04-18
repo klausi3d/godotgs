@@ -1436,14 +1436,18 @@ Ref<ColorGradingResource> GaussianSplatSceneDirector::get_instance_color_grading
 }
 
 void GaussianSplatSceneDirector::invalidate_grading_for_renderer(const GaussianSplatRenderer *p_renderer) {
+	// Always bump the renderer-wide grading defaults counter, even when there is
+	// no SharedWorld for this renderer. Renderer-only / direct-data flows (no
+	// director instances) need this so the streaming upload fingerprint changes
+	// on default grading edits — their fallback rows read from the renderer's
+	// get_color_grading() value and must refresh.
+	if (p_renderer) {
+		const_cast<GaussianSplatRenderer *>(p_renderer)
+				->get_resource_state().instance_grading_defaults_generation++;
+	}
 	MutexLock lock(world_mutex);
 	SharedWorld *world = const_cast<SharedWorld *>(_find_world_for_renderer(p_renderer));
 	if (!world) {
-		// Renderer-only / direct-data flow: no SharedWorld to bump. The caller
-		// (RenderConfigOrchestrator::set_color_grading) also bumps the renderer's
-		// `instance_grading_defaults_generation` counter which the streaming
-		// upload fingerprint includes, so the grading SSBO still re-uploads
-		// next frame even without a director entry.
 		return;
 	}
 	// Bump the instance generation so build_instance_grading_buffer_for_renderer

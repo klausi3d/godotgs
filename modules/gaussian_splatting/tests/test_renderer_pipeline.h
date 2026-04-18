@@ -402,6 +402,7 @@ static GaussianRenderPipeline::InstancePipelineBuffers make_ready_instance_pipel
     };
 
     buffers.instance_buffer = next_rid();
+    buffers.instance_grading_buffer = next_rid();
     buffers.asset_meta_buffer = next_rid();
     buffers.asset_chunk_index_buffer = next_rid();
     buffers.chunk_meta_buffer = next_rid();

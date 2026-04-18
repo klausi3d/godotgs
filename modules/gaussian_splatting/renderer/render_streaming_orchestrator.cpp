@@ -1912,15 +1912,15 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 					// does: tile binning requires instance_grading_buffer at binding 20, so
 					// we cannot leave the frame in a "ready" state with a missing SSBO.
 					if (!renderer->update_instance_grading_buffer(gradings)) {
-						buffers = renderer->get_instance_pipeline_buffers();
-						renderer->clear_instance_pipeline_buffers();
-						// Reset the upload fingerprint so the next frame's upload_changed
-						// comparison forces a retry. Without this, a transient OOM / device
-						// hiccup becomes sticky — upload_changed would stay false and the
-						// grading SSBO would never re-upload until an unrelated generation
-						// change happens to flip the fingerprint.
+						// Reset the upload fingerprint/generation FIRST so the next frame's
+						// upload_changed comparison forces a retry attempt. Without this, a
+						// transient OOM / device hiccup becomes sticky — upload_changed
+						// would stay false and the grading SSBO would never re-upload until
+						// an unrelated generation change happens to flip the fingerprint.
 						resource_state_mut.instance_pipeline_upload_fingerprint = 0;
 						resource_state_mut.instance_pipeline_upload_generation = 0;
+						buffers = renderer->get_instance_pipeline_buffers();
+						renderer->clear_instance_pipeline_buffers();
 					} else {
 						buffers = renderer->get_instance_pipeline_buffers();
 					}
