@@ -1353,26 +1353,32 @@ void GaussianSplatSceneDirector::build_instance_grading_buffer_for_renderer(cons
 	}
 }
 
-void GaussianSplatSceneDirector::update_instance_color_grading(ObjectID p_node_id,
+bool GaussianSplatSceneDirector::update_instance_color_grading(ObjectID p_node_id,
 		const Ref<ColorGradingResource> &p_grading) {
 	MutexLock lock(world_mutex);
 	SharedWorld *world = _find_world_for_instance(p_node_id);
 	if (!world) {
-		return;
+		return false;
 	}
 	const uint32_t *pidx = world->instance_lookup.getptr(p_node_id);
 	if (!pidx) {
-		return;
+		return false;
 	}
 	InstanceRecord &record = world->instances[*pidx];
-	if (record.color_grading == p_grading) {
-		return;
+	const bool ref_changed = record.color_grading != p_grading;
+	if (!ref_changed && p_grading.is_null()) {
+		// Per-frame apply path on a node with no grading — nothing to do, don't
+		// thrash the generation counter (would force a buffer re-upload every frame).
+		return true;
 	}
 	record.color_grading = p_grading;
 	record.dirty = true;
 	// Bump the instance generation so downstream caches (sort/raster) see the
-	// change. Asset generation stays put — we did not touch asset topology.
+	// change. We bump even when the ref is unchanged but valid, because the
+	// resource values (exposure/contrast/etc.) may have changed via slider edits
+	// and the signal handler re-pushes with the same ref.
 	_bump_instance_generation(world->instance_generation);
+	return true;
 }
 
 Ref<ColorGradingResource> GaussianSplatSceneDirector::get_instance_color_grading(ObjectID p_node_id) const {

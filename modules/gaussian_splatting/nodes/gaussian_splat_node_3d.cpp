@@ -1586,8 +1586,15 @@ bool GaussianSplatNode3D::_push_color_grading_to_renderer(bool p_allow_null) {
     // instead of stomping the renderer's single-slot RenderConfig::color_grading.
     // The director's build step walks all records and produces one InstanceGradingGPU
     // row per instance, so peer nodes no longer clobber each other.
+    bool pushed = false;
     if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
-        director->update_instance_color_grading(get_instance_id(), color_grading);
+        pushed = director->update_instance_color_grading(get_instance_id(), color_grading);
+    }
+    if (!pushed) {
+        // Director does not know this node yet (registration runs later in the
+        // node lifecycle). Leave the pushed/pending flags alone so replay
+        // re-tries once register_instance_in_director has landed.
+        return false;
     }
     renderer->invalidate_cached_render();
     grading_pushed_for_current_data = true;
@@ -2105,6 +2112,11 @@ void GaussianSplatNode3D::_register_instance_in_director() {
             parent_visible && visible_in_viewport && is_visible_in_tree(),
             /*has_desired_residency_hint=*/true,
             GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
+    // Push color grading to the freshly-registered director record so it lands
+    // in the InstanceGradingGPU row on the next buffer rebuild. Without this,
+    // the earlier setter/signal attempts that fired before registration were
+    // lost (director returned NO WORLD) and the record stayed at null grading.
+    director->update_instance_color_grading(get_instance_id(), color_grading);
 }
 
 void GaussianSplatNode3D::_unregister_instance_in_director() {

@@ -109,7 +109,7 @@ public:
 	// Per-instance color grading setter. Stores the grading ref on the record identified
 	// by node_id; the next frame's build_instance_grading_buffer_for_renderer picks it up.
 	// No-op when the node is unregistered.
-	void update_instance_color_grading(ObjectID p_node_id, const Ref<ColorGradingResource> &p_grading);
+	bool update_instance_color_grading(ObjectID p_node_id, const Ref<ColorGradingResource> &p_grading);
 	// Accessor for tests and diagnostics.
 	Ref<ColorGradingResource> get_instance_color_grading(ObjectID p_node_id) const;
 	// Hash every per-instance grading bound to this renderer. Used by the sort/raster cache
