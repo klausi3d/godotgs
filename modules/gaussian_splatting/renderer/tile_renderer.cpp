@@ -342,6 +342,7 @@ private:
 		}
 
 		renderer.instance_pipeline_buffers.instance_buffer = params.instance_buffer;
+		renderer.instance_pipeline_buffers.instance_grading_buffer = params.instance_grading_buffer;
 		renderer.instance_pipeline_buffers.splat_ref_buffer = params.splat_ref_buffer;
 			renderer.instance_pipeline_buffers.chunk_meta_buffer = params.chunk_meta_buffer;
 			renderer.instance_pipeline_buffers.quantization_buffer = params.quantization_buffer;

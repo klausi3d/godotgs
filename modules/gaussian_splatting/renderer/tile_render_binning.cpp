@@ -223,6 +223,7 @@ RID TileRenderer::TileBinningStage::acquire_binning_buffer_uniform_set(Rendering
 		const bool quantization_required = owner.instance_pipeline_buffers.quantization_required;
 	ERR_FAIL_COND_V(!owner.instance_pipeline_buffers.splat_ref_buffer.is_valid(), RID());
 	ERR_FAIL_COND_V(!owner.instance_pipeline_buffers.instance_buffer.is_valid(), RID());
+	ERR_FAIL_COND_V(!owner.instance_pipeline_buffers.instance_grading_buffer.is_valid(), RID());
 	ERR_FAIL_COND_V(!owner.instance_pipeline_buffers.indirect_count_buffer.is_valid(), RID());
 	ERR_FAIL_COND_V(!owner.instance_pipeline_buffers.indirect_dispatch_buffer.is_valid(), RID());
 	ERR_FAIL_COND_V(quantization_required && !owner.instance_pipeline_buffers.quantization_buffer.is_valid(), RID());
@@ -283,6 +284,14 @@ RID TileRenderer::TileBinningStage::acquire_binning_buffer_uniform_set(Rendering
 	instance_uniform.binding = 13;
 	instance_uniform.append_id(owner.instance_pipeline_buffers.instance_buffer);
 	uniforms.push_back(instance_uniform);
+
+	// Per-instance color grading (parallel to instance_buffer, indexed by
+	// SplatRefGPU.instance_id).
+	RD::Uniform instance_grading_uniform;
+	instance_grading_uniform.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
+	instance_grading_uniform.binding = 20;
+	instance_grading_uniform.append_id(owner.instance_pipeline_buffers.instance_grading_buffer);
+	uniforms.push_back(instance_grading_uniform);
 
 	if (quantization_required) {
 		RD::Uniform quant_uniform;
@@ -436,6 +445,7 @@ RID TileRenderer::TileBinningStage::acquire_binning_count_uniform_set(RenderingD
 		const bool quantization_required = owner.instance_pipeline_buffers.quantization_required;
 	ERR_FAIL_COND_V(!owner.instance_pipeline_buffers.splat_ref_buffer.is_valid(), RID());
 	ERR_FAIL_COND_V(!owner.instance_pipeline_buffers.instance_buffer.is_valid(), RID());
+	ERR_FAIL_COND_V(!owner.instance_pipeline_buffers.instance_grading_buffer.is_valid(), RID());
 	ERR_FAIL_COND_V(!owner.instance_pipeline_buffers.indirect_count_buffer.is_valid(), RID());
 	ERR_FAIL_COND_V(!owner.instance_pipeline_buffers.indirect_dispatch_buffer.is_valid(), RID());
 	ERR_FAIL_COND_V(quantization_required && !owner.instance_pipeline_buffers.quantization_buffer.is_valid(), RID());
@@ -496,6 +506,15 @@ RID TileRenderer::TileBinningStage::acquire_binning_count_uniform_set(RenderingD
 	instance_uniform.binding = 13;
 	instance_uniform.append_id(owner.instance_pipeline_buffers.instance_buffer);
 	uniforms.push_back(instance_uniform);
+
+	// Per-instance color grading. COUNT pass includes color_grading_binning.glsl
+	// transitively via tile_binning.glsl so the SSBO must be bound here too, even
+	// though COUNT early-returns before calling apply_color_grading_binning.
+	RD::Uniform instance_grading_uniform;
+	instance_grading_uniform.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
+	instance_grading_uniform.binding = 20;
+	instance_grading_uniform.append_id(owner.instance_pipeline_buffers.instance_grading_buffer);
+	uniforms.push_back(instance_grading_uniform);
 
 	if (quantization_required) {
 		RD::Uniform quant_uniform;

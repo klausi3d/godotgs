@@ -1763,6 +1763,7 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 	render_params.sphere_effector_frequency = MAX(0.1f, sphere_effector_frequency);
 	if (instance_buffers_ready) {
 		render_params.instance_buffer = instance_buffers.instance_buffer;
+		render_params.instance_grading_buffer = instance_buffers.instance_grading_buffer;
 		render_params.splat_ref_buffer = instance_buffers.splat_ref_buffer;
 		render_params.chunk_meta_buffer = instance_buffers.chunk_meta_buffer;
 		render_params.quantization_buffer = instance_buffers.quantization_required ? instance_buffers.quantization_buffer : RID();
@@ -1774,6 +1775,7 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 		// This prevents transient stale/garbage descriptors from being interpreted
 		// as valid indirect dispatch/count buffers by tile stages.
 		render_params.instance_buffer = RID();
+		render_params.instance_grading_buffer = RID();
 		render_params.splat_ref_buffer = RID();
 		render_params.chunk_meta_buffer = RID();
 		render_params.quantization_buffer = RID();

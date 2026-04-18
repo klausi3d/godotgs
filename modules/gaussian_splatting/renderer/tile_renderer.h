@@ -401,6 +401,7 @@ private:
     TileResourceController resource_controller;
     struct InstancePipelineBindings {
         RID instance_buffer;
+        RID instance_grading_buffer;
         RID splat_ref_buffer;
         RID chunk_meta_buffer;
         RID quantization_buffer;

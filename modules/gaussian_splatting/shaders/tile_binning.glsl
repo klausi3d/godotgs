@@ -99,6 +99,13 @@ layout(set = 0, binding = 13, std430) readonly buffer InstanceBuffer {
     InstanceDataGPU instances[];
 } instance_buffer;
 
+// Per-instance color grading sibling SSBO. Parallel rows to instance_buffer, indexed
+// by splat_ref.instance_id. Populated by GaussianSplatSceneDirector::
+// build_instance_grading_buffer_for_renderer.
+layout(set = 0, binding = 20, std430) readonly buffer InstanceGradingBuffer {
+    InstanceGradingGPU gradings[];
+} instance_grading_buffer;
+
 #if defined(USE_QUANTIZED_GAUSSIANS)
 layout(set = 0, binding = 14, std430) readonly buffer QuantizationChunkBuffer {
     ChunkQuantization chunks[];
@@ -1085,13 +1092,13 @@ void main() {
         }
     }
     // Apply color grading after cache logic so it affects both cached and fresh SH
-    sh_color = apply_color_grading_binning(sh_color);
+    sh_color = apply_color_grading_binning(sh_color, splat_ref.instance_id);
 #else
     vec3 sh_color = evaluate_sh_with_bands(g, view_dir_local, sh_band_level);
     // Clamp SH color to non-negative after evaluation
     // SH basis functions can produce negative contributions but final color should not be negative
     sh_color = max(sh_color, vec3(0.0));
-    sh_color = apply_color_grading_binning(sh_color);
+    sh_color = apply_color_grading_binning(sh_color, splat_ref.instance_id);
 #endif
 
     // Debug: force white albedo to isolate lighting contribution (debug_overlay_flags.w).

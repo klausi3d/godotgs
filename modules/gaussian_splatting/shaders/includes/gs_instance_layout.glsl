@@ -94,6 +94,14 @@ struct SplatRefGPU {
     uint atlas_index;
 };
 
+// Per-instance color grading (std430), indexed by SplatRefGPU.instance_id.
+// primary:   x = enabled (0/1), y = exposure, z = contrast, w = saturation
+// secondary: x = temperature,   y = tint,     z = hue_shift, w = reserved
+struct InstanceGradingGPU {
+    vec4 primary;
+    vec4 secondary;
+};
+
 const uint GS_INSTANCE_DATA_GPU_SIZE = 96u;
 const uint GS_ASSET_LOD_RANGE_GPU_SIZE = 8u;
 const uint GS_ASSET_META_GPU_SIZE = 48u + 8u * GS_MAX_ASSET_LODS;
@@ -101,5 +109,6 @@ const uint GS_CHUNK_META_GPU_SIZE = 64u;
 const uint GS_ASSET_CHUNK_INDEX_GPU_SIZE = 4u;
 const uint GS_VISIBLE_CHUNK_REF_GPU_SIZE = 8u;
 const uint GS_SPLAT_REF_GPU_SIZE = 8u;
+const uint GS_INSTANCE_GRADING_GPU_SIZE = 32u;
 
 #endif // GS_INSTANCE_LAYOUT_GLSL
