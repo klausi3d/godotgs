@@ -1574,7 +1574,7 @@ bool GaussianSplatNode3D::_can_push_color_grading_to_renderer() const {
     return renderer.is_valid() && is_inside_tree() && is_inside_world() && _has_local_source_data();
 }
 
-bool GaussianSplatNode3D::_push_color_grading_to_renderer(bool p_allow_null) {
+bool GaussianSplatNode3D::_push_color_grading_to_renderer(bool p_allow_null, bool p_force_refresh) {
     if (!_can_push_color_grading_to_renderer()) {
         return false;
     }
@@ -1588,7 +1588,7 @@ bool GaussianSplatNode3D::_push_color_grading_to_renderer(bool p_allow_null) {
     // row per instance, so peer nodes no longer clobber each other.
     bool pushed = false;
     if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
-        pushed = director->update_instance_color_grading(get_instance_id(), color_grading);
+        pushed = director->update_instance_color_grading(get_instance_id(), color_grading, p_force_refresh);
     }
     if (!pushed) {
         // Director does not know this node yet (registration runs later in the
@@ -2186,7 +2186,10 @@ void GaussianSplatNode3D::_on_asset_changed() {
 }
 
 void GaussianSplatNode3D::_on_color_grading_changed() {
-    if (!_push_color_grading_to_renderer(true)) {
+    // `changed` fires when slider values mutate on the same resource ref.
+    // Tell the director to bump the instance generation unconditionally so
+    // the grading SSBO re-uploads with the fresh values next frame.
+    if (!_push_color_grading_to_renderer(true, /*p_force_refresh=*/true)) {
         // Detached or data-less resource mutation: queue an explicit
         // replay so the user's change (including null) reaches the
         // renderer when this node next becomes active content. Arming

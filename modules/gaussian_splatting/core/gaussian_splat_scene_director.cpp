@@ -1276,7 +1276,7 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 // Shared grading→GPU conversion. Mirrors the enabled/disabled logic used by
 // TileRenderParamsBuilder::build_params so the binding-stage shader sees identical
 // parameter semantics whether it reads the legacy UBO default or the new SSBO.
-static void _fill_instance_grading_entry(const Ref<ColorGradingResource> &p_grading, InstanceGradingGPU &r_entry) {
+void GaussianSplatSceneDirector::fill_instance_grading_entry(const Ref<ColorGradingResource> &p_grading, InstanceGradingGPU &r_entry) {
 	if (p_grading.is_valid() && p_grading->get_enabled()) {
 		r_entry.primary[0] = 1.0f; // enabled = true
 		r_entry.primary[1] = p_grading->get_exposure();
@@ -1324,7 +1324,7 @@ void GaussianSplatSceneDirector::build_instance_grading_buffer_for_renderer(cons
 				world->world_submission.gaussian_data.is_valid() &&
 				world->world_submission.gaussian_data->get_count() > 0) {
 			InstanceGradingGPU entry = {};
-			_fill_instance_grading_entry(renderer_default, entry);
+			GaussianSplatSceneDirector::fill_instance_grading_entry(renderer_default, entry);
 			out.push_back(entry);
 		}
 		return;
@@ -1348,13 +1348,13 @@ void GaussianSplatSceneDirector::build_instance_grading_buffer_for_renderer(cons
 		const Ref<ColorGradingResource> &grading = record.color_grading.is_valid()
 				? record.color_grading
 				: renderer_default;
-		_fill_instance_grading_entry(grading, entry);
+		GaussianSplatSceneDirector::fill_instance_grading_entry(grading, entry);
 		out.push_back(entry);
 	}
 }
 
 bool GaussianSplatSceneDirector::update_instance_color_grading(ObjectID p_node_id,
-		const Ref<ColorGradingResource> &p_grading) {
+		const Ref<ColorGradingResource> &p_grading, bool p_force_refresh) {
 	MutexLock lock(world_mutex);
 	SharedWorld *world = _find_world_for_instance(p_node_id);
 	if (!world) {
@@ -1366,17 +1366,18 @@ bool GaussianSplatSceneDirector::update_instance_color_grading(ObjectID p_node_i
 	}
 	InstanceRecord &record = world->instances[*pidx];
 	const bool ref_changed = record.color_grading != p_grading;
-	if (!ref_changed && p_grading.is_null()) {
-		// Per-frame apply path on a node with no grading — nothing to do, don't
-		// thrash the generation counter (would force a buffer re-upload every frame).
+	if (!ref_changed && !p_force_refresh) {
+		// Per-frame apply / repeat-push path on an unchanged ref. Skip the
+		// generation bump entirely — every frame would otherwise bust sort/
+		// raster caches just because an unrelated setting re-ran settings apply.
 		return true;
 	}
 	record.color_grading = p_grading;
 	record.dirty = true;
 	// Bump the instance generation so downstream caches (sort/raster) see the
-	// change. We bump even when the ref is unchanged but valid, because the
-	// resource values (exposure/contrast/etc.) may have changed via slider edits
-	// and the signal handler re-pushes with the same ref.
+	// change. Fires when the ref actually changes, or when the caller explicitly
+	// asserts "values behind this ref just mutated" via p_force_refresh=true
+	// (used by the ColorGradingResource `changed` signal handler for slider edits).
 	_bump_instance_generation(world->instance_generation);
 	return true;
 }
@@ -1395,7 +1396,7 @@ Ref<ColorGradingResource> GaussianSplatSceneDirector::get_instance_color_grading
 }
 
 uint64_t GaussianSplatSceneDirector::compute_color_grading_signature_for_renderer(
-		const GaussianSplatRenderer *p_renderer) const {
+		const GaussianSplatRenderer *p_renderer, bool p_shadow_casters_only) const {
 	// FNV-1a-esque rolling hash over every per-instance grading tied to the renderer,
 	// including the renderer-wide default used as the fallback. The sort/raster cache
 	// invalidation path hashes this in, so any node grading edit busts the cache.
@@ -1445,9 +1446,15 @@ uint64_t GaussianSplatSceneDirector::compute_color_grading_signature_for_rendere
 	}
 
 	for (const InstanceRecord &record : world->instances) {
-		// Mirror the visibility/asset filters from build_instance_grading_buffer_for_renderer
-		// so signature reflects the exact set of gradings the shader will see.
+		// Mirror the visibility/shadow/asset filters from
+		// build_instance_grading_buffer_for_renderer so signature reflects the exact
+		// set of gradings the shader will actually see. Without the shadow filter,
+		// grading edits on non-shadow-caster nodes would spuriously bust the shadow
+		// sort/raster cache.
 		if (!record.visible) {
+			continue;
+		}
+		if (p_shadow_casters_only && !record.casts_shadow) {
 			continue;
 		}
 		const SharedWorld::AssetRecord *asset_record = world->asset_records.getptr(record.asset_id);

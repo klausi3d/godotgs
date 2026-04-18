@@ -359,7 +359,7 @@ private:
     void _on_color_grading_changed();
     bool _has_local_source_data() const;
     bool _can_push_color_grading_to_renderer() const;
-    bool _push_color_grading_to_renderer(bool p_allow_null);
+    bool _push_color_grading_to_renderer(bool p_allow_null, bool p_force_refresh = false);
 
     // Push the cached color_grading to the renderer if it has not been
     // pushed yet for the current renderer/data window AND the node is active

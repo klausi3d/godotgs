@@ -271,7 +271,11 @@ static uint64_t _compute_color_grading_signature(const GaussianSplatRenderer::Re
 	// need to hash p_render_config.color_grading separately.
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
 	if (director && p_renderer) {
-		seed = _hash_u64(director->compute_color_grading_signature_for_renderer(p_renderer), seed);
+		// Mirror the shadow filter used by build_instance_grading_buffer_for_renderer
+		// so shadow-pass caches only invalidate on shadow-caster grading edits.
+		const bool shadow_only = const_cast<GaussianSplatRenderer *>(p_renderer)
+				->is_shadow_instance_filter_enabled();
+		seed = _hash_u64(director->compute_color_grading_signature_for_renderer(p_renderer, shadow_only), seed);
 	} else {
 		// Fallback to the legacy single-slot hash when the director is not accessible
 		// (tests, tear-down paths).

@@ -106,15 +106,36 @@ public:
 	// produces a 1-row buffer so the shader always has a valid index.
 	void build_instance_grading_buffer_for_renderer(const GaussianSplatRenderer *p_renderer,
 			LocalVector<InstanceGradingGPU> &out, bool p_shadow_casters_only = false) const;
+	// Fill a single GPU grading row from a ColorGradingResource ref (null → neutral
+	// disabled). Exposed so streaming/resident fallback paths that inject synthetic
+	// instance rows outside the director's record list can still honor the renderer's
+	// color_grading default instead of forcing neutral.
+	static void fill_instance_grading_entry(const Ref<ColorGradingResource> &p_grading,
+			InstanceGradingGPU &r_entry);
 	// Per-instance color grading setter. Stores the grading ref on the record identified
 	// by node_id; the next frame's build_instance_grading_buffer_for_renderer picks it up.
 	// No-op when the node is unregistered.
-	bool update_instance_color_grading(ObjectID p_node_id, const Ref<ColorGradingResource> &p_grading);
+	//
+	// `p_force_refresh` controls cache-invalidation cadence. Callers that know the
+	// underlying grading values just changed (e.g. a ColorGradingResource `changed`
+	// signal for slider edits) pass true — the generation is bumped even when the
+	// ref is unchanged so the buffer re-uploads with fresh values. Callers that
+	// merely echo the current ref (per-frame apply) leave it false so unrelated
+	// setting churn does not bust sort/raster caches every frame.
+	bool update_instance_color_grading(ObjectID p_node_id, const Ref<ColorGradingResource> &p_grading,
+			bool p_force_refresh = false);
 	// Accessor for tests and diagnostics.
 	Ref<ColorGradingResource> get_instance_color_grading(ObjectID p_node_id) const;
 	// Hash every per-instance grading bound to this renderer. Used by the sort/raster cache
 	// invalidation path so any node's grading edit busts the cache.
-	uint64_t compute_color_grading_signature_for_renderer(const GaussianSplatRenderer *p_renderer) const;
+	//
+	// `p_shadow_casters_only` mirrors the filter in build_instance_grading_buffer_for_renderer.
+	// When the renderer is rendering a shadow pass, non-shadow-caster records are filtered
+	// out of the grading buffer — their gradings MUST not participate in the shadow cache
+	// signature either, otherwise grading edits on non-shadow nodes spuriously bust the
+	// shadow sort/raster cache.
+	uint64_t compute_color_grading_signature_for_renderer(const GaussianSplatRenderer *p_renderer,
+			bool p_shadow_casters_only = false) const;
 	uint32_t get_instance_count_for_renderer(const GaussianSplatRenderer *p_renderer) const;
 	uint64_t get_instance_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
 	uint64_t get_instance_asset_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;

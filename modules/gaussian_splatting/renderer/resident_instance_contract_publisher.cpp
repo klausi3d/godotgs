@@ -7,6 +7,7 @@
 #include "quantization_config.h"
 #include "../core/gaussian_splat_scene_director.h"
 #include "../interfaces/gpu_sorting_pipeline.h"
+#include "../resources/color_grading_resource.h"
 #include "servers/rendering/rendering_device.h"
 
 #include <algorithm>
@@ -646,13 +647,14 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 		}
 		if (gradings.is_empty() && !instances.is_empty()) {
 			// Fallback when director has no records but we injected a primary-resident
-			// fallback instance above. Mirror the instance row count so the shader
-			// always has a valid row to index.
+			// fallback instance above. Seed from the renderer's legacy renderer-wide
+			// color_grading so direct-data / worldless renderers that still rely on
+			// `renderer->set_color_grading()` keep their grading on this path instead
+			// of being forced to neutral.
+			const Ref<ColorGradingResource> renderer_default = p_renderer->get_color_grading();
 			gradings.resize(instances.size());
 			for (uint32_t i = 0; i < gradings.size(); ++i) {
-				gradings[i] = InstanceGradingGPU{};
-				gradings[i].primary[2] = 1.0f; // contrast neutral
-				gradings[i].primary[3] = 1.0f; // saturation neutral
+				GaussianSplatSceneDirector::fill_instance_grading_entry(renderer_default, gradings[i]);
 			}
 		}
 		if (!p_renderer->update_instance_grading_buffer(gradings)) {

@@ -10,6 +10,7 @@
 #include "gpu_sorting_config.h"
 #include "../core/gaussian_splat_scene_director.h"
 #include "../interfaces/gpu_sorting_pipeline.h"
+#include "../resources/color_grading_resource.h"
 #include "../logger/gs_debug_trace.h"
 #include "../logger/gs_logger.h"
 
@@ -1890,6 +1891,18 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 					if (director) {
 						director->build_instance_grading_buffer_for_renderer(renderer, gradings,
 								renderer->is_shadow_instance_filter_enabled());
+					}
+					// Fallback: if the director produced no rows but the streaming cache has
+					// synthetic primary-fallback instances injected at line ~1541-1577, seed the
+					// rows from the renderer's legacy color_grading default so worldless /
+					// direct-data renderers keep their grading instead of being forced to
+					// neutral. Mirror the row count of instance_pipeline_instance_cache.
+					if (gradings.is_empty() && !instance_pipeline_instance_cache.is_empty()) {
+						const Ref<ColorGradingResource> renderer_default = renderer->get_color_grading();
+						gradings.resize(instance_pipeline_instance_cache.size());
+						for (uint32_t i = 0; i < gradings.size(); ++i) {
+							GaussianSplatSceneDirector::fill_instance_grading_entry(renderer_default, gradings[i]);
+						}
 					}
 					renderer->update_instance_grading_buffer(gradings);
 					buffers = renderer->get_instance_pipeline_buffers();
