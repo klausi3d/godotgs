@@ -785,8 +785,9 @@ Error BitonicSort::sort(RID keys_buffer, RID values_buffer, uint32_t count) {
         return ERR_CANT_CREATE;
     }
 
-    // Dont manually free uniform sets - they auto-free when buffer dependencies are freed
-    // (Godot PR 103113). Manual frees cause "invalid ID" if sets were already auto-freed.
+    if (uniform_set.is_valid() && uniform_owner && uniform_owner->uniform_set_is_valid(uniform_set)) {
+        uniform_owner->free(uniform_set);
+    }
     uniform_set = RID();
     uniform_owner = nullptr;
     uniform_owner_generation = 0;
@@ -3292,9 +3293,7 @@ bool OneSweepSort::is_ready() const {
 }
 
 void OneSweepSort::wait_for_completion() {
-    // Uniform sets auto-free when dependencies are freed (Godot PR 103113)
-
-    uniform_sets.clear();
+    _free_uniform_sets_safe(uniform_owner, uniform_owner_generation, resource_device, uniform_sets);
     uniform_owner = nullptr;
 
     current_sort_value = 0;

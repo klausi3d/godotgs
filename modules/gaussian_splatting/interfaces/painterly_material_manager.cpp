@@ -3,6 +3,8 @@
 
 #include "painterly_material_manager.h"
 #include "../logger/gs_logger.h"
+#include "../renderer/resource_owner_mismatch_contract.h"
+#include "servers/rendering/rendering_device.h"
 #include <cstring>
 
 void PainterlyMaterialManager::_bind_methods() {
@@ -25,6 +27,10 @@ Error PainterlyMaterialManager::initialize(RenderingDevice *p_device) {
     }
 
     rd = p_device;
+    // Record the device's instance id so clear_resources() can validate the
+    // cached pointer before dereferencing it. See is_device_generation_valid()
+    // for the pattern used elsewhere in the module (gpu_sorter, bitonic sort).
+    rd_device_id = p_device->get_device_instance_id();
     initialized = true;
     return OK;
 }
@@ -35,6 +41,7 @@ void PainterlyMaterialManager::shutdown() {
 
     initialized = false;
     rd = nullptr;
+    rd_device_id = 0;
 }
 
 void PainterlyMaterialManager::set_material(const Ref<PainterlyMaterial> &p_material) {
@@ -77,10 +84,11 @@ void PainterlyMaterialManager::clear_resources() {
     stroke_density_sample_count = 0;
     stroke_density_buffer_size = 0;
 
-    // IMPORTANT: Do NOT call free() on resources here!
-    // Resources belong to a specific RenderingDevice that may have been destroyed.
-    // Attempting to free with a different/stale device pointer causes "invalid ID" errors.
-    // The resources will be cleaned up automatically when their owning device is destroyed.
+    if (stroke_density_buffer.is_valid() &&
+            ResourceOwnerMismatchContract::is_device_generation_valid(rd, rd_device_id) &&
+            rd->buffer_is_valid(stroke_density_buffer)) {
+        rd->free(stroke_density_buffer);
+    }
     stroke_density_buffer = RID();
 }
 
@@ -150,11 +158,11 @@ void PainterlyMaterialManager::update_resources() {
                               (stroke_density_buffer_size != required_size);
 
         if (needs_recreation) {
-            // Invalidate existing buffer if it exists (don't free - device owns resources)
-            if (stroke_density_buffer.is_valid()) {
-                stroke_density_buffer = RID();
-                stroke_density_buffer_size = 0;
+            if (stroke_density_buffer.is_valid() && rd->buffer_is_valid(stroke_density_buffer)) {
+                rd->free(stroke_density_buffer);
             }
+            stroke_density_buffer = RID();
+            stroke_density_buffer_size = 0;
 
             // Create new buffer with correct size
             stroke_density_buffer = rd->storage_buffer_create(data.size(), data);
@@ -170,11 +178,11 @@ void PainterlyMaterialManager::update_resources() {
             rd->buffer_update(stroke_density_buffer, 0, data.size(), data.ptr());
         }
     } else {
-        // No samples, invalidate the buffer if it exists (don't free - device owns resources)
-        if (stroke_density_buffer.is_valid()) {
-            stroke_density_buffer = RID();
-            stroke_density_buffer_size = 0;
+        if (stroke_density_buffer.is_valid() && rd->buffer_is_valid(stroke_density_buffer)) {
+            rd->free(stroke_density_buffer);
         }
+        stroke_density_buffer = RID();
+        stroke_density_buffer_size = 0;
     }
 
     material_dirty = false;

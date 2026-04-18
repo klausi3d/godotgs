@@ -94,6 +94,10 @@ private:
     // State
     bool initialized = false;
     RenderingDevice *rd = nullptr;
+    // Captured at initialize() so clear_resources() can verify the cached
+    // device pointer is still the one we recorded. Zero means "no generation
+    // recorded" and is treated as unsafe to dereference.
+    uint64_t rd_device_id = 0;
 
     // Material reference
     Ref<PainterlyMaterial> material;
