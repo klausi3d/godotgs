@@ -43,7 +43,23 @@ void RenderConfigOrchestrator::set_color_grading(const Ref<ColorGradingResource>
 	if (render_config.color_grading == p_grading) {
 		return;
 	}
+	// Disconnect the signal on the OLD resource (if any) before swapping. Without
+	// this, dangling `changed` connections on replaced resources would keep calling
+	// the renderer handler after the resource is no longer the active default.
+	const Callable grading_changed = callable_mp(renderer, &GaussianSplatRenderer::_on_renderer_default_grading_changed);
+	if (render_config.color_grading.is_valid() && renderer &&
+			render_config.color_grading->is_connected("changed", grading_changed)) {
+		render_config.color_grading->disconnect("changed", grading_changed);
+	}
 	render_config.color_grading = p_grading;
+	// Connect the new resource so in-place slider edits (which emit `changed`
+	// without swapping the Ref) re-run the invalidation path. Without this,
+	// mutating the resource behind the scenes leaves fallback-graded rows
+	// stale until an unrelated content change forces a rebuild.
+	if (render_config.color_grading.is_valid() && renderer &&
+			!render_config.color_grading->is_connected("changed", grading_changed)) {
+		render_config.color_grading->connect("changed", grading_changed);
+	}
 	if (renderer) {
 		(renderer->*runtime_ports.invalidate_cached_render)();
 		// Per-instance grading path: records without an explicit per-instance
@@ -148,6 +164,17 @@ void GaussianSplatRenderer::set_opacity_multiplier(float p_opacity) {
 
 void GaussianSplatRenderer::set_color_grading(const Ref<ColorGradingResource> &p_grading) {
 	config_orchestrator->set_color_grading(p_grading);
+}
+
+void GaussianSplatRenderer::_on_renderer_default_grading_changed() {
+	// Fired when the renderer-wide default ColorGradingResource emits `changed`
+	// (slider edits that mutate values in place — same Ref, new values). Re-run
+	// the invalidation path so fallback-graded rows pick up the fresh values on
+	// the next frame.
+	invalidate_cached_render();
+	if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
+		director->invalidate_grading_for_renderer(this);
+	}
 }
 
 void GaussianSplatRenderer::set_interactive_state(InteractiveState p_state) {

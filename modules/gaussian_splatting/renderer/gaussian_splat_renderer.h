@@ -940,6 +940,11 @@ public:
      */
     void set_color_grading(const Ref<class ColorGradingResource> &p_grading) override;
     Ref<class ColorGradingResource> get_color_grading() const { return get_render_config().color_grading; }
+    // Signal handler for the renderer-wide color grading resource's `changed` signal.
+    // Fires when slider edits mutate the resource values in place (same ref, different
+    // values). Re-runs the grading invalidation path so fallback-graded rows refresh.
+    // Exposed so RenderConfigOrchestrator can connect/disconnect via `callable_mp`.
+    void _on_renderer_default_grading_changed();
 
     /**
      * @brief Enables or disables static sort caching.
