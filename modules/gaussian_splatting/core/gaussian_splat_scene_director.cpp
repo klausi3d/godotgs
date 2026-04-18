@@ -1395,6 +1395,19 @@ Ref<ColorGradingResource> GaussianSplatSceneDirector::get_instance_color_grading
 	return world->instances[*pidx].color_grading;
 }
 
+void GaussianSplatSceneDirector::invalidate_grading_for_renderer(const GaussianSplatRenderer *p_renderer) {
+	MutexLock lock(world_mutex);
+	SharedWorld *world = const_cast<SharedWorld *>(_find_world_for_renderer(p_renderer));
+	if (!world) {
+		return;
+	}
+	// Bump the instance generation so build_instance_grading_buffer_for_renderer
+	// re-runs next frame. Records without per-instance grading fall back to the
+	// renderer-wide default at build time, so those rows need to re-upload when
+	// the default changes even though no per-instance ref mutated.
+	_bump_instance_generation(world->instance_generation);
+}
+
 uint64_t GaussianSplatSceneDirector::compute_color_grading_signature_for_renderer(
 		const GaussianSplatRenderer *p_renderer, bool p_shadow_casters_only) const {
 	// FNV-1a-esque rolling hash over every per-instance grading tied to the renderer,

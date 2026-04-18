@@ -126,6 +126,12 @@ public:
 			bool p_force_refresh = false);
 	// Accessor for tests and diagnostics.
 	Ref<ColorGradingResource> get_instance_color_grading(ObjectID p_node_id) const;
+	// Bump the instance generation of the world bound to this renderer so the
+	// next frame rebuilds the grading SSBO. Called when the renderer's legacy
+	// renderer-wide color_grading default changes — records with no per-instance
+	// grading read from that default via the build step's fallback, so their
+	// rows need to re-upload even though no per-instance ref changed.
+	void invalidate_grading_for_renderer(const GaussianSplatRenderer *p_renderer);
 	// Hash every per-instance grading bound to this renderer. Used by the sort/raster cache
 	// invalidation path so any node's grading edit busts the cache.
 	//

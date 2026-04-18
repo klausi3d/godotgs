@@ -1904,8 +1904,15 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 							GaussianSplatSceneDirector::fill_instance_grading_entry(renderer_default, gradings[i]);
 						}
 					}
-					renderer->update_instance_grading_buffer(gradings);
-					buffers = renderer->get_instance_pipeline_buffers();
+					// Treat a grading-buffer upload failure the same way the resident path
+					// does: tile binning requires instance_grading_buffer at binding 20, so
+					// we cannot leave the frame in a "ready" state with a missing SSBO.
+					if (!renderer->update_instance_grading_buffer(gradings)) {
+						buffers = renderer->get_instance_pipeline_buffers();
+						renderer->clear_instance_pipeline_buffers();
+					} else {
+						buffers = renderer->get_instance_pipeline_buffers();
+					}
 				}
 			} else if (!contract_changed) {
 				buffers = renderer->get_instance_pipeline_buffers();
