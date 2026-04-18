@@ -1582,7 +1582,13 @@ bool GaussianSplatNode3D::_push_color_grading_to_renderer(bool p_allow_null) {
         return false;
     }
 
-    renderer->set_color_grading(color_grading);
+    // Per-instance routing: write the grading into the director record for this node
+    // instead of stomping the renderer's single-slot RenderConfig::color_grading.
+    // The director's build step walks all records and produces one InstanceGradingGPU
+    // row per instance, so peer nodes no longer clobber each other.
+    if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
+        director->update_instance_color_grading(get_instance_id(), color_grading);
+    }
     renderer->invalidate_cached_render();
     grading_pushed_for_current_data = true;
     // The push satisfies any pending explicit edit too; clear so a later
