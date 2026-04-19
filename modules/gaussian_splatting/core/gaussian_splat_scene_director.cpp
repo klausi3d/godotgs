@@ -1557,6 +1557,12 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 		return;
 	}
 
+	// Build the scene-effector payload once up front so the world-submission
+	// shim (below) and the per-instance path (further down) can encode masks
+	// against the same slot ordering.
+	LocalVector<SphereEffectorSelection> scene_payload;
+	_build_sorted_sphere_effector_payload(*world, scene_payload);
+
 	// World submission instance: when the world has an active world submission with
 	// renderable data and no normal instances, produce a proper identity-transform
 	// instance referencing the primary asset (id=0).  This replaces the synthetic
@@ -1585,6 +1591,20 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 			entry.wind_params[3] = 1.0f;
 			entry.effect_params[0] = 1.0f;
 			entry.effect_params[1] = 1.0f;
+			// Encode the scene-effector mask so world-submitted content isn't
+			// filtered out by the shader's `effector_meta.w > 0.5` gate.
+			// World-submission renders have no node-side filter state, so
+			// default to "accept every WORLD-scope effector" — matches what
+			// a world-scope effector is meant to do (affect everything in
+			// this renderer's scenario).
+			uint32_t world_scope_mask = 0u;
+			for (uint32_t i = 0; i < scene_payload.size(); ++i) {
+				if (scene_payload[i].scope_mode == SPHERE_EFFECTOR_SCOPE_WORLD) {
+					world_scope_mask |= (1u << i);
+				}
+			}
+			entry.effect_params[2] = _encode_u32_as_float_bits(world_scope_mask);
+			entry.effect_params[3] = float(scene_payload.size());
 			out.push_back(entry);
 		}
 		return;
@@ -1592,8 +1612,6 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 
 	const bool log_enabled = _is_scene_director_log_enabled();
 	const bool trace_enabled = GaussianSplatting::debug_trace_is_enabled();
-	LocalVector<SphereEffectorSelection> scene_payload;
-	_build_sorted_sphere_effector_payload(*world, scene_payload);
 	out.reserve(world->instances.size());
 	uint32_t skipped_instances = 0;
 	uint32_t traced_total = 0;
