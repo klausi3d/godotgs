@@ -56,10 +56,6 @@ static bool _is_renderer_shared_with_other_content(const Ref<GaussianSplatRender
     return false;
 }
 
-// Collect the instance node's ancestor ObjectID chain (self + every parent up
-// to the scene root). Cached on InstanceRecord so the render-thread mask
-// builder can evaluate subtree containment without a live `is_ancestor_of`
-// walk.
 static void _collect_scene_tree_ancestor_ids(const Node *p_node, LocalVector<ObjectID> &r_ids) {
     r_ids.clear();
     const Node *cursor = p_node;
@@ -200,6 +196,7 @@ void GaussianSplatNode3D::_bind_methods() {
     ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "rendering/scene_effector_scope_root", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "Node"),
             "set_scene_effector_scope_root", "get_scene_effector_scope_root");
     ClassDB::bind_method(D_METHOD("get_last_matched_scene_effector_count"), &GaussianSplatNode3D::get_last_matched_scene_effector_count);
+    ClassDB::bind_method(D_METHOD("get_scene_effector_debug_state"), &GaussianSplatNode3D::get_scene_effector_debug_state);
     ClassDB::bind_method(D_METHOD("is_scene_effector_position_active"), &GaussianSplatNode3D::is_scene_effector_position_active);
     ClassDB::bind_method(D_METHOD("is_scene_effector_opacity_active"), &GaussianSplatNode3D::is_scene_effector_opacity_active);
 
@@ -598,16 +595,42 @@ bool GaussianSplatNode3D::_get(const StringName &p_name, Variant &r_ret) const {
         r_ret = gpu_memory_mb;
         return true;
     }
+    const Dictionary scene_effector_debug_state = get_scene_effector_debug_state();
+    if (p_name == StringName("stats/matched_scene_effectors")) {
+        r_ret = int64_t(scene_effector_debug_state.get(StringName("matched_count"), 0));
+        return true;
+    }
+    if (p_name == StringName("stats/bound_scene_effectors")) {
+        r_ret = int64_t(scene_effector_debug_state.get(StringName("bound_count"), 0));
+        return true;
+    }
+    if (p_name == StringName("stats/scene_effector_truncated")) {
+        r_ret = bool(scene_effector_debug_state.get(StringName("truncated"), false));
+        return true;
+    }
+    if (p_name == StringName("stats/scene_effector_position_active")) {
+        r_ret = bool(scene_effector_debug_state.get(StringName("position_active"), false));
+        return true;
+    }
+    if (p_name == StringName("stats/scene_effector_opacity_active")) {
+        r_ret = bool(scene_effector_debug_state.get(StringName("opacity_active"), false));
+        return true;
+    }
     return false;
 }
 
 void GaussianSplatNode3D::_get_property_list(List<PropertyInfo> *p_list) const {
     // Add performance statistics as read-only properties
-    if (show_statistics && splat_asset.is_valid()) {
+    if (show_statistics) {
         p_list->push_back(PropertyInfo(Variant::INT, "stats/visible_splats", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY));
         p_list->push_back(PropertyInfo(Variant::INT, "stats/total_splats", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY));
         p_list->push_back(PropertyInfo(Variant::FLOAT, "stats/update_time_ms", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY));
         p_list->push_back(PropertyInfo(Variant::FLOAT, "stats/gpu_memory_mb", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY));
+        p_list->push_back(PropertyInfo(Variant::INT, "stats/matched_scene_effectors", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY));
+        p_list->push_back(PropertyInfo(Variant::INT, "stats/bound_scene_effectors", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY));
+        p_list->push_back(PropertyInfo(Variant::BOOL, "stats/scene_effector_truncated", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY));
+        p_list->push_back(PropertyInfo(Variant::BOOL, "stats/scene_effector_position_active", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY));
+        p_list->push_back(PropertyInfo(Variant::BOOL, "stats/scene_effector_opacity_active", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY));
     }
 }
 
@@ -1146,48 +1169,44 @@ void GaussianSplatNode3D::set_scene_effector_scope_root(const NodePath &p_scope_
 }
 
 uint32_t GaussianSplatNode3D::get_last_matched_scene_effector_count() const {
+    const Dictionary debug_state = get_scene_effector_debug_state();
+    return uint32_t(int64_t(debug_state.get(StringName("matched_count"), 0)));
+}
+
+Dictionary GaussianSplatNode3D::get_scene_effector_debug_state() const {
+    Dictionary state;
+    state["matched_count"] = 0;
+    state["bound_count"] = 0;
+    state["truncated"] = false;
+    state["position_active"] = false;
+    state["opacity_active"] = false;
+    state["selected_effector_ids"] = Array();
+    state["selected_effector_names"] = PackedStringArray();
+    state["effective_layer_mask"] = int64_t(scene_effector_layer_mask);
+    state["scope_filter_present"] = !scene_effector_scope_root.is_empty();
+    state["scope_filter_valid"] = true;
+    state["effective_scope_root_id"] = int64_t(0);
+
     if (!scene_effectors_enabled || !is_inside_tree() || !is_inside_world()) {
-        return 0u;
+        return state;
     }
 
     const GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
     if (!director) {
-        return 0u;
+        return state;
     }
 
-    uint32_t matched_count = 0u;
-    director->get_scene_effector_match_summary_for_instance(get_instance_id(), &matched_count, nullptr, nullptr);
-    return matched_count;
+    return director->get_scene_effector_debug_state_for_instance(get_instance_id());
 }
 
 bool GaussianSplatNode3D::is_scene_effector_position_active() const {
-    if (!scene_effectors_enabled || effect_position_scale <= 0.0f || !is_inside_tree() || !is_inside_world()) {
-        return false;
-    }
-
-    const GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
-    if (!director) {
-        return false;
-    }
-
-    bool position_active = false;
-    director->get_scene_effector_match_summary_for_instance(get_instance_id(), nullptr, &position_active, nullptr);
-    return position_active;
+    const Dictionary debug_state = get_scene_effector_debug_state();
+    return bool(debug_state.get(StringName("position_active"), false));
 }
 
 bool GaussianSplatNode3D::is_scene_effector_opacity_active() const {
-    if (!scene_effectors_enabled || effect_opacity_scale <= 0.0f || opacity <= 0.0f || !is_inside_tree() || !is_inside_world()) {
-        return false;
-    }
-
-    const GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
-    if (!director) {
-        return false;
-    }
-
-    bool opacity_active = false;
-    director->get_scene_effector_match_summary_for_instance(get_instance_id(), nullptr, nullptr, &opacity_active);
-    return opacity_active;
+    const Dictionary debug_state = get_scene_effector_debug_state();
+    return bool(debug_state.get(StringName("opacity_active"), false));
 }
 
 void GaussianSplatNode3D::set_wind_override_enabled(bool p_enabled) {
@@ -1332,9 +1351,14 @@ Dictionary GaussianSplatNode3D::get_statistics() const {
     // reports aggregate world metrics.
     stats["visible_splats"] = visible_splat_count;
     stats["total_splats"] = total_splat_count;
-    stats["matched_scene_effectors"] = get_last_matched_scene_effector_count();
-    stats["scene_effector_position_active"] = is_scene_effector_position_active();
-    stats["scene_effector_opacity_active"] = is_scene_effector_opacity_active();
+    const Dictionary scene_effector_debug_state = get_scene_effector_debug_state();
+    stats["matched_scene_effectors"] = scene_effector_debug_state.get(StringName("matched_count"), 0);
+    stats["bound_scene_effectors"] = scene_effector_debug_state.get(StringName("bound_count"), 0);
+    stats["scene_effector_truncated"] = scene_effector_debug_state.get(StringName("truncated"), false);
+    stats["scene_effector_position_active"] = scene_effector_debug_state.get(StringName("position_active"), false);
+    stats["scene_effector_opacity_active"] = scene_effector_debug_state.get(StringName("opacity_active"), false);
+    stats["scene_effector_selected_ids"] = scene_effector_debug_state.get(StringName("selected_effector_ids"), Array());
+    stats["scene_effector_selected_names"] = scene_effector_debug_state.get(StringName("selected_effector_names"), PackedStringArray());
     stats["effective_config_snapshot"] = composed_effective_config;
 
     return stats;

@@ -633,6 +633,9 @@ public:
     /** @brief Returns the number of currently matched scene effectors for this node. */
     uint32_t get_last_matched_scene_effector_count() const;
 
+    /** @brief Returns detailed runtime scene-effector matching/debug state for this node. */
+    Dictionary get_scene_effector_debug_state() const;
+
     /** @brief Returns true when at least one matched scene effector currently contributes position deformation. */
     bool is_scene_effector_position_active() const;
 

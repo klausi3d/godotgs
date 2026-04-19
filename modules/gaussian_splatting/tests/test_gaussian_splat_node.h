@@ -1278,6 +1278,14 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Scene sphere effect
     CHECK(node_a->is_scene_effector_opacity_active());
     CHECK(node_b->is_scene_effector_position_active());
     CHECK_FALSE(node_b->is_scene_effector_opacity_active());
+    {
+        const Dictionary debug_state_a = node_a->get_scene_effector_debug_state();
+        CHECK(int64_t(debug_state_a.get(StringName("matched_count"), -1)) == 1);
+        CHECK(int64_t(debug_state_a.get(StringName("bound_count"), -1)) == 1);
+        CHECK(bool(debug_state_a.get(StringName("truncated"), true)) == false);
+        CHECK(bool(debug_state_a.get(StringName("position_active"), false)));
+        CHECK(bool(debug_state_a.get(StringName("opacity_active"), false)));
+    }
 
     node_b->set_scene_effectors_enabled(false);
     tree->process(0.0);
@@ -1353,6 +1361,12 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Scene sphere effect
     REQUIRE(payload.size() == 4);
     CHECK(director->get_sphere_effector_count_for_renderer(renderer.ptr()) == 5u);
     CHECK(node->get_last_matched_scene_effector_count() == 5u);
+    {
+        const Dictionary debug_state = node->get_scene_effector_debug_state();
+        CHECK(int64_t(debug_state.get(StringName("matched_count"), -1)) == 5);
+        CHECK(int64_t(debug_state.get(StringName("bound_count"), -1)) == 4);
+        CHECK(bool(debug_state.get(StringName("truncated"), false)));
+    }
     CHECK(payload[0].priority == 7);
     CHECK(payload[1].priority == 5);
     CHECK(payload[2].priority == 3);

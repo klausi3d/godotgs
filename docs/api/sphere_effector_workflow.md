@@ -5,7 +5,7 @@
 This branch supports scene-authored sphere effectors for Gaussian splats through `SphereEffector3D`.
 
 - Author `SphereEffector3D` nodes directly in the scene.
-- Match splat nodes with subtree scope, explicit scope roots, and layer masks.
+- Match splat nodes with subtree scope, explicit scope roots, world scope, and layer masks.
 - Blend each splat node's response with:
   - `rendering/effect_position_scale`
   - `rendering/effect_opacity_scale`
@@ -35,6 +35,26 @@ ProjectSettings under `rendering/gaussian_splatting/effects/*` remain available 
 - If more than `4` candidate scene effectors are present, the highest-priority deterministic four are used.
 - Deterministic ordering uses priority first, then scope specificity, then scene path, then object id.
 - `get_primary_sphere_effector_for_instance()` is now a compatibility query only. It still returns one match even though the renderer can bind multiple.
+- `target_opacity = 1.0` is a neutral target. Matching nodes still count as matched, but no visible opacity change is produced and opacity diagnostics stay inactive.
+
+## Runtime Diagnostics
+
+- `GaussianSplatNode3D.get_last_matched_scene_effector_count()` reports logical matches after scope and layer-mask filtering. This count can stay non-zero even when both active-channel flags are `false`.
+- `GaussianSplatNode3D.is_scene_effector_position_active()` only returns `true` when a matched effector can actually contribute position deformation. Zero node position scale or zero effector strength keeps it `false`.
+- `GaussianSplatNode3D.is_scene_effector_opacity_active()` only returns `true` when a matched effector can actually contribute opacity modulation. It stays `false` when node opacity is `0.0`, node opacity scale is `0.0`, effector `opacity_strength` is `0.0`, or effector `target_opacity` is `1.0`.
+- `GaussianSplatNode3D.get_statistics()` mirrors these runtime values under `matched_scene_effectors`, `scene_effector_position_active`, and `scene_effector_opacity_active`.
+- `GaussianSplatNode3D.get_configuration_warnings()` surfaces common inert setups:
+  - both effect response scales at `0.0`
+  - `rendering/scene_effector_layer_mask = 0`
+  - opacity modulation enabled while `rendering/opacity = 0.0`
+  - invalid `rendering/scene_effector_scope_root`
+- `SphereEffector3D.get_configuration_warnings()` surfaces inert or invalid effector authoring:
+  - enabled with neither position nor opacity enabled
+  - `opacity_strength = 0.0`
+  - `target_opacity = 1.0`
+  - `layer_mask = 0`
+  - `Parent Subtree` scope without a parent
+  - `Explicit Root` scope without `scope_root`
 
 ## Authoring Recipes
 
@@ -57,8 +77,8 @@ ProjectSettings under `rendering/gaussian_splatting/effects/*` remain available 
 2. Set `affect_opacity = true`.
 3. Tune `opacity_strength`.
 4. Set `target_opacity`:
-   - `0.0` for a dissolve
-   - `0.35` or similar for partial degeneration
+  - `0.0` for a dissolve
+  - any value below `1.0`, such as `0.35`, for partial degeneration
 5. Set the node's `rendering/effect_position_scale = 0.0`.
 6. Set `rendering/effect_opacity_scale` above `0.0`.
 
@@ -70,11 +90,13 @@ ProjectSettings under `rendering/gaussian_splatting/effects/*` remain available 
 
 ## Artist Notes
 
-- Put a `SphereEffector3D` under the same gameplay parent as the splat nodes you want to affect. The default `Parent Subtree` scope is the safest workflow.
+- Put a `SphereEffector3D` under the same gameplay parent as the splat nodes you want to affect. The default `Parent Subtree` scope uses the effector's parent as the scope root.
+- Switch to `World` scope only when you intentionally want to reach matching splat nodes outside that subtree.
+- Use `Explicit Root` together with node `rendering/scene_effector_scope_root` when you need a narrower branch than the effector's default subtree.
 - Use effector `layer_mask` and node `rendering/scene_effector_layer_mask` when multiple effect systems share a world.
 - Use `priority` when multiple effectors overlap and you need deterministic truncation into the renderer's four-slot budget.
 - Keep `rendering/effect_opacity_scale` at `0.0` on nodes that should not dissolve even if they still follow position deformation.
-- Use `GaussianSplatNode3D.get_last_matched_scene_effector_count()`, `is_scene_effector_position_active()`, and `is_scene_effector_opacity_active()` from gameplay scripts when you need runtime diagnostics.
+- Use `GaussianSplatNode3D.get_last_matched_scene_effector_count()`, `is_scene_effector_position_active()`, `is_scene_effector_opacity_active()`, and `get_statistics()` from gameplay scripts when you need runtime diagnostics.
 
 ## Stability And Sanitization
 

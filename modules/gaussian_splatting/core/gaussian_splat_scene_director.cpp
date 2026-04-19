@@ -2485,6 +2485,156 @@ bool GaussianSplatSceneDirector::get_scene_effector_match_summary_for_instance(O
 	return matched_count > 0u;
 }
 
+Dictionary GaussianSplatSceneDirector::get_scene_effector_debug_state_for_instance(ObjectID p_node_id) const {
+	Dictionary state;
+	state["matched_count"] = 0;
+	state["bound_count"] = 0;
+	state["truncated"] = false;
+	state["position_active"] = false;
+	state["opacity_active"] = false;
+	state["selected_effector_ids"] = Array();
+	state["selected_effector_names"] = PackedStringArray();
+	state["effective_layer_mask"] = int64_t(0);
+	state["scope_filter_present"] = false;
+	state["scope_filter_valid"] = true;
+	state["effective_scope_root_id"] = int64_t(0);
+	state["matched_position_active"] = false;
+	state["matched_opacity_active"] = false;
+
+	MutexLock lock(world_mutex);
+	const SharedWorld *world = nullptr;
+	for (const KeyValue<RID, SharedWorld> &E : worlds) {
+		if (E.value.instance_lookup.has(p_node_id)) {
+			world = &E.value;
+			break;
+		}
+	}
+	if (!world) {
+		return state;
+	}
+
+	const uint32_t *index_ptr = world->instance_lookup.getptr(p_node_id);
+	if (!index_ptr || *index_ptr >= world->instances.size()) {
+		return state;
+	}
+	const InstanceRecord &record = world->instances[*index_ptr];
+	state["effective_layer_mask"] = int64_t(record.scene_effector_layer_mask);
+	state["scope_filter_present"] = record.scene_effector_scope_filter_present;
+	state["scope_filter_valid"] = record.scene_effector_scope_filter_valid;
+	state["effective_scope_root_id"] = int64_t((uint64_t)record.scene_effector_scope_root_id);
+
+	if (!record.scene_effectors_enabled || record.scene_effector_layer_mask == 0u ||
+			(record.scene_effector_scope_filter_present && !record.scene_effector_scope_filter_valid)) {
+		return state;
+	}
+
+	// Helper: effector's scope is currently valid iff its cached scope_root_id
+	// still resolves to a live Node. ObjectDB lookups are thread-safe and catch
+	// the case where a scope-root node was deleted after the effector synced.
+	auto effector_scope_alive = [](const SphereEffectorRecord &eff) -> bool {
+		if (eff.scope_mode == SPHERE_EFFECTOR_SCOPE_WORLD) {
+			return true;
+		}
+		if (eff.scope_root_id == ObjectID()) {
+			return false;
+		}
+		return Object::cast_to<Node>(ObjectDB::get_instance(eff.scope_root_id)) != nullptr;
+	};
+
+	uint32_t matched_count = 0u;
+	bool matched_position_active = false;
+	bool matched_opacity_active = false;
+	for (const SphereEffectorRecord &effector : world->sphere_effectors) {
+		if (!effector.enabled || (!effector.affect_position && !effector.affect_opacity)) {
+			continue;
+		}
+		if ((effector.layer_mask & record.scene_effector_layer_mask) == 0u) {
+			continue;
+		}
+		if (effector.scope_mode != SPHERE_EFFECTOR_SCOPE_WORLD && !effector_scope_alive(effector)) {
+			continue;
+		}
+		if (record.scene_effector_scope_filter_present) {
+			if (effector.scope_root_id == ObjectID() ||
+					effector.scope_root_id != record.scene_effector_scope_root_id) {
+				continue;
+			}
+		} else if (effector.scope_mode != SPHERE_EFFECTOR_SCOPE_WORLD) {
+			if (effector.scope_root_id == ObjectID()) {
+				continue;
+			}
+			bool in_scope = false;
+			for (const ObjectID &ancestor_id : record.scene_tree_ancestor_ids) {
+				if (ancestor_id == effector.scope_root_id) {
+					in_scope = true;
+					break;
+				}
+			}
+			if (!in_scope) {
+				continue;
+			}
+		}
+
+		matched_count++;
+		if (effector.affect_position && record.effect_position_scale > 0.0f && !Math::is_zero_approx(effector.strength)) {
+			matched_position_active = true;
+		}
+		if (effector.affect_opacity && record.effect_opacity_scale > 0.0f && record.opacity > 0.0f &&
+				!Math::is_zero_approx(effector.opacity_strength) &&
+				!Math::is_equal_approx(effector.target_opacity, 1.0f)) {
+			matched_opacity_active = true;
+		}
+	}
+
+	// Bind-side stats: how many matched effectors actually survived the
+	// renderer's payload build + mask packing (limited by GS_MAX_SPHERE_EFFECTORS,
+	// invalid scope roots, etc). `_build_sorted_sphere_effector_payload` does the
+	// same scope_root liveness check via ObjectDB so the counts stay consistent.
+	LocalVector<SphereEffectorSelection> payload;
+	_build_sorted_sphere_effector_payload(*world, payload);
+	const uint32_t mask = _build_scene_effector_mask_for_record(record, payload);
+	uint32_t bound_count = 0u;
+	Array selected_effector_ids;
+	PackedStringArray selected_effector_names;
+	bool bound_position_active = false;
+	bool bound_opacity_active = false;
+	for (uint32_t i = 0; i < payload.size(); i++) {
+		if ((mask & (1u << i)) == 0u) {
+			continue;
+		}
+		bound_count++;
+		selected_effector_ids.push_back(int64_t((uint64_t)payload[i].effector_id));
+
+		String effector_name = String::num_uint64((uint64_t)payload[i].effector_id);
+		if (Object *effector_object = ObjectDB::get_instance(payload[i].effector_id)) {
+			if (Node *effector_node = Object::cast_to<Node>(effector_object)) {
+				effector_name = String(effector_node->get_name());
+			}
+		}
+		selected_effector_names.push_back(effector_name);
+
+		if (payload[i].affect_position && record.effect_position_scale > 0.0f && !Math::is_zero_approx(payload[i].strength)) {
+			bound_position_active = true;
+		}
+		if (payload[i].affect_opacity && record.effect_opacity_scale > 0.0f && record.opacity > 0.0f &&
+				!Math::is_zero_approx(payload[i].opacity_strength) &&
+				!Math::is_equal_approx(payload[i].target_opacity, 1.0f)) {
+			bound_opacity_active = true;
+		}
+	}
+
+	state["matched_count"] = int64_t(matched_count);
+	state["bound_count"] = int64_t(bound_count);
+	state["truncated"] = matched_count > bound_count;
+	state["position_active"] = bound_position_active;
+	state["opacity_active"] = bound_opacity_active;
+	state["selected_effector_ids"] = selected_effector_ids;
+	state["selected_effector_names"] = selected_effector_names;
+	state["matched_position_active"] = matched_position_active;
+	state["matched_opacity_active"] = matched_opacity_active;
+	return state;
+}
+
 uint32_t GaussianSplatSceneDirector::get_sphere_effector_count_for_renderer(const GaussianSplatRenderer *p_renderer) const {
 	MutexLock lock(world_mutex);
 	const SharedWorld *world = _find_world_for_renderer(p_renderer);

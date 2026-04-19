@@ -144,9 +144,6 @@ void SphereEffector3D::_sync_with_director() {
 
     ObjectID scope_root_id;
     if (scope_mode == SCOPE_SUBTREE) {
-        // Implicit subtree scope: the effector affects nodes under its own parent.
-        // Cache the parent's ObjectID so the director's ancestor-based matching
-        // can resolve containment without walking the tree on the render path.
         Node *parent = get_parent();
         if (parent) {
             scope_root_id = parent->get_instance_id();
