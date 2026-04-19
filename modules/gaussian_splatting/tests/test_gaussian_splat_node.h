@@ -1285,6 +1285,17 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Scene sphere effect
         CHECK(bool(debug_state_a.get(StringName("truncated"), true)) == false);
         CHECK(bool(debug_state_a.get(StringName("position_active"), false)));
         CHECK(bool(debug_state_a.get(StringName("opacity_active"), false)));
+        const PackedStringArray selected_names = debug_state_a.get(StringName("selected_effector_names"), PackedStringArray());
+        CHECK(selected_names.size() == 1);
+        CHECK(selected_names[0] == String("EffectorA"));
+    }
+    {
+        const Dictionary stats_a = node_a->get_statistics();
+        CHECK(int64_t(stats_a.get(StringName("matched_scene_effectors"), -1)) == 1);
+        CHECK(int64_t(stats_a.get(StringName("bound_scene_effectors"), -1)) == 1);
+        CHECK(bool(stats_a.get(StringName("scene_effector_truncated"), true)) == false);
+        CHECK(bool(stats_a.get(StringName("scene_effector_position_active"), false)));
+        CHECK(bool(stats_a.get(StringName("scene_effector_opacity_active"), false)));
     }
 
     node_b->set_scene_effectors_enabled(false);
@@ -1366,6 +1377,18 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Scene sphere effect
         CHECK(int64_t(debug_state.get(StringName("matched_count"), -1)) == 5);
         CHECK(int64_t(debug_state.get(StringName("bound_count"), -1)) == 4);
         CHECK(bool(debug_state.get(StringName("truncated"), false)));
+        const PackedStringArray selected_names = debug_state.get(StringName("selected_effector_names"), PackedStringArray());
+        REQUIRE(selected_names.size() == 4);
+        CHECK(selected_names[0] == String("EffectorB"));
+        CHECK(selected_names[1] == String("EffectorC"));
+        CHECK(selected_names[2] == String("EffectorE"));
+        CHECK(selected_names[3] == String("EffectorA"));
+    }
+    {
+        const Dictionary stats = node->get_statistics();
+        CHECK(int64_t(stats.get(StringName("matched_scene_effectors"), -1)) == 5);
+        CHECK(int64_t(stats.get(StringName("bound_scene_effectors"), -1)) == 4);
+        CHECK(bool(stats.get(StringName("scene_effector_truncated"), false)));
     }
     CHECK(payload[0].priority == 7);
     CHECK(payload[1].priority == 5);
