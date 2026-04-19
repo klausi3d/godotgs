@@ -1622,6 +1622,14 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 	const uint64_t previous_contract_fingerprint = resource_state.instance_pipeline_contract_fingerprint;
 	const uint64_t previous_upload_generation = resource_state.instance_pipeline_upload_generation;
 	const uint64_t previous_upload_fingerprint = resource_state.instance_pipeline_upload_fingerprint;
+	// Flipped true by the grading-upload failure branches below so the
+	// end-of-frame persistence site knows to skip updating
+	// `instance_pipeline_upload_{generation,fingerprint}` — leaving both at 0
+	// forces `upload_changed` on next frame and re-enters the upload path.
+	// Using a dedicated flag instead of inspecting zeroed state on
+	// resource_state (which is also the normal initial / route-reset state)
+	// so a successful first-frame upload still persists its fingerprint.
+	bool upload_retry_pending = false;
 	resource_state.instance_pipeline_content_generation = base_content_generation;
 	bool instance_buffers_atlas_ready = false;
 	bool instance_buffers_cull_ready = false;
@@ -1920,18 +1928,16 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 								"[Streaming] grading buffer row count (%d) does not match instance cache row count (%d). "
 								"build_instance_grading_buffer_for_renderer and the streaming instance cache must stay 1:1.",
 								int(gradings.size()), int(instance_pipeline_instance_cache.size())));
-						resource_state_mut.instance_pipeline_upload_fingerprint = 0;
-						resource_state_mut.instance_pipeline_upload_generation = 0;
+						// Flag the frame so the persistence site at ~line 2150 skips writing
+						// back `upload_generation`/`upload_fingerprint`. Leaving them at the
+						// previous values forces `upload_changed` next frame and re-enters
+						// the upload path for a retry.
+						upload_retry_pending = true;
 						buffers = renderer->get_instance_pipeline_buffers();
 						renderer->clear_instance_pipeline_buffers();
 					} else if (!renderer->update_instance_grading_buffer(gradings)) {
-						// Reset the upload fingerprint/generation FIRST so the next frame's
-						// upload_changed comparison forces a retry attempt. Without this, a
-						// transient OOM / device hiccup becomes sticky — upload_changed
-						// would stay false and the grading SSBO would never re-upload until
-						// an unrelated generation change happens to flip the fingerprint.
-						resource_state_mut.instance_pipeline_upload_fingerprint = 0;
-						resource_state_mut.instance_pipeline_upload_generation = 0;
+						// Transient OOM / device hiccup — same retry mechanism.
+						upload_retry_pending = true;
 						buffers = renderer->get_instance_pipeline_buffers();
 						renderer->clear_instance_pipeline_buffers();
 					} else {
@@ -2149,16 +2155,14 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 		}
 		resource_state.instance_pipeline_contract_generation = contract_generation;
 		resource_state.instance_pipeline_contract_fingerprint = contract_fingerprint;
-		// When a grading upload failure left the in-flight fingerprint/generation
-		// zeroed to force a retry, DO NOT overwrite them with the freshly computed
-		// values here — that would make `upload_changed` go false next frame and
-		// the failure would become sticky until something unrelated advances the
-		// generation. Detect the retry-pending state (zeros written by the
-		// failure branch above) and skip the persistence so next frame's
-		// `previous_upload_*` still reads 0 and re-enters the upload path.
-		const bool upload_retry_pending = resource_state.instance_pipeline_upload_generation == 0 &&
-				resource_state.instance_pipeline_upload_fingerprint == 0 &&
-				(upload_generation != 0 || upload_fingerprint != 0);
+		// When a grading upload failure flagged `upload_retry_pending` above,
+		// DO NOT overwrite `instance_pipeline_upload_{generation,fingerprint}`
+		// — leave them at the previous frame's values so next frame's
+		// `upload_changed` comparison trips against the freshly computed
+		// fingerprint and the upload path retries. The flag is the
+		// authoritative "retry" signal; inspecting zeroed resource state
+		// wouldn't distinguish a just-failed frame from the normal initial /
+		// route-reset state.
 		if (!upload_retry_pending) {
 			resource_state.instance_pipeline_upload_generation = upload_generation;
 			resource_state.instance_pipeline_upload_fingerprint = upload_fingerprint;
