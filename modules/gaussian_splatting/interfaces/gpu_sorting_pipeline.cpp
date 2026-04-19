@@ -164,8 +164,15 @@ static bool _build_effector_payload_from_scene_bindings(const GaussianSplatRende
         return false;
     }
 
+    // Snapshot the sorted payload and the raw count under the director's
+    // single `world_mutex` lock — two separate director calls would race with
+    // main-thread register/unregister between them, so `r_meta[2]` and the
+    // overflow warning could describe a different snapshot than the packed
+    // slots. Same single-snapshot pattern as the tile path in
+    // render_pipeline_stages.cpp.
     LocalVector<GaussianSplatSceneDirector::SphereEffectorSelection> payload;
-    director->build_sphere_effector_payload_for_renderer(p_renderer, payload);
+    uint32_t total_scene_effectors = 0u;
+    director->build_sphere_effector_payload_for_renderer(p_renderer, payload, &total_scene_effectors);
     if (payload.is_empty()) {
         return false;
     }
@@ -174,7 +181,6 @@ static bool _build_effector_payload_from_scene_bindings(const GaussianSplatRende
         _clear_effector_slot(r_spheres[i], r_configs[i], r_opacity_configs[i]);
     }
 
-    const uint32_t total_scene_effectors = director->get_sphere_effector_count_for_renderer(p_renderer);
     if (total_scene_effectors > GS_MAX_SPHERE_EFFECTORS) {
         WARN_PRINT_ONCE(vformat("[GPU Sort] Scene matched %d sphere effectors, but this runtime binds at most %d per pass. Highest-priority deterministic entries are used.",
                 total_scene_effectors, GS_MAX_SPHERE_EFFECTORS));

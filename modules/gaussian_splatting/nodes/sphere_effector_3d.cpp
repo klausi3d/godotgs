@@ -97,6 +97,24 @@ void SphereEffector3D::_notification(int p_what) {
             _sync_with_director();
         } break;
 
+        case NOTIFICATION_ENTER_WORLD: {
+            // Godot emits ENTER_WORLD on tree entry AND whenever a Node3D's
+            // resolved World3D changes without a tree removal (world-switch
+            // scenarios). Re-sync so the director's SharedWorld lookup picks
+            // up the new scenario — a plain ENTER_TREE wouldn't cover mid-tree
+            // world swaps and the effector could stay registered in the old
+            // SharedWorld.
+            _sync_with_director();
+        } break;
+
+        case NOTIFICATION_EXIT_WORLD: {
+            // Mirror ENTER_WORLD: evict from the previous SharedWorld before
+            // the new world's ENTER_WORLD re-registers. Without this, a world
+            // switch leaks the effector into the old world's effector list
+            // until that world's pruning pass eventually cleans up.
+            _unregister_from_director();
+        } break;
+
         case NOTIFICATION_TRANSFORM_CHANGED: {
             update_configuration_warnings();
             _sync_with_director();
