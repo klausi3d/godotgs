@@ -26,21 +26,24 @@ vec3 hsv_to_rgb(vec3 c) {
 }
 
 // Apply color grading to splat color (binning stage)
-// Operates in linear color space, before R11G11B10 packing
-vec3 apply_color_grading_binning(vec3 color) {
+// Operates in linear color space, before R11G11B10 packing.
+// The grading parameters are fetched per-instance from instance_grading_buffer,
+// which the binning shader binds alongside instance_buffer at binding 20.
+vec3 apply_color_grading_binning(vec3 color, uint instance_id) {
+	InstanceGradingGPU grading = instance_grading_buffer.gradings[instance_id];
 	// Check if enabled
-	if (params.color_grading_primary.x < 0.5) {
+	if (grading.primary.x < 0.5) {
 		return color;
 	}
 
-	// Unpack parameters from RenderParams
-	float exposure = params.color_grading_primary.y;
-	float contrast = params.color_grading_primary.z;
-	float saturation = params.color_grading_primary.w;
+	// Unpack parameters
+	float exposure = grading.primary.y;
+	float contrast = grading.primary.z;
+	float saturation = grading.primary.w;
 
-	float temperature = params.color_grading_secondary.x;
-	float tint = params.color_grading_secondary.y;
-	float hue_shift_deg = params.color_grading_secondary.z;
+	float temperature = grading.secondary.x;
+	float tint = grading.secondary.y;
+	float hue_shift_deg = grading.secondary.z;
 
 	// 1. Exposure (multiply by 2^EV)
 	color *= exp2(exposure);

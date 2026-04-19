@@ -10,6 +10,7 @@
 #include "gpu_sorting_config.h"
 #include "../core/gaussian_splat_scene_director.h"
 #include "../interfaces/gpu_sorting_pipeline.h"
+#include "../resources/color_grading_resource.h"
 #include "../logger/gs_debug_trace.h"
 #include "../logger/gs_logger.h"
 
@@ -47,6 +48,10 @@ static uint64_t _compute_instance_pipeline_resource_fingerprint(const ResourceSt
 	uint64_t generation = 0x6a09e667f3bcc909ULL;
 	generation = _mix_rid_generation(generation, p_resource_state.instance_buffer);
 	generation = _mix_u32_generation(generation, p_resource_state.instance_buffer_capacity);
+	generation = _mix_rid_generation(generation, p_resource_state.instance_grading_buffer);
+	generation = _mix_u32_generation(generation, p_resource_state.instance_grading_buffer_capacity);
+	generation = _mix_content_generation(generation,
+			p_resource_state.instance_grading_defaults_generation.load(std::memory_order_relaxed));
 	generation = _mix_rid_generation(generation, p_resource_state.instance_visible_chunk_buffer);
 	generation = _mix_u32_generation(generation, p_resource_state.instance_visible_chunk_capacity);
 	generation = _mix_rid_generation(generation, p_resource_state.instance_splat_ref_buffer);
@@ -109,6 +114,10 @@ static uint64_t _compute_instance_pipeline_upload_fingerprint(const ResourceStat
 	uint64_t generation = 0xbb67ae8584caa73bULL;
 	generation = _mix_rid_generation(generation, p_resource_state.instance_buffer);
 	generation = _mix_u32_generation(generation, p_resource_state.instance_buffer_capacity);
+	generation = _mix_rid_generation(generation, p_resource_state.instance_grading_buffer);
+	generation = _mix_u32_generation(generation, p_resource_state.instance_grading_buffer_capacity);
+	generation = _mix_content_generation(generation,
+			p_resource_state.instance_grading_defaults_generation.load(std::memory_order_relaxed));
 	generation = _mix_u32_generation(generation, p_buffers.instance_count);
 	generation = _mix_content_generation(generation, _compute_instance_asset_remap_fingerprint(p_remap));
 	return generation;
@@ -1563,6 +1572,8 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 		fallback_instance.wind_params[1] = 0.0f;
 		fallback_instance.wind_params[2] = 0.0f;
 		fallback_instance.wind_params[3] = 1.0f;
+		fallback_instance.effect_params[0] = 1.0f;
+		fallback_instance.effect_params[1] = 1.0f;
 		instance_pipeline_instance_cache.push_back(fallback_instance);
 		if (trace_enabled) {
 			GaussianSplatting::debug_trace_record_event("instance_pipeline",
@@ -1611,6 +1622,14 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 	const uint64_t previous_contract_fingerprint = resource_state.instance_pipeline_contract_fingerprint;
 	const uint64_t previous_upload_generation = resource_state.instance_pipeline_upload_generation;
 	const uint64_t previous_upload_fingerprint = resource_state.instance_pipeline_upload_fingerprint;
+	// Flipped true by the grading-upload failure branches below so the
+	// end-of-frame persistence site knows to skip updating
+	// `instance_pipeline_upload_{generation,fingerprint}` — leaving both at 0
+	// forces `upload_changed` on next frame and re-enters the upload path.
+	// Using a dedicated flag instead of inspecting zeroed state on
+	// resource_state (which is also the normal initial / route-reset state)
+	// so a successful first-frame upload still persists its fingerprint.
+	bool upload_retry_pending = false;
 	resource_state.instance_pipeline_content_generation = base_content_generation;
 	bool instance_buffers_atlas_ready = false;
 	bool instance_buffers_cull_ready = false;
@@ -1879,7 +1898,51 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 					buffers = renderer->get_instance_pipeline_buffers();
 					renderer->clear_instance_pipeline_buffers();
 				} else {
-					buffers = renderer->get_instance_pipeline_buffers();
+					// Per-instance color grading SSBO runs parallel to instance_buffer and must
+					// be refreshed on the same cadence. The buffer capacity is sized by the
+					// renderer, so this tolerates the empty-director (shim) case too.
+					LocalVector<InstanceGradingGPU> gradings;
+					if (director) {
+						director->build_instance_grading_buffer_for_renderer(renderer, gradings,
+								renderer->is_shadow_instance_filter_enabled());
+					}
+					// Fallback: if the director produced no rows but the streaming cache has
+					// synthetic primary-fallback instances injected at line ~1541-1577, seed the
+					// rows from the renderer's legacy color_grading default so worldless /
+					// direct-data renderers keep their grading instead of being forced to
+					// neutral. Mirror the row count of instance_pipeline_instance_cache.
+					if (gradings.is_empty() && !instance_pipeline_instance_cache.is_empty()) {
+						const Ref<ColorGradingResource> renderer_default = renderer->get_color_grading();
+						gradings.resize(instance_pipeline_instance_cache.size());
+						for (uint32_t i = 0; i < gradings.size(); ++i) {
+							GaussianSplatSceneDirector::fill_instance_grading_entry(renderer_default, gradings[i]);
+						}
+					}
+					// Contract: grading rows and instance rows must have identical counts
+					// and ordering because the shader indexes both with the same
+					// splat_ref.instance_id. If the director's filter logic and the streaming
+					// cache ever drift, this assertion catches it before uploading a short
+					// buffer the shader would read past.
+					if (gradings.size() != instance_pipeline_instance_cache.size()) {
+						ERR_PRINT_ONCE(vformat(
+								"[Streaming] grading buffer row count (%d) does not match instance cache row count (%d). "
+								"build_instance_grading_buffer_for_renderer and the streaming instance cache must stay 1:1.",
+								int(gradings.size()), int(instance_pipeline_instance_cache.size())));
+						// Flag the frame so the persistence site at ~line 2150 skips writing
+						// back `upload_generation`/`upload_fingerprint`. Leaving them at the
+						// previous values forces `upload_changed` next frame and re-enters
+						// the upload path for a retry.
+						upload_retry_pending = true;
+						buffers = renderer->get_instance_pipeline_buffers();
+						renderer->clear_instance_pipeline_buffers();
+					} else if (!renderer->update_instance_grading_buffer(gradings)) {
+						// Transient OOM / device hiccup — same retry mechanism.
+						upload_retry_pending = true;
+						buffers = renderer->get_instance_pipeline_buffers();
+						renderer->clear_instance_pipeline_buffers();
+					} else {
+						buffers = renderer->get_instance_pipeline_buffers();
+					}
 				}
 			} else if (!contract_changed) {
 				buffers = renderer->get_instance_pipeline_buffers();
@@ -2092,8 +2155,18 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 		}
 		resource_state.instance_pipeline_contract_generation = contract_generation;
 		resource_state.instance_pipeline_contract_fingerprint = contract_fingerprint;
-		resource_state.instance_pipeline_upload_generation = upload_generation;
-		resource_state.instance_pipeline_upload_fingerprint = upload_fingerprint;
+		// When a grading upload failure flagged `upload_retry_pending` above,
+		// DO NOT overwrite `instance_pipeline_upload_{generation,fingerprint}`
+		// — leave them at the previous frame's values so next frame's
+		// `upload_changed` comparison trips against the freshly computed
+		// fingerprint and the upload path retries. The flag is the
+		// authoritative "retry" signal; inspecting zeroed resource state
+		// wouldn't distinguish a just-failed frame from the normal initial /
+		// route-reset state.
+		if (!upload_retry_pending) {
+			resource_state.instance_pipeline_upload_generation = upload_generation;
+			resource_state.instance_pipeline_upload_fingerprint = upload_fingerprint;
+		}
 		resource_state.instance_pipeline_content_generation = _mix_content_generation(
 				base_content_generation,
 				contract_fingerprint);

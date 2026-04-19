@@ -198,8 +198,22 @@ Use `GaussianSplatNode3D` to render Gaussian splat assets or procedural splat ar
       <td><code>rendering/opacity</code></td>
       <td><code>float</code></td>
       <td><code>set_opacity</code>, <code>get_opacity</code></td>
-      <td>Clamped to <code>0.0..1.0</code>.</td>
+      <td>Per-instance opacity multiplier, clamped to <code>0.0..1.0</code>.</td>
       <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:927</code></td>
+    </tr>
+    <tr>
+      <td><code>rendering/effect_position_scale</code></td>
+      <td><code>float</code></td>
+      <td><code>set_effect_position_scale</code>, <code>get_effect_position_scale</code></td>
+      <td>Scales how strongly this node responds to sphere position deformation.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp</code></td>
+    </tr>
+    <tr>
+      <td><code>rendering/effect_opacity_scale</code></td>
+      <td><code>float</code></td>
+      <td><code>set_effect_opacity_scale</code>, <code>get_effect_opacity_scale</code></td>
+      <td>Scales how strongly this node responds to sphere opacity deformation.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp</code></td>
     </tr>
     <tr>
       <td><code>rendering/color_grading</code></td>

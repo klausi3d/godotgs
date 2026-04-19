@@ -143,7 +143,16 @@ Notes:
   - **Manual**: Update only when requested
 - `rendering/cast_shadow`: Enable shadow casting
 - `rendering/frustum_culling`: Enable frustum culling optimization
-- `rendering/opacity`: Overall opacity of the splats (0.0-1.0)
+- `rendering/opacity`: Per-instance opacity multiplier for this node (0.0-1.0)
+- `rendering/effect_position_scale`: Per-instance response multiplier for sphere position deformation
+- `rendering/effect_opacity_scale`: Per-instance response multiplier for sphere opacity deformation
+
+#### Effector Workflow
+- Authored splat opacity still lives in the Gaussian data or imported asset.
+- `rendering/opacity` is the gameplay-facing per-node fade and is applied after deformation.
+- Global sphere ProjectSettings remain available as a fallback source for scenes that do not drive effectors through code.
+- Only one sphere effector is currently evaluated at runtime, even if `max_effectors` is set higher.
+- For dissolve-style effects, enable the sphere opacity path in ProjectSettings and then tune each node with `rendering/effect_opacity_scale`.
 
 #### Debug Settings
 - `debug/preview_enabled`: Show preview in editor viewport

@@ -7,6 +7,7 @@
 #include "quantization_config.h"
 #include "../core/gaussian_splat_scene_director.h"
 #include "../interfaces/gpu_sorting_pipeline.h"
+#include "../resources/color_grading_resource.h"
 #include "servers/rendering/rendering_device.h"
 
 #include <algorithm>
@@ -235,6 +236,15 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 	if (director != nullptr) {
 		source_generation = _mix_generation(source_generation, director->get_instance_generation_for_renderer(p_renderer));
 	}
+	// Mix the renderer-wide grading-defaults counter so fallback grading rows
+	// (rows with no per-instance grading ref — director-less direct-data flows
+	// and the shim path) force a republish when the renderer's default
+	// ColorGradingResource is swapped or mutated in place. The streaming
+	// orchestrator already consumes this atomic in its fingerprint; the
+	// resident publisher must do the same or fallback-graded buffers stay
+	// stale until an unrelated content/topology change lands.
+	source_generation = _mix_generation(source_generation,
+			p_renderer->get_resource_state().instance_grading_defaults_generation.load(std::memory_order_relaxed));
 	source_generation = _mix_generation(source_generation, p_renderer->is_shadow_instance_filter_enabled() ? 1ULL : 0ULL);
 	source_generation = _mix_generation(source_generation, p_allow_primary_fallback_instance ? 1ULL : 0ULL);
 	source_generation = _mix_generation(source_generation, uint64_t(p_renderer->get_performance_settings().max_splats));
@@ -283,6 +293,8 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 		fallback_instance.params[1] = 1.0f;
 		fallback_instance.params[2] = 1.0f;
 		fallback_instance.wind_params[3] = 1.0f;
+		fallback_instance.effect_params[0] = 1.0f;
+		fallback_instance.effect_params[1] = 1.0f;
 		fallback_instance.ids[0] = kPrimaryResidentAssetId;
 		fallback_instance.ids[1] = GS_INSTANCE_FLAG_ROTATION_IDENTITY |
 				GS_INSTANCE_FLAG_SCALE_IDENTITY |
@@ -633,6 +645,53 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 		}
 		p_renderer->clear_instance_pipeline_buffers();
 		return false;
+	}
+
+	// Upload per-instance color grading. Walks the same director instance list so rows
+	// line up 1:1 with SplatRefGPU.instance_id. Must run whenever instance_buffer is
+	// re-uploaded because the instance list may have changed rows.
+	{
+		LocalVector<InstanceGradingGPU> gradings;
+		if (director != nullptr) {
+			director->build_instance_grading_buffer_for_renderer(p_renderer, gradings,
+					p_renderer->is_shadow_instance_filter_enabled());
+		}
+		if (gradings.is_empty() && !instances.is_empty()) {
+			// Fallback when director has no records but we injected a primary-resident
+			// fallback instance above. Seed from the renderer's legacy renderer-wide
+			// color_grading so direct-data / worldless renderers that still rely on
+			// `renderer->set_color_grading()` keep their grading on this path instead
+			// of being forced to neutral.
+			const Ref<ColorGradingResource> renderer_default = p_renderer->get_color_grading();
+			gradings.resize(instances.size());
+			for (uint32_t i = 0; i < gradings.size(); ++i) {
+				GaussianSplatSceneDirector::fill_instance_grading_entry(renderer_default, gradings[i]);
+			}
+		}
+		// Contract: the grading buffer MUST have the same row count as the
+		// instance buffer. Shader indexing (instance_buffer.instances[splat_ref.instance_id]
+		// and instance_grading_buffer.gradings[splat_ref.instance_id]) relies on 1:1
+		// parity. If the filter logic ever drifts between the two director build
+		// steps, early-fail here instead of uploading a short buffer the shader
+		// would then read past end-of-array.
+		if (gradings.size() != instances.size()) {
+			ERR_PRINT_ONCE(vformat(
+					"[ResidentContract] grading buffer row count (%d) does not match instance buffer row count (%d). "
+					"build_instance_grading_buffer_for_renderer and build_instance_buffer_for_renderer must apply identical filters.",
+					int(gradings.size()), int(instances.size())));
+			if (r_reason) {
+				*r_reason = "resident_grading_instance_row_mismatch";
+			}
+			p_renderer->clear_instance_pipeline_buffers();
+			return false;
+		}
+		if (!p_renderer->update_instance_grading_buffer(gradings)) {
+			if (r_reason) {
+				*r_reason = "resident_grading_upload_failed";
+			}
+			p_renderer->clear_instance_pipeline_buffers();
+			return false;
+		}
 	}
 
 	const GaussianRenderPipeline::InstancePipelineBuffers &published_buffers = p_renderer->get_instance_pipeline_buffers();

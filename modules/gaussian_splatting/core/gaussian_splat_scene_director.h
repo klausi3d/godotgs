@@ -19,6 +19,8 @@
 #include "../lod/lod_config.h"
 #include "../renderer/gaussian_splat_renderer.h"
 
+class ColorGradingResource;
+
 class GaussianSplatSceneDirector : public Object {
     GDCLASS(GaussianSplatSceneDirector, Object);
 
@@ -46,12 +48,15 @@ public:
         uint32_t wind_mode = INSTANCE_WIND_INHERIT;
         Vector3 wind_direction = Vector3();
         float wind_frequency = 1.0f;
+        float effect_position_scale = 1.0f;
+        float effect_opacity_scale = 1.0f;
         uint32_t flags = 0;
         uint32_t last_lod = 0;
         bool casts_shadow = false;
         bool visible = true;
         bool has_desired_residency_hint = false;
         int32_t desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT;
+        Ref<ColorGradingResource> color_grading;
     };
 
     struct WorldSubmission {
@@ -82,19 +87,64 @@ public:
 			float p_wind_intensity = 1.0f, uint32_t p_wind_mode = INSTANCE_WIND_INHERIT,
 			const Vector3 &p_wind_direction = Vector3(), float p_wind_frequency = 1.0f,
 			bool p_visible = true, bool p_has_desired_residency_hint = false,
-			int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT);
+			int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT,
+			float p_effect_position_scale = 1.0f, float p_effect_opacity_scale = 1.0f);
 	void update_instance_transform(ObjectID p_node_id, const Transform3D &p_transform);
 	void update_instance_params(ObjectID p_node_id, float p_opacity, float p_lod_bias, uint32_t p_flags, bool p_casts_shadow = false,
 			float p_wind_intensity = 1.0f, uint32_t p_wind_mode = INSTANCE_WIND_INHERIT,
 			const Vector3 &p_wind_direction = Vector3(), float p_wind_frequency = 1.0f,
 			bool p_visible = true, bool p_has_desired_residency_hint = false,
-			int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT);
+			int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT,
+			float p_effect_position_scale = 1.0f, float p_effect_opacity_scale = 1.0f);
 	void unregister_instance(ObjectID p_node_id);
 	void update_instance_lods(const Vector3 &p_camera_pos, const LODConfig &p_lod_config, float p_hysteresis_zone);
     void update_instance_lods_for_renderer(const GaussianSplatRenderer *p_renderer, const Vector3 &p_camera_pos,
             const LODConfig &p_lod_config, float p_hysteresis_zone);
     void build_instance_buffer(LocalVector<InstanceDataGPU> &out) const;
 	void build_instance_buffer_for_renderer(const GaussianSplatRenderer *p_renderer, LocalVector<InstanceDataGPU> &out,
+			bool p_shadow_casters_only = false) const;
+	// Build the per-instance color grading SSBO for the supplied renderer. Walks the same
+	// instance list as build_instance_buffer_for_renderer; falls back to the renderer's
+	// RenderConfig::color_grading when a record has no per-instance ref. When no director
+	// instances exist but the renderer is active (early setup / legacy world-submission shim),
+	// produces a 1-row buffer so the shader always has a valid index.
+	void build_instance_grading_buffer_for_renderer(const GaussianSplatRenderer *p_renderer,
+			LocalVector<InstanceGradingGPU> &out, bool p_shadow_casters_only = false) const;
+	// Fill a single GPU grading row from a ColorGradingResource ref (null → neutral
+	// disabled). Exposed so streaming/resident fallback paths that inject synthetic
+	// instance rows outside the director's record list can still honor the renderer's
+	// color_grading default instead of forcing neutral.
+	static void fill_instance_grading_entry(const Ref<ColorGradingResource> &p_grading,
+			InstanceGradingGPU &r_entry);
+	// Per-instance color grading setter. Stores the grading ref on the record identified
+	// by node_id; the next frame's build_instance_grading_buffer_for_renderer picks it up.
+	// No-op when the node is unregistered.
+	//
+	// `p_force_refresh` controls cache-invalidation cadence. Callers that know the
+	// underlying grading values just changed (e.g. a ColorGradingResource `changed`
+	// signal for slider edits) pass true — the generation is bumped even when the
+	// ref is unchanged so the buffer re-uploads with fresh values. Callers that
+	// merely echo the current ref (per-frame apply) leave it false so unrelated
+	// setting churn does not bust sort/raster caches every frame.
+	bool update_instance_color_grading(ObjectID p_node_id, const Ref<ColorGradingResource> &p_grading,
+			bool p_force_refresh = false);
+	// Accessor for tests and diagnostics.
+	Ref<ColorGradingResource> get_instance_color_grading(ObjectID p_node_id) const;
+	// Bump the instance generation of the world bound to this renderer so the
+	// next frame rebuilds the grading SSBO. Called when the renderer's legacy
+	// renderer-wide color_grading default changes — records with no per-instance
+	// grading read from that default via the build step's fallback, so their
+	// rows need to re-upload even though no per-instance ref changed.
+	void invalidate_grading_for_renderer(const GaussianSplatRenderer *p_renderer);
+	// Hash every per-instance grading bound to this renderer. Used by the sort/raster cache
+	// invalidation path so any node's grading edit busts the cache.
+	//
+	// `p_shadow_casters_only` mirrors the filter in build_instance_grading_buffer_for_renderer.
+	// When the renderer is rendering a shadow pass, non-shadow-caster records are filtered
+	// out of the grading buffer — their gradings MUST not participate in the shadow cache
+	// signature either, otherwise grading edits on non-shadow nodes spuriously bust the
+	// shadow sort/raster cache.
+	uint64_t compute_color_grading_signature_for_renderer(const GaussianSplatRenderer *p_renderer,
 			bool p_shadow_casters_only = false) const;
 	uint32_t get_instance_count_for_renderer(const GaussianSplatRenderer *p_renderer) const;
 	uint64_t get_instance_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
@@ -105,14 +155,16 @@ public:
             uint32_t p_wind_mode = INSTANCE_WIND_INHERIT, const Vector3 &p_wind_direction = Vector3(),
             float p_wind_frequency = 1.0f, bool p_visible = true,
             bool p_has_desired_residency_hint = false,
-            int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT);
+            int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT,
+            float p_effect_position_scale = 1.0f, float p_effect_opacity_scale = 1.0f);
     void update_instance_submission_transform(ObjectID p_node_id, const Transform3D &p_transform);
     void update_instance_submission_params(ObjectID p_node_id, float p_opacity, float p_lod_bias, uint32_t p_flags,
             bool p_casts_shadow = false, float p_wind_intensity = 1.0f,
             uint32_t p_wind_mode = INSTANCE_WIND_INHERIT, const Vector3 &p_wind_direction = Vector3(),
             float p_wind_frequency = 1.0f, bool p_visible = true,
             bool p_has_desired_residency_hint = false,
-            int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT);
+            int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT,
+            float p_effect_position_scale = 1.0f, float p_effect_opacity_scale = 1.0f);
     void unregister_instance_submission(ObjectID p_node_id);
     bool get_instance_submission(ObjectID p_node_id, InstanceSubmission *r_submission) const;
 
@@ -148,6 +200,8 @@ private:
         uint32_t wind_mode = INSTANCE_WIND_INHERIT;
 		Vector3 wind_direction = Vector3();
 		float wind_frequency = 1.0f;
+		float effect_position_scale = 1.0f;
+		float effect_opacity_scale = 1.0f;
 		uint32_t asset_id = 0;
 		uint32_t flags = 0;
         uint32_t last_lod = 0;
@@ -156,6 +210,7 @@ private:
         bool has_desired_residency_hint = false;
         int32_t desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT;
         bool dirty = true;
+        Ref<ColorGradingResource> color_grading;
 	};
 
     struct SharedWorld {

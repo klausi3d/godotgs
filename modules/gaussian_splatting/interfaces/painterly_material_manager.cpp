@@ -101,6 +101,15 @@ void PainterlyMaterialManager::update_resources() {
         return;
     }
 
+    // Device-generation guard. The cached `rd` pointer may be stale if the
+    // rendering device has been recreated since `initialize()` — same concern
+    // as clear_resources(). Without this, buffer_is_valid()/free()/buffer_update()
+    // below can dereference a stale RenderingDevice* and turn a routine material
+    // refresh into a use-after-destroy crash.
+    if (!ResourceOwnerMismatchContract::is_device_generation_valid(rd, rd_device_id)) {
+        return;
+    }
+
     if (!material.is_valid()) {
         clear_resources();
         material_dirty = false;
@@ -158,7 +167,9 @@ void PainterlyMaterialManager::update_resources() {
                               (stroke_density_buffer_size != required_size);
 
         if (needs_recreation) {
-            if (stroke_density_buffer.is_valid() && rd->buffer_is_valid(stroke_density_buffer)) {
+            if (stroke_density_buffer.is_valid() &&
+                    ResourceOwnerMismatchContract::is_device_generation_valid(rd, rd_device_id) &&
+                    rd->buffer_is_valid(stroke_density_buffer)) {
                 rd->free(stroke_density_buffer);
             }
             stroke_density_buffer = RID();

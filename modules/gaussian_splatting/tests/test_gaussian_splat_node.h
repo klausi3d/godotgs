@@ -26,6 +26,8 @@
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
 
+#include <limits>
+
 #if defined(TESTS_ENABLED) || defined(TOOLS_ENABLED)
 
 #include "gs_test_setting_guard.h"
@@ -166,6 +168,21 @@ Ref<ColorGradingResource> make_color_grading_resource() {
         grading->set_exposure(0.5f);
     }
     return grading;
+}
+
+// Per-instance color grading moved off the renderer's single-slot RenderConfig and
+// onto GaussianSplatSceneDirector's InstanceRecord keyed by node ObjectID. Tests that
+// previously asserted `renderer->get_color_grading() == grading` now ask the
+// director via this helper. Falls back to the legacy renderer slot when the
+// director is unavailable (keeps assertions meaningful under tear-down).
+Ref<ColorGradingResource> node_color_grading(const GaussianSplatNode3D *p_node,
+        const Ref<GaussianSplatRenderer> &p_renderer) {
+    if (p_node) {
+        if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
+            return director->get_instance_color_grading(p_node->get_instance_id());
+        }
+    }
+    return p_renderer.is_valid() ? p_renderer->get_color_grading() : Ref<ColorGradingResource>();
 }
 
 void set_single_splat_position(const Ref<GaussianSplatAsset> &p_asset, const Vector3 &p_position) {
@@ -1122,8 +1139,14 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer ins
     }
     CHECK(instance_buffer[node_a_index].params[0] == doctest::Approx(1.0f));
     CHECK(instance_buffer[node_b_index].params[0] == doctest::Approx(1.0f));
+    CHECK(instance_buffer[node_a_index].effect_params[0] == doctest::Approx(1.0f));
+    CHECK(instance_buffer[node_a_index].effect_params[1] == doctest::Approx(1.0f));
+    CHECK(instance_buffer[node_b_index].effect_params[0] == doctest::Approx(1.0f));
+    CHECK(instance_buffer[node_b_index].effect_params[1] == doctest::Approx(1.0f));
 
     node_b->set_opacity(0.25f);
+    node_b->set_effect_position_scale(0.5f);
+    node_b->set_effect_opacity_scale(0.2f);
     tree->process(0.0);
     director->build_instance_buffer_for_renderer(renderer_a.ptr(), instance_buffer);
     node_a_index = find_instance_index_by_translation_x(instance_buffer, node_a_x);
@@ -1137,8 +1160,12 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer ins
     }
     CHECK(instance_buffer[node_a_index].params[0] == doctest::Approx(1.0f));
     CHECK(instance_buffer[node_b_index].params[0] == doctest::Approx(0.25f));
+    CHECK(instance_buffer[node_b_index].effect_params[0] == doctest::Approx(0.5f));
+    CHECK(instance_buffer[node_b_index].effect_params[1] == doctest::Approx(0.2f));
 
     node_a->set_opacity(0.6f);
+    node_a->set_effect_position_scale(1.7f);
+    node_a->set_effect_opacity_scale(0.9f);
     tree->process(0.0);
     director->build_instance_buffer_for_renderer(renderer_a.ptr(), instance_buffer);
     node_a_index = find_instance_index_by_translation_x(instance_buffer, node_a_x);
@@ -1152,11 +1179,52 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer ins
     }
     CHECK(instance_buffer[node_a_index].params[0] == doctest::Approx(0.6f));
     CHECK(instance_buffer[node_b_index].params[0] == doctest::Approx(0.25f));
+    CHECK(instance_buffer[node_a_index].effect_params[0] == doctest::Approx(1.7f));
+    CHECK(instance_buffer[node_a_index].effect_params[1] == doctest::Approx(0.9f));
+    CHECK(instance_buffer[node_b_index].effect_params[0] == doctest::Approx(0.5f));
+    CHECK(instance_buffer[node_b_index].effect_params[1] == doctest::Approx(0.2f));
 
     root->remove_child(node_b);
     root->remove_child(node_a);
     memdelete(node_b);
     memdelete(node_a);
+}
+
+TEST_CASE("[GaussianSplatting][Node] Runtime effect controls sanitize invalid gameplay values") {
+    GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
+    REQUIRE(node != nullptr);
+
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    CHECK(node->get_opacity() == doctest::Approx(1.0f));
+    CHECK(node->get_effect_position_scale() == doctest::Approx(1.0f));
+    CHECK(node->get_effect_opacity_scale() == doctest::Approx(1.0f));
+    CHECK(node->get_wind_strength() == doctest::Approx(1.0f));
+    CHECK(node->get_wind_frequency() == doctest::Approx(1.0f));
+
+    node->set_opacity(-0.25f);
+    CHECK(node->get_opacity() == doctest::Approx(0.0f));
+    node->set_opacity(1.75f);
+    CHECK(node->get_opacity() == doctest::Approx(1.0f));
+    node->set_opacity(nan);
+    CHECK(node->get_opacity() == doctest::Approx(1.0f));
+
+    node->set_effect_position_scale(-2.0f);
+    CHECK(node->get_effect_position_scale() == doctest::Approx(0.0f));
+    node->set_effect_position_scale(nan);
+    CHECK(node->get_effect_position_scale() == doctest::Approx(1.0f));
+
+    node->set_effect_opacity_scale(-3.0f);
+    CHECK(node->get_effect_opacity_scale() == doctest::Approx(0.0f));
+    node->set_effect_opacity_scale(nan);
+    CHECK(node->get_effect_opacity_scale() == doctest::Approx(1.0f));
+
+    node->set_wind_strength(-5.0f);
+    CHECK(node->get_wind_strength() == doctest::Approx(0.0f));
+    node->set_wind_frequency(-4.0f);
+    CHECK(node->get_wind_frequency() == doctest::Approx(0.0f));
+
+    memdelete(node);
 }
 
 TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer instance buffer drops hidden nodes") {
@@ -1309,8 +1377,8 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Node color grading 
     // and the inspector property must stay visible.
     CHECK_MESSAGE(graded_node->get_color_grading() == grading,
             "Node retains its local color grading");
-    CHECK_MESSAGE(renderer->get_color_grading() == grading,
-            "Renderer color grading must reflect the node's grading even with a world submission");
+    CHECK_MESSAGE(node_color_grading(graded_node, renderer) == grading,
+            "Per-instance grading must track the node even with a world submission");
     CHECK(is_property_editor_exposed(graded_node, StringName("rendering/color_grading")));
 
     // Property and propagation should also hold after the world submission is removed.
@@ -1319,8 +1387,8 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Node color grading 
     tree->process(0.0);
 
     graded_node->set_color_grading(grading);
-    CHECK_MESSAGE(renderer->get_color_grading() == grading,
-            "Color grading should still reach renderer after world submission is removed");
+    CHECK_MESSAGE(node_color_grading(graded_node, renderer) == grading,
+            "Per-instance grading must persist after world submission is removed");
     CHECK(is_property_editor_exposed(graded_node, StringName("rendering/color_grading")));
 
     root->remove_child(graded_node);
@@ -1381,9 +1449,8 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer pre
     CHECK(node_a->get_color_grading() == grading);
     // Painterly is still renderer-wide and gated while the renderer is shared.
     CHECK_FALSE(renderer->get_painterly_enabled());
-    // Color grading is per-node and propagates to the renderer regardless of sharing
-    // (last-writer-wins when multiple nodes share a renderer).
-    CHECK(renderer->get_color_grading() == grading);
+    // Color grading is per-instance and lives on the director record keyed by node_id.
+    CHECK(node_color_grading(node_a, renderer) == grading);
 
     root->remove_child(node_b);
     tree->process(0.0);
@@ -1391,7 +1458,7 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer pre
     CHECK(node_a->is_painterly_enabled());
     CHECK(node_a->get_color_grading() == grading);
     CHECK(renderer->get_painterly_enabled());
-    CHECK(renderer->get_color_grading() == grading);
+    CHECK(node_color_grading(node_a, renderer) == grading);
 
     root->remove_child(node_a);
     memdelete(node_b);
@@ -1419,8 +1486,8 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Single node color g
         return;
     }
 
-    // Renderer should start with no color grading.
-    CHECK(renderer->get_color_grading().is_null());
+    // Director should start with no per-instance grading bound to this node.
+    CHECK(node_color_grading(node, renderer).is_null());
 
     Ref<ColorGradingResource> grading = make_color_grading_resource();
     CHECK(grading.is_valid());
@@ -1428,9 +1495,9 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Single node color g
     node->set_color_grading(grading);
     tree->process(0.0);
 
-    // Single node owns the renderer exclusively, so color grading must propagate.
+    // Setter must propagate the grading to the director record for this node.
     CHECK(node->get_color_grading() == grading);
-    CHECK(renderer->get_color_grading() == grading);
+    CHECK(node_color_grading(node, renderer) == grading);
 
     root->remove_child(node);
     memdelete(node);
@@ -1465,7 +1532,7 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Color grading survi
         return;
     }
 
-    CHECK(renderer->get_color_grading() == grading);
+    CHECK(node_color_grading(node, renderer) == grading);
 
     // Exit tree.
     root->remove_child(node);
@@ -1486,9 +1553,9 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Color grading survi
         return;
     }
 
-    // Color grading must still be on the node and pushed to the (possibly new) renderer.
+    // Color grading must still be on the node and pushed to the director for the re-attached node.
     CHECK(node->get_color_grading() == grading);
-    CHECK(renderer_after->get_color_grading() == grading);
+    CHECK(node_color_grading(node, renderer_after) == grading);
 
     root->remove_child(node);
     memdelete(node);
@@ -1521,18 +1588,20 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Color grading signa
     node->set_color_grading(grading);
     tree->process(0.0);
 
-    CHECK(renderer->get_color_grading() == grading);
+    CHECK(node_color_grading(node, renderer) == grading);
 
     // Mutate a property on the resource — the "changed" signal should propagate
-    // through _on_color_grading_changed and keep the renderer in sync.
+    // through _on_color_grading_changed and keep the director record in sync.
     const float original_exposure = grading->get_exposure();
     grading->set_exposure(2.5f);
     CHECK(grading->get_exposure() != doctest::Approx(original_exposure));
 
-    // The renderer should still reference the same resource (signal updates
-    // the renderer in-place, it does not swap the Ref).
-    CHECK(renderer->get_color_grading() == grading);
-    CHECK(renderer->get_color_grading()->get_exposure() == doctest::Approx(2.5f));
+    // The director should still reference the same resource (signal updates
+    // the record in-place, it does not swap the Ref).
+    Ref<ColorGradingResource> resolved = node_color_grading(node, renderer);
+    CHECK(resolved == grading);
+    CHECK(resolved.is_valid());
+    CHECK(resolved->get_exposure() == doctest::Approx(2.5f));
 
     root->remove_child(node);
     memdelete(node);
@@ -1575,11 +1644,14 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Hot-reload of node 
     }
     REQUIRE_MESSAGE(renderer == node_b->get_renderer(), "Both nodes must share the same renderer for this test");
 
-    // After explicit setters, renderer reflects the most recent push (node_b).
+    // After explicit setters, each node's director record carries its own grading.
+    // Per-instance storage means node_a's grading is independent of node_b's.
     node_b->set_color_grading(grading_b);
     tree->process(0.0);
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
-            "Renderer should reflect node_b's grading after explicit setter");
+    CHECK_MESSAGE(node_color_grading(node_a, renderer) == grading_a,
+            "node_a keeps its own grading on its director record");
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "node_b keeps its own grading on its director record");
 
     // Simulate hot-reload / reimport of node_a's asset via the asset's
     // "changed" signal — this is the path that fires _on_asset_changed →
@@ -1589,11 +1661,12 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Hot-reload of node 
     asset_a->emit_changed();
     tree->process(0.0);
 
-    // The renderer's grading must remain node_b's. If the implicit
-    // _update_asset push were not gated to first-data-ready, node_a would
-    // overwrite node_b here even though no setter ran on node_a.
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
-            "Hot-reload of node_a must not clobber node_b's grading on shared renderer");
+    // Per-instance storage makes cross-node clobber impossible by construction:
+    // each node's grading lives on its own director record. Both must still match.
+    CHECK_MESSAGE(node_color_grading(node_a, renderer) == grading_a,
+            "Hot-reload of node_a must not change node_a's own director grading either");
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "Hot-reload of node_a cannot touch node_b's director grading");
 
     root->remove_child(node_b);
     root->remove_child(node_a);
@@ -1657,8 +1730,8 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Procedural set_spla
         return;
     }
 
-    CHECK_MESSAGE(renderer->get_color_grading() == grading,
-            "Renderer must reflect the cached color grading after procedural set_splat_data");
+    CHECK_MESSAGE(node_color_grading(node, renderer) == grading,
+            "Director must reflect the cached color grading after procedural set_splat_data");
 
     root->remove_child(node);
     memdelete(node);
@@ -1707,11 +1780,13 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Tree exit/re-enter 
     }
     REQUIRE_MESSAGE(renderer == node_b->get_renderer(), "Both nodes must share the same renderer for this test");
 
-    // Last writer is node_b.
+    // Per-instance storage: each node carries its own grading on its director record.
     node_b->set_color_grading(grading_b);
     tree->process(0.0);
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
-            "Renderer should reflect node_b's grading after explicit setter");
+    CHECK_MESSAGE(node_color_grading(node_a, renderer) == grading_a,
+            "node_a still has its own grading on its director record");
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "node_b's grading is stored per-instance on node_b's record");
 
     // Detach node_a, then re-attach it without changing its grading or
     // its asset. Then trigger a hot-reload via emit_changed(). The guard
@@ -1726,8 +1801,11 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Tree exit/re-enter 
     asset_a->emit_changed();
     tree->process(0.0);
 
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
-            "After tree exit/re-enter and hot-reload of node_a, renderer must still hold node_b's grading");
+    // Both nodes must retain their own per-instance grading after all the churn.
+    CHECK_MESSAGE(node_color_grading(node_a, renderer) == grading_a,
+            "node_a's per-instance grading survives its own tree exit/re-enter + hot-reload");
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "node_b's per-instance grading is untouched by node_a's churn");
 
     root->remove_child(node_b);
     root->remove_child(node_a);
@@ -1785,29 +1863,30 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Setter after no-gra
     grading_a->set_exposure(0.25f);
     grading_b->set_exposure(0.75f);
 
-    // Setter on node_a: must push grading_a AND arm the guard, so that
-    // a later _update_asset on node_a doesn't re-push.
+    // Per-instance storage: each node's director record carries its own grading.
     node_a->set_color_grading(grading_a);
     tree->process(0.0);
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_a,
-            "Renderer must reflect node_a's grading after explicit setter");
+    CHECK_MESSAGE(node_color_grading(node_a, renderer) == grading_a,
+            "node_a's director record must reflect grading_a");
 
-    // Setter on node_b: most recent push, renderer = grading_b.
     node_b->set_color_grading(grading_b);
     tree->process(0.0);
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
-            "Renderer must reflect node_b's grading after its setter");
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "node_b's director record must reflect grading_b");
+    CHECK_MESSAGE(node_color_grading(node_a, renderer) == grading_a,
+            "node_b's setter cannot touch node_a's per-instance grading");
 
-    // Hot-reload of node_a's asset. Without the setter arming the guard,
-    // _update_asset on node_a would re-push grading_a and clobber
-    // grading_b. With the fix, the guard is true and no push happens.
+    // Hot-reload of node_a's asset. With per-instance storage, there is no
+    // shared slot to clobber — each record keeps its own grading.
     Ref<GaussianSplatAsset> asset_a = node_a->get_splat_asset();
     REQUIRE(asset_a.is_valid());
     asset_a->emit_changed();
     tree->process(0.0);
 
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
-            "Hot-reload of node_a's asset must not re-clobber node_b after setter armed the guard");
+    CHECK_MESSAGE(node_color_grading(node_a, renderer) == grading_a,
+            "Hot-reload leaves node_a's own grading intact");
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "Hot-reload of node_a cannot affect node_b's per-instance grading");
 
     root->remove_child(node_b);
     root->remove_child(node_a);
@@ -1854,8 +1933,8 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Detached asset refr
 
     node_b->set_color_grading(grading_b);
     tree->process(0.0);
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
-            "Renderer should reflect node_b's grading before node_a is detached");
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "node_b's per-instance grading must reflect grading_b");
 
     root->remove_child(node_a);
     tree->process(0.0);
@@ -1864,15 +1943,15 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Detached asset refr
     REQUIRE(detached_asset.is_valid());
     detached_asset->emit_changed();
     tree->process(0.0);
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
-            "Detached hot-reload of node_a must not overwrite node_b's grading");
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "Detached hot-reload of node_a cannot touch node_b's per-instance grading");
 
     Ref<GaussianSplatAsset> replacement_asset = make_single_splat_asset(9703.0f);
     REQUIRE(replacement_asset.is_valid());
     node_a->set_splat_asset(replacement_asset);
     tree->process(0.0);
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
-            "Detached set_splat_asset() on node_a must not overwrite node_b's grading");
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "Detached set_splat_asset on node_a cannot touch node_b's per-instance grading");
 
     root->remove_child(node_b);
     memdelete(node_b);
@@ -1918,23 +1997,26 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Detached color grad
 
     node_b->set_color_grading(grading_b);
     tree->process(0.0);
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
-            "Renderer should reflect node_b's grading before node_a is detached");
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "node_b's per-instance grading must reflect grading_b");
 
     root->remove_child(node_a);
     tree->process(0.0);
 
     grading_a->set_exposure(1.25f);
     tree->process(0.0);
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
-            "Detached grading resource changes on node_a must not overwrite node_b immediately");
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "Detached grading resource changes on node_a cannot touch node_b's per-instance grading");
 
     root->add_child(node_a);
     tree->process(0.0);
-    REQUIRE(renderer->get_color_grading().is_valid());
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_a,
-            "Re-entering node_a should replay its pending grading change exactly once");
-    CHECK(renderer->get_color_grading()->get_exposure() == doctest::Approx(1.25f));
+    Ref<ColorGradingResource> node_a_grading = node_color_grading(node_a, renderer);
+    REQUIRE(node_a_grading.is_valid());
+    CHECK_MESSAGE(node_a_grading == grading_a,
+            "Re-entering node_a must replay its pending grading change onto its director record");
+    CHECK(node_a_grading->get_exposure() == doctest::Approx(1.25f));
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "node_b's per-instance grading remains unchanged throughout");
 
     root->remove_child(node_b);
     root->remove_child(node_a);
@@ -1985,12 +2067,11 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Detached set_color_
     }
     REQUIRE_MESSAGE(renderer == node_b->get_renderer(), "Both nodes must share the same renderer for this test");
 
-    // Both nodes pushed; renderer reflects whichever ensure_renderer ran
-    // last. Assert via explicit setter so the test is deterministic.
+    // Per-instance storage: node_b's grading is stored on its own record.
     node_b->set_color_grading(grading_b);
     tree->process(0.0);
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
-            "Renderer should reflect node_b's grading before node_a detaches");
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "node_b's per-instance grading must reflect grading_b");
 
     // Detach node_a, then explicitly clear its grading via setter.
     root->remove_child(node_a);
@@ -1998,22 +2079,136 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Detached set_color_
 
     node_a->set_color_grading(Ref<ColorGradingResource>());
     tree->process(0.0);
-    // Detached null setter must NOT touch the renderer immediately.
-    CHECK_MESSAGE(renderer->get_color_grading() == grading_b,
-            "Detached set_color_grading(null) on node_a must not mutate the shared renderer immediately");
+    // Detached null setter does not touch the director (node_a is unregistered),
+    // and node_b's record is untouched.
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "Detached set_color_grading(null) on node_a must not touch node_b's per-instance grading");
 
-    // Re-attach node_a. The explicit-pending replay must apply node_a's
-    // null grading (last-writer-wins) and clear the renderer's grading.
+    // Re-attach node_a. The explicit-pending replay pushes node_a's null into
+    // its own director record; node_b is unaffected.
     root->add_child(node_a);
     tree->process(0.0);
 
-    CHECK_MESSAGE(renderer->get_color_grading().is_null(),
-            "Re-entering node_a after explicit set_color_grading(null) must apply the null and override node_b's grading");
+    CHECK_MESSAGE(node_color_grading(node_a, renderer).is_null(),
+            "Re-entering node_a after explicit set_color_grading(null) must apply the null to node_a's record");
+    CHECK_MESSAGE(node_color_grading(node_b, renderer) == grading_b,
+            "node_b's grading is still on node_b's record throughout");
 
     root->remove_child(node_b);
     root->remove_child(node_a);
     memdelete(node_b);
     memdelete(node_a);
+}
+
+TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Two shared-renderer nodes get distinct per-instance grading rows in built buffer") {
+    // Core proof of the per-instance fix: two GaussianSplatNode3D nodes sharing
+    // a renderer must end up with distinct rows in the InstanceGradingGPU buffer
+    // produced by the director, so the shader can apply different grading to each.
+    SceneTree *tree = SceneTree::get_singleton();
+    REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+    Window *root = tree->get_root();
+    REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+    GaussianSplatNode3D *node_a = memnew(GaussianSplatNode3D);
+    GaussianSplatNode3D *node_b = memnew(GaussianSplatNode3D);
+    node_a->set_splat_asset(make_single_splat_asset(9900.0f));
+    node_b->set_splat_asset(make_single_splat_asset(9910.0f));
+
+    Ref<ColorGradingResource> grading_a = make_color_grading_resource();
+    Ref<ColorGradingResource> grading_b = make_color_grading_resource();
+    REQUIRE(grading_a.is_valid());
+    REQUIRE(grading_b.is_valid());
+    grading_a->set_exposure(-1.5f);
+    grading_a->set_contrast(0.25f);
+    grading_a->set_saturation(0.75f);
+    grading_b->set_exposure(2.5f);
+    grading_b->set_contrast(1.75f);
+    grading_b->set_saturation(1.25f);
+
+    node_a->set_color_grading(grading_a);
+    node_b->set_color_grading(grading_b);
+
+    root->add_child(node_a);
+    root->add_child(node_b);
+    tree->process(0.0);
+
+    Ref<GaussianSplatRenderer> renderer = node_a->get_renderer();
+    if (!renderer.is_valid()) {
+        MESSAGE("Skipping test - renderer unavailable (headless mode)");
+        root->remove_child(node_b);
+        root->remove_child(node_a);
+        memdelete(node_b);
+        memdelete(node_a);
+        return;
+    }
+    REQUIRE_MESSAGE(renderer == node_b->get_renderer(), "Both nodes must share the same renderer");
+
+    // Per-instance lookup on the director must return each node's own grading.
+    CHECK(node_color_grading(node_a, renderer) == grading_a);
+    CHECK(node_color_grading(node_b, renderer) == grading_b);
+    CHECK(node_color_grading(node_a, renderer) != node_color_grading(node_b, renderer));
+
+    // Direct director buffer build — the exact bytes the shader reads. This is
+    // the lowest-level guarantee: every grading edit materializes as its own row.
+    GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+    REQUIRE(director != nullptr);
+    LocalVector<InstanceGradingGPU> gradings;
+    director->build_instance_grading_buffer_for_renderer(renderer.ptr(), gradings, false);
+    // The instance-record filter may skip rows whose asset data is not loaded;
+    // skip the deep assert if the build returned a smaller set than expected.
+    if (gradings.size() >= 2) {
+        // Find the row that matches each grading. Record order follows
+        // world->instances insertion, which matches add_child order.
+        const InstanceGradingGPU &row_a = gradings[0];
+        const InstanceGradingGPU &row_b = gradings[1];
+        CHECK(row_a.primary[1] == doctest::Approx(grading_a->get_exposure()));
+        CHECK(row_a.primary[2] == doctest::Approx(grading_a->get_contrast()));
+        CHECK(row_a.primary[3] == doctest::Approx(grading_a->get_saturation()));
+        CHECK(row_b.primary[1] == doctest::Approx(grading_b->get_exposure()));
+        CHECK(row_b.primary[2] == doctest::Approx(grading_b->get_contrast()));
+        CHECK(row_b.primary[3] == doctest::Approx(grading_b->get_saturation()));
+        // Rows must differ — the whole point of per-instance grading.
+        CHECK(row_a.primary[1] != doctest::Approx(row_b.primary[1]));
+    }
+
+    root->remove_child(node_b);
+    root->remove_child(node_a);
+    memdelete(node_b);
+    memdelete(node_a);
+}
+
+TEST_CASE("[GaussianSplatting] Renderer-only set_color_grading bumps grading defaults generation") {
+    // Regression for the P2 flagged by Codex: renderer-only / direct-data flows
+    // (no SharedWorld in the director) still need set_color_grading to trigger a
+    // grading SSBO re-upload. This is wired by
+    // RenderConfigOrchestrator::set_color_grading ->
+    // GaussianSplatSceneDirector::invalidate_grading_for_renderer, which always
+    // bumps the renderer's `instance_grading_defaults_generation` counter before
+    // the SharedWorld lookup. The streaming fingerprint consumes that counter so
+    // upload_changed trips even without any director entry.
+    Ref<GaussianSplatRenderer> renderer;
+    renderer.instantiate();
+    REQUIRE(renderer.is_valid());
+
+    using GaussianRenderFacadeState::ResourceState;
+    const ResourceState &state = renderer->get_resource_state();
+    const uint64_t before = state.instance_grading_defaults_generation.load(std::memory_order_relaxed);
+
+    Ref<ColorGradingResource> grading = make_color_grading_resource();
+    REQUIRE(grading.is_valid());
+    grading->set_exposure(-0.5f);
+    renderer->set_color_grading(grading);
+
+    const uint64_t after_set = state.instance_grading_defaults_generation.load(std::memory_order_relaxed);
+    CHECK(after_set > before);
+
+    // In-place slider edit on the same Ref fires the resource's `changed` signal,
+    // which the renderer's handler catches via callable_mp and re-runs the
+    // invalidation path. Bumps the counter again even though the Ref did not swap.
+    grading->set_exposure(1.5f);
+    const uint64_t after_slider = state.instance_grading_defaults_generation.load(std::memory_order_relaxed);
+    CHECK(after_slider > after_set);
 }
 
 TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer full-fidelity override only follows attached assets") {

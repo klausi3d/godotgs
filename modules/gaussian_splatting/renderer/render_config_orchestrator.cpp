@@ -2,6 +2,7 @@
 
 #include "render_data_orchestrator.h"
 #include "painterly_pass_graph.h"
+#include "../core/gaussian_splat_scene_director.h"
 #include "../interfaces/interactive_state_manager.h"
 #include "../interfaces/painterly_renderer.h"
 #include "../logger/gs_logger.h"
@@ -42,9 +43,35 @@ void RenderConfigOrchestrator::set_color_grading(const Ref<ColorGradingResource>
 	if (render_config.color_grading == p_grading) {
 		return;
 	}
+	// Disconnect the signal on the OLD resource (if any) before swapping. Without
+	// this, dangling `changed` connections on replaced resources would keep calling
+	// the renderer handler after the resource is no longer the active default.
+	const Callable grading_changed = callable_mp(renderer, &GaussianSplatRenderer::_on_renderer_default_grading_changed);
+	if (render_config.color_grading.is_valid() && renderer &&
+			render_config.color_grading->is_connected("changed", grading_changed)) {
+		render_config.color_grading->disconnect("changed", grading_changed);
+	}
 	render_config.color_grading = p_grading;
+	// Connect the new resource so in-place slider edits (which emit `changed`
+	// without swapping the Ref) re-run the invalidation path. Without this,
+	// mutating the resource behind the scenes leaves fallback-graded rows
+	// stale until an unrelated content change forces a rebuild.
+	if (render_config.color_grading.is_valid() && renderer &&
+			!render_config.color_grading->is_connected("changed", grading_changed)) {
+		render_config.color_grading->connect("changed", grading_changed);
+	}
 	if (renderer) {
 		(renderer->*runtime_ports.invalidate_cached_render)();
+		// Per-instance grading path: records without an explicit per-instance
+		// grading ref fall back to this renderer-wide default at build time.
+		// The director's invalidate call bumps both the world's instance
+		// generation (if present) AND the renderer's grading defaults counter
+		// that the streaming/resident upload fingerprints include — so the
+		// SSBO re-uploads on the next frame for both world-bound and direct-
+		// data flows.
+		if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
+			director->invalidate_grading_for_renderer(renderer);
+		}
 	}
 }
 
@@ -137,6 +164,25 @@ void GaussianSplatRenderer::set_opacity_multiplier(float p_opacity) {
 
 void GaussianSplatRenderer::set_color_grading(const Ref<ColorGradingResource> &p_grading) {
 	config_orchestrator->set_color_grading(p_grading);
+}
+
+void GaussianSplatRenderer::_on_renderer_default_grading_changed() {
+	// Fired when the renderer-wide default ColorGradingResource emits `changed`
+	// (slider edits that mutate values in place — same Ref, new values). Re-run
+	// the invalidation path so fallback-graded rows pick up the fresh values on
+	// the next frame.
+	//
+	// Thread affinity: `changed` fires synchronously on the thread that called
+	// `emit_changed()`. In Godot practice, resource editing happens on the main
+	// thread (inspector UI, scene tree). If a caller ever edits the resource
+	// from a worker thread, the director generation bump below uses atomic ops
+	// so the fingerprint read is safe; the world_mutex inside the director
+	// serializes record mutations. invalidate_cached_render() likewise just
+	// flips a bool read by the render thread.
+	invalidate_cached_render();
+	if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
+		director->invalidate_grading_for_renderer(this);
+	}
 }
 
 void GaussianSplatRenderer::set_interactive_state(InteractiveState p_state) {

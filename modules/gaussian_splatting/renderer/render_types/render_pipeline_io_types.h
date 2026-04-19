@@ -134,6 +134,8 @@ struct PublishedInstanceAssetRemap {
 
 struct InstancePipelineBuffers {
 	RID instance_buffer;
+	// Per-instance color grading SSBO (InstanceGradingGPU rows). Parallel to instance_buffer.
+	RID instance_grading_buffer;
 	RID asset_meta_buffer;
 	RID asset_chunk_index_buffer;
 	RID chunk_meta_buffer;

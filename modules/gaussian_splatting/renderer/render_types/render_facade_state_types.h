@@ -16,6 +16,7 @@
 #include "../gaussian_gpu_layout.h"
 #include "../gpu_buffer_manager.h"
 #include "../gpu_performance_monitor.h"
+#include <atomic>
 #include <cstdint>
 #include <memory>
 
@@ -50,6 +51,24 @@ struct ResourceState {
 	GPUBufferManager::DeferredDeletionQueue deletion_queue;
 	RID instance_buffer;
 	uint32_t instance_buffer_capacity = 0;
+	// Sibling SSBO to instance_buffer: one InstanceGradingGPU row per instance, indexed
+	// by SplatRefGPU.instance_id. Rebuilt alongside the instance buffer whenever instance
+	// topology or grading parameters change. Sized to the same capacity (rows) so the
+	// shader can always index up to instance_buffer_capacity.
+	RID instance_grading_buffer;
+	uint32_t instance_grading_buffer_capacity = 0;
+	// Bumped whenever the renderer-wide color_grading default changes. Included
+	// in the upload fingerprint so renderer-only / direct-data flows (no director
+	// SharedWorld) still force a grading SSBO re-upload when the default mutates.
+	// Without this, fallback-graded rows keep stale GPU values until an unrelated
+	// topology change re-runs the publisher.
+	//
+	// Atomic: the writer runs under the director's world_mutex (via
+	// invalidate_grading_for_renderer) while the fingerprint readers in the
+	// streaming orchestrator may run on the render thread without that lock.
+	// Relaxed ordering is sufficient because the generation is a monotonic
+	// counter used only to detect "did something change since last frame".
+	std::atomic<uint64_t> instance_grading_defaults_generation{ 0 };
 	RID instance_visible_chunk_buffer;
 	uint32_t instance_visible_chunk_capacity = 0;
 	RID instance_splat_ref_buffer;

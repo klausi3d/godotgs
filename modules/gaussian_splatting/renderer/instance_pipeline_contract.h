@@ -52,11 +52,13 @@ enum class InvariantViolationReason : uint8_t {
 
 	RASTER_ATLAS_GAUSSIAN_BUFFER_MISSING,
 	RASTER_INSTANCE_BUFFER_MISSING,
+	RASTER_INSTANCE_GRADING_BUFFER_MISSING,
 	RASTER_SPLAT_REF_BUFFER_MISSING,
 	RASTER_INSTANCE_COUNT_BUFFER_MISSING,
 	RASTER_QUANTIZATION_BUFFER_MISSING,
 
 	TILE_INSTANCE_BUFFER_MISSING,
+	TILE_INSTANCE_GRADING_BUFFER_MISSING,
 	TILE_SPLAT_REF_BUFFER_MISSING,
 	TILE_INDIRECT_COUNT_BUFFER_MISSING,
 	TILE_INDIRECT_DISPATCH_BUFFER_MISSING,
@@ -116,12 +118,14 @@ inline InvariantViolationClass get_violation_class(InvariantViolationReason p_re
 
 		case InvariantViolationReason::RASTER_ATLAS_GAUSSIAN_BUFFER_MISSING:
 		case InvariantViolationReason::RASTER_INSTANCE_BUFFER_MISSING:
+		case InvariantViolationReason::RASTER_INSTANCE_GRADING_BUFFER_MISSING:
 		case InvariantViolationReason::RASTER_SPLAT_REF_BUFFER_MISSING:
 		case InvariantViolationReason::RASTER_INSTANCE_COUNT_BUFFER_MISSING:
 		case InvariantViolationReason::RASTER_QUANTIZATION_BUFFER_MISSING:
 			return InvariantViolationClass::RASTER;
 
 		case InvariantViolationReason::TILE_INSTANCE_BUFFER_MISSING:
+		case InvariantViolationReason::TILE_INSTANCE_GRADING_BUFFER_MISSING:
 		case InvariantViolationReason::TILE_SPLAT_REF_BUFFER_MISSING:
 		case InvariantViolationReason::TILE_INDIRECT_COUNT_BUFFER_MISSING:
 		case InvariantViolationReason::TILE_INDIRECT_DISPATCH_BUFFER_MISSING:
@@ -217,6 +221,8 @@ inline const char *get_violation_reason_name(InvariantViolationReason p_reason) 
 			return "raster_atlas_gaussian_buffer_missing";
 		case InvariantViolationReason::RASTER_INSTANCE_BUFFER_MISSING:
 			return "raster_instance_buffer_missing";
+		case InvariantViolationReason::RASTER_INSTANCE_GRADING_BUFFER_MISSING:
+			return "raster_instance_grading_buffer_missing";
 		case InvariantViolationReason::RASTER_SPLAT_REF_BUFFER_MISSING:
 			return "raster_splat_ref_buffer_missing";
 		case InvariantViolationReason::RASTER_INSTANCE_COUNT_BUFFER_MISSING:
@@ -225,6 +231,8 @@ inline const char *get_violation_reason_name(InvariantViolationReason p_reason) 
 			return "raster_quantization_buffer_missing";
 		case InvariantViolationReason::TILE_INSTANCE_BUFFER_MISSING:
 			return "tile_instance_buffer_missing";
+		case InvariantViolationReason::TILE_INSTANCE_GRADING_BUFFER_MISSING:
+			return "tile_instance_grading_buffer_missing";
 		case InvariantViolationReason::TILE_SPLAT_REF_BUFFER_MISSING:
 			return "tile_splat_ref_buffer_missing";
 		case InvariantViolationReason::TILE_INDIRECT_COUNT_BUFFER_MISSING:
@@ -369,6 +377,14 @@ inline InvariantViolationReason first_raster_violation(const GaussianSplatRender
 	if (!p_buffers.instance_buffer.is_valid()) {
 		return InvariantViolationReason::RASTER_INSTANCE_BUFFER_MISSING;
 	}
+	// Tile binning binds `instance_grading_buffer` at set=0 binding=20 and reads
+	// per-splat grading via `splat_ref.instance_id`. It is a hard requirement for
+	// raster readiness — without this check a caller can pass has_raster_buffers()
+	// yet still trip the runtime ERR_FAIL_COND in tile_render_binning.cpp at bind
+	// time, producing late ERR_UNCONFIGURED failures and fallback loops.
+	if (!p_buffers.instance_grading_buffer.is_valid()) {
+		return InvariantViolationReason::RASTER_INSTANCE_GRADING_BUFFER_MISSING;
+	}
 	if (!p_buffers.splat_ref_buffer.is_valid()) {
 		return InvariantViolationReason::RASTER_SPLAT_REF_BUFFER_MISSING;
 	}
@@ -408,12 +424,21 @@ inline InvariantViolation evaluate_streaming_activation(const GaussianSplatRende
 	return InvariantViolation();
 }
 
-inline InvariantViolationReason first_tile_runtime_violation(const RID &p_instance_buffer, const RID &p_splat_ref_buffer,
+inline InvariantViolationReason first_tile_runtime_violation(const RID &p_instance_buffer,
+		const RID &p_instance_grading_buffer,
+		const RID &p_splat_ref_buffer,
 		const RID &p_indirect_count_buffer, const RID &p_indirect_dispatch_buffer,
 		bool p_quantization_required, const RID &p_quantization_buffer,
 		const RID &p_chunk_meta_buffer = RID()) {
 	if (!p_instance_buffer.is_valid()) {
 		return InvariantViolationReason::TILE_INSTANCE_BUFFER_MISSING;
+	}
+	// Tile binning binds `instance_grading_buffer` at set=0 binding=20 and reads
+	// it per splat, so a missing RID here is a hard contract violation. Fail
+	// fast during preflight instead of at uniform-set acquisition time, which
+	// otherwise surfaces as late fallback/error behavior.
+	if (!p_instance_grading_buffer.is_valid()) {
+		return InvariantViolationReason::TILE_INSTANCE_GRADING_BUFFER_MISSING;
 	}
 	if (!p_splat_ref_buffer.is_valid()) {
 		return InvariantViolationReason::TILE_SPLAT_REF_BUFFER_MISSING;

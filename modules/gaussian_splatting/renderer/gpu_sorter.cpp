@@ -785,7 +785,13 @@ Error BitonicSort::sort(RID keys_buffer, RID values_buffer, uint32_t count) {
         return ERR_CANT_CREATE;
     }
 
-    if (uniform_set.is_valid() && uniform_owner && uniform_owner->uniform_set_is_valid(uniform_set)) {
+    // Gate the device dereference on the recorded generation the same way
+    // _free_uniform_sets_safe does. If the RenderingDevice was recreated
+    // between sorts (device reset / hot-reload), `uniform_owner` is a stale
+    // pointer; calling `uniform_set_is_valid()` on it would be UB.
+    if (uniform_set.is_valid() && uniform_owner &&
+            ResourceOwnerMismatchContract::is_device_generation_valid(uniform_owner, uniform_owner_generation) &&
+            uniform_owner->uniform_set_is_valid(uniform_set)) {
         uniform_owner->free(uniform_set);
     }
     uniform_set = RID();

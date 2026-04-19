@@ -2257,6 +2257,10 @@ bool GPUSortingPipeline::_sort_instance_pipeline(const Transform3D &p_cam_transf
     params.effector_config[1] = 0.0f;
     params.effector_config[2] = 2.0f;
     params.effector_config[3] = 2.0f; // Default frequency 2 Hz
+    params.effector_opacity_config[0] = 1.0f;
+    params.effector_opacity_config[1] = 0.0f;
+    params.effector_opacity_config[2] = 1.0f;
+    params.effector_opacity_config[3] = 0.0f;
     if (ProjectSettings *ps = ProjectSettings::get_singleton()) {
         static const StringName wind_enabled_path("rendering/gaussian_splatting/animation/wind_enabled");
         static const StringName wind_direction_x_path("rendering/gaussian_splatting/animation/wind_direction_x");
@@ -2266,16 +2270,6 @@ bool GPUSortingPipeline::_sort_instance_pipeline(const Transform3D &p_cam_transf
         static const StringName wind_frequency_path("rendering/gaussian_splatting/animation/wind_frequency");
         static const StringName wind_spatial_frequency_path("rendering/gaussian_splatting/animation/wind_spatial_frequency");
         static const StringName wind_time_scale_path("rendering/gaussian_splatting/animation/wind_time_scale");
-        static const StringName max_effectors_path("rendering/gaussian_splatting/effects/max_effectors");
-        static const StringName sphere_effector_enabled_path("rendering/gaussian_splatting/effects/sphere_effector_enabled");
-        static const StringName sphere_effector_center_x_path("rendering/gaussian_splatting/effects/sphere_effector_center_x");
-        static const StringName sphere_effector_center_y_path("rendering/gaussian_splatting/effects/sphere_effector_center_y");
-        static const StringName sphere_effector_center_z_path("rendering/gaussian_splatting/effects/sphere_effector_center_z");
-        static const StringName sphere_effector_radius_path("rendering/gaussian_splatting/effects/sphere_effector_radius");
-        static const StringName sphere_effector_strength_path("rendering/gaussian_splatting/effects/sphere_effector_strength");
-        static const StringName sphere_effector_falloff_path("rendering/gaussian_splatting/effects/sphere_effector_falloff");
-        static const StringName sphere_effector_frequency_path("rendering/gaussian_splatting/effects/sphere_effector_frequency");
-
         const bool wind_enabled = _get_bool_setting(ps, wind_enabled_path, false);
         const float wind_time_scale = MAX(_get_float_setting(ps, wind_time_scale_path, 1.0f), 0.0f);
         params.wind_dir_strength[0] = _get_float_setting(ps, wind_direction_x_path, 1.0f);
@@ -2288,17 +2282,19 @@ bool GPUSortingPipeline::_sort_instance_pipeline(const Transform3D &p_cam_transf
         params.wind_time_config[2] = _get_float_setting(ps, wind_spatial_frequency_path, 0.1f);
         params.wind_time_config[3] = wind_enabled ? 1.0f : 0.0f;
 
-        const int max_effectors = CLAMP((int)_get_float_setting(ps, max_effectors_path, 1.0f), 0, 1);
-        const bool sphere_effective_enabled = max_effectors > 0 &&
-                _get_bool_setting(ps, sphere_effector_enabled_path, false);
-        params.effector_sphere[0] = _get_float_setting(ps, sphere_effector_center_x_path, 0.0f);
-        params.effector_sphere[1] = _get_float_setting(ps, sphere_effector_center_y_path, 0.0f);
-        params.effector_sphere[2] = _get_float_setting(ps, sphere_effector_center_z_path, 0.0f);
-        params.effector_sphere[3] = MAX(_get_float_setting(ps, sphere_effector_radius_path, 0.0f), 0.0f);
-        params.effector_config[0] = sphere_effective_enabled ? 1.0f : 0.0f;
-        params.effector_config[1] = _get_float_setting(ps, sphere_effector_strength_path, 0.0f);
-        params.effector_config[2] = MAX(_get_float_setting(ps, sphere_effector_falloff_path, 2.0f), 0.001f);
-        params.effector_config[3] = MAX(_get_float_setting(ps, sphere_effector_frequency_path, 2.0f), 0.1f);
+        const gs::settings::GSSphereEffectorSettings sphere_effector_settings = gs::settings::get_sphere_effector_settings(ps, true);
+        params.effector_sphere[0] = sphere_effector_settings.center.x;
+        params.effector_sphere[1] = sphere_effector_settings.center.y;
+        params.effector_sphere[2] = sphere_effector_settings.center.z;
+        params.effector_sphere[3] = sphere_effector_settings.radius;
+        params.effector_config[0] = sphere_effector_settings.enabled ? 1.0f : 0.0f;
+        params.effector_config[1] = sphere_effector_settings.strength;
+        params.effector_config[2] = sphere_effector_settings.falloff;
+        params.effector_config[3] = sphere_effector_settings.frequency;
+        params.effector_opacity_config[0] = sphere_effector_settings.affect_position ? 1.0f : 0.0f;
+        params.effector_opacity_config[1] = sphere_effector_settings.affect_opacity ? 1.0f : 0.0f;
+        params.effector_opacity_config[2] = sphere_effector_settings.opacity_strength;
+        params.effector_opacity_config[3] = sphere_effector_settings.target_opacity;
     }
 
     Projection projection = sort_ctx.view.camera_projection;

@@ -24,6 +24,7 @@
 #include "../logger/gs_debug_trace.h"
 #include "../logger/gs_logger.h"
 #include "../resources/color_grading_resource.h"
+#include "../core/gaussian_splat_scene_director.h"
 #include "gpu_sorting_config.h"
 #include "instance_pipeline_contract.h"
 #include "pipeline_feature_set.h"
@@ -257,25 +258,41 @@ static uint64_t _hash_color(const Color &p_color, uint64_t p_seed) {
 	return p_seed;
 }
 
-static uint64_t _compute_color_grading_signature(const GaussianSplatRenderer::RenderConfig &p_render_config) {
+static uint64_t _compute_color_grading_signature(const GaussianSplatRenderer::RenderConfig &p_render_config,
+		const GaussianSplatRenderer *p_renderer) {
+	// Render-mode + opacity are still per-renderer inputs to the cache signature.
 	uint64_t seed = HASH_MURMUR3_SEED;
 	seed = _hash_u64(static_cast<uint64_t>(p_render_config.render_mode), seed);
 	seed = _hash_float_bits(p_render_config.opacity_multiplier, seed);
 
-	const Ref<ColorGradingResource> &grading = p_render_config.color_grading;
-	if (!grading.is_valid()) {
-		return _hash_u64(0ull, seed);
+	// Mix every per-instance grading tied to this renderer so any node's grading edit
+	// busts the sort/raster cache. The director hash also incorporates the renderer-wide
+	// default (used as fallback when a record has no per-instance ref), so we don't
+	// need to hash p_render_config.color_grading separately.
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	if (director && p_renderer) {
+		// Mirror the shadow filter used by build_instance_grading_buffer_for_renderer
+		// so shadow-pass caches only invalidate on shadow-caster grading edits.
+		const bool shadow_only = const_cast<GaussianSplatRenderer *>(p_renderer)
+				->is_shadow_instance_filter_enabled();
+		seed = _hash_u64(director->compute_color_grading_signature_for_renderer(p_renderer, shadow_only), seed);
+	} else {
+		// Fallback to the legacy single-slot hash when the director is not accessible
+		// (tests, tear-down paths).
+		const Ref<ColorGradingResource> &grading = p_render_config.color_grading;
+		if (!grading.is_valid()) {
+			return _hash_u64(0ull, seed);
+		}
+		seed = _hash_u64(1ull, seed);
+		seed = _hash_u64(reinterpret_cast<uint64_t>(grading.ptr()), seed);
+		seed = _hash_bool(grading->get_enabled(), seed);
+		seed = _hash_float_bits(grading->get_exposure(), seed);
+		seed = _hash_float_bits(grading->get_contrast(), seed);
+		seed = _hash_float_bits(grading->get_saturation(), seed);
+		seed = _hash_float_bits(grading->get_temperature(), seed);
+		seed = _hash_float_bits(grading->get_tint(), seed);
+		seed = _hash_float_bits(grading->get_hue_shift(), seed);
 	}
-
-	seed = _hash_u64(1ull, seed);
-	seed = _hash_u64(reinterpret_cast<uint64_t>(grading.ptr()), seed);
-	seed = _hash_bool(grading->get_enabled(), seed);
-	seed = _hash_float_bits(grading->get_exposure(), seed);
-	seed = _hash_float_bits(grading->get_contrast(), seed);
-	seed = _hash_float_bits(grading->get_saturation(), seed);
-	seed = _hash_float_bits(grading->get_temperature(), seed);
-	seed = _hash_float_bits(grading->get_tint(), seed);
-	seed = _hash_float_bits(grading->get_hue_shift(), seed);
 	return seed;
 }
 
@@ -310,13 +327,7 @@ static uint64_t _compute_lighting_signature(const RenderDataRD *p_render_data, u
 	float wind_spatial_frequency = 0.1f;
 	float wind_time_scale = 1.0f;
 	Vector3 wind_direction = Vector3(1.0f, 0.0f, 0.0f);
-	int max_effectors = 1;
-	bool sphere_effector_enabled = false;
-	Vector3 sphere_effector_center = Vector3();
-	float sphere_effector_radius = 0.0f;
-	float sphere_effector_strength = 0.0f;
-	float sphere_effector_falloff = 2.0f;
-	float sphere_effector_frequency = 2.0f;
+	gs::settings::GSSphereEffectorSettings sphere_effector_settings;
 	if (ProjectSettings *ps = ProjectSettings::get_singleton()) {
 		static const StringName direct_path("rendering/gaussian_splatting/lighting/direct_light_scale");
 		static const StringName indirect_path("rendering/gaussian_splatting/lighting/indirect_sh_scale");
@@ -332,16 +343,6 @@ static uint64_t _compute_lighting_signature(const RenderDataRD *p_render_data, u
 		static const StringName wind_frequency_path("rendering/gaussian_splatting/animation/wind_frequency");
 		static const StringName wind_spatial_frequency_path("rendering/gaussian_splatting/animation/wind_spatial_frequency");
 		static const StringName wind_time_scale_path("rendering/gaussian_splatting/animation/wind_time_scale");
-		static const StringName max_effectors_path("rendering/gaussian_splatting/effects/max_effectors");
-		static const StringName sphere_effector_enabled_path("rendering/gaussian_splatting/effects/sphere_effector_enabled");
-		static const StringName sphere_effector_center_x_path("rendering/gaussian_splatting/effects/sphere_effector_center_x");
-		static const StringName sphere_effector_center_y_path("rendering/gaussian_splatting/effects/sphere_effector_center_y");
-		static const StringName sphere_effector_center_z_path("rendering/gaussian_splatting/effects/sphere_effector_center_z");
-		static const StringName sphere_effector_radius_path("rendering/gaussian_splatting/effects/sphere_effector_radius");
-		static const StringName sphere_effector_strength_path("rendering/gaussian_splatting/effects/sphere_effector_strength");
-		static const StringName sphere_effector_falloff_path("rendering/gaussian_splatting/effects/sphere_effector_falloff");
-		static const StringName sphere_effector_frequency_path("rendering/gaussian_splatting/effects/sphere_effector_frequency");
-
 		direct_light_scale = _get_float_setting(ps, direct_path, direct_light_scale);
 		indirect_sh_scale = _get_float_setting(ps, indirect_path, indirect_sh_scale);
 		shadow_strength = _get_float_setting(ps, shadow_path, shadow_strength);
@@ -358,15 +359,7 @@ static uint64_t _compute_lighting_signature(const RenderDataRD *p_render_data, u
 		wind_spatial_frequency = _get_float_setting(ps, wind_spatial_frequency_path, wind_spatial_frequency);
 		wind_time_scale = _get_float_setting(ps, wind_time_scale_path, wind_time_scale);
 
-		max_effectors = _get_int_setting(ps, max_effectors_path, max_effectors);
-		sphere_effector_enabled = _get_bool_setting(ps, sphere_effector_enabled_path, sphere_effector_enabled);
-		sphere_effector_center.x = _get_float_setting(ps, sphere_effector_center_x_path, sphere_effector_center.x);
-		sphere_effector_center.y = _get_float_setting(ps, sphere_effector_center_y_path, sphere_effector_center.y);
-		sphere_effector_center.z = _get_float_setting(ps, sphere_effector_center_z_path, sphere_effector_center.z);
-		sphere_effector_radius = _get_float_setting(ps, sphere_effector_radius_path, sphere_effector_radius);
-		sphere_effector_strength = _get_float_setting(ps, sphere_effector_strength_path, sphere_effector_strength);
-		sphere_effector_falloff = _get_float_setting(ps, sphere_effector_falloff_path, sphere_effector_falloff);
-		sphere_effector_frequency = _get_float_setting(ps, sphere_effector_frequency_path, sphere_effector_frequency);
+		sphere_effector_settings = gs::settings::get_sphere_effector_settings(ps, true);
 	}
 	seed = _hash_float_bits(direct_light_scale, seed);
 	seed = _hash_float_bits(indirect_sh_scale, seed);
@@ -380,14 +373,17 @@ static uint64_t _compute_lighting_signature(const RenderDataRD *p_render_data, u
 	seed = _hash_float_bits(wind_frequency, seed);
 	seed = _hash_float_bits(wind_spatial_frequency, seed);
 	seed = _hash_float_bits(wind_time_scale, seed);
-	const int capped_effectors = CLAMP(max_effectors, 0, 1);
-	seed = _hash_u64(static_cast<uint64_t>(capped_effectors), seed);
-	const bool sphere_effective_enabled = capped_effectors > 0 && sphere_effector_enabled;
-	seed = _hash_bool(sphere_effective_enabled, seed);
-	seed = _hash_vector3(sphere_effector_center, seed);
-	seed = _hash_float_bits(MAX(0.0f, sphere_effector_radius), seed);
-	seed = _hash_float_bits(sphere_effector_strength, seed);
-	seed = _hash_float_bits(MAX(0.001f, sphere_effector_falloff), seed);
+	seed = _hash_u64(static_cast<uint64_t>(sphere_effector_settings.max_effectors), seed);
+	seed = _hash_bool(sphere_effector_settings.enabled, seed);
+	seed = _hash_vector3(sphere_effector_settings.center, seed);
+	seed = _hash_float_bits(sphere_effector_settings.radius, seed);
+	seed = _hash_float_bits(sphere_effector_settings.strength, seed);
+	seed = _hash_float_bits(sphere_effector_settings.falloff, seed);
+	seed = _hash_float_bits(sphere_effector_settings.frequency, seed);
+	seed = _hash_bool(sphere_effector_settings.affect_position, seed);
+	seed = _hash_bool(sphere_effector_settings.affect_opacity, seed);
+	seed = _hash_float_bits(sphere_effector_settings.opacity_strength, seed);
+	seed = _hash_float_bits(sphere_effector_settings.target_opacity, seed);
 	if (wind_enabled && wind_strength > 0.0f) {
 		const float wind_time_seconds = float(double(p_frame_id) * (1.0 / 60.0) * double(MAX(wind_time_scale, 0.0f)));
 		seed = _hash_float_bits(wind_time_seconds, seed);
@@ -1308,7 +1304,7 @@ struct RenderPipelineStages::RasterCompositeStage {
 		}
 		raster_input.content_generation = renderer->get_instance_pipeline_content_generation();
 		raster_input.cull_config_signature = _compute_cull_config_signature(*renderer, state_view);
-		raster_input.color_grading_signature = _compute_color_grading_signature(state_view.get_render_config_view());
+		raster_input.color_grading_signature = _compute_color_grading_signature(state_view.get_render_config_view(), renderer);
 		raster_input.lighting_signature = _compute_lighting_signature(p_context.render_data, p_context.frame_id);
 		raster_input.metrics = p_context.metrics;
 		raster_input.state_view = &state_view;
@@ -1668,13 +1664,7 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 	float wind_frequency = 1.0f;
 	float wind_spatial_frequency = 0.1f;
 	float wind_time_scale = 1.0f;
-	int max_effectors = 1;
-	bool sphere_effector_enabled = false;
-	Vector3 sphere_effector_center = Vector3();
-	float sphere_effector_radius = 0.0f;
-	float sphere_effector_strength = 0.0f;
-	float sphere_effector_falloff = 2.0f;
-	float sphere_effector_frequency = 2.0f;
+	gs::settings::GSSphereEffectorSettings sphere_effector_settings;
 	if (ProjectSettings *ps = ProjectSettings::get_singleton()) {
 		static const StringName direct_path("rendering/gaussian_splatting/lighting/direct_light_scale");
 		static const StringName indirect_path("rendering/gaussian_splatting/lighting/indirect_sh_scale");
@@ -1690,16 +1680,6 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 		static const StringName wind_frequency_path("rendering/gaussian_splatting/animation/wind_frequency");
 		static const StringName wind_spatial_frequency_path("rendering/gaussian_splatting/animation/wind_spatial_frequency");
 		static const StringName wind_time_scale_path("rendering/gaussian_splatting/animation/wind_time_scale");
-		static const StringName max_effectors_path("rendering/gaussian_splatting/effects/max_effectors");
-		static const StringName sphere_effector_enabled_path("rendering/gaussian_splatting/effects/sphere_effector_enabled");
-		static const StringName sphere_effector_center_x_path("rendering/gaussian_splatting/effects/sphere_effector_center_x");
-		static const StringName sphere_effector_center_y_path("rendering/gaussian_splatting/effects/sphere_effector_center_y");
-		static const StringName sphere_effector_center_z_path("rendering/gaussian_splatting/effects/sphere_effector_center_z");
-		static const StringName sphere_effector_radius_path("rendering/gaussian_splatting/effects/sphere_effector_radius");
-		static const StringName sphere_effector_strength_path("rendering/gaussian_splatting/effects/sphere_effector_strength");
-		static const StringName sphere_effector_falloff_path("rendering/gaussian_splatting/effects/sphere_effector_falloff");
-		static const StringName sphere_effector_frequency_path("rendering/gaussian_splatting/effects/sphere_effector_frequency");
-
 		direct_light_scale = _get_float_setting(ps, direct_path, direct_light_scale);
 		indirect_sh_scale = _get_float_setting(ps, indirect_path, indirect_sh_scale);
 		shadow_strength = _get_float_setting(ps, shadow_path, shadow_strength);
@@ -1714,15 +1694,7 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 		wind_frequency = _get_float_setting(ps, wind_frequency_path, wind_frequency);
 		wind_spatial_frequency = _get_float_setting(ps, wind_spatial_frequency_path, wind_spatial_frequency);
 		wind_time_scale = _get_float_setting(ps, wind_time_scale_path, wind_time_scale);
-		max_effectors = _get_int_setting(ps, max_effectors_path, max_effectors);
-		sphere_effector_enabled = _get_bool_setting(ps, sphere_effector_enabled_path, sphere_effector_enabled);
-		sphere_effector_center.x = _get_float_setting(ps, sphere_effector_center_x_path, sphere_effector_center.x);
-		sphere_effector_center.y = _get_float_setting(ps, sphere_effector_center_y_path, sphere_effector_center.y);
-		sphere_effector_center.z = _get_float_setting(ps, sphere_effector_center_z_path, sphere_effector_center.z);
-		sphere_effector_radius = _get_float_setting(ps, sphere_effector_radius_path, sphere_effector_radius);
-		sphere_effector_strength = _get_float_setting(ps, sphere_effector_strength_path, sphere_effector_strength);
-		sphere_effector_falloff = _get_float_setting(ps, sphere_effector_falloff_path, sphere_effector_falloff);
-		sphere_effector_frequency = _get_float_setting(ps, sphere_effector_frequency_path, sphere_effector_frequency);
+		sphere_effector_settings = gs::settings::get_sphere_effector_settings(ps, true);
 	}
 	render_params.direct_light_scale = CLAMP(direct_light_scale, 0.0f, 4.0f);
 	render_params.indirect_sh_scale = CLAMP(indirect_sh_scale, 0.0f, 4.0f);
@@ -1740,16 +1712,19 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 	render_params.wind_spatial_frequency = wind_spatial_frequency;
 	render_params.wind_time_seconds = float(double(state_view.get_frame_state_view().frame_counter) * (1.0 / 60.0) *
 			double(MAX(wind_time_scale, 0.0f)));
-	const int capped_effectors = CLAMP(max_effectors, 0, 1);
-	const bool sphere_effective_enabled = capped_effectors > 0 && sphere_effector_enabled;
-	render_params.sphere_effector_enabled = sphere_effective_enabled;
-	render_params.sphere_effector_center = sphere_effector_center;
-	render_params.sphere_effector_radius = MAX(0.0f, sphere_effector_radius);
-	render_params.sphere_effector_strength = sphere_effector_strength;
-	render_params.sphere_effector_falloff = MAX(0.001f, sphere_effector_falloff);
-	render_params.sphere_effector_frequency = MAX(0.1f, sphere_effector_frequency);
+	render_params.sphere_effector_enabled = sphere_effector_settings.enabled;
+	render_params.sphere_effector_center = sphere_effector_settings.center;
+	render_params.sphere_effector_radius = sphere_effector_settings.radius;
+	render_params.sphere_effector_strength = sphere_effector_settings.strength;
+	render_params.sphere_effector_falloff = sphere_effector_settings.falloff;
+	render_params.sphere_effector_frequency = sphere_effector_settings.frequency;
+	render_params.sphere_effector_affect_position = sphere_effector_settings.affect_position;
+	render_params.sphere_effector_affect_opacity = sphere_effector_settings.affect_opacity;
+	render_params.sphere_effector_opacity_strength = sphere_effector_settings.opacity_strength;
+	render_params.sphere_effector_target_opacity = sphere_effector_settings.target_opacity;
 	if (instance_buffers_ready) {
 		render_params.instance_buffer = instance_buffers.instance_buffer;
+		render_params.instance_grading_buffer = instance_buffers.instance_grading_buffer;
 		render_params.splat_ref_buffer = instance_buffers.splat_ref_buffer;
 		render_params.chunk_meta_buffer = instance_buffers.chunk_meta_buffer;
 		render_params.quantization_buffer = instance_buffers.quantization_required ? instance_buffers.quantization_buffer : RID();
@@ -1761,6 +1736,7 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 		// This prevents transient stale/garbage descriptors from being interpreted
 		// as valid indirect dispatch/count buffers by tile stages.
 		render_params.instance_buffer = RID();
+		render_params.instance_grading_buffer = RID();
 		render_params.splat_ref_buffer = RID();
 		render_params.chunk_meta_buffer = RID();
 		render_params.quantization_buffer = RID();

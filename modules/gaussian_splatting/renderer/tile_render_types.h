@@ -281,6 +281,9 @@ struct TileRenderParams {
 	RID gaussian_buffer;
 	RID sorted_indices;
 	RID instance_buffer;
+	// Per-instance color grading SSBO (parallel rows to instance_buffer, indexed by
+	// SplatRefGPU.instance_id). Bound at set=0, binding=20 in tile_binning.glsl.
+	RID instance_grading_buffer;
 	RID splat_ref_buffer;
 	RID chunk_meta_buffer;
 	RID quantization_buffer;
@@ -378,6 +381,10 @@ struct TileRenderParams {
 	float sphere_effector_strength = 0.0f;
 	float sphere_effector_falloff = 2.0f;
 	float sphere_effector_frequency = 2.0f;
+	bool sphere_effector_affect_position = true;
+	bool sphere_effector_affect_opacity = false;
+	float sphere_effector_opacity_strength = 1.0f;
+	float sphere_effector_target_opacity = 0.0f;
 	Ref<class ColorGradingResource> color_grading;
 	// Instance rotation inverse for SH view direction correction.
 	// When a GaussianSplatNode3D has a rotation transform, SH coefficients (stored in

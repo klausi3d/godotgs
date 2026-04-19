@@ -163,6 +163,14 @@ void GaussianSplatNode3D::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_opacity"), &GaussianSplatNode3D::get_opacity);
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rendering/opacity", PROPERTY_HINT_RANGE, "0.0,1.0,0.01"), "set_opacity", "get_opacity");
 
+    ClassDB::bind_method(D_METHOD("set_effect_position_scale", "scale"), &GaussianSplatNode3D::set_effect_position_scale);
+    ClassDB::bind_method(D_METHOD("get_effect_position_scale"), &GaussianSplatNode3D::get_effect_position_scale);
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rendering/effect_position_scale", PROPERTY_HINT_RANGE, "0.0,4.0,0.01,or_greater"), "set_effect_position_scale", "get_effect_position_scale");
+
+    ClassDB::bind_method(D_METHOD("set_effect_opacity_scale", "scale"), &GaussianSplatNode3D::set_effect_opacity_scale);
+    ClassDB::bind_method(D_METHOD("get_effect_opacity_scale"), &GaussianSplatNode3D::get_effect_opacity_scale);
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rendering/effect_opacity_scale", PROPERTY_HINT_RANGE, "0.0,4.0,0.01,or_greater"), "set_effect_opacity_scale", "get_effect_opacity_scale");
+
     ClassDB::bind_method(D_METHOD("set_wind_override_enabled", "enabled"), &GaussianSplatNode3D::set_wind_override_enabled);
     ClassDB::bind_method(D_METHOD("is_wind_override_enabled"), &GaussianSplatNode3D::is_wind_override_enabled);
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "rendering/wind_override_enabled"), "set_wind_override_enabled", "is_wind_override_enabled");
@@ -1025,10 +1033,34 @@ void GaussianSplatNode3D::set_use_occlusion_culling(bool p_enabled) {
 }
 
 void GaussianSplatNode3D::set_opacity(float p_opacity) {
-    opacity = CLAMP(p_opacity, 0.0f, 1.0f);
-    if (renderer.is_valid()) {
-        _apply_renderer_settings();
+    float next_opacity = p_opacity;
+    if (!Math::is_finite(next_opacity)) {
+        WARN_PRINT("[GaussianSplatNode3D] Ignoring non-finite opacity; resetting to 1.0.");
+        next_opacity = 1.0f;
     }
+    opacity = CLAMP(next_opacity, 0.0f, 1.0f);
+    _mark_render_state_dirty();
+    _update_instance_params_in_director();
+}
+
+void GaussianSplatNode3D::set_effect_position_scale(float p_scale) {
+    float next_scale = p_scale;
+    if (!Math::is_finite(next_scale)) {
+        WARN_PRINT("[GaussianSplatNode3D] Ignoring non-finite effect_position_scale; resetting to 1.0.");
+        next_scale = 1.0f;
+    }
+    effect_position_scale = MAX(next_scale, 0.0f);
+    _mark_render_state_dirty();
+    _update_instance_params_in_director();
+}
+
+void GaussianSplatNode3D::set_effect_opacity_scale(float p_scale) {
+    float next_scale = p_scale;
+    if (!Math::is_finite(next_scale)) {
+        WARN_PRINT("[GaussianSplatNode3D] Ignoring non-finite effect_opacity_scale; resetting to 1.0.");
+        next_scale = 1.0f;
+    }
+    effect_opacity_scale = MAX(next_scale, 0.0f);
     _mark_render_state_dirty();
     _update_instance_params_in_director();
 }
@@ -1574,7 +1606,7 @@ bool GaussianSplatNode3D::_can_push_color_grading_to_renderer() const {
     return renderer.is_valid() && is_inside_tree() && is_inside_world() && _has_local_source_data();
 }
 
-bool GaussianSplatNode3D::_push_color_grading_to_renderer(bool p_allow_null) {
+bool GaussianSplatNode3D::_push_color_grading_to_renderer(bool p_allow_null, bool p_force_refresh) {
     if (!_can_push_color_grading_to_renderer()) {
         return false;
     }
@@ -1582,7 +1614,20 @@ bool GaussianSplatNode3D::_push_color_grading_to_renderer(bool p_allow_null) {
         return false;
     }
 
-    renderer->set_color_grading(color_grading);
+    // Per-instance routing: write the grading into the director record for this node
+    // instead of stomping the renderer's single-slot RenderConfig::color_grading.
+    // The director's build step walks all records and produces one InstanceGradingGPU
+    // row per instance, so peer nodes no longer clobber each other.
+    bool pushed = false;
+    if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
+        pushed = director->update_instance_color_grading(get_instance_id(), color_grading, p_force_refresh);
+    }
+    if (!pushed) {
+        // Director does not know this node yet (registration runs later in the
+        // node lifecycle). Leave the pushed/pending flags alone so replay
+        // re-tries once register_instance_in_director has landed.
+        return false;
+    }
     renderer->invalidate_cached_render();
     grading_pushed_for_current_data = true;
     // The push satisfies any pending explicit edit too; clear so a later
@@ -2098,7 +2143,13 @@ void GaussianSplatNode3D::_register_instance_in_director() {
             _get_instance_wind_direction(), _get_instance_wind_frequency(),
             parent_visible && visible_in_viewport && is_visible_in_tree(),
             /*has_desired_residency_hint=*/true,
-            GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
+            GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT,
+            effect_position_scale, effect_opacity_scale);
+    // Push color grading to the freshly-registered director record so it lands
+    // in the InstanceGradingGPU row on the next buffer rebuild. Without this,
+    // the earlier setter/signal attempts that fired before registration were
+    // lost (director returned NO WORLD) and the record stayed at null grading.
+    director->update_instance_color_grading(get_instance_id(), color_grading);
 }
 
 void GaussianSplatNode3D::_unregister_instance_in_director() {
@@ -2126,7 +2177,8 @@ void GaussianSplatNode3D::_update_instance_params_in_director() {
                 _get_instance_wind_direction(), _get_instance_wind_frequency(),
                 parent_visible && visible_in_viewport && is_visible_in_tree(),
                 /*has_desired_residency_hint=*/true,
-                GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
+                GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT,
+                effect_position_scale, effect_opacity_scale);
     }
     if (renderer.is_valid()) {
         renderer->invalidate_cached_render();
@@ -2168,7 +2220,10 @@ void GaussianSplatNode3D::_on_asset_changed() {
 }
 
 void GaussianSplatNode3D::_on_color_grading_changed() {
-    if (!_push_color_grading_to_renderer(true)) {
+    // `changed` fires when slider values mutate on the same resource ref.
+    // Tell the director to bump the instance generation unconditionally so
+    // the grading SSBO re-uploads with the fresh values next frame.
+    if (!_push_color_grading_to_renderer(true, /*p_force_refresh=*/true)) {
         // Detached or data-less resource mutation: queue an explicit
         // replay so the user's change (including null) reaches the
         // renderer when this node next becomes active content. Arming

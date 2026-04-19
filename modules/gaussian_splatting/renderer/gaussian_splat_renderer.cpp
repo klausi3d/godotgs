@@ -1271,6 +1271,8 @@ void GaussianSplatRenderer::_teardown_resources() {
         get_pipeline_state().gaussian_shader_initialized = false;
         _free_owned_resource(get_device_state().rd, resource_state.instance_buffer);
         resource_state.instance_buffer_capacity = 0;
+        _free_owned_resource(get_device_state().rd, resource_state.instance_grading_buffer);
+        resource_state.instance_grading_buffer_capacity = 0;
         _free_owned_resource(get_device_state().rd, resource_state.instance_visible_chunk_buffer);
         resource_state.instance_visible_chunk_capacity = 0;
         _free_owned_resource(get_device_state().rd, resource_state.instance_splat_ref_buffer);
@@ -2720,6 +2722,56 @@ bool GaussianSplatRenderer::update_instance_buffer(LocalVector<InstanceDataGPU> 
     instance_pipeline_buffers.instance_buffer = resource_state.instance_buffer;
     instance_pipeline_buffers.instance_count = instance_count;
 
+    return true;
+}
+
+bool GaussianSplatRenderer::update_instance_grading_buffer(const LocalVector<InstanceGradingGPU> &p_gradings) {
+    // Sibling SSBO to instance_buffer. Must always resolve to a valid RID — the shader
+    // binds it unconditionally at binding 20. When the caller passes zero rows (e.g.
+    // transient empty world) we still allocate a 1-row buffer and write a neutral default
+    // so the shader's indexed read is well-defined.
+    if (!_ensure_rendering_device("update_instance_grading_buffer")) {
+        return false;
+    }
+
+    RenderingDevice *rd = get_device_state().rd;
+    if (!rd) {
+        WARN_PRINT_ONCE("[GaussianSplatRenderer] Grading buffer upload skipped; rendering device not available.");
+        return false;
+    }
+
+    ResourceState &resource_state = get_resource_state();
+
+    const uint32_t row_count = MAX(p_gradings.size(), (uint32_t)1);
+    if (!resource_state.instance_grading_buffer.is_valid() || resource_state.instance_grading_buffer_capacity < row_count) {
+        const uint32_t new_capacity = next_power_of_2(row_count);
+        const uint64_t buffer_size = static_cast<uint64_t>(new_capacity) * sizeof(InstanceGradingGPU);
+        if (resource_state.instance_grading_buffer.is_valid()) {
+            _free_owned_resource(rd, resource_state.instance_grading_buffer);
+        }
+        resource_state.instance_grading_buffer = rd->storage_buffer_create(buffer_size);
+        if (!resource_state.instance_grading_buffer.is_valid()) {
+            resource_state.instance_grading_buffer_capacity = 0;
+            WARN_PRINT_ONCE("[GaussianSplatRenderer] Failed to allocate instance grading buffer.");
+            return false;
+        }
+        rd->set_resource_name(resource_state.instance_grading_buffer, "GS_InstanceGradingBuffer");
+        track_resource_owner(resource_state.instance_grading_buffer, rd);
+        resource_state.instance_grading_buffer_capacity = new_capacity;
+    }
+
+    if (p_gradings.is_empty()) {
+        // Write a single neutral row so shader indexing is always valid.
+        InstanceGradingGPU neutral = {};
+        neutral.primary[2] = 1.0f; // contrast = 1
+        neutral.primary[3] = 1.0f; // saturation = 1
+        rd->buffer_update(resource_state.instance_grading_buffer, 0, sizeof(InstanceGradingGPU), &neutral);
+    } else {
+        const uint64_t upload_size = static_cast<uint64_t>(p_gradings.size()) * sizeof(InstanceGradingGPU);
+        rd->buffer_update(resource_state.instance_grading_buffer, 0, upload_size, p_gradings.ptr());
+    }
+
+    instance_pipeline_buffers.instance_grading_buffer = resource_state.instance_grading_buffer;
     return true;
 }
 

@@ -8,6 +8,7 @@
 #include "gaussian_splat_manager.h"
 #include "../renderer/gaussian_gpu_layout.h"
 #include "../renderer/render_debug_state_orchestrator.h"
+#include "../resources/color_grading_resource.h"
 #include "scene/3d/node_3d.h"
 
 static bool _is_scene_director_log_enabled() {
@@ -546,7 +547,8 @@ void GaussianSplatSceneDirector::_prune_world_if_unused(const RID &p_scenario) {
 void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref<GaussianSplatAsset> &p_asset,
         const Transform3D &p_transform, float p_opacity, float p_lod_bias, uint32_t p_flags, bool p_casts_shadow,
         float p_wind_intensity, uint32_t p_wind_mode, const Vector3 &p_wind_direction, float p_wind_frequency,
-        bool p_visible, bool p_has_desired_residency_hint, int32_t p_desired_residency_hint) {
+        bool p_visible, bool p_has_desired_residency_hint, int32_t p_desired_residency_hint,
+        float p_effect_position_scale, float p_effect_opacity_scale) {
 	MutexLock lock(world_mutex);
 	SharedWorld *world = _get_world_for_instance(p_node_id);
 	if (!world) {
@@ -568,6 +570,8 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 	const float wind_intensity = MAX(0.0f, p_wind_intensity);
 	const uint32_t wind_mode = MIN(p_wind_mode, (uint32_t)INSTANCE_WIND_FORCE_ENABLED);
 	const float wind_frequency = MAX(0.0f, p_wind_frequency);
+	const float effect_position_scale = MAX(0.0f, p_effect_position_scale);
+	const float effect_opacity_scale = MAX(0.0f, p_effect_opacity_scale);
 	if (asset_id == 0) {
 		GaussianSplatting::debug_trace_record_event("instance_reg", "FAIL: asset_id=0", true);
 		return;
@@ -623,6 +627,14 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 			record.wind_frequency = wind_frequency;
 			dirty = true;
 		}
+		if (!Math::is_equal_approx(record.effect_position_scale, effect_position_scale)) {
+			record.effect_position_scale = effect_position_scale;
+			dirty = true;
+		}
+		if (!Math::is_equal_approx(record.effect_opacity_scale, effect_opacity_scale)) {
+			record.effect_opacity_scale = effect_opacity_scale;
+			dirty = true;
+		}
 		if (record.has_desired_residency_hint != p_has_desired_residency_hint) {
 			record.has_desired_residency_hint = p_has_desired_residency_hint;
 			dirty = true;
@@ -675,6 +687,8 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 	record.wind_mode = wind_mode;
 	record.wind_direction = p_wind_direction;
 	record.wind_frequency = wind_frequency;
+	record.effect_position_scale = effect_position_scale;
+	record.effect_opacity_scale = effect_opacity_scale;
 	record.asset_id = asset_id;
 	record.flags = p_flags;
 	record.last_lod = 0;
@@ -720,7 +734,8 @@ void GaussianSplatSceneDirector::update_instance_transform(ObjectID p_node_id, c
 void GaussianSplatSceneDirector::update_instance_params(ObjectID p_node_id, float p_opacity, float p_lod_bias,
 		uint32_t p_flags, bool p_casts_shadow, float p_wind_intensity, uint32_t p_wind_mode,
 		const Vector3 &p_wind_direction, float p_wind_frequency, bool p_visible,
-		bool p_has_desired_residency_hint, int32_t p_desired_residency_hint) {
+		bool p_has_desired_residency_hint, int32_t p_desired_residency_hint,
+		float p_effect_position_scale, float p_effect_opacity_scale) {
 	MutexLock lock(world_mutex);
 	SharedWorld *world = _get_world_for_instance(p_node_id);
 	if (!world) {
@@ -739,6 +754,8 @@ void GaussianSplatSceneDirector::update_instance_params(ObjectID p_node_id, floa
 	const float wind_intensity = MAX(0.0f, p_wind_intensity);
 	const uint32_t wind_mode = MIN(p_wind_mode, (uint32_t)INSTANCE_WIND_FORCE_ENABLED);
 	const float wind_frequency = MAX(0.0f, p_wind_frequency);
+	const float effect_position_scale = MAX(0.0f, p_effect_position_scale);
+	const float effect_opacity_scale = MAX(0.0f, p_effect_opacity_scale);
 	bool dirty = false;
 	bool asset_selection_dirty = false;
 	if (!Math::is_equal_approx(record.opacity, p_opacity)) {
@@ -777,6 +794,14 @@ void GaussianSplatSceneDirector::update_instance_params(ObjectID p_node_id, floa
 	}
 	if (!Math::is_equal_approx(record.wind_frequency, wind_frequency)) {
 		record.wind_frequency = wind_frequency;
+		dirty = true;
+	}
+	if (!Math::is_equal_approx(record.effect_position_scale, effect_position_scale)) {
+		record.effect_position_scale = effect_position_scale;
+		dirty = true;
+	}
+	if (!Math::is_equal_approx(record.effect_opacity_scale, effect_opacity_scale)) {
+		record.effect_opacity_scale = effect_opacity_scale;
 		dirty = true;
 	}
 	if (record.has_desired_residency_hint != p_has_desired_residency_hint) {
@@ -830,10 +855,12 @@ void GaussianSplatSceneDirector::unregister_instance(ObjectID p_node_id) {
 void GaussianSplatSceneDirector::register_instance_submission(ObjectID p_node_id, const Ref<GaussianSplatAsset> &p_asset,
 		const Transform3D &p_transform, float p_opacity, float p_lod_bias, uint32_t p_flags, bool p_casts_shadow,
 		float p_wind_intensity, uint32_t p_wind_mode, const Vector3 &p_wind_direction, float p_wind_frequency,
-		bool p_visible, bool p_has_desired_residency_hint, int32_t p_desired_residency_hint) {
+		bool p_visible, bool p_has_desired_residency_hint, int32_t p_desired_residency_hint,
+		float p_effect_position_scale, float p_effect_opacity_scale) {
 	register_instance(p_node_id, p_asset, p_transform, p_opacity, p_lod_bias, p_flags, p_casts_shadow,
 			p_wind_intensity, p_wind_mode, p_wind_direction, p_wind_frequency, p_visible,
-			p_has_desired_residency_hint, p_desired_residency_hint);
+			p_has_desired_residency_hint, p_desired_residency_hint, p_effect_position_scale,
+			p_effect_opacity_scale);
 }
 
 void GaussianSplatSceneDirector::update_instance_submission_transform(ObjectID p_node_id, const Transform3D &p_transform) {
@@ -843,10 +870,12 @@ void GaussianSplatSceneDirector::update_instance_submission_transform(ObjectID p
 void GaussianSplatSceneDirector::update_instance_submission_params(ObjectID p_node_id, float p_opacity, float p_lod_bias,
 		uint32_t p_flags, bool p_casts_shadow, float p_wind_intensity, uint32_t p_wind_mode,
 		const Vector3 &p_wind_direction, float p_wind_frequency, bool p_visible,
-		bool p_has_desired_residency_hint, int32_t p_desired_residency_hint) {
+		bool p_has_desired_residency_hint, int32_t p_desired_residency_hint,
+		float p_effect_position_scale, float p_effect_opacity_scale) {
 	update_instance_params(p_node_id, p_opacity, p_lod_bias, p_flags, p_casts_shadow, p_wind_intensity,
 			p_wind_mode, p_wind_direction, p_wind_frequency, p_visible,
-			p_has_desired_residency_hint, p_desired_residency_hint);
+			p_has_desired_residency_hint, p_desired_residency_hint, p_effect_position_scale,
+			p_effect_opacity_scale);
 }
 
 void GaussianSplatSceneDirector::unregister_instance_submission(ObjectID p_node_id) {
@@ -878,6 +907,8 @@ bool GaussianSplatSceneDirector::get_instance_submission(ObjectID p_node_id, Ins
 		r_submission->wind_mode = record.wind_mode;
 		r_submission->wind_direction = record.wind_direction;
 		r_submission->wind_frequency = record.wind_frequency;
+		r_submission->effect_position_scale = record.effect_position_scale;
+		r_submission->effect_opacity_scale = record.effect_opacity_scale;
 		r_submission->flags = record.flags;
 		r_submission->last_lod = record.last_lod;
 		r_submission->casts_shadow = record.casts_shadow;
@@ -1109,6 +1140,10 @@ void GaussianSplatSceneDirector::build_instance_buffer(LocalVector<InstanceDataG
 			entry.wind_params[1] = record.wind_direction.y;
 			entry.wind_params[2] = record.wind_direction.z;
 			entry.wind_params[3] = record.wind_frequency;
+			entry.effect_params[0] = record.effect_position_scale;
+			entry.effect_params[1] = record.effect_opacity_scale;
+			entry.effect_params[2] = 0.0f;
+			entry.effect_params[3] = 0.0f;
 
 			out.push_back(entry);
 		}
@@ -1151,6 +1186,8 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 			entry.wind_params[1] = 0.0f;
 			entry.wind_params[2] = 0.0f;
 			entry.wind_params[3] = 1.0f;
+			entry.effect_params[0] = 1.0f;
+			entry.effect_params[1] = 1.0f;
 			out.push_back(entry);
 		}
 		return;
@@ -1234,6 +1271,10 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 		entry.wind_params[1] = record.wind_direction.y;
 		entry.wind_params[2] = record.wind_direction.z;
 		entry.wind_params[3] = record.wind_frequency;
+		entry.effect_params[0] = record.effect_position_scale;
+		entry.effect_params[1] = record.effect_opacity_scale;
+		entry.effect_params[2] = 0.0f;
+		entry.effect_params[3] = 0.0f;
 
 		out.push_back(entry);
 		if (trace_enabled) {
@@ -1270,6 +1311,226 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 					skipped_instances > 0);
 		}
 	}
+}
+
+// Shared grading→GPU conversion. Mirrors the enabled/disabled logic used by
+// TileRenderParamsBuilder::build_params so the binding-stage shader sees identical
+// parameter semantics whether it reads the legacy UBO default or the new SSBO.
+void GaussianSplatSceneDirector::fill_instance_grading_entry(const Ref<ColorGradingResource> &p_grading, InstanceGradingGPU &r_entry) {
+	if (p_grading.is_valid() && p_grading->get_enabled()) {
+		r_entry.primary[0] = 1.0f; // enabled = true
+		r_entry.primary[1] = p_grading->get_exposure();
+		r_entry.primary[2] = p_grading->get_contrast();
+		r_entry.primary[3] = p_grading->get_saturation();
+		r_entry.secondary[0] = p_grading->get_temperature();
+		r_entry.secondary[1] = p_grading->get_tint();
+		r_entry.secondary[2] = p_grading->get_hue_shift();
+		r_entry.secondary[3] = 0.0f; // reserved
+	} else {
+		r_entry.primary[0] = 0.0f; // enabled = false
+		r_entry.primary[1] = 0.0f; // exposure = 0
+		r_entry.primary[2] = 1.0f; // contrast = 1
+		r_entry.primary[3] = 1.0f; // saturation = 1
+		r_entry.secondary[0] = 0.0f; // temperature
+		r_entry.secondary[1] = 0.0f; // tint
+		r_entry.secondary[2] = 0.0f; // hue_shift
+		r_entry.secondary[3] = 0.0f; // reserved
+	}
+}
+
+void GaussianSplatSceneDirector::build_instance_grading_buffer_for_renderer(const GaussianSplatRenderer *p_renderer,
+		LocalVector<InstanceGradingGPU> &out, bool p_shadow_casters_only) const {
+	MutexLock lock(world_mutex);
+	out.clear();
+
+	const SharedWorld *world = _find_world_for_renderer(p_renderer);
+	// Renderer-wide fallback; mirrors the legacy single-slot RenderConfig::color_grading
+	// semantics when a record has no per-instance grading ref. Passed by value to the
+	// helper so the renderer read is confined to this function.
+	Ref<ColorGradingResource> renderer_default;
+	if (p_renderer) {
+		renderer_default = const_cast<GaussianSplatRenderer *>(p_renderer)->get_color_grading();
+	}
+
+	if (!world) {
+		return;
+	}
+
+	// World-submission single-instance shim: mirrors the same path in
+	// build_instance_buffer_for_renderer so the shader always has a 1-row
+	// grading buffer indexable at splat_ref.instance_id == 0.
+	if (world->instances.is_empty()) {
+		if (world->world_submission.active &&
+				world->world_submission.gaussian_data.is_valid() &&
+				world->world_submission.gaussian_data->get_count() > 0) {
+			InstanceGradingGPU entry = {};
+			GaussianSplatSceneDirector::fill_instance_grading_entry(renderer_default, entry);
+			out.push_back(entry);
+		}
+		return;
+	}
+
+	out.reserve(world->instances.size());
+	for (const InstanceRecord &record : world->instances) {
+		if (!record.visible) {
+			continue;
+		}
+		if (p_shadow_casters_only && !record.casts_shadow) {
+			continue;
+		}
+		const SharedWorld::AssetRecord *asset_record = world->asset_records.getptr(record.asset_id);
+		if (!asset_record || asset_record->data.is_null()) {
+			// Must match build_instance_buffer_for_renderer's skip logic exactly
+			// so rows stay 1:1 with instance_id.
+			continue;
+		}
+		InstanceGradingGPU entry = {};
+		const Ref<ColorGradingResource> &grading = record.color_grading.is_valid()
+				? record.color_grading
+				: renderer_default;
+		GaussianSplatSceneDirector::fill_instance_grading_entry(grading, entry);
+		out.push_back(entry);
+	}
+}
+
+bool GaussianSplatSceneDirector::update_instance_color_grading(ObjectID p_node_id,
+		const Ref<ColorGradingResource> &p_grading, bool p_force_refresh) {
+	MutexLock lock(world_mutex);
+	SharedWorld *world = _find_world_for_instance(p_node_id);
+	if (!world) {
+		return false;
+	}
+	const uint32_t *pidx = world->instance_lookup.getptr(p_node_id);
+	if (!pidx) {
+		return false;
+	}
+	InstanceRecord &record = world->instances[*pidx];
+	const bool ref_changed = record.color_grading != p_grading;
+	if (!ref_changed && !p_force_refresh) {
+		// Per-frame apply / repeat-push path on an unchanged ref. Skip the
+		// generation bump entirely — every frame would otherwise bust sort/
+		// raster caches just because an unrelated setting re-ran settings apply.
+		return true;
+	}
+	record.color_grading = p_grading;
+	record.dirty = true;
+	// Bump the instance generation so downstream caches (sort/raster) see the
+	// change. Fires when the ref actually changes, or when the caller explicitly
+	// asserts "values behind this ref just mutated" via p_force_refresh=true
+	// (used by the ColorGradingResource `changed` signal handler for slider edits).
+	_bump_instance_generation(world->instance_generation);
+	return true;
+}
+
+Ref<ColorGradingResource> GaussianSplatSceneDirector::get_instance_color_grading(ObjectID p_node_id) const {
+	MutexLock lock(world_mutex);
+	const SharedWorld *world = const_cast<GaussianSplatSceneDirector *>(this)->_find_world_for_instance(p_node_id);
+	if (!world) {
+		return Ref<ColorGradingResource>();
+	}
+	const uint32_t *pidx = world->instance_lookup.getptr(p_node_id);
+	if (!pidx) {
+		return Ref<ColorGradingResource>();
+	}
+	return world->instances[*pidx].color_grading;
+}
+
+void GaussianSplatSceneDirector::invalidate_grading_for_renderer(const GaussianSplatRenderer *p_renderer) {
+	// Always bump the renderer-wide grading defaults counter, even when there is
+	// no SharedWorld for this renderer. Renderer-only / direct-data flows (no
+	// director instances) need this so the streaming upload fingerprint changes
+	// on default grading edits — their fallback rows read from the renderer's
+	// get_color_grading() value and must refresh.
+	if (p_renderer) {
+		// Atomic increment — the streaming orchestrator reads this from the
+		// render thread to compute upload fingerprints without holding the
+		// director's world_mutex. Relaxed ordering is fine: the counter is
+		// a monotonic "did anything change since last frame" beacon.
+		const_cast<GaussianSplatRenderer *>(p_renderer)
+				->get_resource_state().instance_grading_defaults_generation
+				.fetch_add(1, std::memory_order_relaxed);
+	}
+	MutexLock lock(world_mutex);
+	SharedWorld *world = const_cast<SharedWorld *>(_find_world_for_renderer(p_renderer));
+	if (!world) {
+		return;
+	}
+	// Bump the instance generation so build_instance_grading_buffer_for_renderer
+	// re-runs next frame. Records without per-instance grading fall back to the
+	// renderer-wide default at build time, so those rows need to re-upload when
+	// the default changes even though no per-instance ref mutated.
+	_bump_instance_generation(world->instance_generation);
+}
+
+uint64_t GaussianSplatSceneDirector::compute_color_grading_signature_for_renderer(
+		const GaussianSplatRenderer *p_renderer, bool p_shadow_casters_only) const {
+	// FNV-1a-esque rolling hash over every per-instance grading tied to the renderer,
+	// including the renderer-wide default used as the fallback. The sort/raster cache
+	// invalidation path hashes this in, so any node grading edit busts the cache.
+	MutexLock lock(world_mutex);
+	uint64_t seed = 1469598103934665603ull;
+	auto mix_u64 = [&](uint64_t v) {
+		seed ^= v;
+		seed *= 1099511628211ull;
+	};
+	auto mix_f = [&](float f) {
+		union {
+			float f;
+			uint32_t u;
+		} c = { f };
+		mix_u64(uint64_t(c.u));
+	};
+	auto mix_grading = [&](const Ref<ColorGradingResource> &g) {
+		if (!g.is_valid()) {
+			mix_u64(0ull);
+			return;
+		}
+		mix_u64(1ull);
+		mix_u64(reinterpret_cast<uint64_t>(g.ptr()));
+		mix_u64(g->get_enabled() ? 1ull : 0ull);
+		mix_f(g->get_exposure());
+		mix_f(g->get_contrast());
+		mix_f(g->get_saturation());
+		mix_f(g->get_temperature());
+		mix_f(g->get_tint());
+		mix_f(g->get_hue_shift());
+	};
+
+	Ref<ColorGradingResource> renderer_default;
+	if (p_renderer) {
+		renderer_default = const_cast<GaussianSplatRenderer *>(p_renderer)->get_color_grading();
+	}
+	mix_grading(renderer_default);
+
+	const SharedWorld *world = _find_world_for_renderer(p_renderer);
+	if (!world) {
+		return seed;
+	}
+
+	if (world->instances.is_empty()) {
+		// World-submission shim uses the renderer default; already mixed.
+		return seed;
+	}
+
+	for (const InstanceRecord &record : world->instances) {
+		// Mirror the visibility/shadow/asset filters from
+		// build_instance_grading_buffer_for_renderer so signature reflects the exact
+		// set of gradings the shader will actually see. Without the shadow filter,
+		// grading edits on non-shadow-caster nodes would spuriously bust the shadow
+		// sort/raster cache.
+		if (!record.visible) {
+			continue;
+		}
+		if (p_shadow_casters_only && !record.casts_shadow) {
+			continue;
+		}
+		const SharedWorld::AssetRecord *asset_record = world->asset_records.getptr(record.asset_id);
+		if (!asset_record || asset_record->data.is_null()) {
+			continue;
+		}
+		mix_grading(record.color_grading.is_valid() ? record.color_grading : renderer_default);
+	}
+	return seed;
 }
 
 uint64_t GaussianSplatSceneDirector::get_instance_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const {
