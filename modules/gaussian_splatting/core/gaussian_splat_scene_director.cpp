@@ -540,20 +540,28 @@ void GaussianSplatSceneDirector::_build_sorted_sphere_effector_payload(const Sha
 	LocalVector<Candidate> candidates;
 	candidates.reserve(p_world.sphere_effectors.size());
 	for (const SphereEffectorRecord &record : p_world.sphere_effectors) {
-		// Filter ineligible records BEFORE the slot cap so zero-radius or
-		// disabled effectors can't consume a top-N slot and push a valid
-		// effector out. Also rejects non-finite transform origins up front —
-		// the downstream GPU packers (`_pack_effector_slot` in tile render,
-		// `_build_effector_payload_from_scene_bindings` in depth path) drop
-		// NaN/Inf centers, so without this filter a broken high-priority
-		// effector could evict a valid lower-priority one from the capped
-		// list and leave the top-N partially unused.
+		// Filter ineligible records BEFORE the slot cap so ineligible
+		// effectors can't consume a top-N slot and push a valid effector out.
+		//
+		// Rejected here:
+		//   - disabled / zero-radius (GPU rejects in the packers anyway)
+		//   - non-finite transform origins (same)
+		//   - can't-contribute: even if the affect_* flags are set, the
+		//     effector is inert when position strength is zero AND opacity
+		//     can't move the splat (opacity_strength==0 or target==1.0).
+		//     Without this, e.g. an affect_opacity-only effector with
+		//     target_opacity=1.0 still wins slots but contributes nothing.
 		if (!record.enabled || record.radius <= 0.0f ||
 				(!record.affect_position && !record.affect_opacity)) {
 			continue;
 		}
 		const Vector3 &center = record.transform.origin;
 		if (!Math::is_finite(center.x) || !Math::is_finite(center.y) || !Math::is_finite(center.z)) {
+			continue;
+		}
+		const bool position_can_contribute = record.affect_position && !Math::is_zero_approx(record.strength);
+		const bool opacity_can_contribute = record.affect_opacity && !Math::is_zero_approx(record.opacity_strength);
+		if (!position_can_contribute && !opacity_can_contribute) {
 			continue;
 		}
 
@@ -2220,10 +2228,17 @@ bool GaussianSplatSceneDirector::get_primary_sphere_effector_for_instance(Object
 
 	LocalVector<Candidate> matches;
 	for (const SphereEffectorRecord &record : world->sphere_effectors) {
-		if (!record.enabled) {
+		// Mirror the candidate filter from `_build_sorted_sphere_effector_payload()`:
+		// the compatibility API must not surface effectors that the render path
+		// already drops (zero-radius, non-finite center, disabled). Keeping the
+		// same gate here means `get_primary_sphere_effector_for_instance()` can't
+		// return something the GPU immediately rejects.
+		if (!record.enabled || record.radius <= 0.0f ||
+				(!record.affect_position && !record.affect_opacity)) {
 			continue;
 		}
-		if (!record.affect_position && !record.affect_opacity) {
+		const Vector3 &center = record.transform.origin;
+		if (!Math::is_finite(center.x) || !Math::is_finite(center.y) || !Math::is_finite(center.z)) {
 			continue;
 		}
 		if ((record.layer_mask & filter.layer_mask) == 0u) {
