@@ -559,7 +559,15 @@ def _build_godot_command(config: GodotRunConfig, script: Path) -> List[str]:
     if config.project_path is not None:
         command.extend(["--path", str(config.project_path)])
     command.extend(config.extra_args)
-    command.extend(["--verbose", "--script", str(script.relative_to(ROOT))])
+    script_arg: Path
+    if config.project_path is None:
+        script_arg = script.relative_to(ROOT)
+    else:
+        try:
+            script_arg = script.relative_to(config.project_path)
+        except ValueError:
+            script_arg = script
+    command.extend(["--verbose", "--script", str(script_arg)])
     return command
 
 
