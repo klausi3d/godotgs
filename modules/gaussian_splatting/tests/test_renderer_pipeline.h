@@ -404,8 +404,8 @@ TEST_CASE("[GaussianSplatting] GPU layout contract invariants remain stable") {
     CHECK(offsetof(TileRenderParamsGPU, instance_rotation_inv_col2) == size_t(640));
     CHECK(offsetof(TileRenderParamsGPU, wind_dir_strength) == size_t(656));
     CHECK(offsetof(TileRenderParamsGPU, wind_time_config) == size_t(672));
-    CHECK(offsetof(TileRenderParamsGPU, effector_spheres) == size_t(704));
-    CHECK(offsetof(TileRenderParamsGPU, effector_configs) == size_t(768));
+    CHECK(offsetof(TileRenderParamsGPU, effector_sphere) == size_t(688));
+    CHECK(offsetof(TileRenderParamsGPU, effector_config) == size_t(704));
 }
 
 static GaussianRenderPipeline::InstancePipelineBuffers make_ready_instance_pipeline_buffers(bool p_quantization_required) {
