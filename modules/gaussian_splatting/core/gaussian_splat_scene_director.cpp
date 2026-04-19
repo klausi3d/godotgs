@@ -2510,10 +2510,15 @@ Dictionary GaussianSplatSceneDirector::get_scene_effector_debug_state_for_instan
 		}
 
 		matched_count++;
-		if (effector.affect_position && record.effect_position_scale > 0.0f && !Math::is_zero_approx(effector.strength)) {
+		// Radius <= 0 is inert on the GPU (see gs_apply_sphere_effectors'
+		// `effector_sphere.w <= 1e-6` early-out). Exclude from active flags so
+		// the diagnostic matches the shader.
+		const bool effector_radius_nonzero = effector.radius > 1e-6f;
+		if (effector_radius_nonzero && effector.affect_position && record.effect_position_scale > 0.0f &&
+				!Math::is_zero_approx(effector.strength)) {
 			matched_position_active = true;
 		}
-		if (effector.affect_opacity && record.effect_opacity_scale > 0.0f && record.opacity > 0.0f &&
+		if (effector_radius_nonzero && effector.affect_opacity && record.effect_opacity_scale > 0.0f && record.opacity > 0.0f &&
 				!Math::is_zero_approx(effector.opacity_strength) &&
 				!Math::is_equal_approx(effector.target_opacity, 1.0f)) {
 			matched_opacity_active = true;
@@ -2547,10 +2552,17 @@ Dictionary GaussianSplatSceneDirector::get_scene_effector_debug_state_for_instan
 		}
 		selected_effector_names.push_back(effector_name);
 
-		if (payload[i].affect_position && record.effect_position_scale > 0.0f && !Math::is_zero_approx(payload[i].strength)) {
+		// Mirror the shader's early-out: `gs_apply_sphere_effectors` skips any
+		// slot with `effector_sphere.w <= 1e-6` (i.e. radius <= 0), so a
+		// matched/bound zero-radius effector contributes nothing. Treat it
+		// as inactive here so `is_scene_effector_*_active()` doesn't over-
+		// report "active" relative to what the GPU actually does.
+		const bool radius_nonzero = payload[i].radius > 1e-6f;
+		if (radius_nonzero && payload[i].affect_position && record.effect_position_scale > 0.0f &&
+				!Math::is_zero_approx(payload[i].strength)) {
 			bound_position_active = true;
 		}
-		if (payload[i].affect_opacity && record.effect_opacity_scale > 0.0f && record.opacity > 0.0f &&
+		if (radius_nonzero && payload[i].affect_opacity && record.effect_opacity_scale > 0.0f && record.opacity > 0.0f &&
 				!Math::is_zero_approx(payload[i].opacity_strength) &&
 				!Math::is_equal_approx(payload[i].target_opacity, 1.0f)) {
 			bound_opacity_active = true;
