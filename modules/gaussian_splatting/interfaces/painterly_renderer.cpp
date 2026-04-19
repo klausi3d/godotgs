@@ -1637,6 +1637,7 @@ Error PainterlyRenderer::populate_painterly_gbuffer(GaussianSplatRenderer *p_ren
     RID instance_gaussian_buffer;
     RID instance_sorted_indices;
     RID instance_buffer_rid;
+    RID instance_grading_buffer_rid;
     RID instance_splat_ref_buffer;
     RID instance_chunk_meta_buffer;
     RID instance_quantization_buffer;
@@ -1649,6 +1650,7 @@ Error PainterlyRenderer::populate_painterly_gbuffer(GaussianSplatRenderer *p_ren
         const auto &instance_buffers = p_renderer->get_instance_pipeline_buffers();
         instance_gaussian_buffer = instance_buffers.atlas_gaussian_buffer;
         instance_buffer_rid = instance_buffers.instance_buffer;
+        instance_grading_buffer_rid = instance_buffers.instance_grading_buffer;
         instance_splat_ref_buffer = instance_buffers.splat_ref_buffer;
         instance_chunk_meta_buffer = instance_buffers.chunk_meta_buffer;
         instance_quantization_buffer = instance_buffers.quantization_required ? instance_buffers.quantization_buffer : RID();
@@ -1733,6 +1735,11 @@ Error PainterlyRenderer::populate_painterly_gbuffer(GaussianSplatRenderer *p_ren
     }
     if (has_instance_data) {
         render_params.instance_buffer = instance_buffer_rid;
+        // The tile preflight now hard-fails when `instance_grading_buffer`
+        // is missing (see InstancePipelineContract::first_tile_runtime_violation).
+        // Forward it from the renderer's instance pipeline buffers so painterly
+        // rendering goes through the same preflight as the non-painterly path.
+        render_params.instance_grading_buffer = instance_grading_buffer_rid;
         render_params.splat_ref_buffer = instance_splat_ref_buffer;
         render_params.chunk_meta_buffer = instance_chunk_meta_buffer;
         render_params.quantization_buffer = instance_quantization_buffer;
