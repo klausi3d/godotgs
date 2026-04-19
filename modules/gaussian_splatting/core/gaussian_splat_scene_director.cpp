@@ -2241,6 +2241,14 @@ bool GaussianSplatSceneDirector::get_primary_sphere_effector_for_instance(Object
 		if (!Math::is_finite(center.x) || !Math::is_finite(center.y) || !Math::is_finite(center.z)) {
 			continue;
 		}
+		// Mirror the inert-channel gate from `_build_sorted_sphere_effector_payload()`
+		// so the compatibility API doesn't report a primary that the render path
+		// would filter out.
+		const bool position_can_contribute = record.affect_position && !Math::is_zero_approx(record.strength);
+		const bool opacity_can_contribute = record.affect_opacity && !Math::is_zero_approx(record.opacity_strength);
+		if (!position_can_contribute && !opacity_can_contribute) {
+			continue;
+		}
 		if ((record.layer_mask & filter.layer_mask) == 0u) {
 			continue;
 		}
