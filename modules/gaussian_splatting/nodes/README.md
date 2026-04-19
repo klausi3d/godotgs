@@ -159,13 +159,14 @@ Notes:
 - `SphereEffector3D` is the scene-authored workflow for localized deformation and dissolve effects.
 - `SphereEffector3D` defaults to `Parent Subtree` scope, so an effector affects sibling/descendant splat nodes under the same parent without touching unrelated parts of the world.
 - `rendering/scene_effectors_enabled`, `rendering/scene_effector_layer_mask`, and `rendering/scene_effector_scope_root` let each `GaussianSplatNode3D` opt out, filter, or narrow which scene effectors it follows.
-- Runtime support is bounded to `4` scene effectors per renderer pass. If more effectors match, the renderer binds the highest-priority deterministic four.
-- ProjectSettings remain as a backward-compatible fallback when no scene-authored sphere effectors are active.
+- Runtime support is bounded to `4` scene-authored effectors per renderer pass. If more effectors match one node, the renderer binds the highest-priority deterministic four and the rest remain matched but unbound.
+- ProjectSettings remain as a backward-compatible fallback when no scene-authored sphere effectors are active. That fallback still uses the legacy single-global effector path, so `rendering/gaussian_splatting/effects/max_effectors` is clamped to `0..1`.
 - The practical runtime control surface is:
   - use `SphereEffector3D` to author center, radius, strength, falloff, frequency, scope, and opacity modulation in the scene
   - use `rendering/effect_position_scale` and `rendering/effect_opacity_scale` per node to blend each node's response
   - use `rendering/wind_override_enabled` plus the wind properties for node-local wind-only or mixed wind-plus-sphere setups
 - For dissolve-style effects, enable `SphereEffector3D.affect_opacity`, keep `rendering/effect_position_scale = 0.0`, and tune each node with `rendering/effect_opacity_scale`.
+- `get_scene_effector_debug_state()` and `get_statistics()` expose both logical matches and renderer-bound matches, including truncation and the selected effector names.
 - The example scenes `tests/examples/godot/test_project/scenes/wind_test.tscn` and `tests/examples/godot/test_project/scenes/sphere_effector_test.tscn` demonstrate the supported gameplay modes.
 
 See also: `docs/api/sphere_effector_workflow.md`.

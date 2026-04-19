@@ -375,7 +375,7 @@ The current branch exposes a scene-driven-plus-per-node workflow for gameplay ef
 - `rendering/scene_effectors_enabled`, `rendering/scene_effector_layer_mask`, and `rendering/scene_effector_scope_root` control whether this node participates in scene effectors and which ones may match.
 - `rendering/scene_effector_scope_root` is a node-side narrowing filter, not an opt-in to arbitrary world effectors. It must resolve to this node or one of its ancestors, and only effectors with the same resolved scope root will match.
 - `rendering/opacity` remains the direct per-node gameplay fade, while scene-effector opacity modulation multiplies on top for dissolve or degeneration effects.
-- `get_last_matched_scene_effector_count()`, `get_scene_effector_debug_state()`, `is_scene_effector_position_active()`, and `is_scene_effector_opacity_active()` expose the current runtime match state for gameplay and debugging.
+- `get_last_matched_scene_effector_count()`, `get_scene_effector_debug_state()`, `is_scene_effector_position_active()`, and `is_scene_effector_opacity_active()` expose the current runtime match state for gameplay and debugging. `matched_count` is the full logical match set, while `bound_count` is the subset that actually fit into the renderer budget.
 - `get_statistics()` mirrors those diagnostics under `matched_scene_effectors`, `bound_scene_effectors`, `scene_effector_truncated`, `scene_effector_position_active`, and `scene_effector_opacity_active`.
 - `get_configuration_warnings()` warns about inert scene-effector setups such as both response scales at `0.0`, scene-effector layer mask `0`, opacity modulation with base opacity `0.0`, or an invalid scope root path.
 
@@ -388,9 +388,9 @@ Practical recipes:
 
 Current bounds:
 
-- Scene effectors are bounded to `4` active bindings per renderer pass. If more are present, the highest-priority deterministic four are used.
+- Scene-authored effectors are bounded to `4` active bindings per renderer pass. If more match this node, the highest-priority deterministic four are bound and the rest remain logical matches only.
 - `SphereEffector3D` defaults to subtree scoping. Put the effector under the same gameplay parent as the splat nodes you want to affect, or use its explicit root/layer controls for broader setups.
-- ProjectSettings under `rendering/gaussian_splatting/effects/*` still act as a compatibility fallback when no scene-authored sphere effectors are active.
+- ProjectSettings under `rendering/gaussian_splatting/effects/*` still act as a compatibility fallback when no scene-authored sphere effectors are active. That fallback remains single-global and still honors `rendering/gaussian_splatting/effects/max_effectors` clamped to `0..1`.
 - Invalid node-authored runtime inputs are sanitized where supported: opacity clamps to `0.0..1.0`, effect scales clamp to `>= 0.0`, and non-finite opacity or effect scale inputs fall back to stable defaults.
 - A matched opacity effector with `target_opacity = 1.0` is intentionally neutral. The node can still report a non-zero matched-effector count while `is_scene_effector_opacity_active()` remains `false`.
 
@@ -418,7 +418,7 @@ See also: `docs/api/sphere_effector_workflow.md`.
     </tr>
     <tr>
       <td><code>get_scene_effector_debug_state()</code></td>
-      <td>Returns a Dictionary describing both logical matches and the subset that was actually bound to the renderer, including truncation and selected effector names.</td>
+      <td>Returns a Dictionary describing both logical matches and the subset that was actually bound to the renderer, including <code>matched_count</code>, <code>bound_count</code>, <code>truncated</code>, and selected effector ids and names.</td>
       <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:1165</code></td>
     </tr>
     <tr>
