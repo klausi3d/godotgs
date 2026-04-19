@@ -2310,9 +2310,13 @@ bool GaussianSplatSceneDirector::get_primary_sphere_effector_for_instance(Object
 		}
 		// Mirror the inert-channel gate from `_build_sorted_sphere_effector_payload()`
 		// so the compatibility API doesn't report a primary that the render path
-		// would filter out.
+		// would filter out. Includes the `target_opacity != 1.0` check: neutral
+		// target on an opacity-only effector contributes nothing to already-opaque
+		// splats, and the payload builder drops those entries.
 		const bool position_can_contribute = record.affect_position && !Math::is_zero_approx(record.strength);
-		const bool opacity_can_contribute = record.affect_opacity && !Math::is_zero_approx(record.opacity_strength);
+		const bool opacity_can_contribute = record.affect_opacity &&
+				!Math::is_zero_approx(record.opacity_strength) &&
+				!Math::is_equal_approx(record.target_opacity, 1.0f);
 		if (!position_can_contribute && !opacity_can_contribute) {
 			continue;
 		}
