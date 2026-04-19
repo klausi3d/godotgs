@@ -542,10 +542,18 @@ void GaussianSplatSceneDirector::_build_sorted_sphere_effector_payload(const Sha
 	for (const SphereEffectorRecord &record : p_world.sphere_effectors) {
 		// Filter ineligible records BEFORE the slot cap so zero-radius or
 		// disabled effectors can't consume a top-N slot and push a valid
-		// effector out (radius is also validated during GPU packing; catching
-		// it here keeps the candidate ranking meaningful).
+		// effector out. Also rejects non-finite transform origins up front —
+		// the downstream GPU packers (`_pack_effector_slot` in tile render,
+		// `_build_effector_payload_from_scene_bindings` in depth path) drop
+		// NaN/Inf centers, so without this filter a broken high-priority
+		// effector could evict a valid lower-priority one from the capped
+		// list and leave the top-N partially unused.
 		if (!record.enabled || record.radius <= 0.0f ||
 				(!record.affect_position && !record.affect_opacity)) {
+			continue;
+		}
+		const Vector3 &center = record.transform.origin;
+		if (!Math::is_finite(center.x) || !Math::is_finite(center.y) || !Math::is_finite(center.z)) {
 			continue;
 		}
 
