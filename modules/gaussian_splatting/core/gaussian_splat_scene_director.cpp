@@ -540,24 +540,40 @@ void GaussianSplatSceneDirector::_build_sorted_sphere_effector_payload(const Sha
 	LocalVector<Candidate> candidates;
 	candidates.reserve(p_world.sphere_effectors.size());
 	for (const SphereEffectorRecord &record : p_world.sphere_effectors) {
-		if (!record.enabled || (!record.affect_position && !record.affect_opacity)) {
+		// Filter ineligible records BEFORE the slot cap so zero-radius or
+		// disabled effectors can't consume a top-N slot and push a valid
+		// effector out (radius is also validated during GPU packing; catching
+		// it here keeps the candidate ranking meaningful).
+		if (!record.enabled || record.radius <= 0.0f ||
+				(!record.affect_position && !record.affect_opacity)) {
 			continue;
 		}
 
 		// SCOPE_SUBTREE / SCOPE_EXPLICIT_ROOT carry a resolved `scope_root_id`
 		// populated on the main thread at register/update time. Revalidate
-		// the ObjectID still resolves to a live Node so effectors whose scope
-		// root was deleted after sync don't consume renderer slots while
-		// matching no instances. `ObjectDB::get_instance()` is thread-safe.
-		bool effector_scope_valid = true;
+		// that the ObjectID still resolves to a live Node — scope-root
+		// deletion after sync would otherwise keep the effector eligible
+		// while matching no instances. `ObjectDB::get_instance()` is
+		// thread-safe, and we mutate the cached `scope_root_valid` flag
+		// under `world_mutex` (via const_cast — the world is actually
+		// addressable through the non-const caller that holds the mutex)
+		// plus bump `sphere_effector_generation` so cached instance
+		// bitmasks invalidate and rebuild without the dropped effector.
 		if (record.scope_mode != SPHERE_EFFECTOR_SCOPE_WORLD) {
-			if (record.scope_root_id == ObjectID() ||
-					!Object::cast_to<Node>(ObjectDB::get_instance(record.scope_root_id))) {
-				effector_scope_valid = false;
+			const bool scope_alive = record.scope_root_id != ObjectID() &&
+					Object::cast_to<Node>(ObjectDB::get_instance(record.scope_root_id)) != nullptr;
+			if (!scope_alive) {
+				if (record.scope_root_valid) {
+					const_cast<SphereEffectorRecord &>(record).scope_root_valid = false;
+					const_cast<SharedWorld &>(p_world).sphere_effector_generation++;
+				}
+				continue;
 			}
-		}
-		if (record.scope_mode != SPHERE_EFFECTOR_SCOPE_WORLD && !effector_scope_valid) {
-			continue;
+			if (!record.scope_root_valid) {
+				// Flipped back to alive (rare — node re-registered at the same ID).
+				const_cast<SphereEffectorRecord &>(record).scope_root_valid = true;
+				const_cast<SharedWorld &>(p_world).sphere_effector_generation++;
+			}
 		}
 
 		Candidate candidate;

@@ -291,6 +291,10 @@ private:
         ObjectID scope_root_id;
         int32_t priority = 0;
         uint64_t registration_serial = 0;
+        // Cached liveness of scope_root_id. Starts true on register, flipped
+        // false (and triggers a generation bump) by the payload builder when
+        // `ObjectDB::get_instance(scope_root_id)` no longer resolves.
+        bool scope_root_valid = true;
         bool enabled = true;
         bool affect_position = true;
         bool affect_opacity = false;
