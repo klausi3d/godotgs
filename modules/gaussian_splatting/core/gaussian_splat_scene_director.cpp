@@ -560,7 +560,13 @@ void GaussianSplatSceneDirector::_build_sorted_sphere_effector_payload(const Sha
 			continue;
 		}
 		const bool position_can_contribute = record.affect_position && !Math::is_zero_approx(record.strength);
-		const bool opacity_can_contribute = record.affect_opacity && !Math::is_zero_approx(record.opacity_strength);
+		// target_opacity==1.0 is the neutral "fully opaque" target; combined
+		// with non-zero opacity_strength it still produces no visible change
+		// for already-opaque splats, so treat it as inert here. Matches the
+		// diagnostic gate in `get_scene_effector_debug_state_for_instance`.
+		const bool opacity_can_contribute = record.affect_opacity &&
+				!Math::is_zero_approx(record.opacity_strength) &&
+				!Math::is_equal_approx(record.target_opacity, 1.0f);
 		if (!position_can_contribute && !opacity_can_contribute) {
 			continue;
 		}
