@@ -7,6 +7,10 @@
 #define GS_MAX_ASSET_LODS 8
 #endif
 
+#ifndef GS_MAX_SPHERE_EFFECTORS
+#define GS_MAX_SPHERE_EFFECTORS 4
+#endif
+
 // Per-instance data (std430, 16-byte aligned).
 struct InstanceDataGPU {
     vec4 rotation;           // quat (x,y,z,w)
@@ -16,7 +20,8 @@ struct InstanceDataGPU {
     uvec2 ids;               // x = asset_id, y = flags
     uvec2 lod;               // x = resolved_lod_level, y = reserved
     vec4 wind_params;        // xyz = wind direction override (0,0,0=infer global), w = wind frequency scale
-    vec4 effect_params;      // x = position response scale, y = opacity response scale, z/w = reserved
+    vec4 effect_params;      // x = position response scale, y = opacity response scale,
+                             // z = scene effector mask bits, w = bound scene effector count snapshot
 };
 
 // Instance flag bits (ids.y).

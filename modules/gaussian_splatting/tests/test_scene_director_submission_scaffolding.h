@@ -1141,7 +1141,8 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Explicit instance submi
 			0.25f, 1.5f, 0u, true, 0.8f,
 			GaussianSplatSceneDirector::INSTANCE_WIND_FORCE_ENABLED,
 			Vector3(1.0f, 0.0f, 0.0f), 2.0f, true,
-			true, GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING);
+			true, GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING,
+			0.4f, 0.1f);
 
 	GaussianSplatSceneDirector::InstanceSubmission submission;
 	CHECK(director->get_instance_submission(node->get_instance_id(), &submission));
@@ -1156,6 +1157,8 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Explicit instance submi
 	CHECK(submission.wind_mode == GaussianSplatSceneDirector::INSTANCE_WIND_FORCE_ENABLED);
 	CHECK(submission.wind_direction.is_equal_approx(Vector3(1.0f, 0.0f, 0.0f)));
 	CHECK(submission.wind_frequency == doctest::Approx(2.0f));
+	CHECK(submission.effect_position_scale == doctest::Approx(0.4f));
+	CHECK(submission.effect_opacity_scale == doctest::Approx(0.1f));
 	CHECK(submission.has_desired_residency_hint);
 	CHECK(submission.desired_residency_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING);
 	int32_t renderer_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT;
@@ -1164,13 +1167,19 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Explicit instance submi
 		CHECK(director->get_submission_residency_hint_for_renderer(submission.renderer.ptr(), &renderer_hint, &renderer_hint_source));
 		CHECK(renderer_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING);
 		CHECK(renderer_hint_source == String("instance_submission"));
+		LocalVector<InstanceDataGPU> initial_buffer;
+		director->build_instance_buffer_for_renderer(submission.renderer.ptr(), initial_buffer, false);
+		REQUIRE(initial_buffer.size() == 1);
+		CHECK(initial_buffer[0].effect_params[0] == doctest::Approx(0.4f));
+		CHECK(initial_buffer[0].effect_params[1] == doctest::Approx(0.1f));
 	}
 
 	director->update_instance_submission_transform(node->get_instance_id(), updated_transform);
 	director->update_instance_submission_params(node->get_instance_id(), 0.6f, 0.9f, 0u, false, 1.2f,
 			GaussianSplatSceneDirector::INSTANCE_WIND_FORCE_DISABLED,
 			updated_wind_direction, 3.5f, false,
-			true, GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
+			true, GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT,
+			1.8f, 0.65f);
 
 	CHECK(director->get_instance_submission(node->get_instance_id(), &submission));
 	CHECK(submission.transform.origin.is_equal_approx(updated_transform.origin));
@@ -1182,12 +1191,19 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Explicit instance submi
 	CHECK(submission.wind_mode == GaussianSplatSceneDirector::INSTANCE_WIND_FORCE_DISABLED);
 	CHECK(submission.wind_direction.is_equal_approx(updated_wind_direction));
 	CHECK(submission.wind_frequency == doctest::Approx(3.5f));
+	CHECK(submission.effect_position_scale == doctest::Approx(1.8f));
+	CHECK(submission.effect_opacity_scale == doctest::Approx(0.65f));
 	CHECK(submission.has_desired_residency_hint);
 	CHECK(submission.desired_residency_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
 	if (submission.renderer.is_valid()) {
 		CHECK(director->get_submission_residency_hint_for_renderer(submission.renderer.ptr(), &renderer_hint, &renderer_hint_source));
 		CHECK(renderer_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT);
 		CHECK(renderer_hint_source == String("instance_submission"));
+		LocalVector<InstanceDataGPU> updated_buffer;
+		director->build_instance_buffer_for_renderer(submission.renderer.ptr(), updated_buffer, false);
+		REQUIRE(updated_buffer.size() == 1);
+		CHECK(updated_buffer[0].effect_params[0] == doctest::Approx(1.8f));
+		CHECK(updated_buffer[0].effect_params[1] == doctest::Approx(0.65f));
 	}
 
 	GaussianSplatSceneDirector::SubmissionCounts counts = director->get_submission_counts();

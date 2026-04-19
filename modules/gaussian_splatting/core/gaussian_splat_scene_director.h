@@ -20,6 +20,8 @@
 #include "../renderer/gaussian_splat_renderer.h"
 
 class ColorGradingResource;
+class Node;
+class Node3D;
 
 class GaussianSplatSceneDirector : public Object {
     GDCLASS(GaussianSplatSceneDirector, Object);
@@ -77,6 +79,32 @@ public:
         uint32_t world_submissions = 0;
     };
 
+    enum SphereEffectorScopeMode : uint32_t {
+        SPHERE_EFFECTOR_SCOPE_WORLD = 0u,
+        SPHERE_EFFECTOR_SCOPE_SUBTREE = 1u,
+        SPHERE_EFFECTOR_SCOPE_EXPLICIT_ROOT = 2u,
+    };
+
+    struct SphereEffectorSelection {
+        ObjectID effector_id;
+        RID scenario;
+        Transform3D transform;
+        Vector3 center;
+        float radius = 0.0f;
+        float strength = 0.0f;
+        float falloff = 2.0f;
+        float frequency = 2.0f;
+        float opacity_strength = 1.0f;
+        uint32_t layer_mask = 1u;
+        uint32_t scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE;
+        ObjectID scope_root_id;
+        int32_t priority = 0;
+        uint32_t matched_effector_count = 0;
+        bool enabled = false;
+        bool affect_position = true;
+        bool affect_opacity = false;
+    };
+
     static GaussianSplatSceneDirector *get_singleton();
 
     GaussianSplatSceneDirector();
@@ -90,6 +118,12 @@ public:
 			int32_t p_desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT,
 			float p_effect_position_scale = 1.0f, float p_effect_opacity_scale = 1.0f);
 	void update_instance_transform(ObjectID p_node_id, const Transform3D &p_transform);
+	// Cache the per-instance scene-effector filter state on the InstanceRecord. Called
+	// from GaussianSplatNode3D setters so the render thread never has to read these
+	// fields back from the live Node3D during build_instance_buffer_for_renderer.
+	void update_instance_scene_effector_filter(ObjectID p_node_id, bool p_enabled,
+			uint32_t p_layer_mask, bool p_scope_filter_present, bool p_scope_filter_valid,
+			ObjectID p_scope_root_id, const LocalVector<ObjectID> &p_scene_tree_ancestor_ids);
 	void update_instance_params(ObjectID p_node_id, float p_opacity, float p_lod_bias, uint32_t p_flags, bool p_casts_shadow = false,
 			float p_wind_intensity = 1.0f, uint32_t p_wind_mode = INSTANCE_WIND_INHERIT,
 			const Vector3 &p_wind_direction = Vector3(), float p_wind_frequency = 1.0f,
@@ -148,7 +182,31 @@ public:
 			bool p_shadow_casters_only = false) const;
 	uint32_t get_instance_count_for_renderer(const GaussianSplatRenderer *p_renderer) const;
 	uint64_t get_instance_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
-	uint64_t get_instance_asset_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
+    uint64_t get_instance_asset_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
+    void register_sphere_effector(ObjectID p_effector_id, const Transform3D &p_transform,
+            float p_radius, float p_strength, float p_falloff, float p_frequency,
+            bool p_enabled = true, bool p_affect_position = true, bool p_affect_opacity = false,
+            float p_opacity_strength = 1.0f, uint32_t p_layer_mask = 1u,
+            uint32_t p_scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE,
+            ObjectID p_scope_root_id = ObjectID(), int32_t p_priority = 0);
+    void update_sphere_effector(ObjectID p_effector_id, const Transform3D &p_transform,
+            float p_radius, float p_strength, float p_falloff, float p_frequency,
+            bool p_enabled = true, bool p_affect_position = true, bool p_affect_opacity = false,
+            float p_opacity_strength = 1.0f, uint32_t p_layer_mask = 1u,
+            uint32_t p_scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE,
+            ObjectID p_scope_root_id = ObjectID(), int32_t p_priority = 0);
+    void unregister_sphere_effector(ObjectID p_effector_id);
+    // Build the renderer's effector payload. When `r_total_scene_effectors` is
+    // non-null, it also returns the raw effector count for this renderer's
+    // world under the same `world_mutex` lock — callers that need both values
+    // should use this overload to avoid a double-query race where the main
+    // thread can mutate the effector list between two director calls.
+    void build_sphere_effector_payload_for_renderer(const GaussianSplatRenderer *p_renderer,
+            LocalVector<SphereEffectorSelection> &out,
+            uint32_t *r_total_scene_effectors = nullptr) const;
+    bool get_primary_sphere_effector_for_instance(ObjectID p_node_id, SphereEffectorSelection *r_selection) const;
+    uint32_t get_sphere_effector_count_for_renderer(const GaussianSplatRenderer *p_renderer) const;
+    uint64_t get_sphere_effector_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
     void register_instance_submission(ObjectID p_node_id, const Ref<GaussianSplatAsset> &p_asset,
             const Transform3D &p_transform, float p_opacity, float p_lod_bias, uint32_t p_flags,
             bool p_casts_shadow = false, float p_wind_intensity = 1.0f,
@@ -211,7 +269,42 @@ private:
         int32_t desired_residency_hint = SUBMISSION_RESIDENCY_HINT_RESIDENT;
         bool dirty = true;
         Ref<ColorGradingResource> color_grading;
+
+        // Scene-effector filter state — cached on registration / setters so the
+        // render thread never has to read these from the live Node3D.
+        bool scene_effectors_enabled = true;
+        uint32_t scene_effector_layer_mask = 1u;
+        bool scene_effector_scope_filter_present = false;
+        bool scene_effector_scope_filter_valid = true;
+        ObjectID scene_effector_scope_root_id;
+        // Ancestor ObjectIDs (self + parents up to the scene root), cached at
+        // registration/parent-change on the main thread. The render thread
+        // reads this set to evaluate subtree containment for SCOPE_SUBTREE /
+        // SCOPE_EXPLICIT_ROOT effectors without ever touching the live tree.
+        LocalVector<ObjectID> scene_tree_ancestor_ids;
 	};
+
+    struct SphereEffectorRecord {
+        ObjectID effector_id;
+        Transform3D transform;
+        float radius = 0.0f;
+        float strength = 0.0f;
+        float falloff = 2.0f;
+        float frequency = 2.0f;
+        float opacity_strength = 1.0f;
+        uint32_t layer_mask = 1u;
+        uint32_t scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE;
+        ObjectID scope_root_id;
+        int32_t priority = 0;
+        uint64_t registration_serial = 0;
+        // Cached liveness of scope_root_id. Starts true on register, flipped
+        // false (and triggers a generation bump) by the payload builder when
+        // `ObjectDB::get_instance(scope_root_id)` no longer resolves.
+        bool scope_root_valid = true;
+        bool enabled = true;
+        bool affect_position = true;
+        bool affect_opacity = false;
+    };
 
     struct SharedWorld {
         RID scenario;
@@ -220,6 +313,10 @@ private:
         HashMap<ObjectID, uint32_t> instance_lookup;
         uint64_t instance_generation = 1;
         uint64_t instance_asset_generation = 1;
+        LocalVector<SphereEffectorRecord> sphere_effectors;
+        HashMap<ObjectID, uint32_t> sphere_effector_lookup;
+        uint64_t sphere_effector_generation = 1;
+        uint64_t sphere_effector_registration_serial = 0;
 	        struct WorldSubmissionRecord {
 	            ObjectID owner_id;
 	            Ref<GaussianData> gaussian_data;
@@ -247,15 +344,30 @@ private:
 
     mutable Mutex world_mutex;
     HashMap<RID, SharedWorld> worlds;
+    mutable HashSet<ObjectID> scene_effector_multi_match_warned_nodes;
 
-    SharedWorld *_get_or_create_world_for_scenario(const RID &p_scenario);
-    SharedWorld *_get_or_create_world(World3D *p_world);
+    SharedWorld *_get_or_create_world_for_scenario(const RID &p_scenario, bool p_require_renderer = true);
+    SharedWorld *_get_or_create_world(World3D *p_world, bool p_require_renderer = true);
     SharedWorld *_get_world_for_instance(ObjectID p_node_id);
     SharedWorld *_find_world_for_instance(ObjectID p_node_id);
+    SharedWorld *_get_world_for_effector(ObjectID p_effector_id);
+    SharedWorld *_find_world_for_effector(ObjectID p_effector_id);
     SharedWorld *_find_world_for_renderer(const GaussianSplatRenderer *p_renderer);
     const SharedWorld *_find_world_for_renderer(const GaussianSplatRenderer *p_renderer) const;
     SharedWorld *_find_world_for_world_submission(ObjectID p_owner_id);
     const SharedWorld *_find_world_for_world_submission(ObjectID p_owner_id) const;
+    static void _build_sorted_sphere_effector_payload(const SharedWorld &p_world,
+            LocalVector<SphereEffectorSelection> &r_out);
+
+    // Render-thread-safe mask builder: consumes the scene-effector filter state
+    // cached on the InstanceRecord instead of reading it back from the live
+    // Node3D. The main-thread node path keeps the cache fresh via
+    // update_instance_scene_effector_filter(). This path skips the implicit-
+    // subtree ancestor check because `is_ancestor_of` is a scene-tree walk and
+    // is not safe to call from the render thread; use SCOPE_EXPLICIT_ROOT +
+    // `rendering/scene_effector_scope_root` on the node to opt into scoping.
+    static uint32_t _build_scene_effector_mask_for_record(const InstanceRecord &p_record,
+            const LocalVector<SphereEffectorSelection> &p_payload);
 
     static bool _populate_gaussian_data_from_asset(const Ref<GaussianSplatAsset> &p_asset, Ref<GaussianData> &r_data);
     static bool _retain_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint32_t p_asset_id);

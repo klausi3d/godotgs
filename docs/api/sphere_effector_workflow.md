@@ -1,0 +1,89 @@
+# Sphere Effector Workflow
+
+## Runtime Surface
+
+This branch supports scene-authored sphere effectors for Gaussian splats through `SphereEffector3D`.
+
+- Author `SphereEffector3D` nodes directly in the scene.
+- Match splat nodes with subtree scope, explicit scope roots, and layer masks.
+- Blend each splat node's response with:
+  - `rendering/effect_position_scale`
+  - `rendering/effect_opacity_scale`
+  - `rendering/opacity`
+- Override wind per node with:
+  - `rendering/wind_override_enabled`
+  - `rendering/wind_enabled`
+  - `rendering/wind_strength`
+  - `rendering/wind_direction`
+  - `rendering/wind_frequency`
+
+ProjectSettings under `rendering/gaussian_splatting/effects/*` remain available as a backward-compatible fallback when a scene does not author any active `SphereEffector3D` nodes.
+
+## What Works In Game
+
+- Wind-only animation on selected splat nodes through node-local wind override.
+- Scene-driven sphere position deformation.
+- Scene-driven sphere opacity modulation for dissolve or degeneration effects.
+- Mixed setups where some nodes react only to wind, some only to sphere position, some only to sphere opacity, and some to both.
+- Multiple sphere effectors in one world, with per-instance targeting handled by scene subtree scope, explicit root scope, and layer masks.
+- Per-node exclusion from scene effectors by disabling `rendering/scene_effectors_enabled`, zeroing the layer mask, or narrowing `rendering/scene_effector_scope_root`.
+
+## Hard Bounds
+
+- The renderer binds at most `4` scene effectors per pass.
+- If more than `4` candidate scene effectors are present, the highest-priority deterministic four are used.
+- Deterministic ordering uses priority first, then scope specificity, then scene path, then object id.
+- `get_primary_sphere_effector_for_instance()` is now a compatibility query only. It still returns one match even though the renderer can bind multiple.
+
+## Authoring Recipes
+
+### Wind-only
+
+1. Disable `rendering/scene_effectors_enabled` on the node, or set both effect scales to `0.0`.
+2. Enable `rendering/wind_override_enabled`.
+3. Tune `rendering/wind_enabled`, `rendering/wind_strength`, `rendering/wind_direction`, and `rendering/wind_frequency`.
+
+### Sphere Position-only
+
+1. Add a `SphereEffector3D` near the target content.
+2. Leave `affect_position = true`.
+3. Set the node's `rendering/effect_position_scale` above `0.0`.
+4. Set `rendering/effect_opacity_scale = 0.0`.
+
+### Sphere Opacity-only Dissolve
+
+1. Add a `SphereEffector3D`.
+2. Set `affect_opacity = true`.
+3. Tune `opacity_strength`.
+4. Set the node's `rendering/effect_position_scale = 0.0`.
+5. Set `rendering/effect_opacity_scale` above `0.0`.
+
+Scene-driven opacity currently dissolves toward transparent. Use the ProjectSettings fallback path if you need a non-zero target opacity until the node API grows a dedicated target control.
+
+### Combined Wind + Sphere + Opacity
+
+1. Enable per-node wind override and tune wind values.
+2. Enable both position and opacity on the `SphereEffector3D`.
+3. Keep both node-local effect scales above `0.0`.
+
+## Artist Notes
+
+- Put a `SphereEffector3D` under the same gameplay parent as the splat nodes you want to affect. The default `Parent Subtree` scope is the safest workflow.
+- Use effector `layer_mask` and node `rendering/scene_effector_layer_mask` when multiple effect systems share a world.
+- Use `priority` when multiple effectors overlap and you need deterministic truncation into the renderer's four-slot budget.
+- Keep `rendering/effect_opacity_scale` at `0.0` on nodes that should not dissolve even if they still follow position deformation.
+
+## Stability And Sanitization
+
+- `GaussianSplatNode3D.rendering/opacity` clamps to `0.0..1.0`.
+- `GaussianSplatNode3D.rendering/effect_position_scale` and `rendering/effect_opacity_scale` clamp to `>= 0.0`.
+- `SphereEffector3D.radius` clamps to `>= 0.0`.
+- `SphereEffector3D.falloff` clamps to `>= 0.001`.
+- `SphereEffector3D.frequency` clamps to `>= 0.1`.
+- `SphereEffector3D.opacity_strength` clamps to `0.0..1.0`.
+- Non-finite node or effector values fall back to stable defaults instead of propagating NaNs into rendering.
+
+## Example Scenes
+
+- `tests/examples/godot/test_project/scenes/wind_test.tscn`
+- `tests/examples/godot/test_project/scenes/sphere_effector_test.tscn`

@@ -698,9 +698,10 @@ void main() {
             instance.effect_params,
             params.wind_dir_strength,
             params.wind_time_config,
-            params.effector_sphere,
-            params.effector_config,
-            params.effector_opacity_config);
+            params.effector_meta,
+            params.effector_spheres,
+            params.effector_configs,
+            params.effector_opacity_configs);
     world_position = deformation.position;
     vec3 world_scale = (instance_flags & GS_INSTANCE_FLAG_SCALE_IDENTITY) != 0u
             ? local_scale

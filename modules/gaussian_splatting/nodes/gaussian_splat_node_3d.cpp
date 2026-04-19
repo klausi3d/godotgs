@@ -55,6 +55,19 @@ static bool _is_renderer_shared_with_other_content(const Ref<GaussianSplatRender
     }
     return false;
 }
+
+// Collect the instance node's ancestor ObjectID chain (self + every parent up
+// to the scene root). Cached on InstanceRecord so the render-thread mask
+// builder can evaluate subtree containment without a live `is_ancestor_of`
+// walk.
+static void _collect_scene_tree_ancestor_ids(const Node *p_node, LocalVector<ObjectID> &r_ids) {
+    r_ids.clear();
+    const Node *cursor = p_node;
+    while (cursor) {
+        r_ids.push_back(cursor->get_instance_id());
+        cursor = cursor->get_parent();
+    }
+}
 } // namespace
 
 void GaussianSplatNode3D::_bind_methods() {
@@ -170,6 +183,22 @@ void GaussianSplatNode3D::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_effect_opacity_scale", "scale"), &GaussianSplatNode3D::set_effect_opacity_scale);
     ClassDB::bind_method(D_METHOD("get_effect_opacity_scale"), &GaussianSplatNode3D::get_effect_opacity_scale);
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rendering/effect_opacity_scale", PROPERTY_HINT_RANGE, "0.0,4.0,0.01,or_greater"), "set_effect_opacity_scale", "get_effect_opacity_scale");
+
+    ClassDB::bind_method(D_METHOD("set_scene_effectors_enabled", "enabled"), &GaussianSplatNode3D::set_scene_effectors_enabled);
+    ClassDB::bind_method(D_METHOD("is_scene_effectors_enabled"), &GaussianSplatNode3D::is_scene_effectors_enabled);
+    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "rendering/scene_effectors_enabled"), "set_scene_effectors_enabled", "is_scene_effectors_enabled");
+
+    ClassDB::bind_method(D_METHOD("set_scene_effector_layer_mask", "mask"), &GaussianSplatNode3D::set_scene_effector_layer_mask);
+    ClassDB::bind_method(D_METHOD("get_scene_effector_layer_mask"), &GaussianSplatNode3D::get_scene_effector_layer_mask);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "rendering/scene_effector_layer_mask", PROPERTY_HINT_FLAGS,
+            "Layer 1,Layer 2,Layer 3,Layer 4,Layer 5,Layer 6,Layer 7,Layer 8,Layer 9,Layer 10,"
+            "Layer 11,Layer 12,Layer 13,Layer 14,Layer 15,Layer 16"),
+            "set_scene_effector_layer_mask", "get_scene_effector_layer_mask");
+
+    ClassDB::bind_method(D_METHOD("set_scene_effector_scope_root", "scope_root"), &GaussianSplatNode3D::set_scene_effector_scope_root);
+    ClassDB::bind_method(D_METHOD("get_scene_effector_scope_root"), &GaussianSplatNode3D::get_scene_effector_scope_root);
+    ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "rendering/scene_effector_scope_root", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "Node"),
+            "set_scene_effector_scope_root", "get_scene_effector_scope_root");
 
     ClassDB::bind_method(D_METHOD("set_wind_override_enabled", "enabled"), &GaussianSplatNode3D::set_wind_override_enabled);
     ClassDB::bind_method(D_METHOD("is_wind_override_enabled"), &GaussianSplatNode3D::is_wind_override_enabled);
@@ -432,6 +461,17 @@ void GaussianSplatNode3D::_notification(int p_what) {
             _notification_enter_world();
         } break;
 
+        case NOTIFICATION_EXIT_WORLD: {
+            // World-switch lifecycle: Godot emits EXIT_WORLD when a Node3D's
+            // resolved World3D changes without a tree removal. Unregister from
+            // the scene director so the instance doesn't linger in the old
+            // SharedWorld. ENTER_WORLD will re-register in the new world. A
+            // belt-and-braces safety against stale records — `register_instance`
+            // also migrates on its own, but an unregister here keeps the
+            // lifecycle deterministic for tooling and diagnostics.
+            _unregister_shared_renderer();
+        } break;
+
         case NOTIFICATION_READY: {
         } break;
 
@@ -491,6 +531,12 @@ void GaussianSplatNode3D::_validate_property(PropertyInfo &p_property) const {
                 p_property.name == "rendering/wind_strength" ||
                 p_property.name == "rendering/wind_direction" ||
                 p_property.name == "rendering/wind_frequency") {
+            p_property.usage = PROPERTY_USAGE_NO_EDITOR;
+        }
+    }
+    if (!scene_effectors_enabled) {
+        if (p_property.name == "rendering/scene_effector_layer_mask" ||
+                p_property.name == "rendering/scene_effector_scope_root") {
             p_property.usage = PROPERTY_USAGE_NO_EDITOR;
         }
     }
@@ -1065,6 +1111,37 @@ void GaussianSplatNode3D::set_effect_opacity_scale(float p_scale) {
     _update_instance_params_in_director();
 }
 
+void GaussianSplatNode3D::set_scene_effectors_enabled(bool p_enabled) {
+    if (scene_effectors_enabled == p_enabled) {
+        return;
+    }
+    scene_effectors_enabled = p_enabled;
+    notify_property_list_changed();
+    update_configuration_warnings();
+    _mark_render_state_dirty();
+    _update_instance_params_in_director();
+}
+
+void GaussianSplatNode3D::set_scene_effector_layer_mask(uint32_t p_mask) {
+    if (scene_effector_layer_mask == p_mask) {
+        return;
+    }
+    scene_effector_layer_mask = p_mask;
+    update_configuration_warnings();
+    _mark_render_state_dirty();
+    _update_instance_params_in_director();
+}
+
+void GaussianSplatNode3D::set_scene_effector_scope_root(const NodePath &p_scope_root) {
+    if (scene_effector_scope_root == p_scope_root) {
+        return;
+    }
+    scene_effector_scope_root = p_scope_root;
+    update_configuration_warnings();
+    _mark_render_state_dirty();
+    _update_instance_params_in_director();
+}
+
 void GaussianSplatNode3D::set_wind_override_enabled(bool p_enabled) {
     if (wind_override_enabled == p_enabled) {
         return;
@@ -1515,6 +1592,22 @@ PackedStringArray GaussianSplatNode3D::get_configuration_warnings() const {
 
     if (max_render_distance <= 0.0f) {
         warnings.push_back("Max render distance is 0. Splats will not be visible.");
+    }
+
+    if (scene_effectors_enabled) {
+        if (scene_effector_layer_mask == 0u) {
+            warnings.push_back("Scene effectors are enabled, but scene_effector_layer_mask is 0. No scene-driven sphere effectors will match this node.");
+        }
+        if (!scene_effector_scope_root.is_empty()) {
+            if (!is_inside_tree()) {
+                warnings.push_back("scene_effector_scope_root is set, but the node is not inside the tree yet. Scope validation is deferred until runtime.");
+            } else {
+                Node *scope_root = _resolve_scene_effector_scope_root();
+                if (!scope_root) {
+                    warnings.push_back(vformat("scene_effector_scope_root must resolve to this node or one of its ancestors: %s", scene_effector_scope_root));
+                }
+            }
+        }
     }
 
     const Vector3 scale = get_global_transform().basis.get_scale();
@@ -2093,6 +2186,20 @@ float GaussianSplatNode3D::_get_instance_wind_frequency() const {
     return MAX(0.0f, wind_frequency);
 }
 
+Node *GaussianSplatNode3D::_resolve_scene_effector_scope_root() const {
+    if (scene_effector_scope_root.is_empty() || !is_inside_tree()) {
+        return nullptr;
+    }
+    Node *scope_root = get_node_or_null(scene_effector_scope_root);
+    if (!scope_root) {
+        return nullptr;
+    }
+    if (!(scope_root == this || scope_root->is_ancestor_of(this))) {
+        return nullptr;
+    }
+    return scope_root;
+}
+
 void GaussianSplatNode3D::_register_instance_in_director() {
     const bool in_tree = is_inside_tree();
     const bool in_world = is_inside_world();
@@ -2150,6 +2257,18 @@ void GaussianSplatNode3D::_register_instance_in_director() {
     // the earlier setter/signal attempts that fired before registration were
     // lost (director returned NO WORLD) and the record stayed at null grading.
     director->update_instance_color_grading(get_instance_id(), color_grading);
+
+    // Seed the cached scene-effector filter state. The render thread reads this
+    // from the InstanceRecord instead of the live Node3D, so it must be fresh
+    // before the first buffer rebuild.
+    const bool scope_filter_present = !scene_effector_scope_root.is_empty();
+    Node *resolved_scope = scope_filter_present ? _resolve_scene_effector_scope_root() : nullptr;
+    const bool scope_filter_valid = !scope_filter_present || resolved_scope != nullptr;
+    const ObjectID scope_root_id = resolved_scope ? resolved_scope->get_instance_id() : ObjectID();
+    LocalVector<ObjectID> ancestor_ids;
+    _collect_scene_tree_ancestor_ids(this, ancestor_ids);
+    director->update_instance_scene_effector_filter(get_instance_id(), scene_effectors_enabled,
+            scene_effector_layer_mask, scope_filter_present, scope_filter_valid, scope_root_id, ancestor_ids);
 }
 
 void GaussianSplatNode3D::_unregister_instance_in_director() {
@@ -2179,6 +2298,19 @@ void GaussianSplatNode3D::_update_instance_params_in_director() {
                 /*has_desired_residency_hint=*/true,
                 GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT,
                 effect_position_scale, effect_opacity_scale);
+
+        // Cache the scene-effector filter state on the InstanceRecord so the
+        // render thread never has to read these properties back from the live
+        // Node3D. Resolution of `scene_effector_scope_root` (NodePath → Node)
+        // happens here on the main thread.
+        const bool scope_filter_present = !scene_effector_scope_root.is_empty();
+        Node *resolved_scope = scope_filter_present ? _resolve_scene_effector_scope_root() : nullptr;
+        const bool scope_filter_valid = !scope_filter_present || resolved_scope != nullptr;
+        const ObjectID scope_root_id = resolved_scope ? resolved_scope->get_instance_id() : ObjectID();
+        LocalVector<ObjectID> ancestor_ids;
+        _collect_scene_tree_ancestor_ids(this, ancestor_ids);
+        director->update_instance_scene_effector_filter(get_instance_id(), scene_effectors_enabled,
+                scene_effector_layer_mask, scope_filter_present, scope_filter_valid, scope_root_id, ancestor_ids);
     }
     if (renderer.is_valid()) {
         renderer->invalidate_cached_render();

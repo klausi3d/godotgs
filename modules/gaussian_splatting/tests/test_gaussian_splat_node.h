@@ -2,6 +2,7 @@
 
 #include "test_macros.h"
 #include "../nodes/gaussian_splat_node_3d.h"
+#include "../nodes/sphere_effector_3d.h"
 #include "../nodes/gaussian_splat_world_3d.h"
 #include "../nodes/gaussian_splat_dynamic_instance_3d.h"
 #include "../core/gaussian_data.h"
@@ -26,6 +27,7 @@
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
 
+#include <cstring>
 #include <limits>
 
 #if defined(TESTS_ENABLED) || defined(TOOLS_ENABLED)
@@ -141,6 +143,12 @@ int count_instances_by_translation_x(const LocalVector<InstanceDataGPU> &p_insta
         }
     }
     return count;
+}
+
+uint32_t decode_scene_effector_mask(const InstanceDataGPU &p_instance) {
+    uint32_t mask = 0u;
+    memcpy(&mask, &p_instance.effect_params[2], sizeof(mask));
+    return mask;
 }
 
 bool is_property_editor_exposed(Object *p_object, const StringName &p_property_name) {
@@ -1188,6 +1196,90 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer ins
     root->remove_child(node_a);
     memdelete(node_b);
     memdelete(node_a);
+}
+
+TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Scene sphere effectors build per-instance selection masks") {
+    SceneTree *tree = SceneTree::get_singleton();
+    REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+    Window *root = tree->get_root();
+    REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+    const float node_a_x = 3331.0f;
+    const float node_b_x = 3332.0f;
+
+    Node3D *group_a = memnew(Node3D);
+    Node3D *group_b = memnew(Node3D);
+    GaussianSplatNode3D *node_a = memnew(GaussianSplatNode3D);
+    GaussianSplatNode3D *node_b = memnew(GaussianSplatNode3D);
+    SphereEffector3D *effector_a = memnew(SphereEffector3D);
+    SphereEffector3D *effector_b = memnew(SphereEffector3D);
+
+    group_a->set_name("GroupA");
+    group_b->set_name("GroupB");
+    node_a->set_name("NodeA");
+    node_b->set_name("NodeB");
+    effector_a->set_name("EffectorA");
+    effector_b->set_name("EffectorB");
+
+    node_a->set_splat_asset(make_single_splat_asset(node_a_x));
+    node_b->set_splat_asset(make_single_splat_asset(node_b_x));
+
+    effector_a->set_enabled(true);
+    effector_a->set_radius(8.0f);
+    effector_a->set_strength(1.0f);
+    effector_a->set_affect_position(true);
+
+    effector_b->set_enabled(true);
+    effector_b->set_radius(8.0f);
+    effector_b->set_strength(1.0f);
+    effector_b->set_affect_position(true);
+
+    root->add_child(group_a);
+    root->add_child(group_b);
+    group_a->add_child(node_a);
+    group_a->add_child(effector_a);
+    group_b->add_child(node_b);
+    group_b->add_child(effector_b);
+    tree->process(0.0);
+
+    Ref<GaussianSplatRenderer> renderer = node_a->get_renderer();
+    GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+    if (!renderer.is_valid() || !director) {
+        root->remove_child(group_b);
+        root->remove_child(group_a);
+        memdelete(group_b);
+        memdelete(group_a);
+        return;
+    }
+    CHECK(renderer == node_b->get_renderer());
+
+    LocalVector<GaussianSplatSceneDirector::SphereEffectorSelection> payload;
+    director->build_sphere_effector_payload_for_renderer(renderer.ptr(), payload);
+    REQUIRE(payload.size() == 2);
+
+    LocalVector<InstanceDataGPU> instance_buffer;
+    director->build_instance_buffer_for_renderer(renderer.ptr(), instance_buffer);
+    const int node_a_index = find_instance_index_by_translation_x(instance_buffer, node_a_x);
+    const int node_b_index = find_instance_index_by_translation_x(instance_buffer, node_b_x);
+    REQUIRE(node_a_index >= 0);
+    REQUIRE(node_b_index >= 0);
+    CHECK(decode_scene_effector_mask(instance_buffer[node_a_index]) == 0x1u);
+    CHECK(decode_scene_effector_mask(instance_buffer[node_b_index]) == 0x2u);
+    CHECK(instance_buffer[node_a_index].effect_params[3] == doctest::Approx(2.0f));
+    CHECK(instance_buffer[node_b_index].effect_params[3] == doctest::Approx(2.0f));
+
+    node_b->set_scene_effectors_enabled(false);
+    tree->process(0.0);
+    director->build_instance_buffer_for_renderer(renderer.ptr(), instance_buffer);
+    const int node_b_disabled_index = find_instance_index_by_translation_x(instance_buffer, node_b_x);
+    REQUIRE(node_b_disabled_index >= 0);
+    CHECK(decode_scene_effector_mask(instance_buffer[node_b_disabled_index]) == 0u);
+
+    root->remove_child(group_b);
+    root->remove_child(group_a);
+    memdelete(group_b);
+    memdelete(group_a);
 }
 
 TEST_CASE("[GaussianSplatting][Node] Runtime effect controls sanitize invalid gameplay values") {

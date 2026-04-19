@@ -84,9 +84,10 @@ layout(set = 0, binding = 9, std140) uniform Params {
     uint pad1;
     vec4 wind_dir_strength;
     vec4 wind_time_config;
-    vec4 effector_sphere;
-    vec4 effector_config;
-    vec4 effector_opacity_config;
+    vec4 effector_meta;
+    vec4 effector_spheres[GS_MAX_SPHERE_EFFECTORS];
+    vec4 effector_configs[GS_MAX_SPHERE_EFFECTORS];
+    vec4 effector_opacity_configs[GS_MAX_SPHERE_EFFECTORS];
     vec4 frustum_planes[6];
     vec4 camera_position_ortho; // xyz = camera position, w = orthographic flag
     vec4 cull_screen_distance; // x = pixel_scale_y, y = tiny_splat_radius_px, z = min_screen_threshold_px, w = max_distance_sq
@@ -181,9 +182,10 @@ void main() {
             instance.effect_params,
             params.wind_dir_strength,
             params.wind_time_config,
-            params.effector_sphere,
-            params.effector_config,
-            params.effector_opacity_config);
+            params.effector_meta,
+            params.effector_spheres,
+            params.effector_configs,
+            params.effector_opacity_configs);
     world_position = deformation.position;
 
     float local_radius = max(max(abs(local_scale.x), abs(local_scale.y)), abs(local_scale.z));

@@ -27,6 +27,7 @@
 #include "nodes/gaussian_splat_container.h"
 #include "nodes/gaussian_splat_dynamic_instance_3d.h"
 #include "nodes/gaussian_splat_world_3d.h"
+#include "nodes/sphere_effector_3d.h"
 #include "interfaces/cluster_culler.h"
 
 // Animation and Persistence (v0.6.0)
@@ -83,6 +84,7 @@ void initialize_gaussian_splatting_module(ModuleInitializationLevel p_level) {
             GDREGISTER_CLASS(GaussianSplatContainer);
             GDREGISTER_CLASS(GaussianSplatDynamicInstance3D);
             GDREGISTER_CLASS(GaussianSplatWorld3D);
+            GDREGISTER_CLASS(SphereEffector3D);
 
             // Rendering components
             GDREGISTER_CLASS(GaussianSplatRenderer);
