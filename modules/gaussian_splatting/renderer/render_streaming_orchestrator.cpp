@@ -50,7 +50,8 @@ static uint64_t _compute_instance_pipeline_resource_fingerprint(const ResourceSt
 	generation = _mix_u32_generation(generation, p_resource_state.instance_buffer_capacity);
 	generation = _mix_rid_generation(generation, p_resource_state.instance_grading_buffer);
 	generation = _mix_u32_generation(generation, p_resource_state.instance_grading_buffer_capacity);
-	generation = _mix_content_generation(generation, p_resource_state.instance_grading_defaults_generation);
+	generation = _mix_content_generation(generation,
+			p_resource_state.instance_grading_defaults_generation.load(std::memory_order_relaxed));
 	generation = _mix_rid_generation(generation, p_resource_state.instance_visible_chunk_buffer);
 	generation = _mix_u32_generation(generation, p_resource_state.instance_visible_chunk_capacity);
 	generation = _mix_rid_generation(generation, p_resource_state.instance_splat_ref_buffer);
@@ -115,7 +116,8 @@ static uint64_t _compute_instance_pipeline_upload_fingerprint(const ResourceStat
 	generation = _mix_u32_generation(generation, p_resource_state.instance_buffer_capacity);
 	generation = _mix_rid_generation(generation, p_resource_state.instance_grading_buffer);
 	generation = _mix_u32_generation(generation, p_resource_state.instance_grading_buffer_capacity);
-	generation = _mix_content_generation(generation, p_resource_state.instance_grading_defaults_generation);
+	generation = _mix_content_generation(generation,
+			p_resource_state.instance_grading_defaults_generation.load(std::memory_order_relaxed));
 	generation = _mix_u32_generation(generation, p_buffers.instance_count);
 	generation = _mix_content_generation(generation, _compute_instance_asset_remap_fingerprint(p_remap));
 	return generation;
@@ -1908,10 +1910,21 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 							GaussianSplatSceneDirector::fill_instance_grading_entry(renderer_default, gradings[i]);
 						}
 					}
-					// Treat a grading-buffer upload failure the same way the resident path
-					// does: tile binning requires instance_grading_buffer at binding 20, so
-					// we cannot leave the frame in a "ready" state with a missing SSBO.
-					if (!renderer->update_instance_grading_buffer(gradings)) {
+					// Contract: grading rows and instance rows must have identical counts
+					// and ordering because the shader indexes both with the same
+					// splat_ref.instance_id. If the director's filter logic and the streaming
+					// cache ever drift, this assertion catches it before uploading a short
+					// buffer the shader would read past.
+					if (gradings.size() != instance_pipeline_instance_cache.size()) {
+						ERR_PRINT_ONCE(vformat(
+								"[Streaming] grading buffer row count (%d) does not match instance cache row count (%d). "
+								"build_instance_grading_buffer_for_renderer and the streaming instance cache must stay 1:1.",
+								int(gradings.size()), int(instance_pipeline_instance_cache.size())));
+						resource_state_mut.instance_pipeline_upload_fingerprint = 0;
+						resource_state_mut.instance_pipeline_upload_generation = 0;
+						buffers = renderer->get_instance_pipeline_buffers();
+						renderer->clear_instance_pipeline_buffers();
+					} else if (!renderer->update_instance_grading_buffer(gradings)) {
 						// Reset the upload fingerprint/generation FIRST so the next frame's
 						// upload_changed comparison forces a retry attempt. Without this, a
 						// transient OOM / device hiccup becomes sticky — upload_changed

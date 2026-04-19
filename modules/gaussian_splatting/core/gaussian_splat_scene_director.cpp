@@ -1442,8 +1442,13 @@ void GaussianSplatSceneDirector::invalidate_grading_for_renderer(const GaussianS
 	// on default grading edits — their fallback rows read from the renderer's
 	// get_color_grading() value and must refresh.
 	if (p_renderer) {
+		// Atomic increment — the streaming orchestrator reads this from the
+		// render thread to compute upload fingerprints without holding the
+		// director's world_mutex. Relaxed ordering is fine: the counter is
+		// a monotonic "did anything change since last frame" beacon.
 		const_cast<GaussianSplatRenderer *>(p_renderer)
-				->get_resource_state().instance_grading_defaults_generation++;
+				->get_resource_state().instance_grading_defaults_generation
+				.fetch_add(1, std::memory_order_relaxed);
 	}
 	MutexLock lock(world_mutex);
 	SharedWorld *world = const_cast<SharedWorld *>(_find_world_for_renderer(p_renderer));

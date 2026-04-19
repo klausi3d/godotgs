@@ -659,6 +659,23 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 				GaussianSplatSceneDirector::fill_instance_grading_entry(renderer_default, gradings[i]);
 			}
 		}
+		// Contract: the grading buffer MUST have the same row count as the
+		// instance buffer. Shader indexing (instance_buffer.instances[splat_ref.instance_id]
+		// and instance_grading_buffer.gradings[splat_ref.instance_id]) relies on 1:1
+		// parity. If the filter logic ever drifts between the two director build
+		// steps, early-fail here instead of uploading a short buffer the shader
+		// would then read past end-of-array.
+		if (gradings.size() != instances.size()) {
+			ERR_PRINT_ONCE(vformat(
+					"[ResidentContract] grading buffer row count (%d) does not match instance buffer row count (%d). "
+					"build_instance_grading_buffer_for_renderer and build_instance_buffer_for_renderer must apply identical filters.",
+					int(gradings.size()), int(instances.size())));
+			if (r_reason) {
+				*r_reason = "resident_grading_instance_row_mismatch";
+			}
+			p_renderer->clear_instance_pipeline_buffers();
+			return false;
+		}
 		if (!p_renderer->update_instance_grading_buffer(gradings)) {
 			if (r_reason) {
 				*r_reason = "resident_grading_upload_failed";

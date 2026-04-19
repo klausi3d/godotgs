@@ -171,6 +171,14 @@ void GaussianSplatRenderer::_on_renderer_default_grading_changed() {
 	// (slider edits that mutate values in place — same Ref, new values). Re-run
 	// the invalidation path so fallback-graded rows pick up the fresh values on
 	// the next frame.
+	//
+	// Thread affinity: `changed` fires synchronously on the thread that called
+	// `emit_changed()`. In Godot practice, resource editing happens on the main
+	// thread (inspector UI, scene tree). If a caller ever edits the resource
+	// from a worker thread, the director generation bump below uses atomic ops
+	// so the fingerprint read is safe; the world_mutex inside the director
+	// serializes record mutations. invalidate_cached_render() likewise just
+	// flips a bool read by the render thread.
 	invalidate_cached_render();
 	if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
 		director->invalidate_grading_for_renderer(this);

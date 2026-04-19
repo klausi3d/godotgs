@@ -16,6 +16,7 @@
 #include "../gaussian_gpu_layout.h"
 #include "../gpu_buffer_manager.h"
 #include "../gpu_performance_monitor.h"
+#include <atomic>
 #include <cstdint>
 #include <memory>
 
@@ -61,7 +62,13 @@ struct ResourceState {
 	// SharedWorld) still force a grading SSBO re-upload when the default mutates.
 	// Without this, fallback-graded rows keep stale GPU values until an unrelated
 	// topology change re-runs the publisher.
-	uint64_t instance_grading_defaults_generation = 0;
+	//
+	// Atomic: the writer runs under the director's world_mutex (via
+	// invalidate_grading_for_renderer) while the fingerprint readers in the
+	// streaming orchestrator may run on the render thread without that lock.
+	// Relaxed ordering is sufficient because the generation is a monotonic
+	// counter used only to detect "did something change since last frame".
+	std::atomic<uint64_t> instance_grading_defaults_generation{ 0 };
 	RID instance_visible_chunk_buffer;
 	uint32_t instance_visible_chunk_capacity = 0;
 	RID instance_splat_ref_buffer;

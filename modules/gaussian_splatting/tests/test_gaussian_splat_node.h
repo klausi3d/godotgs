@@ -26,6 +26,8 @@
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
 
+#include <limits>
+
 #if defined(TESTS_ENABLED) || defined(TOOLS_ENABLED)
 
 #include "gs_test_setting_guard.h"
@@ -1188,6 +1190,43 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer ins
     memdelete(node_a);
 }
 
+TEST_CASE("[GaussianSplatting][Node] Runtime effect controls sanitize invalid gameplay values") {
+    GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
+    REQUIRE(node != nullptr);
+
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    CHECK(node->get_opacity() == doctest::Approx(1.0f));
+    CHECK(node->get_effect_position_scale() == doctest::Approx(1.0f));
+    CHECK(node->get_effect_opacity_scale() == doctest::Approx(1.0f));
+    CHECK(node->get_wind_strength() == doctest::Approx(1.0f));
+    CHECK(node->get_wind_frequency() == doctest::Approx(1.0f));
+
+    node->set_opacity(-0.25f);
+    CHECK(node->get_opacity() == doctest::Approx(0.0f));
+    node->set_opacity(1.75f);
+    CHECK(node->get_opacity() == doctest::Approx(1.0f));
+    node->set_opacity(nan);
+    CHECK(node->get_opacity() == doctest::Approx(1.0f));
+
+    node->set_effect_position_scale(-2.0f);
+    CHECK(node->get_effect_position_scale() == doctest::Approx(0.0f));
+    node->set_effect_position_scale(nan);
+    CHECK(node->get_effect_position_scale() == doctest::Approx(1.0f));
+
+    node->set_effect_opacity_scale(-3.0f);
+    CHECK(node->get_effect_opacity_scale() == doctest::Approx(0.0f));
+    node->set_effect_opacity_scale(nan);
+    CHECK(node->get_effect_opacity_scale() == doctest::Approx(1.0f));
+
+    node->set_wind_strength(-5.0f);
+    CHECK(node->get_wind_strength() == doctest::Approx(0.0f));
+    node->set_wind_frequency(-4.0f);
+    CHECK(node->get_wind_frequency() == doctest::Approx(0.0f));
+
+    memdelete(node);
+}
+
 TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer instance buffer drops hidden nodes") {
     SceneTree *tree = SceneTree::get_singleton();
     REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
@@ -2137,6 +2176,39 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Two shared-renderer
     root->remove_child(node_a);
     memdelete(node_b);
     memdelete(node_a);
+}
+
+TEST_CASE("[GaussianSplatting] Renderer-only set_color_grading bumps grading defaults generation") {
+    // Regression for the P2 flagged by Codex: renderer-only / direct-data flows
+    // (no SharedWorld in the director) still need set_color_grading to trigger a
+    // grading SSBO re-upload. This is wired by
+    // RenderConfigOrchestrator::set_color_grading ->
+    // GaussianSplatSceneDirector::invalidate_grading_for_renderer, which always
+    // bumps the renderer's `instance_grading_defaults_generation` counter before
+    // the SharedWorld lookup. The streaming fingerprint consumes that counter so
+    // upload_changed trips even without any director entry.
+    Ref<GaussianSplatRenderer> renderer;
+    renderer.instantiate();
+    REQUIRE(renderer.is_valid());
+
+    using GaussianRenderFacadeState::ResourceState;
+    const ResourceState &state = renderer->get_resource_state();
+    const uint64_t before = state.instance_grading_defaults_generation.load(std::memory_order_relaxed);
+
+    Ref<ColorGradingResource> grading = make_color_grading_resource();
+    REQUIRE(grading.is_valid());
+    grading->set_exposure(-0.5f);
+    renderer->set_color_grading(grading);
+
+    const uint64_t after_set = state.instance_grading_defaults_generation.load(std::memory_order_relaxed);
+    CHECK(after_set > before);
+
+    // In-place slider edit on the same Ref fires the resource's `changed` signal,
+    // which the renderer's handler catches via callable_mp and re-runs the
+    // invalidation path. Bumps the counter again even though the Ref did not swap.
+    grading->set_exposure(1.5f);
+    const uint64_t after_slider = state.instance_grading_defaults_generation.load(std::memory_order_relaxed);
+    CHECK(after_slider > after_set);
 }
 
 TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer full-fidelity override only follows attached assets") {
