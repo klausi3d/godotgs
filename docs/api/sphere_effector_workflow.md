@@ -33,16 +33,17 @@ ProjectSettings under `rendering/gaussian_splatting/effects/*` remain available 
 
 - The renderer binds at most `4` scene effectors per pass.
 - If more than `4` candidate scene effectors are present, the highest-priority deterministic four are used.
-- Deterministic ordering uses priority first, then scope specificity, then scene path, then object id.
+- Deterministic ordering uses priority first, then scope specificity, then registration order, then object id.
 - `get_primary_sphere_effector_for_instance()` is now a compatibility query only. It still returns one match even though the renderer can bind multiple.
 - `target_opacity = 1.0` is a neutral target. Matching nodes still count as matched, but no visible opacity change is produced and opacity diagnostics stay inactive.
 
 ## Runtime Diagnostics
 
 - `GaussianSplatNode3D.get_last_matched_scene_effector_count()` reports logical matches after scope and layer-mask filtering. This count can stay non-zero even when both active-channel flags are `false`.
+- `GaussianSplatNode3D.get_scene_effector_debug_state()` reports both logical and renderer-bound state, including `matched_count`, `bound_count`, `truncated`, `selected_effector_ids`, and `selected_effector_names`.
 - `GaussianSplatNode3D.is_scene_effector_position_active()` only returns `true` when a matched effector can actually contribute position deformation. Zero node position scale or zero effector strength keeps it `false`.
 - `GaussianSplatNode3D.is_scene_effector_opacity_active()` only returns `true` when a matched effector can actually contribute opacity modulation. It stays `false` when node opacity is `0.0`, node opacity scale is `0.0`, effector `opacity_strength` is `0.0`, or effector `target_opacity` is `1.0`.
-- `GaussianSplatNode3D.get_statistics()` mirrors these runtime values under `matched_scene_effectors`, `scene_effector_position_active`, and `scene_effector_opacity_active`.
+- `GaussianSplatNode3D.get_statistics()` mirrors these runtime values under `matched_scene_effectors`, `bound_scene_effectors`, `scene_effector_truncated`, `scene_effector_position_active`, and `scene_effector_opacity_active`.
 - `GaussianSplatNode3D.get_configuration_warnings()` surfaces common inert setups:
   - both effect response scales at `0.0`
   - `rendering/scene_effector_layer_mask = 0`
@@ -96,7 +97,7 @@ ProjectSettings under `rendering/gaussian_splatting/effects/*` remain available 
 - Use effector `layer_mask` and node `rendering/scene_effector_layer_mask` when multiple effect systems share a world.
 - Use `priority` when multiple effectors overlap and you need deterministic truncation into the renderer's four-slot budget.
 - Keep `rendering/effect_opacity_scale` at `0.0` on nodes that should not dissolve even if they still follow position deformation.
-- Use `GaussianSplatNode3D.get_last_matched_scene_effector_count()`, `is_scene_effector_position_active()`, `is_scene_effector_opacity_active()`, and `get_statistics()` from gameplay scripts when you need runtime diagnostics.
+- Use `GaussianSplatNode3D.get_scene_effector_debug_state()` or `get_statistics()` from gameplay scripts when you need to understand why an effector matched but did not become active on the renderer.
 
 ## Stability And Sanitization
 

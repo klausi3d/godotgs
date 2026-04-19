@@ -375,8 +375,8 @@ The current branch exposes a scene-driven-plus-per-node workflow for gameplay ef
 - `rendering/scene_effectors_enabled`, `rendering/scene_effector_layer_mask`, and `rendering/scene_effector_scope_root` control whether this node participates in scene effectors and which ones may match.
 - `rendering/scene_effector_scope_root` is a node-side narrowing filter, not an opt-in to arbitrary world effectors. It must resolve to this node or one of its ancestors, and only effectors with the same resolved scope root will match.
 - `rendering/opacity` remains the direct per-node gameplay fade, while scene-effector opacity modulation multiplies on top for dissolve or degeneration effects.
-- `get_last_matched_scene_effector_count()`, `is_scene_effector_position_active()`, and `is_scene_effector_opacity_active()` expose the current runtime match state for gameplay and debugging.
-- `get_statistics()` mirrors those diagnostics under `matched_scene_effectors`, `scene_effector_position_active`, and `scene_effector_opacity_active`.
+- `get_last_matched_scene_effector_count()`, `get_scene_effector_debug_state()`, `is_scene_effector_position_active()`, and `is_scene_effector_opacity_active()` expose the current runtime match state for gameplay and debugging.
+- `get_statistics()` mirrors those diagnostics under `matched_scene_effectors`, `bound_scene_effectors`, `scene_effector_truncated`, `scene_effector_position_active`, and `scene_effector_opacity_active`.
 - `get_configuration_warnings()` warns about inert scene-effector setups such as both response scales at `0.0`, scene-effector layer mask `0`, opacity modulation with base opacity `0.0`, or an invalid scope root path.
 
 Practical recipes:
@@ -415,6 +415,11 @@ See also: `docs/api/sphere_effector_workflow.md`.
       <td><code>get_last_matched_scene_effector_count()</code></td>
       <td>Returns the current number of scene effectors that match this node after scope and layer-mask filtering.</td>
       <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:1133</code></td>
+    </tr>
+    <tr>
+      <td><code>get_scene_effector_debug_state()</code></td>
+      <td>Returns a Dictionary describing both logical matches and the subset that was actually bound to the renderer, including truncation and selected effector names.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:1165</code></td>
     </tr>
     <tr>
       <td><code>is_scene_effector_position_active()</code></td>
