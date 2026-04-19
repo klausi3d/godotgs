@@ -2149,8 +2149,20 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 		}
 		resource_state.instance_pipeline_contract_generation = contract_generation;
 		resource_state.instance_pipeline_contract_fingerprint = contract_fingerprint;
-		resource_state.instance_pipeline_upload_generation = upload_generation;
-		resource_state.instance_pipeline_upload_fingerprint = upload_fingerprint;
+		// When a grading upload failure left the in-flight fingerprint/generation
+		// zeroed to force a retry, DO NOT overwrite them with the freshly computed
+		// values here — that would make `upload_changed` go false next frame and
+		// the failure would become sticky until something unrelated advances the
+		// generation. Detect the retry-pending state (zeros written by the
+		// failure branch above) and skip the persistence so next frame's
+		// `previous_upload_*` still reads 0 and re-enters the upload path.
+		const bool upload_retry_pending = resource_state.instance_pipeline_upload_generation == 0 &&
+				resource_state.instance_pipeline_upload_fingerprint == 0 &&
+				(upload_generation != 0 || upload_fingerprint != 0);
+		if (!upload_retry_pending) {
+			resource_state.instance_pipeline_upload_generation = upload_generation;
+			resource_state.instance_pipeline_upload_fingerprint = upload_fingerprint;
+		}
 		resource_state.instance_pipeline_content_generation = _mix_content_generation(
 				base_content_generation,
 				contract_fingerprint);
