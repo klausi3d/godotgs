@@ -2129,9 +2129,12 @@ void GaussianSplatSceneDirector::unregister_sphere_effector(ObjectID p_effector_
 }
 
 void GaussianSplatSceneDirector::build_sphere_effector_payload_for_renderer(const GaussianSplatRenderer *p_renderer,
-		LocalVector<SphereEffectorSelection> &out) const {
+		LocalVector<SphereEffectorSelection> &out, uint32_t *r_total_scene_effectors) const {
 	MutexLock lock(world_mutex);
 	out.clear();
+	if (r_total_scene_effectors) {
+		*r_total_scene_effectors = 0u;
+	}
 
 	const SharedWorld *world = _find_world_for_renderer(p_renderer);
 	if (!world) {
@@ -2139,6 +2142,11 @@ void GaussianSplatSceneDirector::build_sphere_effector_payload_for_renderer(cons
 	}
 
 	_build_sorted_sphere_effector_payload(*world, out);
+	if (r_total_scene_effectors) {
+		// Raw count under the same lock as the payload build — main-thread
+		// mutations between the two reads cannot create a skew now.
+		*r_total_scene_effectors = world->sphere_effectors.size();
+	}
 }
 
 bool GaussianSplatSceneDirector::get_primary_sphere_effector_for_instance(ObjectID p_node_id,

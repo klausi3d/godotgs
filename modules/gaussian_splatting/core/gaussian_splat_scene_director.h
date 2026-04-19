@@ -196,8 +196,14 @@ public:
             uint32_t p_scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE,
             ObjectID p_scope_root_id = ObjectID(), int32_t p_priority = 0);
     void unregister_sphere_effector(ObjectID p_effector_id);
+    // Build the renderer's effector payload. When `r_total_scene_effectors` is
+    // non-null, it also returns the raw effector count for this renderer's
+    // world under the same `world_mutex` lock — callers that need both values
+    // should use this overload to avoid a double-query race where the main
+    // thread can mutate the effector list between two director calls.
     void build_sphere_effector_payload_for_renderer(const GaussianSplatRenderer *p_renderer,
-            LocalVector<SphereEffectorSelection> &out) const;
+            LocalVector<SphereEffectorSelection> &out,
+            uint32_t *r_total_scene_effectors = nullptr) const;
     bool get_primary_sphere_effector_for_instance(ObjectID p_node_id, SphereEffectorSelection *r_selection) const;
     uint32_t get_sphere_effector_count_for_renderer(const GaussianSplatRenderer *p_renderer) const;
     uint64_t get_sphere_effector_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;

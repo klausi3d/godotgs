@@ -163,13 +163,15 @@ static uint32_t _populate_scene_effector_payload_for_renderer(const GaussianSpla
 		return 0;
 	}
 
+	// Snapshot both the filtered payload and the raw effector count under the
+	// director's single `world_mutex` lock — two separate director calls would
+	// race with main-thread register/unregister between them.
 	LocalVector<GaussianSplatSceneDirector::SphereEffectorSelection> payload;
-	director->build_sphere_effector_payload_for_renderer(p_renderer, payload);
+	uint32_t total_scene_effectors = 0u;
+	director->build_sphere_effector_payload_for_renderer(p_renderer, payload, &total_scene_effectors);
 	if (payload.is_empty()) {
 		return 0;
 	}
-
-	const uint32_t total_scene_effectors = director->get_sphere_effector_count_for_renderer(p_renderer);
 	if (r_signature_seed) {
 		*r_signature_seed = _hash_u64(static_cast<uint64_t>(total_scene_effectors), *r_signature_seed);
 		*r_signature_seed = _hash_u64(static_cast<uint64_t>(payload.size()), *r_signature_seed);
