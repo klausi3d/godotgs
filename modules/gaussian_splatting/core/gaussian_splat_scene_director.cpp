@@ -2400,87 +2400,21 @@ bool GaussianSplatSceneDirector::get_primary_sphere_effector_for_instance(Object
 
 bool GaussianSplatSceneDirector::get_scene_effector_match_summary_for_instance(ObjectID p_node_id,
 		uint32_t *r_match_count, bool *r_position_active, bool *r_opacity_active) const {
-	if (r_match_count) {
-		*r_match_count = 0u;
-	}
-	if (r_position_active) {
-		*r_position_active = false;
-	}
-	if (r_opacity_active) {
-		*r_opacity_active = false;
-	}
-
-	MutexLock lock(world_mutex);
-	// Locate the world using the cached instance record — the render thread
-	// keeps this fresh via update_instance_scene_effector_filter(), so no
-	// scene-tree walk is needed here. Main-thread callers from node property
-	// queries are the only consumers.
-	const SharedWorld *world = nullptr;
-	for (const KeyValue<RID, SharedWorld> &E : worlds) {
-		if (E.value.instance_lookup.has(p_node_id)) {
-			world = &E.value;
-			break;
-		}
-	}
-	if (!world || world->sphere_effectors.is_empty()) {
-		return false;
-	}
-
-	const uint32_t *index_ptr = world->instance_lookup.getptr(p_node_id);
-	if (!index_ptr || *index_ptr >= world->instances.size()) {
-		return false;
-	}
-	const InstanceRecord &record = world->instances[*index_ptr];
-	if (!record.scene_effectors_enabled || record.scene_effector_layer_mask == 0u ||
-			(record.scene_effector_scope_filter_present && !record.scene_effector_scope_filter_valid)) {
-		return false;
-	}
-
-	uint32_t matched_count = 0u;
-	bool any_position = false;
-	bool any_opacity = false;
-	for (const SphereEffectorRecord &effector : world->sphere_effectors) {
-		if (!effector.enabled || (!effector.affect_position && !effector.affect_opacity)) {
-			continue;
-		}
-		if ((effector.layer_mask & record.scene_effector_layer_mask) == 0u) {
-			continue;
-		}
-		if (record.scene_effector_scope_filter_present) {
-			if (effector.scope_root_id == ObjectID() || effector.scope_root_id != record.scene_effector_scope_root_id) {
-				continue;
-			}
-		} else if (effector.scope_mode != SPHERE_EFFECTOR_SCOPE_WORLD) {
-			// Implicit subtree containment requires a tree walk — skipped here
-			// to keep this method safe to call under the director mutex.
-			continue;
-		}
-
-		matched_count++;
-		// An effector that reports a channel is "active" only when it can
-		// actually contribute a deformation. Codex called out the inert cases:
-		// strength == 0 (no position amplitude), opacity_strength == 0 (no
-		// opacity weight), or target_opacity == 1.0 (pushing fully opaque —
-		// the neutral target for already-opaque splats). Filter those out so
-		// the node's `is_scene_effector_*_active()` diagnostics match the
-		// API contract of "currently contributes".
-		if (effector.affect_position && !Math::is_zero_approx(effector.strength)) {
-			any_position = true;
-		}
-		if (effector.affect_opacity && !Math::is_zero_approx(effector.opacity_strength) &&
-				!Math::is_equal_approx(effector.target_opacity, 1.0f)) {
-			any_opacity = true;
-		}
-	}
-
+	// Delegate to the richer debug-state accessor so the summary and the
+	// Dictionary readout can't drift in their scope/subtree handling.
+	// Specifically, the subtree-without-explicit-node-scope case is resolved
+	// via the InstanceRecord's cached ancestor chain — matching the actual
+	// render-path behavior instead of dropping every non-WORLD effector.
+	const Dictionary state = get_scene_effector_debug_state_for_instance(p_node_id);
+	const uint32_t matched_count = uint32_t(int64_t(state.get(StringName("matched_count"), 0)));
 	if (r_match_count) {
 		*r_match_count = matched_count;
 	}
 	if (r_position_active) {
-		*r_position_active = any_position;
+		*r_position_active = bool(state.get(StringName("matched_position_active"), false));
 	}
 	if (r_opacity_active) {
-		*r_opacity_active = any_opacity;
+		*r_opacity_active = bool(state.get(StringName("matched_opacity_active"), false));
 	}
 	return matched_count > 0u;
 }
