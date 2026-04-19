@@ -4425,7 +4425,7 @@
 
 <h1 id="shader-reference">Shader Reference<a class="headerlink" href="#shader-reference" title="Permanent link">¶</a></h1>
 <p>Last generated: 2026-04-19</p>
-<p>Coverage summary: <code>192</code> documented functions, <code>7</code> undocumented functions, <code>70</code> documented uniform fields, <code>124</code> undocumented uniform fields.</p>
+<p>Coverage summary: <code>193</code> documented functions, <code>8</code> undocumented functions, <code>69</code> documented uniform fields, <code>127</code> undocumented uniform fields.</p>
 <p>Undocumented entries are omitted by default. Use <code>--include-undocumented</code> to list them.</p>
 <h2 id="shader">Shader<a class="headerlink" href="#shader" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code>modules/gaussian_splatting/shaders/brush_accumulate.glsl
@@ -4984,6 +4984,10 @@
       <td>Return whether wind deformation is enabled.</td>
     </tr>
     <tr>
+      <td><pre><code>gs_get_sphere_effector_count()</code></pre></td>
+      <td>Active sphere effector count for this pass.</td>
+    </tr>
+    <tr>
       <td><pre><code>gs_is_sphere_effector_enabled()</code></pre></td>
       <td>Return whether the sphere effector is enabled.</td>
     </tr>
@@ -5226,14 +5230,9 @@
       <td>wind_time_config: x = time_seconds, y = temporal_frequency, z = spatial_frequency, w = enabled (0/1)</td>
     </tr>
     <tr>
-      <td><pre><code>effector_sphere</code></pre></td>
+      <td><pre><code>effector_meta</code></pre></td>
       <td><pre><code>vec4</code></pre></td>
-      <td>Single global sphere effector (foundation for capped multi-effector support): effector_sphere: xyz = center (world), w = radius effector_config: x = enabled (0/1), y = displacement strength (meters), z = falloff exponent, w = frequency (Hz)</td>
-    </tr>
-    <tr>
-      <td><pre><code>effector_opacity_config</code></pre></td>
-      <td><pre><code>vec4</code></pre></td>
-      <td>effector_opacity_config: x = affect_position (0/1), y = affect_opacity (0/1), z = opacity_strength (0..1), w = target_opacity (0..1)</td>
+      <td>Bounded sphere effector payload: effector_meta: x = active_count, y = max_supported_count, z = requested_count, w = scene_binding_present</td>
     </tr>
     <tr>
       <td><pre><code>hotspot_cull_config</code></pre></td>
@@ -6326,7 +6325,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 19, 2026 21:17:17 UTC">April 19, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 19, 2026 21:26:24 UTC">April 19, 2026</span>
   </span>
 
     
