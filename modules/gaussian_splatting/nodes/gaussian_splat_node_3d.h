@@ -17,6 +17,7 @@
 #include "core/math/aabb.h"
 #include "core/math/vector2i.h"
 #include "core/object/object_id.h"
+#include "core/string/node_path.h"
 #include "core/templates/rid.h"
 #include "core/variant/dictionary.h"
 #include "core/variant/typed_array.h"
@@ -161,6 +162,9 @@ private:
     float opacity = 1.0f;
     float effect_position_scale = 1.0f;
     float effect_opacity_scale = 1.0f;
+    bool scene_effectors_enabled = true;
+    uint32_t scene_effector_layer_mask = 1u;
+    NodePath scene_effector_scope_root;
     bool wind_override_enabled = false;
     bool wind_enabled = true;
     float wind_strength = 1.0f;
@@ -326,6 +330,7 @@ private:
     uint32_t _get_instance_wind_mode() const;
     Vector3 _get_instance_wind_direction() const;
     float _get_instance_wind_frequency() const;
+    Node *_resolve_scene_effector_scope_root() const;
     void _register_instance_in_director();
     void _unregister_instance_in_director();
     void _update_instance_transform_in_director();
@@ -612,6 +617,18 @@ public:
     /** @brief Scales sphere-driven opacity modulation for this node. */
     void set_effect_opacity_scale(float p_scale);
     float get_effect_opacity_scale() const { return effect_opacity_scale; }
+
+    /** @brief Enables participation in scene-registered sphere effectors. */
+    void set_scene_effectors_enabled(bool p_enabled);
+    bool is_scene_effectors_enabled() const { return scene_effectors_enabled; }
+
+    /** @brief Bitmask used to match this node against scene sphere effector masks. */
+    void set_scene_effector_layer_mask(uint32_t p_mask);
+    uint32_t get_scene_effector_layer_mask() const { return scene_effector_layer_mask; }
+
+    /** @brief Optional root node used to constrain matching to effectors scoped to the same subtree. */
+    void set_scene_effector_scope_root(const NodePath &p_scope_root);
+    NodePath get_scene_effector_scope_root() const { return scene_effector_scope_root; }
 
     /** @brief Enables per-instance wind overrides for this node. */
     void set_wind_override_enabled(bool p_enabled);

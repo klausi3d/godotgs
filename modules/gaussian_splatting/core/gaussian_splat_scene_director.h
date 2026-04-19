@@ -20,6 +20,8 @@
 #include "../renderer/gaussian_splat_renderer.h"
 
 class ColorGradingResource;
+class Node;
+class Node3D;
 
 class GaussianSplatSceneDirector : public Object {
     GDCLASS(GaussianSplatSceneDirector, Object);
@@ -75,6 +77,32 @@ public:
     struct SubmissionCounts {
         uint32_t instance_submissions = 0;
         uint32_t world_submissions = 0;
+    };
+
+    enum SphereEffectorScopeMode : uint32_t {
+        SPHERE_EFFECTOR_SCOPE_WORLD = 0u,
+        SPHERE_EFFECTOR_SCOPE_SUBTREE = 1u,
+        SPHERE_EFFECTOR_SCOPE_EXPLICIT_ROOT = 2u,
+    };
+
+    struct SphereEffectorSelection {
+        ObjectID effector_id;
+        RID scenario;
+        Transform3D transform;
+        Vector3 center;
+        float radius = 0.0f;
+        float strength = 0.0f;
+        float falloff = 2.0f;
+        float frequency = 2.0f;
+        float opacity_strength = 1.0f;
+        uint32_t layer_mask = 1u;
+        uint32_t scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE;
+        ObjectID scope_root_id;
+        int32_t priority = 0;
+        uint32_t matched_effector_count = 0;
+        bool enabled = false;
+        bool affect_position = true;
+        bool affect_opacity = false;
     };
 
     static GaussianSplatSceneDirector *get_singleton();
@@ -148,7 +176,25 @@ public:
 			bool p_shadow_casters_only = false) const;
 	uint32_t get_instance_count_for_renderer(const GaussianSplatRenderer *p_renderer) const;
 	uint64_t get_instance_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
-	uint64_t get_instance_asset_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
+    uint64_t get_instance_asset_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
+    void register_sphere_effector(ObjectID p_effector_id, const Transform3D &p_transform,
+            float p_radius, float p_strength, float p_falloff, float p_frequency,
+            bool p_enabled = true, bool p_affect_position = true, bool p_affect_opacity = false,
+            float p_opacity_strength = 1.0f, uint32_t p_layer_mask = 1u,
+            uint32_t p_scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE,
+            ObjectID p_scope_root_id = ObjectID(), int32_t p_priority = 0);
+    void update_sphere_effector(ObjectID p_effector_id, const Transform3D &p_transform,
+            float p_radius, float p_strength, float p_falloff, float p_frequency,
+            bool p_enabled = true, bool p_affect_position = true, bool p_affect_opacity = false,
+            float p_opacity_strength = 1.0f, uint32_t p_layer_mask = 1u,
+            uint32_t p_scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE,
+            ObjectID p_scope_root_id = ObjectID(), int32_t p_priority = 0);
+    void unregister_sphere_effector(ObjectID p_effector_id);
+    void build_sphere_effector_payload_for_renderer(const GaussianSplatRenderer *p_renderer,
+            LocalVector<SphereEffectorSelection> &out) const;
+    bool get_primary_sphere_effector_for_instance(ObjectID p_node_id, SphereEffectorSelection *r_selection) const;
+    uint32_t get_sphere_effector_count_for_renderer(const GaussianSplatRenderer *p_renderer) const;
+    uint64_t get_sphere_effector_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
     void register_instance_submission(ObjectID p_node_id, const Ref<GaussianSplatAsset> &p_asset,
             const Transform3D &p_transform, float p_opacity, float p_lod_bias, uint32_t p_flags,
             bool p_casts_shadow = false, float p_wind_intensity = 1.0f,
@@ -213,6 +259,24 @@ private:
         Ref<ColorGradingResource> color_grading;
 	};
 
+    struct SphereEffectorRecord {
+        ObjectID effector_id;
+        Transform3D transform;
+        float radius = 0.0f;
+        float strength = 0.0f;
+        float falloff = 2.0f;
+        float frequency = 2.0f;
+        float opacity_strength = 1.0f;
+        uint32_t layer_mask = 1u;
+        uint32_t scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE;
+        ObjectID scope_root_id;
+        int32_t priority = 0;
+        uint64_t registration_serial = 0;
+        bool enabled = true;
+        bool affect_position = true;
+        bool affect_opacity = false;
+    };
+
     struct SharedWorld {
         RID scenario;
         Ref<GaussianSplatRenderer> renderer;
@@ -220,6 +284,10 @@ private:
         HashMap<ObjectID, uint32_t> instance_lookup;
         uint64_t instance_generation = 1;
         uint64_t instance_asset_generation = 1;
+        LocalVector<SphereEffectorRecord> sphere_effectors;
+        HashMap<ObjectID, uint32_t> sphere_effector_lookup;
+        uint64_t sphere_effector_generation = 1;
+        uint64_t sphere_effector_registration_serial = 0;
 	        struct WorldSubmissionRecord {
 	            ObjectID owner_id;
 	            Ref<GaussianData> gaussian_data;
@@ -247,15 +315,26 @@ private:
 
     mutable Mutex world_mutex;
     HashMap<RID, SharedWorld> worlds;
+    mutable HashSet<ObjectID> scene_effector_multi_match_warned_nodes;
 
-    SharedWorld *_get_or_create_world_for_scenario(const RID &p_scenario);
-    SharedWorld *_get_or_create_world(World3D *p_world);
+    SharedWorld *_get_or_create_world_for_scenario(const RID &p_scenario, bool p_require_renderer = true);
+    SharedWorld *_get_or_create_world(World3D *p_world, bool p_require_renderer = true);
     SharedWorld *_get_world_for_instance(ObjectID p_node_id);
     SharedWorld *_find_world_for_instance(ObjectID p_node_id);
+    SharedWorld *_get_world_for_effector(ObjectID p_effector_id);
+    SharedWorld *_find_world_for_effector(ObjectID p_effector_id);
     SharedWorld *_find_world_for_renderer(const GaussianSplatRenderer *p_renderer);
     const SharedWorld *_find_world_for_renderer(const GaussianSplatRenderer *p_renderer) const;
     SharedWorld *_find_world_for_world_submission(ObjectID p_owner_id);
     const SharedWorld *_find_world_for_world_submission(ObjectID p_owner_id) const;
+    static Node *_find_scan_root_for_object(ObjectID p_object_id);
+    static bool _read_sphere_effector_record_from_node(Node3D *p_node, SphereEffectorRecord &r_record);
+    static bool _sphere_effector_records_equal(const SphereEffectorRecord &p_a, const SphereEffectorRecord &p_b);
+    static void _build_sorted_sphere_effector_payload(const SharedWorld &p_world,
+            LocalVector<SphereEffectorSelection> &r_out);
+    void _collect_discovered_sphere_effectors(Node *p_node, const RID &p_scenario,
+            LocalVector<SphereEffectorRecord> &r_out, uint64_t &r_serial) const;
+    bool _sync_discovered_sphere_effectors_for_world(SharedWorld &p_world, Node *p_scan_root) const;
 
     static bool _populate_gaussian_data_from_asset(const Ref<GaussianSplatAsset> &p_asset, Ref<GaussianData> &r_data);
     static bool _retain_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint32_t p_asset_id);

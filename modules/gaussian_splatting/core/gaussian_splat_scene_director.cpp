@@ -10,6 +10,9 @@
 #include "../renderer/render_debug_state_orchestrator.h"
 #include "../resources/color_grading_resource.h"
 #include "scene/3d/node_3d.h"
+#include "scene/main/node.h"
+
+#include <cstring>
 
 static bool _is_scene_director_log_enabled() {
 	ProjectSettings *ps = ProjectSettings::get_singleton();
@@ -107,6 +110,191 @@ static const StringName &WORLD_STREAMING_VRAM_MIN_CHUNKS() { static const String
 static const StringName &WORLD_STREAMING_VRAM_MAX_CHUNKS() { static const StringName s("vram_max_chunks"); return s; }
 static const StringName &WORLD_STREAMING_OVERRIDE_IO_SOURCE() { static const StringName s("override_io_source"); return s; }
 static const StringName &WORLD_STREAMING_IO_SOURCE_PATH() { static const StringName s("io_source_path"); return s; }
+static const StringName &NODE_SCENE_EFFECTORS_ENABLED_PROPERTY() { static const StringName s("rendering/scene_effectors_enabled"); return s; }
+static const StringName &NODE_SCENE_EFFECTOR_LAYER_MASK_PROPERTY() { static const StringName s("rendering/scene_effector_layer_mask"); return s; }
+static const StringName &NODE_SCENE_EFFECTOR_SCOPE_ROOT_PROPERTY() { static const StringName s("rendering/scene_effector_scope_root"); return s; }
+static const StringName &EFFECTOR_ENABLED_PROPERTY() { static const StringName s("enabled"); return s; }
+static const StringName &EFFECTOR_RADIUS_PROPERTY() { static const StringName s("radius"); return s; }
+static const StringName &EFFECTOR_STRENGTH_PROPERTY() { static const StringName s("strength"); return s; }
+static const StringName &EFFECTOR_FALLOFF_PROPERTY() { static const StringName s("falloff"); return s; }
+static const StringName &EFFECTOR_FREQUENCY_PROPERTY() { static const StringName s("frequency"); return s; }
+static const StringName &EFFECTOR_AFFECT_POSITION_PROPERTY() { static const StringName s("affect_position"); return s; }
+static const StringName &EFFECTOR_AFFECT_OPACITY_PROPERTY() { static const StringName s("affect_opacity"); return s; }
+static const StringName &EFFECTOR_OPACITY_STRENGTH_PROPERTY() { static const StringName s("opacity_strength"); return s; }
+static const StringName &EFFECTOR_LAYER_MASK_PROPERTY() { static const StringName s("layer_mask"); return s; }
+static const StringName &EFFECTOR_SCOPE_MODE_PROPERTY() { static const StringName s("scope_mode"); return s; }
+static const StringName &EFFECTOR_SCOPE_ROOT_PROPERTY() { static const StringName s("scope_root"); return s; }
+static const StringName &EFFECTOR_PRIORITY_PROPERTY() { static const StringName s("priority"); return s; }
+
+struct NodeSceneEffectorFilterState {
+	bool enabled = true;
+	uint32_t layer_mask = 1u;
+	bool has_scope_filter = false;
+	bool scope_filter_valid = true;
+	ObjectID scope_root_id;
+};
+
+static float _sanitize_finite_float(float p_value, float p_default, const String &p_context, const char *p_field) {
+	if (Math::is_finite(p_value)) {
+		return p_value;
+	}
+	WARN_PRINT(vformat("[GaussianSplatSceneDirector] Non-finite %s for %s; using %.3f.", p_field, p_context, p_default));
+	return p_default;
+}
+
+static float _sanitize_non_negative_float(float p_value, float p_default, const String &p_context, const char *p_field) {
+	const float value = _sanitize_finite_float(p_value, p_default, p_context, p_field);
+	if (value < 0.0f) {
+		WARN_PRINT(vformat("[GaussianSplatSceneDirector] Negative %s for %s; clamping to 0.", p_field, p_context));
+		return 0.0f;
+	}
+	return value;
+}
+
+static float _sanitize_min_float(float p_value, float p_default, float p_min, const String &p_context, const char *p_field) {
+	const float value = _sanitize_finite_float(p_value, p_default, p_context, p_field);
+	if (value < p_min) {
+		WARN_PRINT(vformat("[GaussianSplatSceneDirector] %s for %s below %.3f; clamping.", p_field, p_context, p_min));
+		return p_min;
+	}
+	return value;
+}
+
+static String _node_sort_key_from_object(const Object *p_object, ObjectID p_fallback_id) {
+	const Node *node = Object::cast_to<Node>(const_cast<Object *>(p_object));
+	if (node && node->is_inside_tree()) {
+		return String(node->get_path());
+	}
+	return String::num_uint64((uint64_t)p_fallback_id);
+}
+
+static ObjectID _resolve_scope_root_from_path(Node *p_owner, const NodePath &p_scope_path, bool *r_has_scope_filter, bool *r_scope_valid) {
+	if (r_has_scope_filter) {
+		*r_has_scope_filter = !p_scope_path.is_empty();
+	}
+	if (r_scope_valid) {
+		*r_scope_valid = true;
+	}
+	if (!p_owner || p_scope_path.is_empty()) {
+		return ObjectID();
+	}
+
+	Node *scope_root = p_owner->get_node_or_null(p_scope_path);
+	if (!scope_root) {
+		if (r_scope_valid) {
+			*r_scope_valid = false;
+		}
+		return ObjectID();
+	}
+	if (!(scope_root == p_owner || scope_root->is_ancestor_of(p_owner))) {
+		if (r_scope_valid) {
+			*r_scope_valid = false;
+		}
+		return ObjectID();
+	}
+	return scope_root->get_instance_id();
+}
+
+static NodeSceneEffectorFilterState _get_node_scene_effector_filter_state(const Node3D *p_node) {
+	NodeSceneEffectorFilterState filter;
+	if (!p_node) {
+		return filter;
+	}
+
+	bool valid = false;
+	const Variant enabled_variant = p_node->get(NODE_SCENE_EFFECTORS_ENABLED_PROPERTY(), &valid);
+	if (valid) {
+		if (enabled_variant.get_type() == Variant::BOOL) {
+			filter.enabled = (bool)enabled_variant;
+		} else if (enabled_variant.get_type() == Variant::INT) {
+			filter.enabled = int64_t(enabled_variant) != 0;
+		}
+	}
+
+	valid = false;
+	const Variant mask_variant = p_node->get(NODE_SCENE_EFFECTOR_LAYER_MASK_PROPERTY(), &valid);
+	if (valid) {
+		if (mask_variant.get_type() == Variant::INT) {
+			const int64_t raw_mask = int64_t(mask_variant);
+			filter.layer_mask = raw_mask < 0 ? 0u : uint32_t(raw_mask);
+		}
+	}
+
+	valid = false;
+	const Variant scope_variant = p_node->get(NODE_SCENE_EFFECTOR_SCOPE_ROOT_PROPERTY(), &valid);
+	if (valid && scope_variant.get_type() == Variant::NODE_PATH) {
+		const NodePath scope_path = scope_variant;
+		filter.scope_root_id = _resolve_scope_root_from_path(
+				const_cast<Node3D *>(p_node), scope_path,
+				&filter.has_scope_filter, &filter.scope_filter_valid);
+	}
+
+	return filter;
+}
+
+static uint32_t _get_effector_scope_specificity(uint32_t p_scope_mode, bool p_has_scope_root) {
+	if (!p_has_scope_root) {
+		return 0u;
+	}
+	switch (p_scope_mode) {
+		case GaussianSplatSceneDirector::SPHERE_EFFECTOR_SCOPE_EXPLICIT_ROOT:
+			return 2u;
+		case GaussianSplatSceneDirector::SPHERE_EFFECTOR_SCOPE_SUBTREE:
+			return 1u;
+		default:
+			return 0u;
+	}
+}
+
+static float _encode_u32_as_float_bits(uint32_t p_value) {
+	float encoded = 0.0f;
+	static_assert(sizeof(encoded) == sizeof(p_value), "Expected float/u32 bit widths to match");
+	memcpy(&encoded, &p_value, sizeof(encoded));
+	return encoded;
+}
+
+static bool _node_matches_scene_effector_selection(const Node3D *p_node,
+		const NodeSceneEffectorFilterState &p_filter,
+		const GaussianSplatSceneDirector::SphereEffectorSelection &p_selection) {
+	if (!p_node || !p_filter.enabled || p_filter.layer_mask == 0u) {
+		return false;
+	}
+	if (p_filter.has_scope_filter && !p_filter.scope_filter_valid) {
+		return false;
+	}
+	if ((p_selection.layer_mask & p_filter.layer_mask) == 0u) {
+		return false;
+	}
+	if (p_filter.has_scope_filter) {
+		return p_selection.scope_root_id != ObjectID() && p_selection.scope_root_id == p_filter.scope_root_id;
+	}
+	if (p_selection.scope_mode == GaussianSplatSceneDirector::SPHERE_EFFECTOR_SCOPE_WORLD) {
+		return true;
+	}
+	Node *scope_root = Object::cast_to<Node>(ObjectDB::get_instance(p_selection.scope_root_id));
+	return scope_root && (scope_root == p_node || scope_root->is_ancestor_of(p_node));
+}
+
+static uint32_t _build_scene_effector_mask_for_node(const Node3D *p_node,
+		const LocalVector<GaussianSplatSceneDirector::SphereEffectorSelection> &p_payload) {
+	if (!p_node || p_payload.is_empty()) {
+		return 0u;
+	}
+
+	const NodeSceneEffectorFilterState filter = _get_node_scene_effector_filter_state(p_node);
+	if (!filter.enabled || filter.layer_mask == 0u || (filter.has_scope_filter && !filter.scope_filter_valid)) {
+		return 0u;
+	}
+
+	uint32_t mask = 0u;
+	for (uint32_t i = 0; i < p_payload.size(); i++) {
+		if (_node_matches_scene_effector_selection(p_node, filter, p_payload[i])) {
+			mask |= (1u << i);
+		}
+	}
+	return mask;
+}
+
 GaussianSplatRenderer::WorldSubmissionContract GaussianSplatSceneDirector::_build_world_submission_contract(
 		const GaussianSplatRenderer::WorldSubmissionRuntimeStateSnapshot &p_renderer_state,
 		const SharedWorld::WorldSubmissionRecord &p_record) {
@@ -202,7 +390,7 @@ GaussianSplatSceneDirector::~GaussianSplatSceneDirector() {
 void GaussianSplatSceneDirector::_bind_methods() {
 }
 
-GaussianSplatSceneDirector::SharedWorld *GaussianSplatSceneDirector::_get_or_create_world_for_scenario(const RID &p_scenario) {
+GaussianSplatSceneDirector::SharedWorld *GaussianSplatSceneDirector::_get_or_create_world_for_scenario(const RID &p_scenario, bool p_require_renderer) {
 	if (!p_scenario.is_valid()) {
 		return nullptr;
 	}
@@ -215,7 +403,7 @@ GaussianSplatSceneDirector::SharedWorld *GaussianSplatSceneDirector::_get_or_cre
 		entry = worlds.getptr(p_scenario);
 	}
 
-	if (entry && !entry->renderer.is_valid()) {
+	if (entry && p_require_renderer && !entry->renderer.is_valid()) {
 		GaussianSplatManager *manager = GaussianSplatManager::get_singleton();
 		RenderingDevice *device = manager ? manager->get_primary_rendering_device() : nullptr;
 		if (!device) {
@@ -248,9 +436,9 @@ GaussianSplatSceneDirector::SharedWorld *GaussianSplatSceneDirector::_get_or_cre
 	return entry;
 }
 
-GaussianSplatSceneDirector::SharedWorld *GaussianSplatSceneDirector::_get_or_create_world(World3D *p_world) {
+GaussianSplatSceneDirector::SharedWorld *GaussianSplatSceneDirector::_get_or_create_world(World3D *p_world, bool p_require_renderer) {
 	ERR_FAIL_NULL_V(p_world, nullptr);
-	return _get_or_create_world_for_scenario(p_world->get_scenario());
+	return _get_or_create_world_for_scenario(p_world->get_scenario(), p_require_renderer);
 }
 
 GaussianSplatSceneDirector::SharedWorld *GaussianSplatSceneDirector::_get_world_for_instance(ObjectID p_node_id) {
@@ -276,6 +464,289 @@ GaussianSplatSceneDirector::SharedWorld *GaussianSplatSceneDirector::_find_world
 		}
 	}
 	return nullptr;
+}
+
+GaussianSplatSceneDirector::SharedWorld *GaussianSplatSceneDirector::_get_world_for_effector(ObjectID p_effector_id) {
+	Object *obj = ObjectDB::get_instance(p_effector_id);
+	Node3D *node = Object::cast_to<Node3D>(obj);
+	if (!node || !node->is_inside_world()) {
+		return nullptr;
+	}
+	World3D *world = node->get_world_3d().ptr();
+	if (!world) {
+		return nullptr;
+	}
+	return _get_or_create_world(world, false);
+}
+
+GaussianSplatSceneDirector::SharedWorld *GaussianSplatSceneDirector::_find_world_for_effector(ObjectID p_effector_id) {
+	for (KeyValue<RID, SharedWorld> &E : worlds) {
+		if (E.value.sphere_effector_lookup.has(p_effector_id)) {
+			return &E.value;
+		}
+	}
+	return nullptr;
+}
+
+Node *GaussianSplatSceneDirector::_find_scan_root_for_object(ObjectID p_object_id) {
+	Object *object = ObjectDB::get_instance(p_object_id);
+	Node *node = Object::cast_to<Node>(object);
+	if (!node) {
+		return nullptr;
+	}
+	Node *root = node;
+	while (root->get_parent()) {
+		root = root->get_parent();
+	}
+	return root;
+}
+
+bool GaussianSplatSceneDirector::_read_sphere_effector_record_from_node(Node3D *p_node,
+		GaussianSplatSceneDirector::SphereEffectorRecord &r_record) {
+	ERR_FAIL_NULL_V(p_node, false);
+	if (!p_node->is_class("SphereEffector3D") || !p_node->is_inside_world()) {
+		return false;
+	}
+
+	auto get_bool_property = [&](const StringName &p_name, bool p_default) {
+		bool valid = false;
+		const Variant value = p_node->get(p_name, &valid);
+		if (!valid) {
+			return p_default;
+		}
+		if (value.get_type() == Variant::BOOL) {
+			return (bool)value;
+		}
+		if (value.get_type() == Variant::INT) {
+			return int64_t(value) != 0;
+		}
+		return p_default;
+	};
+	auto get_float_property = [&](const StringName &p_name, float p_default) {
+		bool valid = false;
+		const Variant value = p_node->get(p_name, &valid);
+		if (!valid) {
+			return p_default;
+		}
+		if (value.get_type() == Variant::INT) {
+			return (float)int64_t(value);
+		}
+		if (value.get_type() == Variant::FLOAT) {
+			return (float)(double)value;
+		}
+		return p_default;
+	};
+	auto get_int_property = [&](const StringName &p_name, int64_t p_default) {
+		bool valid = false;
+		const Variant value = p_node->get(p_name, &valid);
+		if (!valid) {
+			return p_default;
+		}
+		if (value.get_type() == Variant::FLOAT) {
+			return (int64_t)(double)value;
+		}
+		if (value.get_type() == Variant::INT) {
+			return int64_t(value);
+		}
+		return p_default;
+	};
+
+	r_record.effector_id = p_node->get_instance_id();
+	r_record.transform = p_node->get_global_transform();
+	r_record.radius = MAX(get_float_property(EFFECTOR_RADIUS_PROPERTY(), r_record.radius), 0.0f);
+	r_record.strength = get_float_property(EFFECTOR_STRENGTH_PROPERTY(), r_record.strength);
+	r_record.falloff = MAX(get_float_property(EFFECTOR_FALLOFF_PROPERTY(), r_record.falloff), 0.001f);
+	r_record.frequency = MAX(get_float_property(EFFECTOR_FREQUENCY_PROPERTY(), r_record.frequency), 0.1f);
+	r_record.opacity_strength = CLAMP(get_float_property(EFFECTOR_OPACITY_STRENGTH_PROPERTY(), r_record.opacity_strength), 0.0f, 1.0f);
+	r_record.enabled = get_bool_property(EFFECTOR_ENABLED_PROPERTY(), r_record.enabled);
+	r_record.affect_position = get_bool_property(EFFECTOR_AFFECT_POSITION_PROPERTY(), r_record.affect_position);
+	r_record.affect_opacity = get_bool_property(EFFECTOR_AFFECT_OPACITY_PROPERTY(), r_record.affect_opacity);
+	r_record.layer_mask = uint32_t(MAX<int64_t>(0, get_int_property(EFFECTOR_LAYER_MASK_PROPERTY(), r_record.layer_mask)));
+	const int64_t raw_scope_mode = get_int_property(EFFECTOR_SCOPE_MODE_PROPERTY(), r_record.scope_mode);
+	r_record.scope_mode = uint32_t(CLAMP(raw_scope_mode,
+			int64_t(SPHERE_EFFECTOR_SCOPE_WORLD), int64_t(SPHERE_EFFECTOR_SCOPE_EXPLICIT_ROOT)));
+	r_record.priority = int32_t(get_int_property(EFFECTOR_PRIORITY_PROPERTY(), r_record.priority));
+	r_record.scope_root_id = ObjectID();
+
+	bool valid = false;
+	const Variant scope_root_variant = p_node->get(EFFECTOR_SCOPE_ROOT_PROPERTY(), &valid);
+	if (valid && scope_root_variant.get_type() == Variant::NODE_PATH) {
+		const NodePath scope_path = scope_root_variant;
+		bool has_scope_filter = false;
+		bool scope_valid = true;
+		r_record.scope_root_id = _resolve_scope_root_from_path(p_node, scope_path, &has_scope_filter, &scope_valid);
+		if (has_scope_filter && !scope_valid) {
+			r_record.scope_root_id = ObjectID();
+		}
+	}
+
+	return true;
+}
+
+bool GaussianSplatSceneDirector::_sphere_effector_records_equal(const SphereEffectorRecord &p_a, const SphereEffectorRecord &p_b) {
+	return p_a.effector_id == p_b.effector_id &&
+			p_a.transform.is_equal_approx(p_b.transform) &&
+			Math::is_equal_approx(p_a.radius, p_b.radius) &&
+			Math::is_equal_approx(p_a.strength, p_b.strength) &&
+			Math::is_equal_approx(p_a.falloff, p_b.falloff) &&
+			Math::is_equal_approx(p_a.frequency, p_b.frequency) &&
+			Math::is_equal_approx(p_a.opacity_strength, p_b.opacity_strength) &&
+			p_a.layer_mask == p_b.layer_mask &&
+			p_a.scope_mode == p_b.scope_mode &&
+			p_a.scope_root_id == p_b.scope_root_id &&
+			p_a.priority == p_b.priority &&
+			p_a.enabled == p_b.enabled &&
+			p_a.affect_position == p_b.affect_position &&
+			p_a.affect_opacity == p_b.affect_opacity;
+}
+
+void GaussianSplatSceneDirector::_collect_discovered_sphere_effectors(Node *p_node, const RID &p_scenario,
+		LocalVector<SphereEffectorRecord> &r_out, uint64_t &r_serial) const {
+	if (!p_node) {
+		return;
+	}
+
+	Node3D *node_3d = Object::cast_to<Node3D>(p_node);
+	if (node_3d && node_3d->is_class("SphereEffector3D") && node_3d->is_inside_world()) {
+		const Ref<World3D> world = node_3d->get_world_3d();
+		if (world.is_valid() && world->get_scenario() == p_scenario) {
+			SphereEffectorRecord record;
+			if (_read_sphere_effector_record_from_node(node_3d, record)) {
+				record.registration_serial = ++r_serial;
+				r_out.push_back(record);
+			}
+		}
+	}
+
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		_collect_discovered_sphere_effectors(p_node->get_child(i), p_scenario, r_out, r_serial);
+	}
+}
+
+bool GaussianSplatSceneDirector::_sync_discovered_sphere_effectors_for_world(SharedWorld &p_world, Node *p_scan_root) const {
+	if (!p_scan_root) {
+		return false;
+	}
+
+	LocalVector<SphereEffectorRecord> discovered;
+	uint64_t serial = 0;
+	_collect_discovered_sphere_effectors(p_scan_root, p_world.scenario, discovered, serial);
+
+	bool changed = discovered.size() != p_world.sphere_effectors.size();
+	if (!changed) {
+		for (uint32_t i = 0; i < discovered.size(); i++) {
+			if (!_sphere_effector_records_equal(discovered[i], p_world.sphere_effectors[i])) {
+				changed = true;
+				break;
+			}
+		}
+	}
+	if (!changed) {
+		return false;
+	}
+
+	p_world.sphere_effectors = discovered;
+	p_world.sphere_effector_lookup.clear();
+	for (uint32_t i = 0; i < p_world.sphere_effectors.size(); i++) {
+		p_world.sphere_effector_lookup[p_world.sphere_effectors[i].effector_id] = i;
+	}
+	_bump_instance_generation(p_world.sphere_effector_generation);
+	return true;
+}
+
+void GaussianSplatSceneDirector::_build_sorted_sphere_effector_payload(const SharedWorld &p_world,
+		LocalVector<SphereEffectorSelection> &r_out) {
+	r_out.clear();
+	if (p_world.sphere_effectors.is_empty()) {
+		return;
+	}
+
+	struct Candidate {
+		SphereEffectorSelection selection;
+		String sort_key;
+		uint32_t specificity = 0u;
+	};
+
+	auto candidate_precedes = [](const Candidate &p_a, const Candidate &p_b) {
+		if (p_a.selection.priority != p_b.selection.priority) {
+			return p_a.selection.priority > p_b.selection.priority;
+		}
+		if (p_a.specificity != p_b.specificity) {
+			return p_a.specificity > p_b.specificity;
+		}
+		if (p_a.sort_key != p_b.sort_key) {
+			return p_a.sort_key < p_b.sort_key;
+		}
+		return (uint64_t)p_a.selection.effector_id < (uint64_t)p_b.selection.effector_id;
+	};
+
+	LocalVector<Candidate> candidates;
+	candidates.reserve(p_world.sphere_effectors.size());
+	for (const SphereEffectorRecord &record : p_world.sphere_effectors) {
+		if (!record.enabled || (!record.affect_position && !record.affect_opacity)) {
+			continue;
+		}
+
+		Object *effector_object = ObjectDB::get_instance(record.effector_id);
+		Node *effector_node = Object::cast_to<Node>(effector_object);
+
+		ObjectID effective_scope_root_id;
+		bool effector_scope_valid = true;
+		switch (record.scope_mode) {
+			case SPHERE_EFFECTOR_SCOPE_WORLD:
+				break;
+			case SPHERE_EFFECTOR_SCOPE_SUBTREE:
+				if (!effector_node || !effector_node->get_parent()) {
+					effector_scope_valid = false;
+				} else {
+					effective_scope_root_id = effector_node->get_parent()->get_instance_id();
+				}
+				break;
+			case SPHERE_EFFECTOR_SCOPE_EXPLICIT_ROOT: {
+				effective_scope_root_id = record.scope_root_id;
+				Node *scope_root = Object::cast_to<Node>(ObjectDB::get_instance(record.scope_root_id));
+				effector_scope_valid = scope_root != nullptr;
+			} break;
+			default:
+				effector_scope_valid = false;
+				break;
+		}
+		if (record.scope_mode != SPHERE_EFFECTOR_SCOPE_WORLD && !effector_scope_valid) {
+			continue;
+		}
+
+		Candidate candidate;
+		candidate.selection.effector_id = record.effector_id;
+		candidate.selection.scenario = p_world.scenario;
+		candidate.selection.transform = record.transform;
+		candidate.selection.center = record.transform.origin;
+		candidate.selection.radius = record.radius;
+		candidate.selection.strength = record.strength;
+		candidate.selection.falloff = record.falloff;
+		candidate.selection.frequency = record.frequency;
+		candidate.selection.opacity_strength = record.opacity_strength;
+		candidate.selection.layer_mask = record.layer_mask;
+		candidate.selection.scope_mode = record.scope_mode;
+		candidate.selection.scope_root_id = effective_scope_root_id;
+		candidate.selection.priority = record.priority;
+		candidate.selection.enabled = record.enabled;
+		candidate.selection.affect_position = record.affect_position;
+		candidate.selection.affect_opacity = record.affect_opacity;
+		candidate.sort_key = _node_sort_key_from_object(effector_object, record.effector_id);
+		candidate.specificity = _get_effector_scope_specificity(record.scope_mode, effective_scope_root_id != ObjectID());
+
+		int insert_at = candidates.size();
+		while (insert_at > 0 && candidate_precedes(candidate, candidates[insert_at - 1])) {
+			insert_at--;
+		}
+		candidates.insert(insert_at, candidate);
+	}
+
+	const uint32_t capped_count = MIN<uint32_t>(candidates.size(), GS_MAX_SPHERE_EFFECTORS);
+	r_out.reserve(capped_count);
+	for (uint32_t i = 0; i < capped_count; i++) {
+		r_out.push_back(candidates[i].selection);
+	}
 }
 
 GaussianSplatSceneDirector::SharedWorld *GaussianSplatSceneDirector::_find_world_for_renderer(const GaussianSplatRenderer *p_renderer) {
@@ -516,6 +987,9 @@ bool GaussianSplatSceneDirector::_apply_world_submission_to_renderer(SharedWorld
 
 bool GaussianSplatSceneDirector::_should_prune_world(const SharedWorld &p_world) const {
 	if (!p_world.instances.is_empty()) {
+		return false;
+	}
+	if (!p_world.sphere_effectors.is_empty()) {
 		return false;
 	}
 	if (p_world.world_submission.active) {
@@ -1080,12 +1554,22 @@ void GaussianSplatSceneDirector::build_instance_buffer(LocalVector<InstanceDataG
 	out.reserve(total_instances);
 
 	for (const KeyValue<RID, SharedWorld> &E : worlds) {
-		const SharedWorld &world = E.value;
-		for (const InstanceRecord &record : world.instances) {
+		const SharedWorld *world_const = &E.value;
+		SharedWorld *world = const_cast<SharedWorld *>(world_const);
+		ObjectID scan_anchor_id;
+		if (!world->instances.is_empty()) {
+			scan_anchor_id = world->instances[0].node_id;
+		} else if (!world->sphere_effectors.is_empty()) {
+			scan_anchor_id = world->sphere_effectors[0].effector_id;
+		}
+		_sync_discovered_sphere_effectors_for_world(*world, _find_scan_root_for_object(scan_anchor_id));
+		LocalVector<SphereEffectorSelection> scene_payload;
+		_build_sorted_sphere_effector_payload(*world, scene_payload);
+		for (const InstanceRecord &record : world->instances) {
 			if (!record.visible) {
 				continue;
 			}
-			const SharedWorld::AssetRecord *asset_record = world.asset_records.getptr(record.asset_id);
+			const SharedWorld::AssetRecord *asset_record = world->asset_records.getptr(record.asset_id);
 			if (!asset_record || asset_record->data.is_null()) {
 				continue;
 			}
@@ -1142,8 +1626,9 @@ void GaussianSplatSceneDirector::build_instance_buffer(LocalVector<InstanceDataG
 			entry.wind_params[3] = record.wind_frequency;
 			entry.effect_params[0] = record.effect_position_scale;
 			entry.effect_params[1] = record.effect_opacity_scale;
-			entry.effect_params[2] = 0.0f;
-			entry.effect_params[3] = 0.0f;
+			Node3D *instance_node = Object::cast_to<Node3D>(ObjectDB::get_instance(record.node_id));
+			entry.effect_params[2] = _encode_u32_as_float_bits(_build_scene_effector_mask_for_node(instance_node, scene_payload));
+			entry.effect_params[3] = float(scene_payload.size());
 
 			out.push_back(entry);
 		}
@@ -1195,6 +1680,15 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 
 	const bool log_enabled = _is_scene_director_log_enabled();
 	const bool trace_enabled = GaussianSplatting::debug_trace_is_enabled();
+	ObjectID scan_anchor_id;
+	if (!world->instances.is_empty()) {
+		scan_anchor_id = world->instances[0].node_id;
+	} else if (!world->sphere_effectors.is_empty()) {
+		scan_anchor_id = world->sphere_effectors[0].effector_id;
+	}
+	_sync_discovered_sphere_effectors_for_world(*const_cast<SharedWorld *>(world), _find_scan_root_for_object(scan_anchor_id));
+	LocalVector<SphereEffectorSelection> scene_payload;
+	_build_sorted_sphere_effector_payload(*world, scene_payload);
 	out.reserve(world->instances.size());
 	uint32_t skipped_instances = 0;
 	uint32_t traced_total = 0;
@@ -1273,8 +1767,9 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 		entry.wind_params[3] = record.wind_frequency;
 		entry.effect_params[0] = record.effect_position_scale;
 		entry.effect_params[1] = record.effect_opacity_scale;
-		entry.effect_params[2] = 0.0f;
-		entry.effect_params[3] = 0.0f;
+		Node3D *instance_node = Object::cast_to<Node3D>(ObjectDB::get_instance(record.node_id));
+		entry.effect_params[2] = _encode_u32_as_float_bits(_build_scene_effector_mask_for_node(instance_node, scene_payload));
+		entry.effect_params[3] = float(scene_payload.size());
 
 		out.push_back(entry);
 		if (trace_enabled) {
@@ -1558,6 +2053,403 @@ uint32_t GaussianSplatSceneDirector::get_instance_count_for_renderer(const Gauss
 		return 0;
 	}
 	return world->instances.size();
+}
+
+void GaussianSplatSceneDirector::register_sphere_effector(ObjectID p_effector_id, const Transform3D &p_transform,
+		float p_radius, float p_strength, float p_falloff, float p_frequency, bool p_enabled,
+		bool p_affect_position, bool p_affect_opacity, float p_opacity_strength, uint32_t p_layer_mask,
+		uint32_t p_scope_mode, ObjectID p_scope_root_id, int32_t p_priority) {
+	update_sphere_effector(p_effector_id, p_transform, p_radius, p_strength, p_falloff, p_frequency,
+			p_enabled, p_affect_position, p_affect_opacity, p_opacity_strength, p_layer_mask,
+			p_scope_mode, p_scope_root_id, p_priority);
+}
+
+void GaussianSplatSceneDirector::update_sphere_effector(ObjectID p_effector_id, const Transform3D &p_transform,
+		float p_radius, float p_strength, float p_falloff, float p_frequency, bool p_enabled,
+		bool p_affect_position, bool p_affect_opacity, float p_opacity_strength, uint32_t p_layer_mask,
+		uint32_t p_scope_mode, ObjectID p_scope_root_id, int32_t p_priority) {
+	if (p_effector_id == ObjectID()) {
+		return;
+	}
+
+	MutexLock lock(world_mutex);
+	SharedWorld *target_world = _get_world_for_effector(p_effector_id);
+	SharedWorld *existing_world = _find_world_for_effector(p_effector_id);
+	if (!target_world) {
+		target_world = existing_world;
+	}
+	if (!target_world) {
+		return;
+	}
+
+	auto remove_effector_from_world = [&](SharedWorld *p_world) {
+		if (!p_world) {
+			return;
+		}
+		uint32_t *lookup = p_world->sphere_effector_lookup.getptr(p_effector_id);
+		if (!lookup || *lookup >= p_world->sphere_effectors.size()) {
+			return;
+		}
+		const uint32_t index = *lookup;
+		const uint32_t last_index = p_world->sphere_effectors.size() - 1;
+		if (index != last_index) {
+			p_world->sphere_effectors[index] = p_world->sphere_effectors[last_index];
+			p_world->sphere_effector_lookup[p_world->sphere_effectors[index].effector_id] = index;
+		}
+		p_world->sphere_effectors.remove_at(last_index);
+		p_world->sphere_effector_lookup.erase(p_effector_id);
+		_bump_instance_generation(p_world->sphere_effector_generation);
+		_prune_world_if_unused(p_world->scenario);
+	};
+
+	if (existing_world && existing_world != target_world) {
+		remove_effector_from_world(existing_world);
+	}
+
+	const String effector_context = "sphere effector " + String::num_uint64((uint64_t)p_effector_id);
+	const float radius = _sanitize_non_negative_float(p_radius, 0.0f, effector_context, "radius");
+	const float strength = _sanitize_finite_float(p_strength, 0.0f, effector_context, "strength");
+	const float falloff = _sanitize_min_float(p_falloff, 2.0f, 0.001f, effector_context, "falloff");
+	const float frequency = _sanitize_min_float(p_frequency, 2.0f, 0.1f, effector_context, "frequency");
+	const float opacity_strength = CLAMP(
+			_sanitize_finite_float(p_opacity_strength, 1.0f, effector_context, "opacity_strength"),
+			0.0f, 1.0f);
+	if (!Math::is_equal_approx(opacity_strength, p_opacity_strength) && Math::is_finite(p_opacity_strength)) {
+		WARN_PRINT(vformat("[GaussianSplatSceneDirector] opacity_strength for %s was clamped to [0, 1].", effector_context));
+	}
+	uint32_t scope_mode = p_scope_mode;
+	if (scope_mode > SPHERE_EFFECTOR_SCOPE_EXPLICIT_ROOT) {
+		WARN_PRINT(vformat("[GaussianSplatSceneDirector] Invalid scope_mode %u for %s; falling back to SUBTREE.",
+				scope_mode, effector_context));
+		scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE;
+	}
+	if (scope_mode == SPHERE_EFFECTOR_SCOPE_EXPLICIT_ROOT && p_scope_root_id == ObjectID()) {
+		WARN_PRINT(vformat("[GaussianSplatSceneDirector] Explicit scope requested for %s without a scope root. The effector will not match until a root is provided.",
+				effector_context));
+	}
+
+	uint32_t *lookup = target_world->sphere_effector_lookup.getptr(p_effector_id);
+	if (lookup && *lookup < target_world->sphere_effectors.size()) {
+		SphereEffectorRecord &record = target_world->sphere_effectors[*lookup];
+		bool dirty = false;
+		if (!record.transform.is_equal_approx(p_transform)) {
+			record.transform = p_transform;
+			dirty = true;
+		}
+		if (!Math::is_equal_approx(record.radius, radius)) {
+			record.radius = radius;
+			dirty = true;
+		}
+		if (!Math::is_equal_approx(record.strength, strength)) {
+			record.strength = strength;
+			dirty = true;
+		}
+		if (!Math::is_equal_approx(record.falloff, falloff)) {
+			record.falloff = falloff;
+			dirty = true;
+		}
+		if (!Math::is_equal_approx(record.frequency, frequency)) {
+			record.frequency = frequency;
+			dirty = true;
+		}
+		if (!Math::is_equal_approx(record.opacity_strength, opacity_strength)) {
+			record.opacity_strength = opacity_strength;
+			dirty = true;
+		}
+		if (record.enabled != p_enabled) {
+			record.enabled = p_enabled;
+			dirty = true;
+		}
+		if (record.affect_position != p_affect_position) {
+			record.affect_position = p_affect_position;
+			dirty = true;
+		}
+		if (record.affect_opacity != p_affect_opacity) {
+			record.affect_opacity = p_affect_opacity;
+			dirty = true;
+		}
+		if (record.layer_mask != p_layer_mask) {
+			record.layer_mask = p_layer_mask;
+			dirty = true;
+		}
+		if (record.scope_mode != scope_mode) {
+			record.scope_mode = scope_mode;
+			dirty = true;
+		}
+		if (record.scope_root_id != p_scope_root_id) {
+			record.scope_root_id = p_scope_root_id;
+			dirty = true;
+		}
+		if (record.priority != p_priority) {
+			record.priority = p_priority;
+			dirty = true;
+		}
+		if (dirty) {
+			_bump_instance_generation(target_world->sphere_effector_generation);
+		}
+		return;
+	}
+
+	SphereEffectorRecord record;
+	record.effector_id = p_effector_id;
+	record.transform = p_transform;
+	record.radius = radius;
+	record.strength = strength;
+	record.falloff = falloff;
+	record.frequency = frequency;
+	record.opacity_strength = opacity_strength;
+	record.layer_mask = p_layer_mask;
+	record.scope_mode = scope_mode;
+	record.scope_root_id = p_scope_root_id;
+	record.priority = p_priority;
+	record.registration_serial = ++target_world->sphere_effector_registration_serial;
+	record.enabled = p_enabled;
+	record.affect_position = p_affect_position;
+	record.affect_opacity = p_affect_opacity;
+
+	target_world->sphere_effector_lookup[p_effector_id] = target_world->sphere_effectors.size();
+	target_world->sphere_effectors.push_back(record);
+	_bump_instance_generation(target_world->sphere_effector_generation);
+}
+
+void GaussianSplatSceneDirector::unregister_sphere_effector(ObjectID p_effector_id) {
+	if (p_effector_id == ObjectID()) {
+		return;
+	}
+
+	MutexLock lock(world_mutex);
+	SharedWorld *world = _find_world_for_effector(p_effector_id);
+	if (!world) {
+		return;
+	}
+
+	uint32_t *lookup = world->sphere_effector_lookup.getptr(p_effector_id);
+	if (!lookup || *lookup >= world->sphere_effectors.size()) {
+		return;
+	}
+
+	const uint32_t index = *lookup;
+	const uint32_t last_index = world->sphere_effectors.size() - 1;
+	if (index != last_index) {
+		world->sphere_effectors[index] = world->sphere_effectors[last_index];
+		world->sphere_effector_lookup[world->sphere_effectors[index].effector_id] = index;
+	}
+	world->sphere_effectors.remove_at(last_index);
+	world->sphere_effector_lookup.erase(p_effector_id);
+	_bump_instance_generation(world->sphere_effector_generation);
+	_prune_world_if_unused(world->scenario);
+}
+
+void GaussianSplatSceneDirector::build_sphere_effector_payload_for_renderer(const GaussianSplatRenderer *p_renderer,
+		LocalVector<SphereEffectorSelection> &out) const {
+	MutexLock lock(world_mutex);
+	out.clear();
+
+	const SharedWorld *world_const = _find_world_for_renderer(p_renderer);
+	SharedWorld *world = const_cast<SharedWorld *>(world_const);
+	if (!world) {
+		return;
+	}
+
+	ObjectID scan_anchor_id;
+	if (!world->instances.is_empty()) {
+		scan_anchor_id = world->instances[0].node_id;
+	} else if (!world->sphere_effectors.is_empty()) {
+		scan_anchor_id = world->sphere_effectors[0].effector_id;
+	}
+	_sync_discovered_sphere_effectors_for_world(*world, _find_scan_root_for_object(scan_anchor_id));
+	_build_sorted_sphere_effector_payload(*world, out);
+}
+
+bool GaussianSplatSceneDirector::get_primary_sphere_effector_for_instance(ObjectID p_node_id,
+		SphereEffectorSelection *r_selection) const {
+	ERR_FAIL_NULL_V(r_selection, false);
+
+	MutexLock lock(world_mutex);
+	Object *node_object = ObjectDB::get_instance(p_node_id);
+	Node3D *node = Object::cast_to<Node3D>(node_object);
+	if (!node || !node->is_inside_world()) {
+		scene_effector_multi_match_warned_nodes.erase(p_node_id);
+		return false;
+	}
+
+	const SharedWorld *world = nullptr;
+	for (const KeyValue<RID, SharedWorld> &E : worlds) {
+		if (E.value.instance_lookup.has(p_node_id)) {
+			world = &E.value;
+			break;
+		}
+	}
+	if (!world) {
+		const Ref<World3D> node_world = node->get_world_3d();
+		if (node_world.is_valid()) {
+			world = worlds.getptr(node_world->get_scenario());
+		}
+	}
+	if (world) {
+		Node *scan_root = _find_scan_root_for_object(p_node_id);
+		_sync_discovered_sphere_effectors_for_world(*const_cast<SharedWorld *>(world), scan_root);
+	}
+	if (!world || world->sphere_effectors.is_empty()) {
+		scene_effector_multi_match_warned_nodes.erase(p_node_id);
+		return false;
+	}
+
+	const NodeSceneEffectorFilterState filter = _get_node_scene_effector_filter_state(node);
+	if (!filter.enabled || filter.layer_mask == 0u || (filter.has_scope_filter && !filter.scope_filter_valid)) {
+		scene_effector_multi_match_warned_nodes.erase(p_node_id);
+		return false;
+	}
+
+	struct Candidate {
+		SphereEffectorSelection selection;
+		String sort_key;
+		uint32_t specificity = 0u;
+	};
+
+	auto candidate_precedes = [](const Candidate &p_a, const Candidate &p_b) {
+		if (p_a.selection.priority != p_b.selection.priority) {
+			return p_a.selection.priority > p_b.selection.priority;
+		}
+		if (p_a.specificity != p_b.specificity) {
+			return p_a.specificity > p_b.specificity;
+		}
+		if (p_a.sort_key != p_b.sort_key) {
+			return p_a.sort_key < p_b.sort_key;
+		}
+		if ((uint64_t)p_a.selection.effector_id != (uint64_t)p_b.selection.effector_id) {
+			return (uint64_t)p_a.selection.effector_id < (uint64_t)p_b.selection.effector_id;
+		}
+		return false;
+	};
+
+	LocalVector<Candidate> matches;
+	for (const SphereEffectorRecord &record : world->sphere_effectors) {
+		if (!record.enabled) {
+			continue;
+		}
+		if (!record.affect_position && !record.affect_opacity) {
+			continue;
+		}
+		if ((record.layer_mask & filter.layer_mask) == 0u) {
+			continue;
+		}
+
+		Object *effector_object = ObjectDB::get_instance(record.effector_id);
+		Node *effector_node = Object::cast_to<Node>(effector_object);
+
+		ObjectID effective_scope_root_id;
+		bool effector_scope_valid = true;
+		switch (record.scope_mode) {
+			case SPHERE_EFFECTOR_SCOPE_WORLD:
+				break;
+			case SPHERE_EFFECTOR_SCOPE_SUBTREE:
+				if (!effector_node || !effector_node->get_parent()) {
+					effector_scope_valid = false;
+				} else {
+					effective_scope_root_id = effector_node->get_parent()->get_instance_id();
+				}
+				break;
+			case SPHERE_EFFECTOR_SCOPE_EXPLICIT_ROOT: {
+				effective_scope_root_id = record.scope_root_id;
+				Node *scope_root = Object::cast_to<Node>(ObjectDB::get_instance(record.scope_root_id));
+				effector_scope_valid = scope_root != nullptr;
+			} break;
+			default:
+				effector_scope_valid = false;
+				break;
+		}
+
+		if (filter.has_scope_filter) {
+			if (!effector_scope_valid || effective_scope_root_id != filter.scope_root_id) {
+				continue;
+			}
+		} else if (record.scope_mode != SPHERE_EFFECTOR_SCOPE_WORLD) {
+			Node *scope_root = Object::cast_to<Node>(ObjectDB::get_instance(effective_scope_root_id));
+			if (!effector_scope_valid || !scope_root || !(scope_root == node || scope_root->is_ancestor_of(node))) {
+				continue;
+			}
+		}
+
+		Candidate candidate;
+		candidate.selection.effector_id = record.effector_id;
+		candidate.selection.scenario = world->scenario;
+		candidate.selection.transform = record.transform;
+		candidate.selection.center = record.transform.origin;
+		candidate.selection.radius = record.radius;
+		candidate.selection.strength = record.strength;
+		candidate.selection.falloff = record.falloff;
+		candidate.selection.frequency = record.frequency;
+		candidate.selection.opacity_strength = record.opacity_strength;
+		candidate.selection.layer_mask = record.layer_mask;
+		candidate.selection.scope_mode = record.scope_mode;
+		candidate.selection.scope_root_id = effective_scope_root_id;
+		candidate.selection.priority = record.priority;
+		candidate.selection.enabled = record.enabled;
+		candidate.selection.affect_position = record.affect_position;
+		candidate.selection.affect_opacity = record.affect_opacity;
+		candidate.sort_key = _node_sort_key_from_object(effector_object, record.effector_id);
+		candidate.specificity = _get_effector_scope_specificity(record.scope_mode, effective_scope_root_id != ObjectID());
+
+		int insert_at = matches.size();
+		while (insert_at > 0 && candidate_precedes(candidate, matches[insert_at - 1])) {
+			insert_at--;
+		}
+		matches.insert(insert_at, candidate);
+	}
+
+	if (matches.is_empty()) {
+		scene_effector_multi_match_warned_nodes.erase(p_node_id);
+		return false;
+	}
+
+	*r_selection = matches[0].selection;
+	r_selection->matched_effector_count = matches.size();
+	if (matches.size() > 1) {
+		if (!scene_effector_multi_match_warned_nodes.has(p_node_id)) {
+			scene_effector_multi_match_warned_nodes.insert(p_node_id);
+			WARN_PRINT(vformat("[GaussianSplatSceneDirector] Node '%s' matched %d scene sphere effectors. "
+					"The compatibility query returns only the highest-priority deterministic match; the renderer can bind up to %d per pass.",
+					node->get_path(), matches.size(), GS_MAX_SPHERE_EFFECTORS));
+		}
+	} else {
+		scene_effector_multi_match_warned_nodes.erase(p_node_id);
+	}
+	return true;
+}
+
+uint32_t GaussianSplatSceneDirector::get_sphere_effector_count_for_renderer(const GaussianSplatRenderer *p_renderer) const {
+	MutexLock lock(world_mutex);
+	const SharedWorld *world_const = _find_world_for_renderer(p_renderer);
+	SharedWorld *world = const_cast<SharedWorld *>(world_const);
+	if (!world) {
+		return 0;
+	}
+	ObjectID scan_anchor_id;
+	if (!world->instances.is_empty()) {
+		scan_anchor_id = world->instances[0].node_id;
+	} else if (!world->sphere_effectors.is_empty()) {
+		scan_anchor_id = world->sphere_effectors[0].effector_id;
+	}
+	_sync_discovered_sphere_effectors_for_world(*world, _find_scan_root_for_object(scan_anchor_id));
+	return world->sphere_effectors.size();
+}
+
+uint64_t GaussianSplatSceneDirector::get_sphere_effector_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const {
+	MutexLock lock(world_mutex);
+	const SharedWorld *world_const = _find_world_for_renderer(p_renderer);
+	SharedWorld *world = const_cast<SharedWorld *>(world_const);
+	if (!world) {
+		return 0;
+	}
+	ObjectID scan_anchor_id;
+	if (!world->instances.is_empty()) {
+		scan_anchor_id = world->instances[0].node_id;
+	} else if (!world->sphere_effectors.is_empty()) {
+		scan_anchor_id = world->sphere_effectors[0].effector_id;
+	}
+	_sync_discovered_sphere_effectors_for_world(*world, _find_scan_root_for_object(scan_anchor_id));
+	return world->sphere_effector_generation;
 }
 
 bool GaussianSplatSceneDirector::submit_world_submission(const WorldSubmission &p_submission) {

@@ -94,6 +94,7 @@ Notes:
 - **Quality Presets**: Performance, Balanced, Quality, and Custom quality settings
 - **Painterly Rendering**: Advanced artistic rendering with configurable strokes
 - **LOD Support**: Automatic level-of-detail based on distance
+- **Runtime Effects**: Per-node wind overrides plus per-node sphere position and opacity response scaling
 - **Editor Gizmos**: Visual bounds, LOD radius, and statistics display
 - **Performance Monitoring**: Real-time metrics in the inspector
 
@@ -146,13 +147,28 @@ Notes:
 - `rendering/opacity`: Per-instance opacity multiplier for this node (0.0-1.0)
 - `rendering/effect_position_scale`: Per-instance response multiplier for sphere position deformation
 - `rendering/effect_opacity_scale`: Per-instance response multiplier for sphere opacity deformation
+- `rendering/wind_override_enabled`: Use per-node wind settings instead of the project-wide wind defaults
+- `rendering/wind_enabled`: Toggle wind animation for this node when override mode is enabled
+- `rendering/wind_strength`: Per-node wind amplitude when override mode is enabled
+- `rendering/wind_direction`: Per-node wind direction when override mode is enabled
+- `rendering/wind_frequency`: Per-node wind oscillation rate when override mode is enabled
 
 #### Effector Workflow
 - Authored splat opacity still lives in the Gaussian data or imported asset.
 - `rendering/opacity` is the gameplay-facing per-node fade and is applied after deformation.
-- Global sphere ProjectSettings remain available as a fallback source for scenes that do not drive effectors through code.
-- Only one sphere effector is currently evaluated at runtime, even if `max_effectors` is set higher.
-- For dissolve-style effects, enable the sphere opacity path in ProjectSettings and then tune each node with `rendering/effect_opacity_scale`.
+- `SphereEffector3D` is the scene-authored workflow for localized deformation and dissolve effects.
+- `SphereEffector3D` defaults to `Parent Subtree` scope, so an effector affects sibling/descendant splat nodes under the same parent without touching unrelated parts of the world.
+- `rendering/scene_effectors_enabled`, `rendering/scene_effector_layer_mask`, and `rendering/scene_effector_scope_root` let each `GaussianSplatNode3D` opt out, filter, or narrow which scene effectors it follows.
+- Runtime support is bounded to `4` scene effectors per renderer pass. If more effectors match, the renderer binds the highest-priority deterministic four.
+- ProjectSettings remain as a backward-compatible fallback when no scene-authored sphere effectors are active.
+- The practical runtime control surface is:
+  - use `SphereEffector3D` to author center, radius, strength, falloff, frequency, scope, and opacity modulation in the scene
+  - use `rendering/effect_position_scale` and `rendering/effect_opacity_scale` per node to blend each node's response
+  - use `rendering/wind_override_enabled` plus the wind properties for node-local wind-only or mixed wind-plus-sphere setups
+- For dissolve-style effects, enable `SphereEffector3D.affect_opacity`, keep `rendering/effect_position_scale = 0.0`, and tune each node with `rendering/effect_opacity_scale`.
+- The example scenes `tests/examples/godot/test_project/scenes/wind_test.tscn` and `tests/examples/godot/test_project/scenes/sphere_effector_test.tscn` demonstrate the supported gameplay modes.
+
+See also: `docs/api/sphere_effector_workflow.md`.
 
 #### Debug Settings
 - `debug/preview_enabled`: Show preview in editor viewport

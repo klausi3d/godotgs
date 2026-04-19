@@ -216,6 +216,41 @@ Use `GaussianSplatNode3D` to render Gaussian splat assets or procedural splat ar
       <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp</code></td>
     </tr>
     <tr>
+      <td><code>rendering/wind_override_enabled</code></td>
+      <td><code>bool</code></td>
+      <td><code>set_wind_override_enabled</code>, <code>is_wind_override_enabled</code></td>
+      <td>Switches this node from project-wide wind to the per-node wind controls below.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp</code></td>
+    </tr>
+    <tr>
+      <td><code>rendering/wind_enabled</code></td>
+      <td><code>bool</code></td>
+      <td><code>set_wind_enabled</code>, <code>is_wind_enabled</code></td>
+      <td>Enables wind on this node when wind override mode is active.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp</code></td>
+    </tr>
+    <tr>
+      <td><code>rendering/wind_strength</code></td>
+      <td><code>float</code></td>
+      <td><code>set_wind_strength</code>, <code>get_wind_strength</code></td>
+      <td>Per-node wind amplitude. Negative input is clamped to <code>0.0</code>.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp</code></td>
+    </tr>
+    <tr>
+      <td><code>rendering/wind_direction</code></td>
+      <td><code>Vector3</code></td>
+      <td><code>set_wind_direction</code>, <code>get_wind_direction</code></td>
+      <td>Per-node wind direction used when override mode is enabled.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp</code></td>
+    </tr>
+    <tr>
+      <td><code>rendering/wind_frequency</code></td>
+      <td><code>float</code></td>
+      <td><code>set_wind_frequency</code>, <code>get_wind_frequency</code></td>
+      <td>Per-node wind oscillation rate. Negative input is clamped to <code>0.0</code>.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp</code></td>
+    </tr>
+    <tr>
       <td><code>rendering/color_grading</code></td>
       <td><code>ColorGradingResource</code></td>
       <td><code>set_color_grading</code>, <code>get_color_grading</code></td>
@@ -308,6 +343,37 @@ Use `GaussianSplatNode3D` to render Gaussian splat assets or procedural splat ar
     </tr>
   </tbody>
 </table>
+
+## Runtime Effect Workflow
+
+The current branch exposes a scene-driven-plus-per-node workflow for gameplay effects:
+
+- Wind can be controlled per node through `rendering/wind_override_enabled`, `rendering/wind_enabled`, `rendering/wind_strength`, `rendering/wind_direction`, and `rendering/wind_frequency`.
+- `SphereEffector3D` is the primary authoring surface for sphere deformation and dissolve effects.
+- `rendering/effect_position_scale` and `rendering/effect_opacity_scale` let each `GaussianSplatNode3D` partially follow, fully follow, or effectively ignore matched scene effectors.
+- `rendering/scene_effectors_enabled`, `rendering/scene_effector_layer_mask`, and `rendering/scene_effector_scope_root` control whether this node participates in scene effectors and which ones may match.
+- `rendering/opacity` remains the direct per-node gameplay fade, while scene-effector opacity modulation multiplies on top for dissolve or degeneration effects.
+
+Practical recipes:
+
+- Wind-only: disable `rendering/scene_effectors_enabled` or set both per-node effect scales to `0.0`.
+- Sphere position-only: enable a `SphereEffector3D`, keep `rendering/effect_position_scale > 0.0`, and set `rendering/effect_opacity_scale = 0.0`.
+- Sphere opacity-only dissolve: enable `SphereEffector3D.affect_opacity`, set `rendering/effect_position_scale = 0.0`, and tune `rendering/effect_opacity_scale`.
+- Combined wind + sphere + dissolve: enable per-node wind override and keep both effect scales above zero.
+
+Current bounds:
+
+- Scene effectors are bounded to `4` active bindings per renderer pass. If more are present, the highest-priority deterministic four are used.
+- `SphereEffector3D` defaults to subtree scoping. Put the effector under the same gameplay parent as the splat nodes you want to affect, or use its explicit root/layer controls for broader setups.
+- ProjectSettings under `rendering/gaussian_splatting/effects/*` still act as a compatibility fallback when no scene-authored sphere effectors are active.
+- Invalid node-authored runtime inputs are sanitized where supported: opacity clamps to `0.0..1.0`, effect scales clamp to `>= 0.0`, and non-finite opacity or effect scale inputs fall back to stable defaults.
+
+Example scenes:
+
+- `tests/examples/godot/test_project/scenes/wind_test.tscn`
+- `tests/examples/godot/test_project/scenes/sphere_effector_test.tscn`
+
+See also: `docs/api/sphere_effector_workflow.md`.
 
 ### Methods
 <table>
