@@ -1,51 +1,139 @@
-[gd_scene load_steps=6 format=3 uid="uid://sphere_effector_test"]
+[gd_scene load_steps=8 format=3 uid="uid://sphere_effector_test"]
 
 [ext_resource type="GaussianSplatAsset" uid="uid://vnhu3dprb1x1" path="res://tests/fixtures/test_splats.ply" id="cabin_asset"]
 [ext_resource type="Script" uid="uid://dg380v6a1qpek" path="res://fps_camera_controller.gd" id="fps_script"]
 [ext_resource type="PackedScene" path="res://scenes/ui/performance_overlay.tscn" id="perf_overlay"]
 
 [sub_resource type="SphereMesh" id="sphere_mesh"]
-radius = 5.0
-height = 10.0
-radial_segments = 32
-rings = 16
+radius = 18.0
+height = 36.0
+radial_segments = 48
+rings = 24
 
 [sub_resource type="StandardMaterial3D" id="sphere_mat"]
 transparency = 1
 cull_mode = 1
 shading_mode = 0
-albedo_color = Color(1, 0, 0, 0.15)
+albedo_color = Color(1, 0.25, 0.15, 0.08)
 emission_enabled = true
-emission = Color(1, 0, 0, 1)
-emission_energy_multiplier = 1.5
+emission = Color(1, 0.35, 0.2, 1)
+emission_energy_multiplier = 1.75
 rim_enabled = true
 rim = 1.0
 rim_tint = 0.0
+
+[sub_resource type="BoxMesh" id="floor_mesh"]
+size = Vector3(42, 0.2, 14)
+
+[sub_resource type="StandardMaterial3D" id="floor_mat"]
+albedo_color = Color(0.13, 0.13, 0.14, 1)
+roughness = 0.85
 
 [node name="SphereEffectorTest" type="Node3D"]
 
 [node name="PerformanceOverlay" parent="." instance=ExtResource("perf_overlay")]
 
-[node name="Cabin" type="GaussianSplatNode3D" parent="."]
-splat_asset = ExtResource("cabin_asset")
-quality/preset = 2
-rendering/wind_override_enabled = true
-rendering/wind_enabled = false
+[node name="MainEffector" type="SphereEffector3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
+enabled = true
+radius = 18.0
+strength = 1.25
+falloff = 2.0
+frequency = 2.0
+affect_position = true
+affect_opacity = true
+opacity_strength = 0.85
 
-[node name="Label" type="Label3D" parent="Cabin"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8, 0)
-text = "SPHERE EFFECTOR TEST
-(center=0,2,0 radius=5m freq=2Hz)"
-font_size = 96
-outline_size = 12
+[node name="Floor" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
+mesh = SubResource("floor_mesh")
+surface_material_override/0 = SubResource("floor_mat")
 
 [node name="EffectorVisualizer" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
 mesh = SubResource("sphere_mesh")
 surface_material_override/0 = SubResource("sphere_mat")
 
+[node name="CabinWindOnly" type="GaussianSplatNode3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0, 0)
+splat_asset = ExtResource("cabin_asset")
+quality/preset = 2
+rendering/scene_effectors_enabled = false
+rendering/effect_position_scale = 0.0
+rendering/effect_opacity_scale = 0.0
+rendering/wind_override_enabled = true
+rendering/wind_enabled = true
+rendering/wind_strength = 1.0
+rendering/wind_direction = Vector3(0, 0, 1)
+rendering/wind_frequency = 1.5
+
+[node name="Label" type="Label3D" parent="CabinWindOnly"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8, 0)
+text = "WIND ONLY
+effect scales = 0 / 0"
+font_size = 90
+outline_size = 12
+
+[node name="CabinSpherePosition" type="GaussianSplatNode3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, 0)
+splat_asset = ExtResource("cabin_asset")
+quality/preset = 2
+rendering/effect_position_scale = 1.0
+rendering/effect_opacity_scale = 0.0
+rendering/wind_override_enabled = true
+rendering/wind_enabled = false
+
+[node name="Label" type="Label3D" parent="CabinSpherePosition"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8, 0)
+text = "SPHERE POSITION
+effect scales = 1 / 0"
+font_size = 90
+outline_size = 12
+
+[node name="CabinSphereOpacity" type="GaussianSplatNode3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0, 0)
+splat_asset = ExtResource("cabin_asset")
+quality/preset = 2
+rendering/effect_position_scale = 0.0
+rendering/effect_opacity_scale = 1.0
+rendering/wind_override_enabled = true
+rendering/wind_enabled = false
+
+[node name="Label" type="Label3D" parent="CabinSphereOpacity"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8, 0)
+text = "SPHERE DISSOLVE
+effect scales = 0 / 1"
+font_size = 90
+outline_size = 12
+
+[node name="CabinCombined" type="GaussianSplatNode3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 0, 0)
+splat_asset = ExtResource("cabin_asset")
+quality/preset = 2
+rendering/effect_position_scale = 1.0
+rendering/effect_opacity_scale = 1.0
+rendering/wind_override_enabled = true
+rendering/wind_enabled = true
+rendering/wind_strength = 1.0
+rendering/wind_direction = Vector3(0, 0, 1)
+rendering/wind_frequency = 1.75
+
+[node name="Label" type="Label3D" parent="CabinCombined"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8, 0)
+text = "COMBINED
+wind + position + dissolve"
+font_size = 90
+outline_size = 12
+
+[node name="SceneLabel" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10.5, -3)
+text = "SCENE-DRIVEN SPHERE EFFECTOR
+root subtree scope  radius=18  strength=1.25  freq=2.0"
+font_size = 80
+outline_size = 10
+
 [node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.94, 0.342, 0, -0.342, 0.94, 0, 8, 20)
+transform = Transform3D(1, 0, 0, 0, 0.94, 0.342, 0, -0.342, 0.94, 0, 14, 42)
 script = ExtResource("fps_script")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
