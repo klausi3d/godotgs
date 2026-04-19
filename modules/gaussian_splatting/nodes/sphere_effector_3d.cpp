@@ -1,5 +1,7 @@
 #include "sphere_effector_3d.h"
 
+#include "../core/gaussian_splat_scene_director.h"
+
 #include "core/error/error_macros.h"
 #include "core/math/math_funcs.h"
 #include "core/string/ustring.h"
@@ -90,13 +92,63 @@ void SphereEffector3D::_validate_property(PropertyInfo &p_property) const {
 
 void SphereEffector3D::_notification(int p_what) {
     switch (p_what) {
-        case NOTIFICATION_ENTER_TREE:
+        case NOTIFICATION_ENTER_TREE: {
+            update_configuration_warnings();
+            _sync_with_director();
+        } break;
+
         case NOTIFICATION_TRANSFORM_CHANGED: {
             update_configuration_warnings();
+            _sync_with_director();
+        } break;
+
+        case NOTIFICATION_EXIT_TREE: {
+            _unregister_from_director();
         } break;
 
         default:
             break;
+    }
+}
+
+void SphereEffector3D::_sync_with_director() {
+    if (!is_inside_tree()) {
+        return;
+    }
+    GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+    if (!director) {
+        return;
+    }
+
+    ObjectID scope_root_id;
+    if (scope_mode == SCOPE_EXPLICIT_ROOT && !scope_root.is_empty()) {
+        Node *resolved = get_node_or_null(scope_root);
+        if (resolved) {
+            scope_root_id = resolved->get_instance_id();
+        }
+    }
+
+    director->register_sphere_effector(
+            get_instance_id(),
+            get_global_transform(),
+            radius,
+            strength,
+            falloff,
+            frequency,
+            enabled,
+            affect_position,
+            affect_opacity,
+            opacity_strength,
+            layer_mask,
+            uint32_t(scope_mode),
+            scope_root_id,
+            priority);
+}
+
+void SphereEffector3D::_unregister_from_director() {
+    GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+    if (director) {
+        director->unregister_sphere_effector(get_instance_id());
     }
 }
 
@@ -111,6 +163,7 @@ void SphereEffector3D::set_enabled(bool p_enabled) {
 
     enabled = p_enabled;
     update_configuration_warnings();
+    _sync_with_director();
 }
 
 void SphereEffector3D::set_radius(float p_radius) {
@@ -121,6 +174,7 @@ void SphereEffector3D::set_radius(float p_radius) {
 
     radius = sanitized;
     update_configuration_warnings();
+    _sync_with_director();
 }
 
 void SphereEffector3D::set_strength(float p_strength) {
@@ -130,6 +184,7 @@ void SphereEffector3D::set_strength(float p_strength) {
     }
 
     strength = sanitized;
+    _sync_with_director();
 }
 
 void SphereEffector3D::set_falloff(float p_falloff) {
@@ -139,6 +194,7 @@ void SphereEffector3D::set_falloff(float p_falloff) {
     }
 
     falloff = sanitized;
+    _sync_with_director();
 }
 
 void SphereEffector3D::set_frequency(float p_frequency) {
@@ -148,6 +204,7 @@ void SphereEffector3D::set_frequency(float p_frequency) {
     }
 
     frequency = sanitized;
+    _sync_with_director();
 }
 
 void SphereEffector3D::set_affect_position(bool p_affect_position) {
@@ -157,6 +214,7 @@ void SphereEffector3D::set_affect_position(bool p_affect_position) {
 
     affect_position = p_affect_position;
     update_configuration_warnings();
+    _sync_with_director();
 }
 
 void SphereEffector3D::set_affect_opacity(bool p_affect_opacity) {
@@ -167,6 +225,7 @@ void SphereEffector3D::set_affect_opacity(bool p_affect_opacity) {
     affect_opacity = p_affect_opacity;
     notify_property_list_changed();
     update_configuration_warnings();
+    _sync_with_director();
 }
 
 void SphereEffector3D::set_opacity_strength(float p_opacity_strength) {
@@ -177,6 +236,7 @@ void SphereEffector3D::set_opacity_strength(float p_opacity_strength) {
 
     opacity_strength = sanitized;
     update_configuration_warnings();
+    _sync_with_director();
 }
 
 void SphereEffector3D::set_layer_mask(uint32_t p_layer_mask) {
@@ -186,6 +246,7 @@ void SphereEffector3D::set_layer_mask(uint32_t p_layer_mask) {
 
     layer_mask = p_layer_mask;
     update_configuration_warnings();
+    _sync_with_director();
 }
 
 void SphereEffector3D::set_scope_mode(int p_scope_mode) {
@@ -197,6 +258,7 @@ void SphereEffector3D::set_scope_mode(int p_scope_mode) {
     scope_mode = sanitized;
     notify_property_list_changed();
     update_configuration_warnings();
+    _sync_with_director();
 }
 
 void SphereEffector3D::set_scope_root(const NodePath &p_scope_root) {
@@ -206,6 +268,7 @@ void SphereEffector3D::set_scope_root(const NodePath &p_scope_root) {
 
     scope_root = p_scope_root;
     update_configuration_warnings();
+    _sync_with_director();
 }
 
 void SphereEffector3D::set_priority(int p_priority) {
@@ -214,6 +277,7 @@ void SphereEffector3D::set_priority(int p_priority) {
     }
 
     priority = p_priority;
+    _sync_with_director();
 }
 
 PackedStringArray SphereEffector3D::get_configuration_warnings() const {

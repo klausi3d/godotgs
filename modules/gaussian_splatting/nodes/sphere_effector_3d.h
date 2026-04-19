@@ -45,6 +45,14 @@ protected:
     void _validate_property(PropertyInfo &p_property) const;
     void _notification(int p_what);
 
+private:
+    // Push (or refresh) this effector's state into the scene director. Called
+    // on ENTER_TREE, TRANSFORM_CHANGED, and every property setter so the
+    // director's cached list stays fresh without the render thread ever
+    // having to walk the scene tree.
+    void _sync_with_director();
+    void _unregister_from_director();
+
 public:
     SphereEffector3D();
     ~SphereEffector3D() override = default;

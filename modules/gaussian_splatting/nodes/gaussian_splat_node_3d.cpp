@@ -2233,6 +2233,16 @@ void GaussianSplatNode3D::_register_instance_in_director() {
     // the earlier setter/signal attempts that fired before registration were
     // lost (director returned NO WORLD) and the record stayed at null grading.
     director->update_instance_color_grading(get_instance_id(), color_grading);
+
+    // Seed the cached scene-effector filter state. The render thread reads this
+    // from the InstanceRecord instead of the live Node3D, so it must be fresh
+    // before the first buffer rebuild.
+    const bool scope_filter_present = !scene_effector_scope_root.is_empty();
+    Node *resolved_scope = scope_filter_present ? _resolve_scene_effector_scope_root() : nullptr;
+    const bool scope_filter_valid = !scope_filter_present || resolved_scope != nullptr;
+    const ObjectID scope_root_id = resolved_scope ? resolved_scope->get_instance_id() : ObjectID();
+    director->update_instance_scene_effector_filter(get_instance_id(), scene_effectors_enabled,
+            scene_effector_layer_mask, scope_filter_present, scope_filter_valid, scope_root_id);
 }
 
 void GaussianSplatNode3D::_unregister_instance_in_director() {
@@ -2262,6 +2272,17 @@ void GaussianSplatNode3D::_update_instance_params_in_director() {
                 /*has_desired_residency_hint=*/true,
                 GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT,
                 effect_position_scale, effect_opacity_scale);
+
+        // Cache the scene-effector filter state on the InstanceRecord so the
+        // render thread never has to read these properties back from the live
+        // Node3D. Resolution of `scene_effector_scope_root` (NodePath → Node)
+        // happens here on the main thread.
+        const bool scope_filter_present = !scene_effector_scope_root.is_empty();
+        Node *resolved_scope = scope_filter_present ? _resolve_scene_effector_scope_root() : nullptr;
+        const bool scope_filter_valid = !scope_filter_present || resolved_scope != nullptr;
+        const ObjectID scope_root_id = resolved_scope ? resolved_scope->get_instance_id() : ObjectID();
+        director->update_instance_scene_effector_filter(get_instance_id(), scene_effectors_enabled,
+                scene_effector_layer_mask, scope_filter_present, scope_filter_valid, scope_root_id);
     }
     if (renderer.is_valid()) {
         renderer->invalidate_cached_render();
