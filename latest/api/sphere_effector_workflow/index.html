@@ -1675,6 +1675,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#runtime-diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime Diagnostics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#authoring-recipes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1709,10 +1720,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#sphere-opacity-only-dissolve" class="md-nav__link">
+  <a href="#sphere-opacity-only-fade-dissolve" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Sphere Opacity-only Dissolve
+        Sphere Opacity-only Fade / Dissolve
       
     </span>
   </a>
@@ -1799,11 +1810,12 @@
 <p>This branch supports scene-authored sphere effectors for Gaussian splats through <code>SphereEffector3D</code>.</p>
 <ul>
 <li>Author <code>SphereEffector3D</code> nodes directly in the scene.</li>
-<li>Match splat nodes with subtree scope, explicit scope roots, and layer masks.</li>
+<li>Match splat nodes with subtree scope, explicit scope roots, world scope, and layer masks.</li>
 <li>Blend each splat node's response with:</li>
 <li><code>rendering/effect_position_scale</code></li>
 <li><code>rendering/effect_opacity_scale</code></li>
 <li><code>rendering/opacity</code></li>
+<li>Drive opacity toward <code>SphereEffector3D.target_opacity</code> instead of only dissolving to zero.</li>
 <li>Override wind per node with:</li>
 <li><code>rendering/wind_override_enabled</code></li>
 <li><code>rendering/wind_enabled</code></li>
@@ -1811,7 +1823,7 @@
 <li><code>rendering/wind_direction</code></li>
 <li><code>rendering/wind_frequency</code></li>
 </ul>
-<p>ProjectSettings under <code>rendering/gaussian_splatting/effects/*</code> remain available as a backward-compatible fallback when a scene does not author any active <code>SphereEffector3D</code> nodes.</p>
+<p>ProjectSettings under <code>rendering/gaussian_splatting/effects/*</code> remain available as a backward-compatible fallback when a scene does not author any active <code>SphereEffector3D</code> nodes. That fallback stays on the legacy single-global-effector path, so <code>rendering/gaussian_splatting/effects/max_effectors</code> is still clamped to <code>0..1</code> there even though scene-authored bindings can fill a larger renderer budget.</p>
 <h2 id="what-works-in-game">What Works In Game<a class="headerlink" href="#what-works-in-game" title="Permanent link">¶</a></h2>
 <ul>
 <li>Wind-only animation on selected splat nodes through node-local wind override.</li>
@@ -1823,10 +1835,32 @@
 </ul>
 <h2 id="hard-bounds">Hard Bounds<a class="headerlink" href="#hard-bounds" title="Permanent link">¶</a></h2>
 <ul>
-<li>The renderer binds at most <code>4</code> scene effectors per pass.</li>
-<li>If more than <code>4</code> candidate scene effectors are present, the highest-priority deterministic four are used.</li>
-<li>Deterministic ordering uses priority first, then scope specificity, then scene path, then object id.</li>
+<li>The renderer binds at most <code>4</code> scene-authored effectors per pass.</li>
+<li>If more than <code>4</code> scene-authored effectors match one node, the highest-priority deterministic four are bound and the rest stay logical matches only.</li>
+<li>Deterministic ordering uses priority first, then scope specificity, then registration order, then object id.</li>
 <li><code>get_primary_sphere_effector_for_instance()</code> is now a compatibility query only. It still returns one match even though the renderer can bind multiple.</li>
+<li>ProjectSettings fallback effectors remain single-global and are still governed by <code>rendering/gaussian_splatting/effects/max_effectors</code> clamped to <code>0..1</code>.</li>
+<li><code>target_opacity = 1.0</code> is a neutral target. Matching nodes still count as matched, but no visible opacity change is produced and opacity diagnostics stay inactive.</li>
+</ul>
+<h2 id="runtime-diagnostics">Runtime Diagnostics<a class="headerlink" href="#runtime-diagnostics" title="Permanent link">¶</a></h2>
+<ul>
+<li><code>GaussianSplatNode3D.get_last_matched_scene_effector_count()</code> reports logical matches after scope and layer-mask filtering. This count can stay non-zero even when both active-channel flags are <code>false</code>.</li>
+<li><code>GaussianSplatNode3D.get_scene_effector_debug_state()</code> reports both logical and renderer-bound state. <code>matched_count</code> is the full logical match set after scope and layer filtering, <code>bound_count</code> is the subset that actually fit into the renderer budget, and <code>truncated</code> tells you when <code>matched_count &gt; bound_count</code>.</li>
+<li><code>GaussianSplatNode3D.is_scene_effector_position_active()</code> only returns <code>true</code> when a matched effector can actually contribute position deformation. Zero node position scale or zero effector strength keeps it <code>false</code>.</li>
+<li><code>GaussianSplatNode3D.is_scene_effector_opacity_active()</code> only returns <code>true</code> when a matched effector can actually contribute opacity modulation. It stays <code>false</code> when node opacity is <code>0.0</code>, node opacity scale is <code>0.0</code>, effector <code>opacity_strength</code> is <code>0.0</code>, or effector <code>target_opacity</code> is <code>1.0</code>.</li>
+<li><code>GaussianSplatNode3D.get_statistics()</code> mirrors these runtime values under <code>matched_scene_effectors</code>, <code>bound_scene_effectors</code>, <code>scene_effector_truncated</code>, <code>scene_effector_position_active</code>, and <code>scene_effector_opacity_active</code>.</li>
+<li><code>GaussianSplatNode3D.get_configuration_warnings()</code> surfaces common inert setups:</li>
+<li>both effect response scales at <code>0.0</code></li>
+<li><code>rendering/scene_effector_layer_mask = 0</code></li>
+<li>opacity modulation enabled while <code>rendering/opacity = 0.0</code></li>
+<li>invalid <code>rendering/scene_effector_scope_root</code></li>
+<li><code>SphereEffector3D.get_configuration_warnings()</code> surfaces inert or invalid effector authoring:</li>
+<li>enabled with neither position nor opacity enabled</li>
+<li><code>opacity_strength = 0.0</code></li>
+<li><code>target_opacity = 1.0</code></li>
+<li><code>layer_mask = 0</code></li>
+<li><code>Parent Subtree</code> scope without a parent</li>
+<li><code>Explicit Root</code> scope without <code>scope_root</code></li>
 </ul>
 <h2 id="authoring-recipes">Authoring Recipes<a class="headerlink" href="#authoring-recipes" title="Permanent link">¶</a></h2>
 <h3 id="wind-only">Wind-only<a class="headerlink" href="#wind-only" title="Permanent link">¶</a></h3>
@@ -1842,15 +1876,17 @@
 <li>Set the node's <code>rendering/effect_position_scale</code> above <code>0.0</code>.</li>
 <li>Set <code>rendering/effect_opacity_scale = 0.0</code>.</li>
 </ol>
-<h3 id="sphere-opacity-only-dissolve">Sphere Opacity-only Dissolve<a class="headerlink" href="#sphere-opacity-only-dissolve" title="Permanent link">¶</a></h3>
+<h3 id="sphere-opacity-only-fade-dissolve">Sphere Opacity-only Fade / Dissolve<a class="headerlink" href="#sphere-opacity-only-fade-dissolve" title="Permanent link">¶</a></h3>
 <ol>
 <li>Add a <code>SphereEffector3D</code>.</li>
 <li>Set <code>affect_opacity = true</code>.</li>
 <li>Tune <code>opacity_strength</code>.</li>
+<li>Set <code>target_opacity</code>:</li>
+<li><code>0.0</code> for a dissolve</li>
+<li>any value below <code>1.0</code>, such as <code>0.35</code>, for partial degeneration</li>
 <li>Set the node's <code>rendering/effect_position_scale = 0.0</code>.</li>
 <li>Set <code>rendering/effect_opacity_scale</code> above <code>0.0</code>.</li>
 </ol>
-<p>Scene-driven opacity currently dissolves toward transparent. Use the ProjectSettings fallback path if you need a non-zero target opacity until the node API grows a dedicated target control.</p>
 <h3 id="combined-wind-sphere-opacity">Combined Wind + Sphere + Opacity<a class="headerlink" href="#combined-wind-sphere-opacity" title="Permanent link">¶</a></h3>
 <ol>
 <li>Enable per-node wind override and tune wind values.</li>
@@ -1859,10 +1895,13 @@
 </ol>
 <h2 id="artist-notes">Artist Notes<a class="headerlink" href="#artist-notes" title="Permanent link">¶</a></h2>
 <ul>
-<li>Put a <code>SphereEffector3D</code> under the same gameplay parent as the splat nodes you want to affect. The default <code>Parent Subtree</code> scope is the safest workflow.</li>
+<li>Put a <code>SphereEffector3D</code> under the same gameplay parent as the splat nodes you want to affect. The default <code>Parent Subtree</code> scope uses the effector's parent as the scope root.</li>
+<li>Switch to <code>World</code> scope only when you intentionally want to reach matching splat nodes outside that subtree.</li>
+<li>Use <code>Explicit Root</code> together with node <code>rendering/scene_effector_scope_root</code> when you need a narrower branch than the effector's default subtree.</li>
 <li>Use effector <code>layer_mask</code> and node <code>rendering/scene_effector_layer_mask</code> when multiple effect systems share a world.</li>
-<li>Use <code>priority</code> when multiple effectors overlap and you need deterministic truncation into the renderer's four-slot budget.</li>
+<li>Use <code>priority</code> when multiple effectors overlap and you need deterministic truncation into the renderer's four-slot scene budget.</li>
 <li>Keep <code>rendering/effect_opacity_scale</code> at <code>0.0</code> on nodes that should not dissolve even if they still follow position deformation.</li>
+<li>Use <code>GaussianSplatNode3D.get_scene_effector_debug_state()</code> or <code>get_statistics()</code> from gameplay scripts when you need to understand why an effector matched but did not become renderer-bound, or why a matched effector stayed logically present but inactive.</li>
 </ul>
 <h2 id="stability-and-sanitization">Stability And Sanitization<a class="headerlink" href="#stability-and-sanitization" title="Permanent link">¶</a></h2>
 <ul>
@@ -1872,6 +1911,7 @@
 <li><code>SphereEffector3D.falloff</code> clamps to <code>&gt;= 0.001</code>.</li>
 <li><code>SphereEffector3D.frequency</code> clamps to <code>&gt;= 0.1</code>.</li>
 <li><code>SphereEffector3D.opacity_strength</code> clamps to <code>0.0..1.0</code>.</li>
+<li><code>SphereEffector3D.target_opacity</code> clamps to <code>0.0..1.0</code>.</li>
 <li>Non-finite node or effector values fall back to stable defaults instead of propagating NaNs into rendering.</li>
 </ul>
 <h2 id="example-scenes">Example Scenes<a class="headerlink" href="#example-scenes" title="Permanent link">¶</a></h2>
@@ -1899,7 +1939,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 19, 2026 21:26:24 UTC">April 19, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 19, 2026 21:29:35 UTC">April 19, 2026</span>
   </span>
 
     
