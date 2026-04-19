@@ -36,7 +36,7 @@
 
 namespace TestGaussianSplatting {
 
-static_assert(GS_RENDER_PARAMS_LAYOUT_VERSION == 19, "Render params layout version mismatch");
+static_assert(GS_RENDER_PARAMS_LAYOUT_VERSION == 18, "Render params layout version mismatch");
 
 static_assert(sizeof(InstanceDataGPU) == 112, "InstanceDataGPU size contract changed");
 static_assert(offsetof(InstanceDataGPU, lod) == 72, "InstanceDataGPU.lod offset contract changed");
@@ -53,16 +53,16 @@ static_assert(offsetof(PackedGaussian, sh) == 48, "PackedGaussian.sh offset cont
 static_assert(offsetof(PackedGaussian, sh_metadata) == 140, "PackedGaussian.sh_metadata offset contract changed");
 static_assert(sizeof(PackedGaussianF16) == 144, "PackedGaussianF16 size contract changed");
 static_assert(sizeof(PackedGaussianQuantized) == 80, "PackedGaussianQuantized size contract changed");
-static_assert(sizeof(TileRenderParamsGPU) == 912, "TileRenderParamsGPU size contract changed");
+static_assert(sizeof(TileRenderParamsGPU) == 752, "TileRenderParamsGPU size contract changed");
 static_assert(offsetof(TileRenderParamsGPU, viewport_size) == 256, "TileRenderParamsGPU.viewport_size offset contract changed");
 static_assert(offsetof(TileRenderParamsGPU, camera_position) == 320, "TileRenderParamsGPU.camera_position offset contract changed");
 static_assert(offsetof(TileRenderParamsGPU, lighting_mode) == 560, "TileRenderParamsGPU.lighting_mode offset contract changed");
 static_assert(offsetof(TileRenderParamsGPU, instance_rotation_inv_col2) == 640, "TileRenderParamsGPU.instance_rotation_inv_col2 offset contract changed");
 static_assert(offsetof(TileRenderParamsGPU, wind_dir_strength) == 656, "TileRenderParamsGPU.wind_dir_strength offset contract changed");
 static_assert(offsetof(TileRenderParamsGPU, wind_time_config) == 672, "TileRenderParamsGPU.wind_time_config offset contract changed");
-static_assert(offsetof(TileRenderParamsGPU, effector_spheres) == 704, "TileRenderParamsGPU.effector_spheres offset contract changed");
-static_assert(offsetof(TileRenderParamsGPU, effector_configs) == 768, "TileRenderParamsGPU.effector_configs offset contract changed");
-static_assert(offsetof(TileRenderParamsGPU, effector_opacity_configs) == 832, "TileRenderParamsGPU.effector_opacity_configs offset contract changed");
+static_assert(offsetof(TileRenderParamsGPU, effector_sphere) == 688, "TileRenderParamsGPU.effector_sphere offset contract changed");
+static_assert(offsetof(TileRenderParamsGPU, effector_config) == 704, "TileRenderParamsGPU.effector_config offset contract changed");
+static_assert(offsetof(TileRenderParamsGPU, effector_opacity_config) == 720, "TileRenderParamsGPU.effector_opacity_config offset contract changed");
 
 // Utility to ensure we have a GaussianSplatManager available during the test run.
 // Note: Named with "Pipeline" suffix to avoid redefinition with test_render_validation.h
@@ -382,7 +382,7 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Instance cull failures without fallb
 }
 
 TEST_CASE("[GaussianSplatting] GPU layout contract invariants remain stable") {
-    CHECK(GS_RENDER_PARAMS_LAYOUT_VERSION == 19u);
+    CHECK(GS_RENDER_PARAMS_LAYOUT_VERSION == 18u);
     CHECK(sizeof(InstanceDataGPU) == size_t(112));
     CHECK(offsetof(InstanceDataGPU, effect_params) == size_t(96));
     CHECK(sizeof(AssetMetaGPU) == size_t(112));
@@ -391,8 +391,8 @@ TEST_CASE("[GaussianSplatting] GPU layout contract invariants remain stable") {
     CHECK(sizeof(PackedGaussian) == size_t(144));
     CHECK(sizeof(PackedGaussianF16) == size_t(144));
     CHECK(sizeof(PackedGaussianQuantized) == size_t(80));
-    CHECK(sizeof(TileRenderParamsGPU) == size_t(912));
-    CHECK(offsetof(TileRenderParamsGPU, effector_opacity_configs) == size_t(832));
+    CHECK(sizeof(TileRenderParamsGPU) == size_t(752));
+    CHECK(offsetof(TileRenderParamsGPU, effector_opacity_config) == size_t(720));
 
     CHECK(offsetof(PackedGaussian, rotation) == size_t(32));
     CHECK(offsetof(PackedGaussian, sh) == size_t(48));
