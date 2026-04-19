@@ -906,6 +906,37 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 		GaussianSplatting::debug_trace_record_event("instance_reg", "FAIL: world=NULL", true);
 		return;
 	}
+	// World-switch migration: if the node is already registered in a DIFFERENT
+	// SharedWorld (the node's `World3D` changed without a tree removal), evict
+	// the stale record first. Without this, `register_instance` called with
+	// the node's new world leaves the record pinned in both worlds — stale
+	// renderer state, duplicate instances, and effector matching against the
+	// wrong world's ancestor chain.
+	for (KeyValue<RID, SharedWorld> &E : worlds) {
+		SharedWorld &other = E.value;
+		if (&other == world) {
+			continue;
+		}
+		uint32_t *stale_index = other.instance_lookup.getptr(p_node_id);
+		if (!stale_index || *stale_index >= other.instances.size()) {
+			continue;
+		}
+		const uint32_t idx = *stale_index;
+		const uint32_t stale_asset_id = other.instances[idx].asset_id;
+		const uint32_t last_index = other.instances.size() - 1;
+		if (idx != last_index) {
+			other.instances[idx] = other.instances[last_index];
+			other.instance_lookup[other.instances[idx].node_id] = idx;
+		}
+		other.instances.remove_at(last_index);
+		other.instance_lookup.erase(p_node_id);
+		_bump_instance_generation(other.instance_generation);
+		_bump_instance_asset_generation(other.instance_asset_generation);
+		if (stale_asset_id != 0) {
+			_release_asset_record(other, stale_asset_id);
+		}
+		break; // an instance can only live in one SharedWorld at a time
+	}
 	if (world->renderer.is_valid()) {
 		const auto &resource_state = world->renderer->get_resource_state();
 		if (!resource_state.gpu_resources_initialized && !resource_state.gpu_initialization_pending) {

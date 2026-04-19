@@ -461,6 +461,17 @@ void GaussianSplatNode3D::_notification(int p_what) {
             _notification_enter_world();
         } break;
 
+        case NOTIFICATION_EXIT_WORLD: {
+            // World-switch lifecycle: Godot emits EXIT_WORLD when a Node3D's
+            // resolved World3D changes without a tree removal. Unregister from
+            // the scene director so the instance doesn't linger in the old
+            // SharedWorld. ENTER_WORLD will re-register in the new world. A
+            // belt-and-braces safety against stale records — `register_instance`
+            // also migrates on its own, but an unregister here keeps the
+            // lifecycle deterministic for tooling and diagnostics.
+            _unregister_shared_renderer();
+        } break;
+
         case NOTIFICATION_READY: {
         } break;
 

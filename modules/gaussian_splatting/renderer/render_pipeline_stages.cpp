@@ -166,6 +166,19 @@ static uint32_t _populate_scene_effector_payload_for_renderer(const GaussianSpla
 	// Snapshot both the filtered payload and the raw effector count under the
 	// director's single `world_mutex` lock — two separate director calls would
 	// race with main-thread register/unregister between them.
+	//
+	// NOTE: Cross-stage slot consistency with the instance-buffer path is
+	// best-effort and resolves within one frame. `build_instance_buffer_for_renderer()`
+	// encodes per-instance masks against its own `_build_sorted_sphere_effector_payload()`
+	// snapshot; this function makes a separate snapshot. A main-thread
+	// register/unregister that lands between those two snapshots can shift
+	// slot indices — the mismatch manifests as at most one frame of wrong
+	// deformation for affected instances. The director bumps
+	// `sphere_effector_generation` on every such change, which feeds into
+	// the renderer's content_generation and forces a full re-upload next
+	// frame, so the glitch self-heals. Sort order within a single generation
+	// is deterministic (priority → specificity → registration_serial →
+	// effector_id), so steady-state frames are stable.
 	LocalVector<GaussianSplatSceneDirector::SphereEffectorSelection> payload;
 	uint32_t total_scene_effectors = 0u;
 	director->build_sphere_effector_payload_for_renderer(p_renderer, payload, &total_scene_effectors);
