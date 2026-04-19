@@ -182,11 +182,26 @@ static bool _build_effector_payload_from_scene_bindings(const GaussianSplatRende
 
     for (uint32_t i = 0; i < payload.size(); i++) {
         const GaussianSplatSceneDirector::SphereEffectorSelection &selection = payload[i];
+        // Slot stays index-stable (per-instance masks encode original payload
+        // indices). Reject slots with non-finite centers the same way the tile
+        // path does (`_pack_effector_slot`) so a single bad runtime transform
+        // can't propagate NaN through `gs_apply_sphere_effectors` into depth
+        // culling/sorting. The shader treats `config.x <= 0.5` as disabled.
+        const bool center_finite = Math::is_finite(selection.center.x) &&
+                Math::is_finite(selection.center.y) &&
+                Math::is_finite(selection.center.z);
+        const float radius = MAX(selection.radius, 0.0f);
+        if (!center_finite || radius <= 0.0f || !selection.enabled) {
+            if (!center_finite) {
+                WARN_PRINT_ONCE("[GPU Sort] Ignoring sphere effector with non-finite center in depth payload.");
+            }
+            continue;
+        }
         r_spheres[i][0] = selection.center.x;
         r_spheres[i][1] = selection.center.y;
         r_spheres[i][2] = selection.center.z;
-        r_spheres[i][3] = MAX(selection.radius, 0.0f);
-        r_configs[i][0] = selection.enabled ? 1.0f : 0.0f;
+        r_spheres[i][3] = radius;
+        r_configs[i][0] = 1.0f;
         r_configs[i][1] = selection.strength;
         r_configs[i][2] = MAX(selection.falloff, 0.001f);
         r_configs[i][3] = MAX(selection.frequency, 0.1f);

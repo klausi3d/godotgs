@@ -160,14 +160,6 @@ static float _sanitize_min_float(float p_value, float p_default, float p_min, co
 	return value;
 }
 
-static String _node_sort_key_from_object(const Object *p_object, ObjectID p_fallback_id) {
-	const Node *node = Object::cast_to<Node>(const_cast<Object *>(p_object));
-	if (node && node->is_inside_tree()) {
-		return String(node->get_path());
-	}
-	return String::num_uint64((uint64_t)p_fallback_id);
-}
-
 static ObjectID _resolve_scope_root_from_path(Node *p_owner, const NodePath &p_scope_path, bool *r_has_scope_filter, bool *r_scope_valid) {
 	if (r_has_scope_filter) {
 		*r_has_scope_filter = !p_scope_path.is_empty();
@@ -522,10 +514,16 @@ void GaussianSplatSceneDirector::_build_sorted_sphere_effector_payload(const Sha
 
 	struct Candidate {
 		SphereEffectorSelection selection;
-		String sort_key;
+		uint64_t registration_serial = 0u;
 		uint32_t specificity = 0u;
 	};
 
+	// Sort deterministically by (priority, specificity, registration serial,
+	// effector_id). Uses the record's monotonic registration serial instead of
+	// the effector's scene-path — the path would require a live `get_path()`
+	// call from the render thread (not thread-safe) and would reorder
+	// equal-priority slots on rename without bumping any generation, leaving
+	// cached per-instance masks pointing at the wrong slots.
 	auto candidate_precedes = [](const Candidate &p_a, const Candidate &p_b) {
 		if (p_a.selection.priority != p_b.selection.priority) {
 			return p_a.selection.priority > p_b.selection.priority;
@@ -533,8 +531,8 @@ void GaussianSplatSceneDirector::_build_sorted_sphere_effector_payload(const Sha
 		if (p_a.specificity != p_b.specificity) {
 			return p_a.specificity > p_b.specificity;
 		}
-		if (p_a.sort_key != p_b.sort_key) {
-			return p_a.sort_key < p_b.sort_key;
+		if (p_a.registration_serial != p_b.registration_serial) {
+			return p_a.registration_serial < p_b.registration_serial;
 		}
 		return (uint64_t)p_a.selection.effector_id < (uint64_t)p_b.selection.effector_id;
 	};
@@ -546,29 +544,17 @@ void GaussianSplatSceneDirector::_build_sorted_sphere_effector_payload(const Sha
 			continue;
 		}
 
-		Object *effector_object = ObjectDB::get_instance(record.effector_id);
-		Node *effector_node = Object::cast_to<Node>(effector_object);
-
-		ObjectID effective_scope_root_id;
+		// SCOPE_SUBTREE / SCOPE_EXPLICIT_ROOT carry a resolved `scope_root_id`
+		// populated on the main thread at register/update time. Revalidate
+		// the ObjectID still resolves to a live Node so effectors whose scope
+		// root was deleted after sync don't consume renderer slots while
+		// matching no instances. `ObjectDB::get_instance()` is thread-safe.
 		bool effector_scope_valid = true;
-		switch (record.scope_mode) {
-			case SPHERE_EFFECTOR_SCOPE_WORLD:
-				break;
-			case SPHERE_EFFECTOR_SCOPE_SUBTREE:
-				if (!effector_node || !effector_node->get_parent()) {
-					effector_scope_valid = false;
-				} else {
-					effective_scope_root_id = effector_node->get_parent()->get_instance_id();
-				}
-				break;
-			case SPHERE_EFFECTOR_SCOPE_EXPLICIT_ROOT: {
-				effective_scope_root_id = record.scope_root_id;
-				Node *scope_root = Object::cast_to<Node>(ObjectDB::get_instance(record.scope_root_id));
-				effector_scope_valid = scope_root != nullptr;
-			} break;
-			default:
+		if (record.scope_mode != SPHERE_EFFECTOR_SCOPE_WORLD) {
+			if (record.scope_root_id == ObjectID() ||
+					!Object::cast_to<Node>(ObjectDB::get_instance(record.scope_root_id))) {
 				effector_scope_valid = false;
-				break;
+			}
 		}
 		if (record.scope_mode != SPHERE_EFFECTOR_SCOPE_WORLD && !effector_scope_valid) {
 			continue;
@@ -586,13 +572,13 @@ void GaussianSplatSceneDirector::_build_sorted_sphere_effector_payload(const Sha
 		candidate.selection.opacity_strength = record.opacity_strength;
 		candidate.selection.layer_mask = record.layer_mask;
 		candidate.selection.scope_mode = record.scope_mode;
-		candidate.selection.scope_root_id = effective_scope_root_id;
+		candidate.selection.scope_root_id = record.scope_root_id;
 		candidate.selection.priority = record.priority;
 		candidate.selection.enabled = record.enabled;
 		candidate.selection.affect_position = record.affect_position;
 		candidate.selection.affect_opacity = record.affect_opacity;
-		candidate.sort_key = _node_sort_key_from_object(effector_object, record.effector_id);
-		candidate.specificity = _get_effector_scope_specificity(record.scope_mode, effective_scope_root_id != ObjectID());
+		candidate.registration_serial = record.registration_serial;
+		candidate.specificity = _get_effector_scope_specificity(record.scope_mode, record.scope_root_id != ObjectID());
 
 		int insert_at = candidates.size();
 		while (insert_at > 0 && candidate_precedes(candidate, candidates[insert_at - 1])) {
@@ -2177,10 +2163,13 @@ bool GaussianSplatSceneDirector::get_primary_sphere_effector_for_instance(Object
 
 	struct Candidate {
 		SphereEffectorSelection selection;
-		String sort_key;
+		uint64_t registration_serial = 0u;
 		uint32_t specificity = 0u;
 	};
 
+	// Tie-break by registration serial (stable, monotonic) instead of node
+	// path — keeps the main-thread diagnostic path's ordering in sync with
+	// the render-path `_build_sorted_sphere_effector_payload`.
 	auto candidate_precedes = [](const Candidate &p_a, const Candidate &p_b) {
 		if (p_a.selection.priority != p_b.selection.priority) {
 			return p_a.selection.priority > p_b.selection.priority;
@@ -2188,8 +2177,8 @@ bool GaussianSplatSceneDirector::get_primary_sphere_effector_for_instance(Object
 		if (p_a.specificity != p_b.specificity) {
 			return p_a.specificity > p_b.specificity;
 		}
-		if (p_a.sort_key != p_b.sort_key) {
-			return p_a.sort_key < p_b.sort_key;
+		if (p_a.registration_serial != p_b.registration_serial) {
+			return p_a.registration_serial < p_b.registration_serial;
 		}
 		if ((uint64_t)p_a.selection.effector_id != (uint64_t)p_b.selection.effector_id) {
 			return (uint64_t)p_a.selection.effector_id < (uint64_t)p_b.selection.effector_id;
@@ -2262,7 +2251,7 @@ bool GaussianSplatSceneDirector::get_primary_sphere_effector_for_instance(Object
 		candidate.selection.enabled = record.enabled;
 		candidate.selection.affect_position = record.affect_position;
 		candidate.selection.affect_opacity = record.affect_opacity;
-		candidate.sort_key = _node_sort_key_from_object(effector_object, record.effector_id);
+		candidate.registration_serial = record.registration_serial;
 		candidate.specificity = _get_effector_scope_specificity(record.scope_mode, effective_scope_root_id != ObjectID());
 
 		int insert_at = matches.size();
