@@ -3,6 +3,7 @@
 #include "../core/gs_project_settings.h"
 #include "render_debug_state_orchestrator.h"
 #include "render_diagnostics_orchestrator.h"
+#include "gaussian_gpu_layout.h"
 
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
@@ -129,6 +130,87 @@ static float _get_float_setting(ProjectSettings *p_settings, const StringName &p
 
 static int _get_int_setting(ProjectSettings *p_settings, const StringName &p_name, int p_fallback) {
 	return static_cast<int>(gs::settings::get_uint(p_settings, p_name, static_cast<uint32_t>(p_fallback)));
+}
+
+static _FORCE_INLINE_ uint64_t _hash_u64(uint64_t p_value, uint64_t p_seed);
+static _FORCE_INLINE_ uint64_t _hash_float_bits(float p_value, uint64_t p_seed);
+static _FORCE_INLINE_ uint64_t _hash_bool(bool p_value, uint64_t p_seed);
+static uint64_t _hash_vector3(const Vector3 &p_vec, uint64_t p_seed);
+
+static uint64_t _hash_scene_effector_selection(const GaussianSplatSceneDirector::SphereEffectorSelection &p_selection,
+		uint64_t p_seed) {
+	p_seed = _hash_u64(static_cast<uint64_t>(p_selection.effector_id), p_seed);
+	p_seed = _hash_vector3(p_selection.center, p_seed);
+	p_seed = _hash_float_bits(p_selection.radius, p_seed);
+	p_seed = _hash_float_bits(p_selection.strength, p_seed);
+	p_seed = _hash_float_bits(p_selection.falloff, p_seed);
+	p_seed = _hash_float_bits(p_selection.frequency, p_seed);
+	p_seed = _hash_float_bits(p_selection.opacity_strength, p_seed);
+	p_seed = _hash_u64(static_cast<uint64_t>(p_selection.layer_mask), p_seed);
+	p_seed = _hash_u64(static_cast<uint64_t>(p_selection.scope_mode), p_seed);
+	p_seed = _hash_u64(static_cast<uint64_t>(p_selection.scope_root_id), p_seed);
+	p_seed = _hash_u64(static_cast<uint64_t>(p_selection.priority), p_seed);
+	p_seed = _hash_bool(p_selection.enabled, p_seed);
+	p_seed = _hash_bool(p_selection.affect_position, p_seed);
+	p_seed = _hash_bool(p_selection.affect_opacity, p_seed);
+	return p_seed;
+}
+
+static uint32_t _populate_scene_effector_payload_for_renderer(const GaussianSplatRenderer *p_renderer,
+		GaussianSplatting::TileRenderParams *r_params = nullptr, uint64_t *r_signature_seed = nullptr) {
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	if (!director || !p_renderer) {
+		return 0;
+	}
+
+	LocalVector<GaussianSplatSceneDirector::SphereEffectorSelection> payload;
+	director->build_sphere_effector_payload_for_renderer(p_renderer, payload);
+	if (payload.is_empty()) {
+		return 0;
+	}
+
+	const uint32_t total_scene_effectors = director->get_sphere_effector_count_for_renderer(p_renderer);
+	if (r_signature_seed) {
+		*r_signature_seed = _hash_u64(static_cast<uint64_t>(total_scene_effectors), *r_signature_seed);
+		*r_signature_seed = _hash_u64(static_cast<uint64_t>(payload.size()), *r_signature_seed);
+		for (const GaussianSplatSceneDirector::SphereEffectorSelection &selection : payload) {
+			*r_signature_seed = _hash_scene_effector_selection(selection, *r_signature_seed);
+		}
+	}
+
+	if (!r_params) {
+		return total_scene_effectors;
+	}
+
+	r_params->sphere_effector_count = payload.size();
+	r_params->sphere_effector_max_active = payload.size();
+	r_params->sphere_effector_enabled = false;
+	r_params->sphere_effector_center = Vector3();
+	r_params->sphere_effector_radius = 0.0f;
+	r_params->sphere_effector_strength = 0.0f;
+	r_params->sphere_effector_falloff = 2.0f;
+	r_params->sphere_effector_frequency = 2.0f;
+	r_params->sphere_effector_affect_position = true;
+	r_params->sphere_effector_affect_opacity = false;
+	r_params->sphere_effector_opacity_strength = 1.0f;
+	r_params->sphere_effector_target_opacity = 0.0f;
+	for (uint32_t i = 0; i < GS_MAX_SPHERE_EFFECTORS; i++) {
+		r_params->sphere_effectors[i] = GaussianSplatting::SphereEffectorRenderData();
+	}
+	for (uint32_t i = 0; i < payload.size(); i++) {
+		GaussianSplatting::SphereEffectorRenderData &entry = r_params->sphere_effectors[i];
+		entry.enabled = payload[i].enabled;
+		entry.center = payload[i].center;
+		entry.radius = payload[i].radius;
+		entry.strength = payload[i].strength;
+		entry.falloff = payload[i].falloff;
+		entry.frequency = payload[i].frequency;
+		entry.affect_position = payload[i].affect_position;
+		entry.affect_opacity = payload[i].affect_opacity;
+		entry.opacity_strength = payload[i].opacity_strength;
+		entry.target_opacity = 0.0f;
+	}
+	return total_scene_effectors;
 }
 
 static RD::DataFormat _resolve_compute_friendly_raster_format(RD::DataFormat p_format) {
@@ -296,7 +378,8 @@ static uint64_t _compute_color_grading_signature(const GaussianSplatRenderer::Re
 	return seed;
 }
 
-static uint64_t _compute_lighting_signature(const RenderDataRD *p_render_data, uint64_t p_frame_id) {
+static uint64_t _compute_lighting_signature(const RenderDataRD *p_render_data, uint64_t p_frame_id,
+		const GaussianSplatRenderer *p_renderer) {
 	uint64_t seed = HASH_MURMUR3_SEED;
 	if (!p_render_data) {
 		// Without RenderDataRD we cannot enumerate scene lights; avoid stale cache reuse.
@@ -373,17 +456,28 @@ static uint64_t _compute_lighting_signature(const RenderDataRD *p_render_data, u
 	seed = _hash_float_bits(wind_frequency, seed);
 	seed = _hash_float_bits(wind_spatial_frequency, seed);
 	seed = _hash_float_bits(wind_time_scale, seed);
-	seed = _hash_u64(static_cast<uint64_t>(sphere_effector_settings.max_effectors), seed);
-	seed = _hash_bool(sphere_effector_settings.enabled, seed);
-	seed = _hash_vector3(sphere_effector_settings.center, seed);
-	seed = _hash_float_bits(sphere_effector_settings.radius, seed);
-	seed = _hash_float_bits(sphere_effector_settings.strength, seed);
-	seed = _hash_float_bits(sphere_effector_settings.falloff, seed);
-	seed = _hash_float_bits(sphere_effector_settings.frequency, seed);
-	seed = _hash_bool(sphere_effector_settings.affect_position, seed);
-	seed = _hash_bool(sphere_effector_settings.affect_opacity, seed);
-	seed = _hash_float_bits(sphere_effector_settings.opacity_strength, seed);
-	seed = _hash_float_bits(sphere_effector_settings.target_opacity, seed);
+	const uint32_t total_scene_effectors = _populate_scene_effector_payload_for_renderer(p_renderer, nullptr, &seed);
+	if (total_scene_effectors == 0u) {
+		const uint32_t capped_effectors = MIN<uint32_t>(MAX(sphere_effector_settings.max_effectors, 0), GS_MAX_SPHERE_EFFECTORS);
+		if (sphere_effector_settings.max_effectors > int(GS_MAX_SPHERE_EFFECTORS)) {
+			WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] ProjectSettings requests %d sphere effectors, but this runtime supports at most %d per pass.",
+					sphere_effector_settings.max_effectors, GS_MAX_SPHERE_EFFECTORS));
+		}
+		seed = _hash_u64(static_cast<uint64_t>(capped_effectors), seed);
+		seed = _hash_bool(sphere_effector_settings.enabled && capped_effectors > 0u, seed);
+		seed = _hash_vector3(sphere_effector_settings.center, seed);
+		seed = _hash_float_bits(sphere_effector_settings.radius, seed);
+		seed = _hash_float_bits(sphere_effector_settings.strength, seed);
+		seed = _hash_float_bits(sphere_effector_settings.falloff, seed);
+		seed = _hash_float_bits(sphere_effector_settings.frequency, seed);
+		seed = _hash_bool(sphere_effector_settings.affect_position, seed);
+		seed = _hash_bool(sphere_effector_settings.affect_opacity, seed);
+		seed = _hash_float_bits(sphere_effector_settings.opacity_strength, seed);
+		seed = _hash_float_bits(sphere_effector_settings.target_opacity, seed);
+	} else if (total_scene_effectors > GS_MAX_SPHERE_EFFECTORS) {
+		WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Scene matched %d sphere effectors, but this runtime binds at most %d per pass. Highest-priority deterministic entries are used.",
+				total_scene_effectors, GS_MAX_SPHERE_EFFECTORS));
+	}
 	if (wind_enabled && wind_strength > 0.0f) {
 		const float wind_time_seconds = float(double(p_frame_id) * (1.0 / 60.0) * double(MAX(wind_time_scale, 0.0f)));
 		seed = _hash_float_bits(wind_time_seconds, seed);
@@ -1122,6 +1216,7 @@ struct RenderPipelineStages::SortStage {
 					instance_inputs.max_visible_splats = buffers.max_visible_splats;
 					instance_inputs.max_chunk_splats = buffers.max_chunk_splats;
 					instance_inputs.world_submission_active = buffers.world_submission_active;
+					instance_inputs.owner_renderer = renderer;
 					instance_inputs.device = state_view.get_rendering_device();
 					sorting_pipeline->set_instance_pipeline_inputs(instance_inputs);
 				} else {
@@ -1305,7 +1400,7 @@ struct RenderPipelineStages::RasterCompositeStage {
 		raster_input.content_generation = renderer->get_instance_pipeline_content_generation();
 		raster_input.cull_config_signature = _compute_cull_config_signature(*renderer, state_view);
 		raster_input.color_grading_signature = _compute_color_grading_signature(state_view.get_render_config_view(), renderer);
-		raster_input.lighting_signature = _compute_lighting_signature(p_context.render_data, p_context.frame_id);
+		raster_input.lighting_signature = _compute_lighting_signature(p_context.render_data, p_context.frame_id, renderer);
 		raster_input.metrics = p_context.metrics;
 		raster_input.state_view = &state_view;
 		raster_input.mutation_access = &state_mut;
@@ -1712,16 +1807,29 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 	render_params.wind_spatial_frequency = wind_spatial_frequency;
 	render_params.wind_time_seconds = float(double(state_view.get_frame_state_view().frame_counter) * (1.0 / 60.0) *
 			double(MAX(wind_time_scale, 0.0f)));
-	render_params.sphere_effector_enabled = sphere_effector_settings.enabled;
-	render_params.sphere_effector_center = sphere_effector_settings.center;
-	render_params.sphere_effector_radius = sphere_effector_settings.radius;
-	render_params.sphere_effector_strength = sphere_effector_settings.strength;
-	render_params.sphere_effector_falloff = sphere_effector_settings.falloff;
-	render_params.sphere_effector_frequency = sphere_effector_settings.frequency;
-	render_params.sphere_effector_affect_position = sphere_effector_settings.affect_position;
-	render_params.sphere_effector_affect_opacity = sphere_effector_settings.affect_opacity;
-	render_params.sphere_effector_opacity_strength = sphere_effector_settings.opacity_strength;
-	render_params.sphere_effector_target_opacity = sphere_effector_settings.target_opacity;
+	render_params.sphere_effector_count = 0u;
+	const uint32_t total_scene_effectors = _populate_scene_effector_payload_for_renderer(renderer, &render_params, nullptr);
+	if (total_scene_effectors == 0u) {
+		const uint32_t capped_effectors = MIN<uint32_t>(MAX(sphere_effector_settings.max_effectors, 0), GS_MAX_SPHERE_EFFECTORS);
+		if (sphere_effector_settings.max_effectors > int(GS_MAX_SPHERE_EFFECTORS)) {
+			WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] ProjectSettings requests %d sphere effectors, but this runtime supports at most %d per pass.",
+					sphere_effector_settings.max_effectors, GS_MAX_SPHERE_EFFECTORS));
+		}
+		render_params.sphere_effector_max_active = capped_effectors;
+		render_params.sphere_effector_enabled = sphere_effector_settings.enabled && capped_effectors > 0u;
+		render_params.sphere_effector_center = sphere_effector_settings.center;
+		render_params.sphere_effector_radius = sphere_effector_settings.radius;
+		render_params.sphere_effector_strength = sphere_effector_settings.strength;
+		render_params.sphere_effector_falloff = sphere_effector_settings.falloff;
+		render_params.sphere_effector_frequency = sphere_effector_settings.frequency;
+		render_params.sphere_effector_affect_position = sphere_effector_settings.affect_position;
+		render_params.sphere_effector_affect_opacity = sphere_effector_settings.affect_opacity;
+		render_params.sphere_effector_opacity_strength = sphere_effector_settings.opacity_strength;
+		render_params.sphere_effector_target_opacity = sphere_effector_settings.target_opacity;
+	} else if (total_scene_effectors > GS_MAX_SPHERE_EFFECTORS) {
+		WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Scene matched %d sphere effectors, but this runtime binds at most %d per pass. Highest-priority deterministic entries are used.",
+				total_scene_effectors, GS_MAX_SPHERE_EFFECTORS));
+	}
 	if (instance_buffers_ready) {
 		render_params.instance_buffer = instance_buffers.instance_buffer;
 		render_params.instance_grading_buffer = instance_buffers.instance_grading_buffer;

@@ -235,6 +235,7 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 			gpu_culler.is_valid() ? gpu_culler->get_state().static_chunks_revision : 0ULL);
 	if (director != nullptr) {
 		source_generation = _mix_generation(source_generation, director->get_instance_generation_for_renderer(p_renderer));
+		source_generation = _mix_generation(source_generation, director->get_sphere_effector_generation_for_renderer(p_renderer));
 	}
 	// Mix the renderer-wide grading-defaults counter so fallback grading rows
 	// (rows with no per-instance grading ref — director-less direct-data flows

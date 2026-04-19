@@ -92,7 +92,8 @@ static bool _get_sort_position(const GaussianSplatRenderer &p_renderer, uint32_t
 }
 
 static void _set_instance_sort_inputs(const GaussianSplatRenderer::InstancePipelineBuffers &p_buffers,
-		RenderingDevice *p_render_device, GPUSortingPipeline *p_sorting_pipeline, uint32_t p_visible_chunk_count) {
+		RenderingDevice *p_render_device, GPUSortingPipeline *p_sorting_pipeline,
+		GaussianSplatRenderer *p_renderer, uint32_t p_visible_chunk_count) {
 	GPUSortingPipeline::InstancePipelineInputs instance_inputs;
 	instance_inputs.atlas_gaussian_buffer = p_buffers.atlas_gaussian_buffer;
 	instance_inputs.quantization_buffer = p_buffers.quantization_required ? p_buffers.quantization_buffer : RID();
@@ -111,6 +112,7 @@ static void _set_instance_sort_inputs(const GaussianSplatRenderer::InstancePipel
 	instance_inputs.max_visible_splats = p_buffers.max_visible_splats;
 	instance_inputs.max_chunk_splats = p_buffers.max_chunk_splats;
 	instance_inputs.world_submission_active = p_buffers.world_submission_active;
+	instance_inputs.owner_renderer = p_renderer;
 	instance_inputs.device = p_render_device;
 	p_sorting_pipeline->set_instance_pipeline_inputs(instance_inputs);
 }
@@ -175,7 +177,7 @@ static bool _sync_instance_sort_inputs(const GaussianSplatRenderer::IFrameStateV
 	// FIX: Use buffer capacity instead of stale async readback.
 	// GPU-side counter drives actual dispatch; this is a structural guard only.
 	uint32_t visible_chunk_count = buffers.max_visible_chunks;
-	_set_instance_sort_inputs(buffers, p_state_view.get_rendering_device(), p_sorting_pipeline, visible_chunk_count);
+	_set_instance_sort_inputs(buffers, p_state_view.get_rendering_device(), p_sorting_pipeline, p_renderer, visible_chunk_count);
 	if (r_visible_chunk_count) {
 		*r_visible_chunk_count = visible_chunk_count;
 	}

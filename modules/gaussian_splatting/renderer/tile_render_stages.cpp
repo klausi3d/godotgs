@@ -27,14 +27,119 @@
 namespace {
 
 static uint32_t _get_shift_from_power_of_2(uint32_t p_value) {
-    if (p_value <= 1u) {
-        return 0u;
-    }
+	if (p_value <= 1u) {
+		return 0u;
+	}
     uint32_t shift = 0u;
     while ((1u << shift) < p_value && shift < 31u) {
         shift++;
     }
-    return shift;
+	return shift;
+}
+
+static float _sanitize_effector_float(float p_value, float p_fallback) {
+	return Math::is_finite(p_value) ? p_value : p_fallback;
+}
+
+static bool _is_valid_effector_center(const Vector3 &p_center) {
+	return Math::is_finite(p_center.x) && Math::is_finite(p_center.y) && Math::is_finite(p_center.z);
+}
+
+static void _clear_effector_slot(float (&r_sphere)[4], float (&r_config)[4], float (&r_opacity)[4]) {
+	r_sphere[0] = 0.0f;
+	r_sphere[1] = 0.0f;
+	r_sphere[2] = 0.0f;
+	r_sphere[3] = 0.0f;
+	r_config[0] = 0.0f;
+	r_config[1] = 0.0f;
+	r_config[2] = 2.0f;
+	r_config[3] = 2.0f;
+	r_opacity[0] = 1.0f;
+	r_opacity[1] = 0.0f;
+	r_opacity[2] = 1.0f;
+	r_opacity[3] = 0.0f;
+}
+
+static bool _pack_effector_slot(const GaussianSplatting::SphereEffectorRenderData &p_source,
+		float (&r_sphere)[4], float (&r_config)[4], float (&r_opacity)[4]) {
+	if (!p_source.enabled) {
+		return false;
+	}
+	if (!_is_valid_effector_center(p_source.center)) {
+		WARN_PRINT_ONCE("[TileRenderer] Ignoring sphere effector with non-finite center.");
+		return false;
+	}
+	const float radius = MAX(0.0f, _sanitize_effector_float(p_source.radius, 0.0f));
+	if (radius <= 0.0f) {
+		return false;
+	}
+
+	r_sphere[0] = p_source.center.x;
+	r_sphere[1] = p_source.center.y;
+	r_sphere[2] = p_source.center.z;
+	r_sphere[3] = radius;
+	r_config[0] = 1.0f;
+	r_config[1] = _sanitize_effector_float(p_source.strength, 0.0f);
+	r_config[2] = MAX(0.001f, _sanitize_effector_float(p_source.falloff, 2.0f));
+	r_config[3] = MAX(0.1f, _sanitize_effector_float(p_source.frequency, 2.0f));
+	r_opacity[0] = p_source.affect_position ? 1.0f : 0.0f;
+	r_opacity[1] = p_source.affect_opacity ? 1.0f : 0.0f;
+	r_opacity[2] = CLAMP(_sanitize_effector_float(p_source.opacity_strength, 1.0f), 0.0f, 1.0f);
+	r_opacity[3] = CLAMP(_sanitize_effector_float(p_source.target_opacity, 0.0f), 0.0f, 1.0f);
+	return true;
+}
+
+static void _build_effector_payload(const TileRenderer::RenderParams &p_params, float (&r_meta)[4],
+		float (&r_spheres)[GS_MAX_SPHERE_EFFECTORS][4], float (&r_configs)[GS_MAX_SPHERE_EFFECTORS][4],
+		float (&r_opacity_configs)[GS_MAX_SPHERE_EFFECTORS][4]) {
+	for (uint32_t i = 0; i < GS_MAX_SPHERE_EFFECTORS; i++) {
+		_clear_effector_slot(r_spheres[i], r_configs[i], r_opacity_configs[i]);
+	}
+
+	const uint32_t bounded_limit = MIN(p_params.sphere_effector_max_active, GS_MAX_SPHERE_EFFECTORS);
+	const bool has_explicit_scene_bindings = p_params.sphere_effector_count > 0u;
+	uint32_t requested_count = has_explicit_scene_bindings ? p_params.sphere_effector_count : 0u;
+	uint32_t active_count = 0u;
+
+	if (p_params.sphere_effector_max_active > GS_MAX_SPHERE_EFFECTORS) {
+		WARN_PRINT_ONCE(vformat("[TileRenderer] Requested %d sphere effectors, but this runtime supports at most %d per pass.",
+				p_params.sphere_effector_max_active, GS_MAX_SPHERE_EFFECTORS));
+	}
+
+	if (has_explicit_scene_bindings) {
+		if (requested_count > bounded_limit) {
+			WARN_PRINT_ONCE(vformat("[TileRenderer] Truncating sphere effector list from %d to %d active entries for this pass.",
+					requested_count, bounded_limit));
+		}
+		const uint32_t scan_count = MIN(requested_count, bounded_limit);
+		for (uint32_t i = 0; i < scan_count; i++) {
+			if (_pack_effector_slot(p_params.sphere_effectors[i], r_spheres[active_count], r_configs[active_count],
+						r_opacity_configs[active_count])) {
+				active_count++;
+			}
+		}
+	} else if (bounded_limit > 0u) {
+		GaussianSplatting::SphereEffectorRenderData legacy_effector;
+		legacy_effector.enabled = p_params.sphere_effector_enabled;
+		legacy_effector.center = p_params.sphere_effector_center;
+		legacy_effector.radius = p_params.sphere_effector_radius;
+		legacy_effector.strength = p_params.sphere_effector_strength;
+		legacy_effector.falloff = p_params.sphere_effector_falloff;
+		legacy_effector.frequency = p_params.sphere_effector_frequency;
+		legacy_effector.affect_position = p_params.sphere_effector_affect_position;
+		legacy_effector.affect_opacity = p_params.sphere_effector_affect_opacity;
+		legacy_effector.opacity_strength = p_params.sphere_effector_opacity_strength;
+		legacy_effector.target_opacity = p_params.sphere_effector_target_opacity;
+		requested_count = legacy_effector.enabled ? 1u : 0u;
+		if (_pack_effector_slot(legacy_effector, r_spheres[0], r_configs[0], r_opacity_configs[0])) {
+			active_count = 1u;
+		}
+	}
+
+	r_meta[0] = float(active_count);
+	r_meta[1] = float(GS_MAX_SPHERE_EFFECTORS);
+	r_meta[2] = float(requested_count);
+	r_meta[3] = has_explicit_scene_bindings ? 1.0f : 0.0f;
 }
 
 } // namespace
@@ -339,18 +444,8 @@ TileRenderParamsGPU TileRenderer::TileRenderParamsBuilder::build_params(const Re
 	params.wind_time_config[1] = MAX(0.0f, p_params.wind_frequency);
 	params.wind_time_config[2] = p_params.wind_spatial_frequency;
 	params.wind_time_config[3] = p_params.wind_enabled ? 1.0f : 0.0f;
-	params.effector_sphere[0] = p_params.sphere_effector_center.x;
-	params.effector_sphere[1] = p_params.sphere_effector_center.y;
-	params.effector_sphere[2] = p_params.sphere_effector_center.z;
-	params.effector_sphere[3] = MAX(0.0f, p_params.sphere_effector_radius);
-	params.effector_config[0] = p_params.sphere_effector_enabled ? 1.0f : 0.0f;
-	params.effector_config[1] = p_params.sphere_effector_strength;
-	params.effector_config[2] = MAX(0.001f, p_params.sphere_effector_falloff);
-	params.effector_config[3] = MAX(0.1f, p_params.sphere_effector_frequency);
-	params.effector_opacity_config[0] = p_params.sphere_effector_affect_position ? 1.0f : 0.0f;
-	params.effector_opacity_config[1] = p_params.sphere_effector_affect_opacity ? 1.0f : 0.0f;
-	params.effector_opacity_config[2] = CLAMP(p_params.sphere_effector_opacity_strength, 0.0f, 1.0f);
-	params.effector_opacity_config[3] = CLAMP(p_params.sphere_effector_target_opacity, 0.0f, 1.0f);
+	_build_effector_payload(p_params, params.effector_meta, params.effector_spheres, params.effector_configs,
+			params.effector_opacity_configs);
 	params.hotspot_cull_config[0] = float(p_params.hotspot_pressure_threshold);
 	params.hotspot_cull_config[1] = MAX(0.0f, p_params.hotspot_min_radius_px);
 	params.hotspot_cull_config[2] = 0.0f;

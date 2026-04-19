@@ -698,7 +698,9 @@ const RenderStreamingOrchestrator::VisibleLODSelection &RenderStreamingOrchestra
 	const LODConfig &lod_config = p_streaming_system->get_lod_config();
 	const float hysteresis_zone = p_streaming_system->get_lod_hysteresis_zone();
 	p_director->update_instance_lods_for_renderer(renderer, p_camera_origin, lod_config, hysteresis_zone);
-	const uint64_t instance_generation = p_director->get_instance_generation_for_renderer(renderer);
+	const uint64_t instance_generation = _mix_content_generation(
+			p_director->get_instance_generation_for_renderer(renderer),
+			p_director->get_sphere_effector_generation_for_renderer(renderer));
 	const bool shadow_only = renderer->is_shadow_instance_filter_enabled();
 	if (instance_generation != 0 &&
 			visible_lod_selection_generation == instance_generation &&
@@ -1608,7 +1610,9 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 	uint64_t instance_generation = 0;
 	uint64_t instance_asset_generation = 0;
 	if (GaussianSplatSceneDirector *generation_director = GaussianSplatSceneDirector::get_singleton()) {
-		instance_generation = generation_director->get_instance_generation_for_renderer(renderer);
+		instance_generation = _mix_content_generation(
+				generation_director->get_instance_generation_for_renderer(renderer),
+				generation_director->get_sphere_effector_generation_for_renderer(renderer));
 		instance_asset_generation = generation_director->get_instance_asset_generation_for_renderer(renderer);
 	}
 	uint64_t atlas_generation = 0;

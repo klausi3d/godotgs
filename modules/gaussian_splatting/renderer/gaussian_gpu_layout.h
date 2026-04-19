@@ -7,8 +7,11 @@
 #include <cstddef>
 #include <cstdint>
 
-static constexpr uint32_t GS_RENDER_PARAMS_LAYOUT_VERSION = 18; // Keep in sync with shaders/includes/gs_render_params.glsl
+static constexpr uint32_t GS_RENDER_PARAMS_LAYOUT_VERSION = 19; // Keep in sync with shaders/includes/gs_render_params.glsl
 static constexpr uint32_t GS_MAX_ASSET_LODS = 8;
+// Hard runtime bound for scene/global sphere effectors consumed per pass.
+// Keep this explicit until every producer/consumer supports a larger fixed ABI.
+static constexpr uint32_t GS_MAX_SPHERE_EFFECTORS = 4;
 static constexpr uint32_t GS_SH_METADATA_FIRST_ORDER_MASK = 0x000000FFu;
 static constexpr uint32_t GS_SH_METADATA_HIGH_ORDER_MASK = 0x0000FF00u;
 static constexpr uint32_t GS_SH_METADATA_ENCODED_COUNT_MASK = 0x00FF0000u;
@@ -72,7 +75,8 @@ struct alignas(16) InstanceDataGPU {
     uint32_t ids[2];             // x = asset_id, y = flags
     uint32_t lod[2];             // x = resolved_lod_level, y = reserved
     float wind_params[4];        // xyz = wind direction override (0,0,0=infer global), w = wind frequency scale
-    float effect_params[4];      // x = position response scale, y = opacity response scale, z/w = reserved
+    float effect_params[4];      // x = position response scale, y = opacity response scale,
+                                 // z = scene effector mask bits, w = bound scene effector count snapshot
 };
 
 // Instance flag bits (ids[1]).
@@ -96,6 +100,18 @@ static_assert(offsetof(InstanceDataGPU, ids) == 64, "InstanceDataGPU.ids offset 
 static_assert(offsetof(InstanceDataGPU, lod) == 72, "InstanceDataGPU.lod offset mismatch");
 static_assert(offsetof(InstanceDataGPU, wind_params) == 80, "InstanceDataGPU.wind_params offset mismatch");
 static_assert(offsetof(InstanceDataGPU, effect_params) == 96, "InstanceDataGPU.effect_params offset mismatch");
+
+struct alignas(16) SphereEffectorGPU {
+    float sphere[4];         // xyz = center (world), w = radius
+    float config[4];         // x = enabled (0/1), y = displacement strength, z = falloff exponent, w = frequency
+    float opacity_config[4]; // x = affect_position, y = affect_opacity, z = opacity_strength, w = target_opacity
+};
+
+static_assert(alignof(SphereEffectorGPU) == 16, "SphereEffectorGPU must be 16-byte aligned");
+static_assert(sizeof(SphereEffectorGPU) == 48, "SphereEffectorGPU must be 48 bytes");
+static_assert(offsetof(SphereEffectorGPU, sphere) == 0, "SphereEffectorGPU.sphere offset mismatch");
+static_assert(offsetof(SphereEffectorGPU, config) == 16, "SphereEffectorGPU.config offset mismatch");
+static_assert(offsetof(SphereEffectorGPU, opacity_config) == 32, "SphereEffectorGPU.opacity_config offset mismatch");
 
 // Per-instance color grading (std430). Indexed by SplatRefGPU.instance_id, parallel to
 // InstanceDataGPU. Populated by GaussianSplatSceneDirector::build_instance_grading_buffer_for_renderer.
@@ -462,14 +478,12 @@ struct alignas(16) TileRenderParamsGPU {
     float instance_rotation_inv_col2[4];
     float wind_dir_strength[4];
     float wind_time_config[4];
-    // Single global sphere effector (foundation for capped multi-effector support):
-    // effector_sphere: xyz=center (world), w=radius
-    // effector_config: x=enabled (0/1), y=strength (meters), z=falloff exponent, w=frequency (Hz)
-    float effector_sphere[4];
-    float effector_config[4];
-    // effector_opacity_config: x=affect_position (0/1), y=affect_opacity (0/1),
-    // z=opacity_strength (0..1), w=target_opacity (0..1)
-    float effector_opacity_config[4];
+    // Bounded sphere effector payload shared across tile and depth passes.
+    // effector_meta: x=active_count, y=max_supported_count, z=requested_count, w=scene_binding_present
+    float effector_meta[4];
+    float effector_spheres[GS_MAX_SPHERE_EFFECTORS][4];
+    float effector_configs[GS_MAX_SPHERE_EFFECTORS][4];
+    float effector_opacity_configs[GS_MAX_SPHERE_EFFECTORS][4];
     // Hotspot-aware pre-raster cull (deterministic, shared by COUNT and EMIT):
     // x = hotspot_pressure_threshold (absolute previous-frame tile count above which
     //     the per-tile prune fires; 0 disables the cull entirely)
@@ -479,7 +493,7 @@ struct alignas(16) TileRenderParamsGPU {
     float hotspot_cull_config[4];
 };
 
-static_assert(sizeof(TileRenderParamsGPU) == 752, "TileRenderParamsGPU must match RenderParams std140 layout (752 bytes)");
+static_assert(sizeof(TileRenderParamsGPU) == 912, "TileRenderParamsGPU must match RenderParams std140 layout (912 bytes)");
 static_assert(alignof(TileRenderParamsGPU) == 16, "TileRenderParamsGPU must be 16-byte aligned");
 static_assert(offsetof(TileRenderParamsGPU, view_matrix) == 0, "TileRenderParamsGPU.view_matrix offset mismatch");
 static_assert(offsetof(TileRenderParamsGPU, inv_view_matrix) == 64, "TileRenderParamsGPU.inv_view_matrix offset mismatch");
@@ -524,10 +538,11 @@ static_assert(offsetof(TileRenderParamsGPU, instance_rotation_inv_col1) == 624, 
 static_assert(offsetof(TileRenderParamsGPU, instance_rotation_inv_col2) == 640, "TileRenderParamsGPU.instance_rotation_inv_col2 offset mismatch");
 static_assert(offsetof(TileRenderParamsGPU, wind_dir_strength) == 656, "TileRenderParamsGPU.wind_dir_strength offset mismatch");
 static_assert(offsetof(TileRenderParamsGPU, wind_time_config) == 672, "TileRenderParamsGPU.wind_time_config offset mismatch");
-static_assert(offsetof(TileRenderParamsGPU, effector_sphere) == 688, "TileRenderParamsGPU.effector_sphere offset mismatch");
-static_assert(offsetof(TileRenderParamsGPU, effector_config) == 704, "TileRenderParamsGPU.effector_config offset mismatch");
-static_assert(offsetof(TileRenderParamsGPU, effector_opacity_config) == 720, "TileRenderParamsGPU.effector_opacity_config offset mismatch");
-static_assert(offsetof(TileRenderParamsGPU, hotspot_cull_config) == 736, "TileRenderParamsGPU.hotspot_cull_config offset mismatch");
+static_assert(offsetof(TileRenderParamsGPU, effector_meta) == 688, "TileRenderParamsGPU.effector_meta offset mismatch");
+static_assert(offsetof(TileRenderParamsGPU, effector_spheres) == 704, "TileRenderParamsGPU.effector_spheres offset mismatch");
+static_assert(offsetof(TileRenderParamsGPU, effector_configs) == 768, "TileRenderParamsGPU.effector_configs offset mismatch");
+static_assert(offsetof(TileRenderParamsGPU, effector_opacity_configs) == 832, "TileRenderParamsGPU.effector_opacity_configs offset mismatch");
+static_assert(offsetof(TileRenderParamsGPU, hotspot_cull_config) == 896, "TileRenderParamsGPU.hotspot_cull_config offset mismatch");
 
 struct alignas(16) FrustumCullParamsGPU {
     static constexpr uint32_t kFrustumPlaneCount = 6;
@@ -605,9 +620,10 @@ struct alignas(16) InstanceDepthParamsGPU {
     uint32_t pad1;
     float wind_dir_strength[4];
     float wind_time_config[4];
-    float effector_sphere[4];
-    float effector_config[4];
-    float effector_opacity_config[4];
+    float effector_meta[4];
+    float effector_spheres[GS_MAX_SPHERE_EFFECTORS][4];
+    float effector_configs[GS_MAX_SPHERE_EFFECTORS][4];
+    float effector_opacity_configs[GS_MAX_SPHERE_EFFECTORS][4];
     float frustum_planes[InstanceCullParamsGPU::kFrustumPlaneCount][4];
     float camera_position_ortho[4]; // xyz = camera position, w = orthographic flag (1.0 or 0.0)
     float cull_screen_distance[4]; // x = pixel_scale_y, y = tiny_splat_radius_px, z = min_screen_threshold_px, w = max_distance_sq
@@ -615,7 +631,7 @@ struct alignas(16) InstanceDepthParamsGPU {
 };
 
 static_assert(alignof(InstanceDepthParamsGPU) == 16, "InstanceDepthParamsGPU must be 16-byte aligned");
-static_assert(sizeof(InstanceDepthParamsGPU) == 304, "InstanceDepthParamsGPU must match std140 layout (304 bytes)");
+static_assert(sizeof(InstanceDepthParamsGPU) == 464, "InstanceDepthParamsGPU must match std140 layout (464 bytes)");
 static_assert(sizeof(InstanceDepthParamsGPU) % 16 == 0, "InstanceDepthParamsGPU must align to 16 bytes for std140");
 static_assert(offsetof(InstanceDepthParamsGPU, view_matrix) == 0, "InstanceDepthParamsGPU.view_matrix offset mismatch");
 static_assert(offsetof(InstanceDepthParamsGPU, visible_chunk_count) == 64, "InstanceDepthParamsGPU.visible_chunk_count offset mismatch");
@@ -624,13 +640,14 @@ static_assert(offsetof(InstanceDepthParamsGPU, pad0) == 72, "InstanceDepthParams
 static_assert(offsetof(InstanceDepthParamsGPU, pad1) == 76, "InstanceDepthParamsGPU.pad1 offset mismatch");
 static_assert(offsetof(InstanceDepthParamsGPU, wind_dir_strength) == 80, "InstanceDepthParamsGPU.wind_dir_strength offset mismatch");
 static_assert(offsetof(InstanceDepthParamsGPU, wind_time_config) == 96, "InstanceDepthParamsGPU.wind_time_config offset mismatch");
-static_assert(offsetof(InstanceDepthParamsGPU, effector_sphere) == 112, "InstanceDepthParamsGPU.effector_sphere offset mismatch");
-static_assert(offsetof(InstanceDepthParamsGPU, effector_config) == 128, "InstanceDepthParamsGPU.effector_config offset mismatch");
-static_assert(offsetof(InstanceDepthParamsGPU, effector_opacity_config) == 144, "InstanceDepthParamsGPU.effector_opacity_config offset mismatch");
-static_assert(offsetof(InstanceDepthParamsGPU, frustum_planes) == 160, "InstanceDepthParamsGPU.frustum_planes offset mismatch");
-static_assert(offsetof(InstanceDepthParamsGPU, camera_position_ortho) == 256, "InstanceDepthParamsGPU.camera_position_ortho offset mismatch");
-static_assert(offsetof(InstanceDepthParamsGPU, cull_screen_distance) == 272, "InstanceDepthParamsGPU.cull_screen_distance offset mismatch");
-static_assert(offsetof(InstanceDepthParamsGPU, cull_frustum_radius) == 288, "InstanceDepthParamsGPU.cull_frustum_radius offset mismatch");
+static_assert(offsetof(InstanceDepthParamsGPU, effector_meta) == 112, "InstanceDepthParamsGPU.effector_meta offset mismatch");
+static_assert(offsetof(InstanceDepthParamsGPU, effector_spheres) == 128, "InstanceDepthParamsGPU.effector_spheres offset mismatch");
+static_assert(offsetof(InstanceDepthParamsGPU, effector_configs) == 192, "InstanceDepthParamsGPU.effector_configs offset mismatch");
+static_assert(offsetof(InstanceDepthParamsGPU, effector_opacity_configs) == 256, "InstanceDepthParamsGPU.effector_opacity_configs offset mismatch");
+static_assert(offsetof(InstanceDepthParamsGPU, frustum_planes) == 320, "InstanceDepthParamsGPU.frustum_planes offset mismatch");
+static_assert(offsetof(InstanceDepthParamsGPU, camera_position_ortho) == 416, "InstanceDepthParamsGPU.camera_position_ortho offset mismatch");
+static_assert(offsetof(InstanceDepthParamsGPU, cull_screen_distance) == 432, "InstanceDepthParamsGPU.cull_screen_distance offset mismatch");
+static_assert(offsetof(InstanceDepthParamsGPU, cull_frustum_radius) == 448, "InstanceDepthParamsGPU.cull_frustum_radius offset mismatch");
 
 void pack_gaussian(const Gaussian &src,
         PackedGaussian &dst,

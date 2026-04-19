@@ -10,6 +10,8 @@
 #include "../renderer/gpu_sorter.h"
 #include "../renderer/gpu_sorting_config.h"
 
+class GaussianSplatRenderer;
+
 // Concrete implementation of IGPUSortingPipeline
 // Manages GPU sorter lifecycle, sort buffers, and depth compute resources
 class GPUSortingPipeline : public RefCounted, public IGPUSortingPipeline {
@@ -35,6 +37,7 @@ public:
         uint32_t max_visible_splats = 0;
         uint32_t max_chunk_splats = 0;
         bool world_submission_active = false;
+        const GaussianSplatRenderer *owner_renderer = nullptr;
     };
 
     GPUSortingPipeline();

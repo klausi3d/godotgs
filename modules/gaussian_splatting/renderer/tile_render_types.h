@@ -3,9 +3,11 @@
 
 #include "core/math/projection.h"
 #include "core/math/transform_3d.h"
+#include "core/math/vector3.h"
 #include "core/math/vector2i.h"
 #include "core/string/ustring.h"
 #include "core/templates/vector.h"
+#include "gaussian_gpu_layout.h"
 #include "servers/rendering/rendering_device.h"
 
 #include "../resources/color_grading_resource.h"
@@ -45,6 +47,19 @@ struct TileProjectionLayout {
 };
 
 namespace GaussianSplatting {
+
+struct SphereEffectorRenderData {
+	bool enabled = false;
+	Vector3 center = Vector3();
+	float radius = 0.0f;
+	float strength = 0.0f;
+	float falloff = 2.0f;
+	float frequency = 2.0f;
+	bool affect_position = true;
+	bool affect_opacity = false;
+	float opacity_strength = 1.0f;
+	float target_opacity = 0.0f;
+};
 
 struct TileAdaptiveSettings {
 	bool enable_adaptive_tile_size = false;
@@ -375,6 +390,13 @@ struct TileRenderParams {
 	float wind_frequency = 1.0f;
 	float wind_spatial_frequency = 0.1f;
 	float wind_time_seconds = 0.0f;
+	// Hard runtime cap for the explicit effector array. Higher-level systems should
+	// clamp before submission, but the renderer also enforces this bound.
+	uint32_t sphere_effector_max_active = GS_MAX_SPHERE_EFFECTORS;
+	uint32_t sphere_effector_count = 0;
+	std::array<SphereEffectorRenderData, GS_MAX_SPHERE_EFFECTORS> sphere_effectors{};
+	// Legacy single-effector fallback. Used when sphere_effector_count == 0 so older
+	// scenes and ProjectSettings-only workflows continue to behave as before.
 	bool sphere_effector_enabled = false;
 	Vector3 sphere_effector_center = Vector3();
 	float sphere_effector_radius = 0.0f;
