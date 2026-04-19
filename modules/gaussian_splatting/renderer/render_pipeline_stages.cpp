@@ -146,6 +146,12 @@ static uint64_t _hash_scene_effector_selection(const GaussianSplatSceneDirector:
 	p_seed = _hash_float_bits(p_selection.falloff, p_seed);
 	p_seed = _hash_float_bits(p_selection.frequency, p_seed);
 	p_seed = _hash_float_bits(p_selection.opacity_strength, p_seed);
+	// target_opacity must participate in the signature — it's propagated into
+	// renderer params and drives the shader's opacity deformation. Without
+	// this, a target_opacity-only change would keep the cache signature
+	// stable and `OutputCompositor::can_reuse_cached_render()` would serve
+	// a stale raster instead of re-rendering with the new opacity behavior.
+	p_seed = _hash_float_bits(p_selection.target_opacity, p_seed);
 	p_seed = _hash_u64(static_cast<uint64_t>(p_selection.layer_mask), p_seed);
 	p_seed = _hash_u64(static_cast<uint64_t>(p_selection.scope_mode), p_seed);
 	p_seed = _hash_u64(static_cast<uint64_t>(p_selection.scope_root_id), p_seed);
