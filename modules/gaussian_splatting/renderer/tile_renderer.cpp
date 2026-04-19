@@ -354,6 +354,7 @@ private:
 			const GaussianSplatting::InstancePipelineContract::InvariantViolationReason invariant_reason =
 					GaussianSplatting::InstancePipelineContract::first_tile_runtime_violation(
 							renderer.instance_pipeline_buffers.instance_buffer,
+						renderer.instance_pipeline_buffers.instance_grading_buffer,
 						renderer.instance_pipeline_buffers.splat_ref_buffer,
 						renderer.instance_pipeline_buffers.indirect_count_buffer,
 						renderer.instance_pipeline_buffers.indirect_dispatch_buffer,
