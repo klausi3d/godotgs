@@ -353,12 +353,13 @@ The current branch exposes a scene-driven-plus-per-node workflow for gameplay ef
 - `rendering/effect_position_scale` and `rendering/effect_opacity_scale` let each `GaussianSplatNode3D` partially follow, fully follow, or effectively ignore matched scene effectors.
 - `rendering/scene_effectors_enabled`, `rendering/scene_effector_layer_mask`, and `rendering/scene_effector_scope_root` control whether this node participates in scene effectors and which ones may match.
 - `rendering/opacity` remains the direct per-node gameplay fade, while scene-effector opacity modulation multiplies on top for dissolve or degeneration effects.
+- `get_last_matched_scene_effector_count()`, `is_scene_effector_position_active()`, and `is_scene_effector_opacity_active()` expose the current runtime match state for gameplay and debugging.
 
 Practical recipes:
 
 - Wind-only: disable `rendering/scene_effectors_enabled` or set both per-node effect scales to `0.0`.
 - Sphere position-only: enable a `SphereEffector3D`, keep `rendering/effect_position_scale > 0.0`, and set `rendering/effect_opacity_scale = 0.0`.
-- Sphere opacity-only dissolve: enable `SphereEffector3D.affect_opacity`, set `rendering/effect_position_scale = 0.0`, and tune `rendering/effect_opacity_scale`.
+- Sphere opacity-only dissolve or fade: enable `SphereEffector3D.affect_opacity`, set `SphereEffector3D.target_opacity`, set `rendering/effect_position_scale = 0.0`, and tune `rendering/effect_opacity_scale`.
 - Combined wind + sphere + dissolve: enable per-node wind override and keep both effect scales above zero.
 
 Current bounds:

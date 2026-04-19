@@ -214,7 +214,7 @@ static bool _build_effector_payload_from_scene_bindings(const GaussianSplatRende
         r_opacity_configs[i][0] = selection.affect_position ? 1.0f : 0.0f;
         r_opacity_configs[i][1] = selection.affect_opacity ? 1.0f : 0.0f;
         r_opacity_configs[i][2] = CLAMP(selection.opacity_strength, 0.0f, 1.0f);
-        r_opacity_configs[i][3] = 0.0f;
+        r_opacity_configs[i][3] = CLAMP(selection.target_opacity, 0.0f, 1.0f);
     }
 
     r_meta[0] = float(payload.size());

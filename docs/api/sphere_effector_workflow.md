@@ -10,6 +10,7 @@ This branch supports scene-authored sphere effectors for Gaussian splats through
   - `rendering/effect_position_scale`
   - `rendering/effect_opacity_scale`
   - `rendering/opacity`
+- Drive opacity toward `SphereEffector3D.target_opacity` instead of only dissolving to zero.
 - Override wind per node with:
   - `rendering/wind_override_enabled`
   - `rendering/wind_enabled`
@@ -50,15 +51,16 @@ ProjectSettings under `rendering/gaussian_splatting/effects/*` remain available 
 3. Set the node's `rendering/effect_position_scale` above `0.0`.
 4. Set `rendering/effect_opacity_scale = 0.0`.
 
-### Sphere Opacity-only Dissolve
+### Sphere Opacity-only Fade / Dissolve
 
 1. Add a `SphereEffector3D`.
 2. Set `affect_opacity = true`.
 3. Tune `opacity_strength`.
-4. Set the node's `rendering/effect_position_scale = 0.0`.
-5. Set `rendering/effect_opacity_scale` above `0.0`.
-
-Scene-driven opacity currently dissolves toward transparent. Use the ProjectSettings fallback path if you need a non-zero target opacity until the node API grows a dedicated target control.
+4. Set `target_opacity`:
+   - `0.0` for a dissolve
+   - `0.35` or similar for partial degeneration
+5. Set the node's `rendering/effect_position_scale = 0.0`.
+6. Set `rendering/effect_opacity_scale` above `0.0`.
 
 ### Combined Wind + Sphere + Opacity
 
@@ -72,6 +74,7 @@ Scene-driven opacity currently dissolves toward transparent. Use the ProjectSett
 - Use effector `layer_mask` and node `rendering/scene_effector_layer_mask` when multiple effect systems share a world.
 - Use `priority` when multiple effectors overlap and you need deterministic truncation into the renderer's four-slot budget.
 - Keep `rendering/effect_opacity_scale` at `0.0` on nodes that should not dissolve even if they still follow position deformation.
+- Use `GaussianSplatNode3D.get_last_matched_scene_effector_count()`, `is_scene_effector_position_active()`, and `is_scene_effector_opacity_active()` from gameplay scripts when you need runtime diagnostics.
 
 ## Stability And Sanitization
 
@@ -81,6 +84,7 @@ Scene-driven opacity currently dissolves toward transparent. Use the ProjectSett
 - `SphereEffector3D.falloff` clamps to `>= 0.001`.
 - `SphereEffector3D.frequency` clamps to `>= 0.1`.
 - `SphereEffector3D.opacity_strength` clamps to `0.0..1.0`.
+- `SphereEffector3D.target_opacity` clamps to `0.0..1.0`.
 - Non-finite node or effector values fall back to stable defaults instead of propagating NaNs into rendering.
 
 ## Example Scenes

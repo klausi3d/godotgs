@@ -223,7 +223,7 @@ static uint32_t _populate_scene_effector_payload_for_renderer(const GaussianSpla
 		entry.affect_position = payload[i].affect_position;
 		entry.affect_opacity = payload[i].affect_opacity;
 		entry.opacity_strength = payload[i].opacity_strength;
-		entry.target_opacity = 0.0f;
+		entry.target_opacity = payload[i].target_opacity;
 	}
 	return total_scene_effectors;
 }

@@ -95,6 +95,7 @@ public:
         float falloff = 2.0f;
         float frequency = 2.0f;
         float opacity_strength = 1.0f;
+        float target_opacity = 0.0f;
         uint32_t layer_mask = 1u;
         uint32_t scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE;
         ObjectID scope_root_id;
@@ -186,13 +187,13 @@ public:
     void register_sphere_effector(ObjectID p_effector_id, const Transform3D &p_transform,
             float p_radius, float p_strength, float p_falloff, float p_frequency,
             bool p_enabled = true, bool p_affect_position = true, bool p_affect_opacity = false,
-            float p_opacity_strength = 1.0f, uint32_t p_layer_mask = 1u,
+            float p_opacity_strength = 1.0f, float p_target_opacity = 0.0f, uint32_t p_layer_mask = 1u,
             uint32_t p_scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE,
             ObjectID p_scope_root_id = ObjectID(), int32_t p_priority = 0);
     void update_sphere_effector(ObjectID p_effector_id, const Transform3D &p_transform,
             float p_radius, float p_strength, float p_falloff, float p_frequency,
             bool p_enabled = true, bool p_affect_position = true, bool p_affect_opacity = false,
-            float p_opacity_strength = 1.0f, uint32_t p_layer_mask = 1u,
+            float p_opacity_strength = 1.0f, float p_target_opacity = 0.0f, uint32_t p_layer_mask = 1u,
             uint32_t p_scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE,
             ObjectID p_scope_root_id = ObjectID(), int32_t p_priority = 0);
     void unregister_sphere_effector(ObjectID p_effector_id);
@@ -205,6 +206,8 @@ public:
             LocalVector<SphereEffectorSelection> &out,
             uint32_t *r_total_scene_effectors = nullptr) const;
     bool get_primary_sphere_effector_for_instance(ObjectID p_node_id, SphereEffectorSelection *r_selection) const;
+    bool get_scene_effector_match_summary_for_instance(ObjectID p_node_id, uint32_t *r_match_count = nullptr,
+            bool *r_position_active = nullptr, bool *r_opacity_active = nullptr) const;
     uint32_t get_sphere_effector_count_for_renderer(const GaussianSplatRenderer *p_renderer) const;
     uint64_t get_sphere_effector_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
     void register_instance_submission(ObjectID p_node_id, const Ref<GaussianSplatAsset> &p_asset,
@@ -292,6 +295,7 @@ private:
         float falloff = 2.0f;
         float frequency = 2.0f;
         float opacity_strength = 1.0f;
+        float target_opacity = 0.0f;
         uint32_t layer_mask = 1u;
         uint32_t scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE;
         ObjectID scope_root_id;

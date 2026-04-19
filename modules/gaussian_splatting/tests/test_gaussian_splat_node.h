@@ -1229,6 +1229,9 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Scene sphere effect
     effector_a->set_radius(8.0f);
     effector_a->set_strength(1.0f);
     effector_a->set_affect_position(true);
+    effector_a->set_affect_opacity(true);
+    effector_a->set_opacity_strength(0.75f);
+    effector_a->set_target_opacity(0.35f);
 
     effector_b->set_enabled(true);
     effector_b->set_radius(8.0f);
@@ -1257,6 +1260,7 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Scene sphere effect
     LocalVector<GaussianSplatSceneDirector::SphereEffectorSelection> payload;
     director->build_sphere_effector_payload_for_renderer(renderer.ptr(), payload);
     REQUIRE(payload.size() == 2);
+    CHECK(payload[0].target_opacity == doctest::Approx(0.35f));
 
     LocalVector<InstanceDataGPU> instance_buffer;
     director->build_instance_buffer_for_renderer(renderer.ptr(), instance_buffer);
@@ -1268,6 +1272,12 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Scene sphere effect
     CHECK(decode_scene_effector_mask(instance_buffer[node_b_index]) == 0x2u);
     CHECK(instance_buffer[node_a_index].effect_params[3] == doctest::Approx(2.0f));
     CHECK(instance_buffer[node_b_index].effect_params[3] == doctest::Approx(2.0f));
+    CHECK(node_a->get_last_matched_scene_effector_count() == 1u);
+    CHECK(node_b->get_last_matched_scene_effector_count() == 1u);
+    CHECK(node_a->is_scene_effector_position_active());
+    CHECK(node_a->is_scene_effector_opacity_active());
+    CHECK(node_b->is_scene_effector_position_active());
+    CHECK_FALSE(node_b->is_scene_effector_opacity_active());
 
     node_b->set_scene_effectors_enabled(false);
     tree->process(0.0);
@@ -1275,11 +1285,81 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Scene sphere effect
     const int node_b_disabled_index = find_instance_index_by_translation_x(instance_buffer, node_b_x);
     REQUIRE(node_b_disabled_index >= 0);
     CHECK(decode_scene_effector_mask(instance_buffer[node_b_disabled_index]) == 0u);
+    CHECK(node_b->get_last_matched_scene_effector_count() == 0u);
+    CHECK_FALSE(node_b->is_scene_effector_position_active());
+    CHECK_FALSE(node_b->is_scene_effector_opacity_active());
 
     root->remove_child(group_b);
     root->remove_child(group_a);
     memdelete(group_b);
     memdelete(group_a);
+}
+
+TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Scene sphere effectors deterministically truncate to the renderer budget") {
+    SceneTree *tree = SceneTree::get_singleton();
+    REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+    Window *root = tree->get_root();
+    REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+    Node3D *group = memnew(Node3D);
+    GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
+    REQUIRE(group != nullptr);
+    REQUIRE(node != nullptr);
+
+    group->set_name("EffectGroup");
+    node->set_name("TargetNode");
+    node->set_splat_asset(make_single_splat_asset(3336.0f));
+
+    struct EffectorSpec {
+        const char *name;
+        int priority;
+    };
+    const EffectorSpec effector_specs[] = {
+        { "EffectorA", 2 },
+        { "EffectorB", 7 },
+        { "EffectorC", 5 },
+        { "EffectorD", -1 },
+        { "EffectorE", 3 },
+    };
+
+    root->add_child(group);
+    group->add_child(node);
+
+    LocalVector<SphereEffector3D *> effectors;
+    for (const EffectorSpec &spec : effector_specs) {
+        SphereEffector3D *effector = memnew(SphereEffector3D);
+        effector->set_name(spec.name);
+        effector->set_enabled(true);
+        effector->set_radius(10.0f);
+        effector->set_strength(float(spec.priority));
+        effector->set_priority(spec.priority);
+        effector->set_affect_position(true);
+        group->add_child(effector);
+        effectors.push_back(effector);
+    }
+    tree->process(0.0);
+
+    Ref<GaussianSplatRenderer> renderer = node->get_renderer();
+    GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+    if (!renderer.is_valid() || !director) {
+        root->remove_child(group);
+        memdelete(group);
+        return;
+    }
+
+    LocalVector<GaussianSplatSceneDirector::SphereEffectorSelection> payload;
+    director->build_sphere_effector_payload_for_renderer(renderer.ptr(), payload);
+    REQUIRE(payload.size() == 4);
+    CHECK(director->get_sphere_effector_count_for_renderer(renderer.ptr()) == 5u);
+    CHECK(node->get_last_matched_scene_effector_count() == 5u);
+    CHECK(payload[0].priority == 7);
+    CHECK(payload[1].priority == 5);
+    CHECK(payload[2].priority == 3);
+    CHECK(payload[3].priority == 2);
+
+    root->remove_child(group);
+    memdelete(group);
 }
 
 TEST_CASE("[GaussianSplatting][Node] Runtime effect controls sanitize invalid gameplay values") {
@@ -1317,6 +1397,52 @@ TEST_CASE("[GaussianSplatting][Node] Runtime effect controls sanitize invalid ga
     CHECK(node->get_wind_frequency() == doctest::Approx(0.0f));
 
     memdelete(node);
+}
+
+TEST_CASE("[GaussianSplatting][SphereEffector] Runtime opacity controls sanitize and warn on inert configs") {
+    SphereEffector3D *effector = memnew(SphereEffector3D);
+    REQUIRE(effector != nullptr);
+
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    CHECK(effector->get_target_opacity() == doctest::Approx(0.0f));
+    CHECK_FALSE(is_property_editor_exposed(effector, StringName("opacity_strength")));
+    CHECK_FALSE(is_property_editor_exposed(effector, StringName("target_opacity")));
+
+    effector->set_affect_opacity(true);
+    CHECK(is_property_editor_exposed(effector, StringName("opacity_strength")));
+    CHECK(is_property_editor_exposed(effector, StringName("target_opacity")));
+
+    effector->set_target_opacity(-0.5f);
+    CHECK(effector->get_target_opacity() == doctest::Approx(0.0f));
+    effector->set_target_opacity(1.5f);
+    CHECK(effector->get_target_opacity() == doctest::Approx(1.0f));
+    effector->set_target_opacity(nan);
+    CHECK(effector->get_target_opacity() == doctest::Approx(0.0f));
+
+    effector->set_enabled(true);
+    effector->set_radius(5.0f);
+    effector->set_affect_position(false);
+    effector->set_opacity_strength(0.0f);
+    effector->set_target_opacity(1.0f);
+
+    PackedStringArray warnings = effector->get_configuration_warnings();
+    bool has_opacity_strength_warning = false;
+    bool has_target_opacity_warning = false;
+    for (int i = 0; i < warnings.size(); i++) {
+        const String warning = warnings[i];
+        if (warning.contains("opacity_strength is 0")) {
+            has_opacity_strength_warning = true;
+        }
+        if (warning.contains("target_opacity is 1.0")) {
+            has_target_opacity_warning = true;
+        }
+    }
+
+    CHECK(has_opacity_strength_warning);
+    CHECK(has_target_opacity_warning);
+
+    memdelete(effector);
 }
 
 TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer instance buffer drops hidden nodes") {

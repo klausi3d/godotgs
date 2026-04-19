@@ -630,6 +630,15 @@ public:
     void set_scene_effector_scope_root(const NodePath &p_scope_root);
     NodePath get_scene_effector_scope_root() const { return scene_effector_scope_root; }
 
+    /** @brief Returns the number of currently matched scene effectors for this node. */
+    uint32_t get_last_matched_scene_effector_count() const;
+
+    /** @brief Returns true when at least one matched scene effector currently contributes position deformation. */
+    bool is_scene_effector_position_active() const;
+
+    /** @brief Returns true when at least one matched scene effector currently contributes opacity modulation. */
+    bool is_scene_effector_opacity_active() const;
+
     /** @brief Enables per-instance wind overrides for this node. */
     void set_wind_override_enabled(bool p_enabled);
     bool is_wind_override_enabled() const { return wind_override_enabled; }

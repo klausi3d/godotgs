@@ -27,6 +27,7 @@
         "Interactive State",
         "GPU Streaming Stress",
         "Engine Capability Sanity",
+        "Scene Effector Runtime Controls",
         "World Streaming Gate",
         "Streaming Residency API",
         "Data Flow Recent Window",

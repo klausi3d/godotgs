@@ -52,6 +52,10 @@ void SphereEffector3D::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_opacity_strength"), &SphereEffector3D::get_opacity_strength);
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "opacity_strength", PROPERTY_HINT_RANGE, "0.0,1.0,0.01"), "set_opacity_strength", "get_opacity_strength");
 
+    ClassDB::bind_method(D_METHOD("set_target_opacity", "target_opacity"), &SphereEffector3D::set_target_opacity);
+    ClassDB::bind_method(D_METHOD("get_target_opacity"), &SphereEffector3D::get_target_opacity);
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "target_opacity", PROPERTY_HINT_RANGE, "0.0,1.0,0.01"), "set_target_opacity", "get_target_opacity");
+
     ClassDB::bind_method(D_METHOD("set_layer_mask", "layer_mask"), &SphereEffector3D::set_layer_mask);
     ClassDB::bind_method(D_METHOD("get_layer_mask"), &SphereEffector3D::get_layer_mask);
     ADD_PROPERTY(PropertyInfo(Variant::INT, "layer_mask", PROPERTY_HINT_FLAGS,
@@ -82,7 +86,7 @@ void SphereEffector3D::_bind_methods() {
 }
 
 void SphereEffector3D::_validate_property(PropertyInfo &p_property) const {
-    if (!affect_opacity && p_property.name == "opacity_strength") {
+    if (!affect_opacity && (p_property.name == "opacity_strength" || p_property.name == "target_opacity")) {
         p_property.usage = PROPERTY_USAGE_NO_EDITOR;
     }
     if (scope_mode != SCOPE_EXPLICIT_ROOT && p_property.name == "scope_root") {
@@ -165,6 +169,7 @@ void SphereEffector3D::_sync_with_director() {
             affect_position,
             affect_opacity,
             opacity_strength,
+            target_opacity,
             layer_mask,
             uint32_t(scope_mode),
             scope_root_id,
@@ -265,6 +270,17 @@ void SphereEffector3D::set_opacity_strength(float p_opacity_strength) {
     _sync_with_director();
 }
 
+void SphereEffector3D::set_target_opacity(float p_target_opacity) {
+    const float sanitized = CLAMP(_sanitize_finite_or_default(p_target_opacity, 0.0f, "target_opacity"), 0.0f, 1.0f);
+    if (Math::is_equal_approx(target_opacity, sanitized)) {
+        return;
+    }
+
+    target_opacity = sanitized;
+    update_configuration_warnings();
+    _sync_with_director();
+}
+
 void SphereEffector3D::set_layer_mask(uint32_t p_layer_mask) {
     if (layer_mask == p_layer_mask) {
         return;
@@ -323,6 +339,10 @@ PackedStringArray SphereEffector3D::get_configuration_warnings() const {
 
     if (affect_opacity && opacity_strength <= 0.0f) {
         warnings.push_back("Opacity modulation is enabled but opacity_strength is 0.");
+    }
+
+    if (affect_opacity && Math::is_equal_approx(target_opacity, 1.0f)) {
+        warnings.push_back("Opacity modulation is enabled but target_opacity is 1.0. This effector will not visibly change opacity.");
     }
 
     if (layer_mask == 0u) {

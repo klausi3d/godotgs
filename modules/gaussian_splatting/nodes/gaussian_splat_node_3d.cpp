@@ -199,6 +199,9 @@ void GaussianSplatNode3D::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_scene_effector_scope_root"), &GaussianSplatNode3D::get_scene_effector_scope_root);
     ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "rendering/scene_effector_scope_root", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "Node"),
             "set_scene_effector_scope_root", "get_scene_effector_scope_root");
+    ClassDB::bind_method(D_METHOD("get_last_matched_scene_effector_count"), &GaussianSplatNode3D::get_last_matched_scene_effector_count);
+    ClassDB::bind_method(D_METHOD("is_scene_effector_position_active"), &GaussianSplatNode3D::is_scene_effector_position_active);
+    ClassDB::bind_method(D_METHOD("is_scene_effector_opacity_active"), &GaussianSplatNode3D::is_scene_effector_opacity_active);
 
     ClassDB::bind_method(D_METHOD("set_wind_override_enabled", "enabled"), &GaussianSplatNode3D::set_wind_override_enabled);
     ClassDB::bind_method(D_METHOD("is_wind_override_enabled"), &GaussianSplatNode3D::is_wind_override_enabled);
@@ -1142,6 +1145,51 @@ void GaussianSplatNode3D::set_scene_effector_scope_root(const NodePath &p_scope_
     _update_instance_params_in_director();
 }
 
+uint32_t GaussianSplatNode3D::get_last_matched_scene_effector_count() const {
+    if (!scene_effectors_enabled || !is_inside_tree() || !is_inside_world()) {
+        return 0u;
+    }
+
+    const GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+    if (!director) {
+        return 0u;
+    }
+
+    uint32_t matched_count = 0u;
+    director->get_scene_effector_match_summary_for_instance(get_instance_id(), &matched_count, nullptr, nullptr);
+    return matched_count;
+}
+
+bool GaussianSplatNode3D::is_scene_effector_position_active() const {
+    if (!scene_effectors_enabled || effect_position_scale <= 0.0f || !is_inside_tree() || !is_inside_world()) {
+        return false;
+    }
+
+    const GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+    if (!director) {
+        return false;
+    }
+
+    bool position_active = false;
+    director->get_scene_effector_match_summary_for_instance(get_instance_id(), nullptr, &position_active, nullptr);
+    return position_active;
+}
+
+bool GaussianSplatNode3D::is_scene_effector_opacity_active() const {
+    if (!scene_effectors_enabled || effect_opacity_scale <= 0.0f || opacity <= 0.0f || !is_inside_tree() || !is_inside_world()) {
+        return false;
+    }
+
+    const GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+    if (!director) {
+        return false;
+    }
+
+    bool opacity_active = false;
+    director->get_scene_effector_match_summary_for_instance(get_instance_id(), nullptr, nullptr, &opacity_active);
+    return opacity_active;
+}
+
 void GaussianSplatNode3D::set_wind_override_enabled(bool p_enabled) {
     if (wind_override_enabled == p_enabled) {
         return;
@@ -1284,6 +1332,9 @@ Dictionary GaussianSplatNode3D::get_statistics() const {
     // reports aggregate world metrics.
     stats["visible_splats"] = visible_splat_count;
     stats["total_splats"] = total_splat_count;
+    stats["matched_scene_effectors"] = get_last_matched_scene_effector_count();
+    stats["scene_effector_position_active"] = is_scene_effector_position_active();
+    stats["scene_effector_opacity_active"] = is_scene_effector_opacity_active();
     stats["effective_config_snapshot"] = composed_effective_config;
 
     return stats;
@@ -1595,8 +1646,14 @@ PackedStringArray GaussianSplatNode3D::get_configuration_warnings() const {
     }
 
     if (scene_effectors_enabled) {
+        if (effect_position_scale <= 0.0f && effect_opacity_scale <= 0.0f) {
+            warnings.push_back("Scene effectors are enabled, but both effect response scales are 0. This node will ignore all scene-driven sphere effectors.");
+        }
         if (scene_effector_layer_mask == 0u) {
             warnings.push_back("Scene effectors are enabled, but scene_effector_layer_mask is 0. No scene-driven sphere effectors will match this node.");
+        }
+        if (effect_opacity_scale > 0.0f && opacity <= 0.0f) {
+            warnings.push_back("Opacity modulation is enabled, but rendering/opacity is 0. Scene-driven opacity effects will remain fully invisible.");
         }
         if (!scene_effector_scope_root.is_empty()) {
             if (!is_inside_tree()) {
