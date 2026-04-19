@@ -123,7 +123,7 @@ public:
 	// fields back from the live Node3D during build_instance_buffer_for_renderer.
 	void update_instance_scene_effector_filter(ObjectID p_node_id, bool p_enabled,
 			uint32_t p_layer_mask, bool p_scope_filter_present, bool p_scope_filter_valid,
-			ObjectID p_scope_root_id);
+			ObjectID p_scope_root_id, const LocalVector<ObjectID> &p_scene_tree_ancestor_ids);
 	void update_instance_params(ObjectID p_node_id, float p_opacity, float p_lod_bias, uint32_t p_flags, bool p_casts_shadow = false,
 			float p_wind_intensity = 1.0f, uint32_t p_wind_mode = INSTANCE_WIND_INHERIT,
 			const Vector3 &p_wind_direction = Vector3(), float p_wind_frequency = 1.0f,
@@ -271,6 +271,11 @@ private:
         bool scene_effector_scope_filter_present = false;
         bool scene_effector_scope_filter_valid = true;
         ObjectID scene_effector_scope_root_id;
+        // Ancestor ObjectIDs (self + parents up to the scene root), cached at
+        // registration/parent-change on the main thread. The render thread
+        // reads this set to evaluate subtree containment for SCOPE_SUBTREE /
+        // SCOPE_EXPLICIT_ROOT effectors without ever touching the live tree.
+        LocalVector<ObjectID> scene_tree_ancestor_ids;
 	};
 
     struct SphereEffectorRecord {

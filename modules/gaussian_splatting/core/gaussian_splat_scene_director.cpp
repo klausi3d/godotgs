@@ -489,10 +489,24 @@ uint32_t GaussianSplatSceneDirector::_build_scene_effector_mask_for_record(const
 				continue;
 			}
 		} else if (selection.scope_mode != SPHERE_EFFECTOR_SCOPE_WORLD) {
-			// Implicit subtree containment requires a tree walk — skipped from
-			// the render path. Nodes that want narrower targeting should set
-			// their own `scene_effector_scope_root`.
-			continue;
+			// Implicit subtree containment: the effector carries its resolved
+			// scope_root ObjectID (SCOPE_SUBTREE → effector's parent;
+			// SCOPE_EXPLICIT_ROOT → the configured root). Check against the
+			// cached ancestor chain on the record instead of walking the
+			// live tree.
+			if (selection.scope_root_id == ObjectID()) {
+				continue;
+			}
+			bool in_scope = false;
+			for (const ObjectID &ancestor_id : p_record.scene_tree_ancestor_ids) {
+				if (ancestor_id == selection.scope_root_id) {
+					in_scope = true;
+					break;
+				}
+			}
+			if (!in_scope) {
+				continue;
+			}
 		}
 		mask |= (1u << i);
 	}
@@ -1052,7 +1066,7 @@ void GaussianSplatSceneDirector::update_instance_transform(ObjectID p_node_id, c
 
 void GaussianSplatSceneDirector::update_instance_scene_effector_filter(ObjectID p_node_id, bool p_enabled,
 		uint32_t p_layer_mask, bool p_scope_filter_present, bool p_scope_filter_valid,
-		ObjectID p_scope_root_id) {
+		ObjectID p_scope_root_id, const LocalVector<ObjectID> &p_scene_tree_ancestor_ids) {
 	MutexLock lock(world_mutex);
 	SharedWorld *world = _get_world_for_instance(p_node_id);
 	if (!world) {
@@ -1066,7 +1080,17 @@ void GaussianSplatSceneDirector::update_instance_scene_effector_filter(ObjectID 
 		return;
 	}
 	InstanceRecord &record = world->instances[*index_ptr];
-	const bool changed = record.scene_effectors_enabled != p_enabled ||
+	bool ancestors_changed = record.scene_tree_ancestor_ids.size() != p_scene_tree_ancestor_ids.size();
+	if (!ancestors_changed) {
+		for (uint32_t i = 0; i < p_scene_tree_ancestor_ids.size(); ++i) {
+			if (record.scene_tree_ancestor_ids[i] != p_scene_tree_ancestor_ids[i]) {
+				ancestors_changed = true;
+				break;
+			}
+		}
+	}
+	const bool changed = ancestors_changed ||
+			record.scene_effectors_enabled != p_enabled ||
 			record.scene_effector_layer_mask != p_layer_mask ||
 			record.scene_effector_scope_filter_present != p_scope_filter_present ||
 			record.scene_effector_scope_filter_valid != p_scope_filter_valid ||
@@ -1079,6 +1103,7 @@ void GaussianSplatSceneDirector::update_instance_scene_effector_filter(ObjectID 
 	record.scene_effector_scope_filter_present = p_scope_filter_present;
 	record.scene_effector_scope_filter_valid = p_scope_filter_valid;
 	record.scene_effector_scope_root_id = p_scope_root_id;
+	record.scene_tree_ancestor_ids = p_scene_tree_ancestor_ids;
 	record.dirty = true;
 	_bump_instance_generation(world->instance_generation);
 }

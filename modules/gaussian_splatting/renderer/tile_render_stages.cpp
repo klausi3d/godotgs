@@ -100,6 +100,7 @@ static void _build_effector_payload(const TileRenderer::RenderParams &p_params, 
 	const bool has_explicit_scene_bindings = p_params.sphere_effector_count > 0u;
 	uint32_t requested_count = has_explicit_scene_bindings ? p_params.sphere_effector_count : 0u;
 	uint32_t active_count = 0u;
+	uint32_t slot_iteration_count = 0u;
 
 	if (p_params.sphere_effector_max_active > GS_MAX_SPHERE_EFFECTORS) {
 		WARN_PRINT_ONCE(vformat("[TileRenderer] Requested %d sphere effectors, but this runtime supports at most %d per pass.",
@@ -112,9 +113,14 @@ static void _build_effector_payload(const TileRenderer::RenderParams &p_params, 
 					requested_count, bounded_limit));
 		}
 		const uint32_t scan_count = MIN(requested_count, bounded_limit);
+		slot_iteration_count = scan_count;
+		// Pack into slot `i` directly (no compaction) so per-instance masks
+		// encoded earlier against the source payload indices remain valid.
+		// Invalid slots stay fully zeroed by _clear_effector_slot above —
+		// `config[0] == 0` means "disabled" to the shader, so mask bits that
+		// point at a skipped slot are inert.
 		for (uint32_t i = 0; i < scan_count; i++) {
-			if (_pack_effector_slot(p_params.sphere_effectors[i], r_spheres[active_count], r_configs[active_count],
-						r_opacity_configs[active_count])) {
+			if (_pack_effector_slot(p_params.sphere_effectors[i], r_spheres[i], r_configs[i], r_opacity_configs[i])) {
 				active_count++;
 			}
 		}
@@ -133,13 +139,20 @@ static void _build_effector_payload(const TileRenderer::RenderParams &p_params, 
 		requested_count = legacy_effector.enabled ? 1u : 0u;
 		if (_pack_effector_slot(legacy_effector, r_spheres[0], r_configs[0], r_opacity_configs[0])) {
 			active_count = 1u;
+			slot_iteration_count = 1u;
 		}
 	}
 
-	r_meta[0] = float(active_count);
+	// effector_meta[0] is the shader's loop bound over effector slots. With
+	// stable indexing (no compaction), this must cover every slot that a
+	// per-instance mask bit could point at — not just the packed-valid count
+	// — so mask bits for a disabled slot fall through the `config.x <= 0.5`
+	// check rather than reading past the iteration bound.
+	r_meta[0] = float(slot_iteration_count);
 	r_meta[1] = float(GS_MAX_SPHERE_EFFECTORS);
 	r_meta[2] = float(requested_count);
 	r_meta[3] = has_explicit_scene_bindings ? 1.0f : 0.0f;
+	(void)active_count;
 }
 
 } // namespace

@@ -55,6 +55,19 @@ static bool _is_renderer_shared_with_other_content(const Ref<GaussianSplatRender
     }
     return false;
 }
+
+// Collect the instance node's ancestor ObjectID chain (self + every parent up
+// to the scene root). Cached on InstanceRecord so the render-thread mask
+// builder can evaluate subtree containment without a live `is_ancestor_of`
+// walk.
+static void _collect_scene_tree_ancestor_ids(const Node *p_node, LocalVector<ObjectID> &r_ids) {
+    r_ids.clear();
+    const Node *cursor = p_node;
+    while (cursor) {
+        r_ids.push_back(cursor->get_instance_id());
+        cursor = cursor->get_parent();
+    }
+}
 } // namespace
 
 void GaussianSplatNode3D::_bind_methods() {
@@ -2241,8 +2254,10 @@ void GaussianSplatNode3D::_register_instance_in_director() {
     Node *resolved_scope = scope_filter_present ? _resolve_scene_effector_scope_root() : nullptr;
     const bool scope_filter_valid = !scope_filter_present || resolved_scope != nullptr;
     const ObjectID scope_root_id = resolved_scope ? resolved_scope->get_instance_id() : ObjectID();
+    LocalVector<ObjectID> ancestor_ids;
+    _collect_scene_tree_ancestor_ids(this, ancestor_ids);
     director->update_instance_scene_effector_filter(get_instance_id(), scene_effectors_enabled,
-            scene_effector_layer_mask, scope_filter_present, scope_filter_valid, scope_root_id);
+            scene_effector_layer_mask, scope_filter_present, scope_filter_valid, scope_root_id, ancestor_ids);
 }
 
 void GaussianSplatNode3D::_unregister_instance_in_director() {
@@ -2281,8 +2296,10 @@ void GaussianSplatNode3D::_update_instance_params_in_director() {
         Node *resolved_scope = scope_filter_present ? _resolve_scene_effector_scope_root() : nullptr;
         const bool scope_filter_valid = !scope_filter_present || resolved_scope != nullptr;
         const ObjectID scope_root_id = resolved_scope ? resolved_scope->get_instance_id() : ObjectID();
+        LocalVector<ObjectID> ancestor_ids;
+        _collect_scene_tree_ancestor_ids(this, ancestor_ids);
         director->update_instance_scene_effector_filter(get_instance_id(), scene_effectors_enabled,
-                scene_effector_layer_mask, scope_filter_present, scope_filter_valid, scope_root_id);
+                scene_effector_layer_mask, scope_filter_present, scope_filter_valid, scope_root_id, ancestor_ids);
     }
     if (renderer.is_valid()) {
         renderer->invalidate_cached_render();
