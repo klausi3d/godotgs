@@ -35,6 +35,7 @@ private:
     bool affect_position = true;
     bool affect_opacity = false;
     float opacity_strength = 1.0f;
+    float target_opacity = 0.0f;
     uint32_t layer_mask = 1u;
     int scope_mode = SCOPE_SUBTREE;
     NodePath scope_root;
@@ -80,6 +81,9 @@ public:
 
     void set_opacity_strength(float p_opacity_strength);
     float get_opacity_strength() const { return opacity_strength; }
+
+    void set_target_opacity(float p_target_opacity);
+    float get_target_opacity() const { return target_opacity; }
 
     void set_layer_mask(uint32_t p_layer_mask);
     uint32_t get_layer_mask() const { return layer_mask; }

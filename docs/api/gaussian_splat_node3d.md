@@ -212,8 +212,29 @@ Use `GaussianSplatNode3D` to render Gaussian splat assets or procedural splat ar
       <td><code>rendering/effect_opacity_scale</code></td>
       <td><code>float</code></td>
       <td><code>set_effect_opacity_scale</code>, <code>get_effect_opacity_scale</code></td>
-      <td>Scales how strongly this node responds to sphere opacity deformation.</td>
+      <td>Scales how strongly this node responds to sphere opacity deformation. Runtime opacity diagnostics stay inactive when this scale is <code>0.0</code>, the node base opacity is <code>0.0</code>, or the matched effector target is neutral.</td>
       <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp</code></td>
+    </tr>
+    <tr>
+      <td><code>rendering/scene_effectors_enabled</code></td>
+      <td><code>bool</code></td>
+      <td><code>set_scene_effectors_enabled</code>, <code>is_scene_effectors_enabled</code></td>
+      <td>Master opt-in for scene-authored sphere effectors. When disabled, all scene-effector runtime diagnostics report inactive.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:183</code></td>
+    </tr>
+    <tr>
+      <td><code>rendering/scene_effector_layer_mask</code></td>
+      <td><code>int</code></td>
+      <td><code>set_scene_effector_layer_mask</code>, <code>get_scene_effector_layer_mask</code></td>
+      <td>Bitmask filter for matching scene effectors. <code>0</code> disables all matches for this node.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:187</code></td>
+    </tr>
+    <tr>
+      <td><code>rendering/scene_effector_scope_root</code></td>
+      <td><code>NodePath</code></td>
+      <td><code>set_scene_effector_scope_root</code>, <code>get_scene_effector_scope_root</code></td>
+      <td>Optional node-side scope narrowing. The path must resolve to this node or one of its ancestors.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:194</code></td>
     </tr>
     <tr>
       <td><code>rendering/wind_override_enabled</code></td>
@@ -352,21 +373,26 @@ The current branch exposes a scene-driven-plus-per-node workflow for gameplay ef
 - `SphereEffector3D` is the primary authoring surface for sphere deformation and dissolve effects.
 - `rendering/effect_position_scale` and `rendering/effect_opacity_scale` let each `GaussianSplatNode3D` partially follow, fully follow, or effectively ignore matched scene effectors.
 - `rendering/scene_effectors_enabled`, `rendering/scene_effector_layer_mask`, and `rendering/scene_effector_scope_root` control whether this node participates in scene effectors and which ones may match.
+- `rendering/scene_effector_scope_root` is a node-side narrowing filter, not an opt-in to arbitrary world effectors. It must resolve to this node or one of its ancestors, and only effectors with the same resolved scope root will match.
 - `rendering/opacity` remains the direct per-node gameplay fade, while scene-effector opacity modulation multiplies on top for dissolve or degeneration effects.
+- `get_last_matched_scene_effector_count()`, `get_scene_effector_debug_state()`, `is_scene_effector_position_active()`, and `is_scene_effector_opacity_active()` expose the current runtime match state for gameplay and debugging. `matched_count` is the full logical match set, while `bound_count` is the subset that actually fit into the renderer budget.
+- `get_statistics()` mirrors those diagnostics under `matched_scene_effectors`, `bound_scene_effectors`, `scene_effector_truncated`, `scene_effector_position_active`, and `scene_effector_opacity_active`.
+- `get_configuration_warnings()` warns about inert scene-effector setups such as both response scales at `0.0`, scene-effector layer mask `0`, opacity modulation with base opacity `0.0`, or an invalid scope root path.
 
 Practical recipes:
 
 - Wind-only: disable `rendering/scene_effectors_enabled` or set both per-node effect scales to `0.0`.
 - Sphere position-only: enable a `SphereEffector3D`, keep `rendering/effect_position_scale > 0.0`, and set `rendering/effect_opacity_scale = 0.0`.
-- Sphere opacity-only dissolve: enable `SphereEffector3D.affect_opacity`, set `rendering/effect_position_scale = 0.0`, and tune `rendering/effect_opacity_scale`.
+- Sphere opacity-only dissolve or fade: enable `SphereEffector3D.affect_opacity`, set `SphereEffector3D.target_opacity` below `1.0`, set `rendering/effect_position_scale = 0.0`, and tune `rendering/effect_opacity_scale`.
 - Combined wind + sphere + dissolve: enable per-node wind override and keep both effect scales above zero.
 
 Current bounds:
 
-- Scene effectors are bounded to `4` active bindings per renderer pass. If more are present, the highest-priority deterministic four are used.
+- Scene-authored effectors are bounded to `4` active bindings per renderer pass. If more match this node, the highest-priority deterministic four are bound and the rest remain logical matches only.
 - `SphereEffector3D` defaults to subtree scoping. Put the effector under the same gameplay parent as the splat nodes you want to affect, or use its explicit root/layer controls for broader setups.
-- ProjectSettings under `rendering/gaussian_splatting/effects/*` still act as a compatibility fallback when no scene-authored sphere effectors are active.
+- ProjectSettings under `rendering/gaussian_splatting/effects/*` still act as a compatibility fallback when no scene-authored sphere effectors are active. That fallback remains single-global and still honors `rendering/gaussian_splatting/effects/max_effectors` clamped to `0..1`.
 - Invalid node-authored runtime inputs are sanitized where supported: opacity clamps to `0.0..1.0`, effect scales clamp to `>= 0.0`, and non-finite opacity or effect scale inputs fall back to stable defaults.
+- A matched opacity effector with `target_opacity = 1.0` is intentionally neutral. The node can still report a non-zero matched-effector count while `is_scene_effector_opacity_active()` remains `false`.
 
 Example scenes:
 
@@ -385,6 +411,26 @@ See also: `docs/api/sphere_effector_workflow.md`.
     </tr>
   </thead>
   <tbody>
+    <tr>
+      <td><code>get_last_matched_scene_effector_count()</code></td>
+      <td>Returns the current number of scene effectors that match this node after scope and layer-mask filtering.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:1133</code></td>
+    </tr>
+    <tr>
+      <td><code>get_scene_effector_debug_state()</code></td>
+      <td>Returns a Dictionary describing both logical matches and the subset that was actually bound to the renderer, including <code>matched_count</code>, <code>bound_count</code>, <code>truncated</code>, and selected effector ids and names.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:1165</code></td>
+    </tr>
+    <tr>
+      <td><code>is_scene_effector_position_active()</code></td>
+      <td>Returns whether any currently matched scene effector can contribute position deformation after node-local scale checks.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:1148</code></td>
+    </tr>
+    <tr>
+      <td><code>is_scene_effector_opacity_active()</code></td>
+      <td>Returns whether any currently matched scene effector can contribute opacity modulation after node-local opacity and scale checks.</td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:1163</code></td>
+    </tr>
     <tr>
       <td><code>reload_asset()</code></td>
       <td>Triggers the same load path as setting a new file path.</td>

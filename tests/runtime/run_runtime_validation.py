@@ -81,6 +81,7 @@ GDS_TESTS: Dict[str, Path] = {
     "Interactive State": RUNTIME_DIR / "test_interactive_state.gd",
     "GPU Streaming Stress": RUNTIME_DIR / "test_gpu_streaming_stress.gd",
     "Engine Capability Sanity": RUNTIME_DIR / "test_engine_capabilities.gd",
+    "Scene Effector Runtime Controls": RUNTIME_DIR / "test_scene_effector_runtime_controls.gd",
     "World Streaming Gate": RUNTIME_DIR / "test_world_streaming_gate.gd",
     "Streaming Residency API": RUNTIME_DIR / "test_streaming_residency_api.gd",
     "Data Flow Recent Window": RUNTIME_DIR / "test_data_flow_recent_window.gd",
@@ -558,7 +559,15 @@ def _build_godot_command(config: GodotRunConfig, script: Path) -> List[str]:
     if config.project_path is not None:
         command.extend(["--path", str(config.project_path)])
     command.extend(config.extra_args)
-    command.extend(["--verbose", "--script", str(script.relative_to(ROOT))])
+    script_arg: Path
+    if config.project_path is None:
+        script_arg = script.relative_to(ROOT)
+    else:
+        try:
+            script_arg = script.relative_to(config.project_path)
+        except ValueError:
+            script_arg = script
+    command.extend(["--verbose", "--script", str(script_arg)])
     return command
 
 

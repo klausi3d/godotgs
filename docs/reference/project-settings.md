@@ -757,6 +757,8 @@ These settings are registered with `GLOBAL_DEF(...)` and grouped by key prefix.
   </tbody>
 </table>
 
+For the `rendering/gaussian_splatting/effects/*` keys above, the current branch uses these settings as a compatibility fallback when no active `SphereEffector3D` nodes are present in the scene. That fallback still follows the legacy single-global-effector contract, so `rendering/gaussian_splatting/effects/max_effectors` is clamped to `0..1` even though scene-authored effectors can bind up to four entries per renderer pass.
+
 ### Runtime-only keys
 These keys are used by module code but are not registered with `GLOBAL_DEF(...)`.
 

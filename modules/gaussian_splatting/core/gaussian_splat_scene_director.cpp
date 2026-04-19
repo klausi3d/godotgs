@@ -560,7 +560,13 @@ void GaussianSplatSceneDirector::_build_sorted_sphere_effector_payload(const Sha
 			continue;
 		}
 		const bool position_can_contribute = record.affect_position && !Math::is_zero_approx(record.strength);
-		const bool opacity_can_contribute = record.affect_opacity && !Math::is_zero_approx(record.opacity_strength);
+		// target_opacity==1.0 is the neutral "fully opaque" target; combined
+		// with non-zero opacity_strength it still produces no visible change
+		// for already-opaque splats, so treat it as inert here. Matches the
+		// diagnostic gate in `get_scene_effector_debug_state_for_instance`.
+		const bool opacity_can_contribute = record.affect_opacity &&
+				!Math::is_zero_approx(record.opacity_strength) &&
+				!Math::is_equal_approx(record.target_opacity, 1.0f);
 		if (!position_can_contribute && !opacity_can_contribute) {
 			continue;
 		}
@@ -602,6 +608,7 @@ void GaussianSplatSceneDirector::_build_sorted_sphere_effector_payload(const Sha
 		candidate.selection.falloff = record.falloff;
 		candidate.selection.frequency = record.frequency;
 		candidate.selection.opacity_strength = record.opacity_strength;
+		candidate.selection.target_opacity = record.target_opacity;
 		candidate.selection.layer_mask = record.layer_mask;
 		candidate.selection.scope_mode = record.scope_mode;
 		candidate.selection.scope_root_id = record.scope_root_id;
@@ -2010,17 +2017,17 @@ uint32_t GaussianSplatSceneDirector::get_instance_count_for_renderer(const Gauss
 
 void GaussianSplatSceneDirector::register_sphere_effector(ObjectID p_effector_id, const Transform3D &p_transform,
 		float p_radius, float p_strength, float p_falloff, float p_frequency, bool p_enabled,
-		bool p_affect_position, bool p_affect_opacity, float p_opacity_strength, uint32_t p_layer_mask,
-		uint32_t p_scope_mode, ObjectID p_scope_root_id, int32_t p_priority) {
+		bool p_affect_position, bool p_affect_opacity, float p_opacity_strength, float p_target_opacity,
+		uint32_t p_layer_mask, uint32_t p_scope_mode, ObjectID p_scope_root_id, int32_t p_priority) {
 	update_sphere_effector(p_effector_id, p_transform, p_radius, p_strength, p_falloff, p_frequency,
-			p_enabled, p_affect_position, p_affect_opacity, p_opacity_strength, p_layer_mask,
-			p_scope_mode, p_scope_root_id, p_priority);
+			p_enabled, p_affect_position, p_affect_opacity, p_opacity_strength, p_target_opacity,
+			p_layer_mask, p_scope_mode, p_scope_root_id, p_priority);
 }
 
 void GaussianSplatSceneDirector::update_sphere_effector(ObjectID p_effector_id, const Transform3D &p_transform,
 		float p_radius, float p_strength, float p_falloff, float p_frequency, bool p_enabled,
-		bool p_affect_position, bool p_affect_opacity, float p_opacity_strength, uint32_t p_layer_mask,
-		uint32_t p_scope_mode, ObjectID p_scope_root_id, int32_t p_priority) {
+		bool p_affect_position, bool p_affect_opacity, float p_opacity_strength, float p_target_opacity,
+		uint32_t p_layer_mask, uint32_t p_scope_mode, ObjectID p_scope_root_id, int32_t p_priority) {
 	if (p_effector_id == ObjectID()) {
 		return;
 	}
@@ -2070,6 +2077,12 @@ void GaussianSplatSceneDirector::update_sphere_effector(ObjectID p_effector_id, 
 	if (!Math::is_equal_approx(opacity_strength, p_opacity_strength) && Math::is_finite(p_opacity_strength)) {
 		WARN_PRINT(vformat("[GaussianSplatSceneDirector] opacity_strength for %s was clamped to [0, 1].", effector_context));
 	}
+	const float target_opacity = CLAMP(
+			_sanitize_finite_float(p_target_opacity, 0.0f, effector_context, "target_opacity"),
+			0.0f, 1.0f);
+	if (!Math::is_equal_approx(target_opacity, p_target_opacity) && Math::is_finite(p_target_opacity)) {
+		WARN_PRINT(vformat("[GaussianSplatSceneDirector] target_opacity for %s was clamped to [0, 1].", effector_context));
+	}
 	uint32_t scope_mode = p_scope_mode;
 	if (scope_mode > SPHERE_EFFECTOR_SCOPE_EXPLICIT_ROOT) {
 		WARN_PRINT(vformat("[GaussianSplatSceneDirector] Invalid scope_mode %u for %s; falling back to SUBTREE.",
@@ -2107,6 +2120,10 @@ void GaussianSplatSceneDirector::update_sphere_effector(ObjectID p_effector_id, 
 		}
 		if (!Math::is_equal_approx(record.opacity_strength, opacity_strength)) {
 			record.opacity_strength = opacity_strength;
+			dirty = true;
+		}
+		if (!Math::is_equal_approx(record.target_opacity, target_opacity)) {
+			record.target_opacity = target_opacity;
 			dirty = true;
 		}
 		if (record.enabled != p_enabled) {
@@ -2151,6 +2168,7 @@ void GaussianSplatSceneDirector::update_sphere_effector(ObjectID p_effector_id, 
 	record.falloff = falloff;
 	record.frequency = frequency;
 	record.opacity_strength = opacity_strength;
+	record.target_opacity = target_opacity;
 	record.layer_mask = p_layer_mask;
 	record.scope_mode = scope_mode;
 	record.scope_root_id = p_scope_root_id;
@@ -2292,9 +2310,13 @@ bool GaussianSplatSceneDirector::get_primary_sphere_effector_for_instance(Object
 		}
 		// Mirror the inert-channel gate from `_build_sorted_sphere_effector_payload()`
 		// so the compatibility API doesn't report a primary that the render path
-		// would filter out.
+		// would filter out. Includes the `target_opacity != 1.0` check: neutral
+		// target on an opacity-only effector contributes nothing to already-opaque
+		// splats, and the payload builder drops those entries.
 		const bool position_can_contribute = record.affect_position && !Math::is_zero_approx(record.strength);
-		const bool opacity_can_contribute = record.affect_opacity && !Math::is_zero_approx(record.opacity_strength);
+		const bool opacity_can_contribute = record.affect_opacity &&
+				!Math::is_zero_approx(record.opacity_strength) &&
+				!Math::is_equal_approx(record.target_opacity, 1.0f);
 		if (!position_can_contribute && !opacity_can_contribute) {
 			continue;
 		}
@@ -2348,6 +2370,7 @@ bool GaussianSplatSceneDirector::get_primary_sphere_effector_for_instance(Object
 		candidate.selection.falloff = record.falloff;
 		candidate.selection.frequency = record.frequency;
 		candidate.selection.opacity_strength = record.opacity_strength;
+		candidate.selection.target_opacity = record.target_opacity;
 		candidate.selection.layer_mask = record.layer_mask;
 		candidate.selection.scope_mode = record.scope_mode;
 		candidate.selection.scope_root_id = effective_scope_root_id;
@@ -2383,6 +2406,189 @@ bool GaussianSplatSceneDirector::get_primary_sphere_effector_for_instance(Object
 		scene_effector_multi_match_warned_nodes.erase(p_node_id);
 	}
 	return true;
+}
+
+bool GaussianSplatSceneDirector::get_scene_effector_match_summary_for_instance(ObjectID p_node_id,
+		uint32_t *r_match_count, bool *r_position_active, bool *r_opacity_active) const {
+	// Delegate to the richer debug-state accessor so the summary and the
+	// Dictionary readout can't drift in their scope/subtree handling.
+	// Specifically, the subtree-without-explicit-node-scope case is resolved
+	// via the InstanceRecord's cached ancestor chain — matching the actual
+	// render-path behavior instead of dropping every non-WORLD effector.
+	const Dictionary state = get_scene_effector_debug_state_for_instance(p_node_id);
+	const uint32_t matched_count = uint32_t(int64_t(state.get(StringName("matched_count"), 0)));
+	if (r_match_count) {
+		*r_match_count = matched_count;
+	}
+	if (r_position_active) {
+		*r_position_active = bool(state.get(StringName("matched_position_active"), false));
+	}
+	if (r_opacity_active) {
+		*r_opacity_active = bool(state.get(StringName("matched_opacity_active"), false));
+	}
+	return matched_count > 0u;
+}
+
+Dictionary GaussianSplatSceneDirector::get_scene_effector_debug_state_for_instance(ObjectID p_node_id) const {
+	Dictionary state;
+	state["matched_count"] = 0;
+	state["bound_count"] = 0;
+	state["truncated"] = false;
+	state["position_active"] = false;
+	state["opacity_active"] = false;
+	state["selected_effector_ids"] = Array();
+	state["selected_effector_names"] = PackedStringArray();
+	state["effective_layer_mask"] = int64_t(0);
+	state["scope_filter_present"] = false;
+	state["scope_filter_valid"] = true;
+	state["effective_scope_root_id"] = int64_t(0);
+	state["matched_position_active"] = false;
+	state["matched_opacity_active"] = false;
+
+	MutexLock lock(world_mutex);
+	const SharedWorld *world = nullptr;
+	for (const KeyValue<RID, SharedWorld> &E : worlds) {
+		if (E.value.instance_lookup.has(p_node_id)) {
+			world = &E.value;
+			break;
+		}
+	}
+	if (!world) {
+		return state;
+	}
+
+	const uint32_t *index_ptr = world->instance_lookup.getptr(p_node_id);
+	if (!index_ptr || *index_ptr >= world->instances.size()) {
+		return state;
+	}
+	const InstanceRecord &record = world->instances[*index_ptr];
+	state["effective_layer_mask"] = int64_t(record.scene_effector_layer_mask);
+	state["scope_filter_present"] = record.scene_effector_scope_filter_present;
+	state["scope_filter_valid"] = record.scene_effector_scope_filter_valid;
+	state["effective_scope_root_id"] = int64_t((uint64_t)record.scene_effector_scope_root_id);
+
+	if (!record.scene_effectors_enabled || record.scene_effector_layer_mask == 0u ||
+			(record.scene_effector_scope_filter_present && !record.scene_effector_scope_filter_valid)) {
+		return state;
+	}
+
+	// Helper: effector's scope is currently valid iff its cached scope_root_id
+	// still resolves to a live Node. ObjectDB lookups are thread-safe and catch
+	// the case where a scope-root node was deleted after the effector synced.
+	auto effector_scope_alive = [](const SphereEffectorRecord &eff) -> bool {
+		if (eff.scope_mode == SPHERE_EFFECTOR_SCOPE_WORLD) {
+			return true;
+		}
+		if (eff.scope_root_id == ObjectID()) {
+			return false;
+		}
+		return Object::cast_to<Node>(ObjectDB::get_instance(eff.scope_root_id)) != nullptr;
+	};
+
+	uint32_t matched_count = 0u;
+	bool matched_position_active = false;
+	bool matched_opacity_active = false;
+	for (const SphereEffectorRecord &effector : world->sphere_effectors) {
+		if (!effector.enabled || (!effector.affect_position && !effector.affect_opacity)) {
+			continue;
+		}
+		if ((effector.layer_mask & record.scene_effector_layer_mask) == 0u) {
+			continue;
+		}
+		if (effector.scope_mode != SPHERE_EFFECTOR_SCOPE_WORLD && !effector_scope_alive(effector)) {
+			continue;
+		}
+		if (record.scene_effector_scope_filter_present) {
+			if (effector.scope_root_id == ObjectID() ||
+					effector.scope_root_id != record.scene_effector_scope_root_id) {
+				continue;
+			}
+		} else if (effector.scope_mode != SPHERE_EFFECTOR_SCOPE_WORLD) {
+			if (effector.scope_root_id == ObjectID()) {
+				continue;
+			}
+			bool in_scope = false;
+			for (const ObjectID &ancestor_id : record.scene_tree_ancestor_ids) {
+				if (ancestor_id == effector.scope_root_id) {
+					in_scope = true;
+					break;
+				}
+			}
+			if (!in_scope) {
+				continue;
+			}
+		}
+
+		matched_count++;
+		// Radius <= 0 is inert on the GPU (see gs_apply_sphere_effectors'
+		// `effector_sphere.w <= 1e-6` early-out). Exclude from active flags so
+		// the diagnostic matches the shader.
+		const bool effector_radius_nonzero = effector.radius > 1e-6f;
+		if (effector_radius_nonzero && effector.affect_position && record.effect_position_scale > 0.0f &&
+				!Math::is_zero_approx(effector.strength)) {
+			matched_position_active = true;
+		}
+		if (effector_radius_nonzero && effector.affect_opacity && record.effect_opacity_scale > 0.0f && record.opacity > 0.0f &&
+				!Math::is_zero_approx(effector.opacity_strength) &&
+				!Math::is_equal_approx(effector.target_opacity, 1.0f)) {
+			matched_opacity_active = true;
+		}
+	}
+
+	// Bind-side stats: how many matched effectors actually survived the
+	// renderer's payload build + mask packing (limited by GS_MAX_SPHERE_EFFECTORS,
+	// invalid scope roots, etc). `_build_sorted_sphere_effector_payload` does the
+	// same scope_root liveness check via ObjectDB so the counts stay consistent.
+	LocalVector<SphereEffectorSelection> payload;
+	_build_sorted_sphere_effector_payload(*world, payload);
+	const uint32_t mask = _build_scene_effector_mask_for_record(record, payload);
+	uint32_t bound_count = 0u;
+	Array selected_effector_ids;
+	PackedStringArray selected_effector_names;
+	bool bound_position_active = false;
+	bool bound_opacity_active = false;
+	for (uint32_t i = 0; i < payload.size(); i++) {
+		if ((mask & (1u << i)) == 0u) {
+			continue;
+		}
+		bound_count++;
+		selected_effector_ids.push_back(int64_t((uint64_t)payload[i].effector_id));
+
+		String effector_name = String::num_uint64((uint64_t)payload[i].effector_id);
+		if (Object *effector_object = ObjectDB::get_instance(payload[i].effector_id)) {
+			if (Node *effector_node = Object::cast_to<Node>(effector_object)) {
+				effector_name = String(effector_node->get_name());
+			}
+		}
+		selected_effector_names.push_back(effector_name);
+
+		// Mirror the shader's early-out: `gs_apply_sphere_effectors` skips any
+		// slot with `effector_sphere.w <= 1e-6` (i.e. radius <= 0), so a
+		// matched/bound zero-radius effector contributes nothing. Treat it
+		// as inactive here so `is_scene_effector_*_active()` doesn't over-
+		// report "active" relative to what the GPU actually does.
+		const bool radius_nonzero = payload[i].radius > 1e-6f;
+		if (radius_nonzero && payload[i].affect_position && record.effect_position_scale > 0.0f &&
+				!Math::is_zero_approx(payload[i].strength)) {
+			bound_position_active = true;
+		}
+		if (radius_nonzero && payload[i].affect_opacity && record.effect_opacity_scale > 0.0f && record.opacity > 0.0f &&
+				!Math::is_zero_approx(payload[i].opacity_strength) &&
+				!Math::is_equal_approx(payload[i].target_opacity, 1.0f)) {
+			bound_opacity_active = true;
+		}
+	}
+
+	state["matched_count"] = int64_t(matched_count);
+	state["bound_count"] = int64_t(bound_count);
+	state["truncated"] = matched_count > bound_count;
+	state["position_active"] = bound_position_active;
+	state["opacity_active"] = bound_opacity_active;
+	state["selected_effector_ids"] = selected_effector_ids;
+	state["selected_effector_names"] = selected_effector_names;
+	state["matched_position_active"] = matched_position_active;
+	state["matched_opacity_active"] = matched_opacity_active;
+	return state;
 }
 
 uint32_t GaussianSplatSceneDirector::get_sphere_effector_count_for_renderer(const GaussianSplatRenderer *p_renderer) const {

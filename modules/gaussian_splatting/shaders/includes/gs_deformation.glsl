@@ -107,9 +107,7 @@ GSDeformationResult gs_apply_sphere_effectors(vec3 world_position,
     float opacity_scale = max(instance_effect_config.y, 0.0);
     uint instance_effector_mask = gs_decode_instance_scene_effector_mask(instance_effect_config, effector_meta);
     vec3 total_position_delta = vec3(0.0);
-    float opacity_weighted_target_sum = 0.0;
-    float opacity_weight_sum = 0.0;
-    float opacity_keep_product = 1.0;
+    float opacity_modifier_product = 1.0;
 
     for (uint i = 0u; i < effector_count; i++) {
         vec4 effector_sphere = effector_spheres[i];
@@ -135,23 +133,19 @@ GSDeformationResult gs_apply_sphere_effectors(vec3 world_position,
         }
 
         if (effector_opacity_config.y > 0.5 && opacity_scale > 0.0) {
-            float opacity_strength = clamp(effector_opacity_config.z, 0.0, 1.0) * opacity_scale;
-            float opacity_weight = clamp(weight * opacity_strength, 0.0, 1.0);
-            if (opacity_weight > 0.0) {
+            float opacity_strength = clamp(effector_opacity_config.z, 0.0, 1.0);
+            float response_weight = clamp(opacity_strength * opacity_scale, 0.0, 1.0);
+            if (response_weight > 0.0) {
                 float target_opacity = clamp(effector_opacity_config.w, 0.0, 1.0);
-                opacity_weighted_target_sum += target_opacity * opacity_weight;
-                opacity_weight_sum += opacity_weight;
-                opacity_keep_product *= (1.0 - opacity_weight);
+                float desired = mix(1.0, target_opacity, clamp(weight, 0.0, 1.0));
+                float modifier = mix(1.0, desired, response_weight);
+                opacity_modifier_product *= clamp(modifier, 0.0, 1.0);
             }
         }
     }
 
     result.position += total_position_delta;
-    if (opacity_weight_sum > 0.0) {
-        float blended_target = opacity_weighted_target_sum / opacity_weight_sum;
-        float combined_weight = clamp(1.0 - opacity_keep_product, 0.0, 1.0);
-        result.opacity = clamp(mix(result.opacity, blended_target, combined_weight), 0.0, 1.0);
-    }
+    result.opacity = clamp(result.opacity * opacity_modifier_product, 0.0, 1.0);
 
     return result;
 }

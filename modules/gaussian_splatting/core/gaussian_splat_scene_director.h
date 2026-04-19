@@ -95,6 +95,7 @@ public:
         float falloff = 2.0f;
         float frequency = 2.0f;
         float opacity_strength = 1.0f;
+        float target_opacity = 0.0f;
         uint32_t layer_mask = 1u;
         uint32_t scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE;
         ObjectID scope_root_id;
@@ -186,13 +187,13 @@ public:
     void register_sphere_effector(ObjectID p_effector_id, const Transform3D &p_transform,
             float p_radius, float p_strength, float p_falloff, float p_frequency,
             bool p_enabled = true, bool p_affect_position = true, bool p_affect_opacity = false,
-            float p_opacity_strength = 1.0f, uint32_t p_layer_mask = 1u,
+            float p_opacity_strength = 1.0f, float p_target_opacity = 0.0f, uint32_t p_layer_mask = 1u,
             uint32_t p_scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE,
             ObjectID p_scope_root_id = ObjectID(), int32_t p_priority = 0);
     void update_sphere_effector(ObjectID p_effector_id, const Transform3D &p_transform,
             float p_radius, float p_strength, float p_falloff, float p_frequency,
             bool p_enabled = true, bool p_affect_position = true, bool p_affect_opacity = false,
-            float p_opacity_strength = 1.0f, uint32_t p_layer_mask = 1u,
+            float p_opacity_strength = 1.0f, float p_target_opacity = 0.0f, uint32_t p_layer_mask = 1u,
             uint32_t p_scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE,
             ObjectID p_scope_root_id = ObjectID(), int32_t p_priority = 0);
     void unregister_sphere_effector(ObjectID p_effector_id);
@@ -205,6 +206,9 @@ public:
             LocalVector<SphereEffectorSelection> &out,
             uint32_t *r_total_scene_effectors = nullptr) const;
     bool get_primary_sphere_effector_for_instance(ObjectID p_node_id, SphereEffectorSelection *r_selection) const;
+    Dictionary get_scene_effector_debug_state_for_instance(ObjectID p_node_id) const;
+    bool get_scene_effector_match_summary_for_instance(ObjectID p_node_id, uint32_t *r_match_count = nullptr,
+            bool *r_position_active = nullptr, bool *r_opacity_active = nullptr) const;
     uint32_t get_sphere_effector_count_for_renderer(const GaussianSplatRenderer *p_renderer) const;
     uint64_t get_sphere_effector_generation_for_renderer(const GaussianSplatRenderer *p_renderer) const;
     void register_instance_submission(ObjectID p_node_id, const Ref<GaussianSplatAsset> &p_asset,
@@ -277,10 +281,6 @@ private:
         bool scene_effector_scope_filter_present = false;
         bool scene_effector_scope_filter_valid = true;
         ObjectID scene_effector_scope_root_id;
-        // Ancestor ObjectIDs (self + parents up to the scene root), cached at
-        // registration/parent-change on the main thread. The render thread
-        // reads this set to evaluate subtree containment for SCOPE_SUBTREE /
-        // SCOPE_EXPLICIT_ROOT effectors without ever touching the live tree.
         LocalVector<ObjectID> scene_tree_ancestor_ids;
 	};
 
@@ -292,11 +292,13 @@ private:
         float falloff = 2.0f;
         float frequency = 2.0f;
         float opacity_strength = 1.0f;
+        float target_opacity = 0.0f;
         uint32_t layer_mask = 1u;
         uint32_t scope_mode = SPHERE_EFFECTOR_SCOPE_SUBTREE;
         ObjectID scope_root_id;
         int32_t priority = 0;
         uint64_t registration_serial = 0;
+        uint32_t scope_specificity = 0u;
         // Cached liveness of scope_root_id. Starts true on register, flipped
         // false (and triggers a generation bump) by the payload builder when
         // `ObjectDB::get_instance(scope_root_id)` no longer resolves.
@@ -360,12 +362,9 @@ private:
             LocalVector<SphereEffectorSelection> &r_out);
 
     // Render-thread-safe mask builder: consumes the scene-effector filter state
-    // cached on the InstanceRecord instead of reading it back from the live
-    // Node3D. The main-thread node path keeps the cache fresh via
-    // update_instance_scene_effector_filter(). This path skips the implicit-
-    // subtree ancestor check because `is_ancestor_of` is a scene-tree walk and
-    // is not safe to call from the render thread; use SCOPE_EXPLICIT_ROOT +
-    // `rendering/scene_effector_scope_root` on the node to opt into scoping.
+    // and cached ancestor chain stored on the InstanceRecord instead of reading
+    // anything back from the live Node3D. The main-thread node path keeps this
+    // cache fresh via update_instance_scene_effector_filter().
     static uint32_t _build_scene_effector_mask_for_record(const InstanceRecord &p_record,
             const LocalVector<SphereEffectorSelection> &p_payload);
 

@@ -904,7 +904,7 @@ RenderParams (params)
     <tr>
       <td><pre><code>effector_sphere</code></pre></td>
       <td><pre><code>vec4</code></pre></td>
-      <td>Single global sphere effector (foundation for capped multi-effector support): effector_sphere: xyz = center (world), w = radius effector_config: x = enabled (0/1), y = displacement strength (meters), z = falloff exponent, w = reserved</td>
+      <td>Legacy ProjectSettings fallback sphere effector uniform: <code>effector_sphere</code> packs center xyz in world space and radius in w. This documents the single-global fallback path only; scene-authored <code>SphereEffector3D</code> bindings use a separate capped binding path with per-instance selection and truncation.</td>
     </tr>
   </tbody>
 </table>
