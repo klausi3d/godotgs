@@ -236,6 +236,15 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 	if (director != nullptr) {
 		source_generation = _mix_generation(source_generation, director->get_instance_generation_for_renderer(p_renderer));
 	}
+	// Mix the renderer-wide grading-defaults counter so fallback grading rows
+	// (rows with no per-instance grading ref — director-less direct-data flows
+	// and the shim path) force a republish when the renderer's default
+	// ColorGradingResource is swapped or mutated in place. The streaming
+	// orchestrator already consumes this atomic in its fingerprint; the
+	// resident publisher must do the same or fallback-graded buffers stay
+	// stale until an unrelated content/topology change lands.
+	source_generation = _mix_generation(source_generation,
+			p_renderer->get_resource_state().instance_grading_defaults_generation.load(std::memory_order_relaxed));
 	source_generation = _mix_generation(source_generation, p_renderer->is_shadow_instance_filter_enabled() ? 1ULL : 0ULL);
 	source_generation = _mix_generation(source_generation, p_allow_primary_fallback_instance ? 1ULL : 0ULL);
 	source_generation = _mix_generation(source_generation, uint64_t(p_renderer->get_performance_settings().max_splats));
