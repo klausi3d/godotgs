@@ -3,6 +3,7 @@
 
 #ifdef TOOLS_ENABLED
 
+#include "core/io/image.h"
 #include "core/math/color.h"
 #include "core/math/vector3.h"
 #include "core/object/ref_counted.h"
@@ -28,7 +29,7 @@ private:
     static constexpr int MAX_CACHE_ENTRIES = 64;
     static const char *DISK_CACHE_DIR;
 
-    mutable HashMap<String, Ref<Texture2D>> thumbnail_cache;
+    mutable HashMap<String, Ref<Image>> thumbnail_cache;
     mutable Vector<String> thumbnail_cache_order;
     mutable uint64_t cache_hit_count = 0;
     mutable uint64_t cache_miss_count = 0;
@@ -42,19 +43,20 @@ private:
 
     // Disk cache helpers.
     String _disk_cache_path_for_key(uint64_t p_fingerprint, int p_size, ThumbnailStyle p_style) const;
-    Ref<Texture2D> _load_from_disk_cache(uint64_t p_fingerprint, int p_size, ThumbnailStyle p_style) const;
-    void _save_to_disk_cache(uint64_t p_fingerprint, int p_size, ThumbnailStyle p_style, const Ref<Texture2D> &p_texture) const;
+    Ref<Image> _load_from_disk_cache(uint64_t p_fingerprint, int p_size, ThumbnailStyle p_style) const;
+    void _save_to_disk_cache(uint64_t p_fingerprint, int p_size, ThumbnailStyle p_style, const Ref<Image> &p_image) const;
     bool _ensure_disk_cache_dir() const;
 
-    Ref<Texture2D> _generate_color_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const;
-    Ref<Texture2D> _generate_density_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const;
-    Ref<Texture2D> _generate_normals_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const;
-    Ref<Texture2D> _generate_heatmap_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const;
+    Ref<Image> _generate_color_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const;
+    Ref<Image> _generate_density_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const;
+    Ref<Image> _generate_normals_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const;
+    Ref<Image> _generate_heatmap_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const;
 
     Dictionary _project_to_canvas(const Ref<GaussianSplatAsset> &p_asset, int p_size, Vector<int> &r_hits,
             Vector<Color> &r_accum) const;
 
 public:
+    Ref<Image> generate_thumbnail_image(const Ref<GaussianSplatAsset> &p_asset, int p_size, ThumbnailStyle p_style) const;
     Ref<Texture2D> generate_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size, ThumbnailStyle p_style) const;
     Dictionary compute_memory_statistics(uint32_t p_splat_count, uint32_t p_compression_flags, bool p_pack_opacity) const;
     int get_cache_entry_count() const;

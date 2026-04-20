@@ -13,8 +13,6 @@
 #include "core/string/print_string.h"
 #include "core/templates/vector.h"
 #include "core/variant/dictionary.h"
-#include "scene/resources/texture.h"
-
 #include "../core/gaussian_data.h"
 #include "../editor/gaussian_thumbnail_generator.h"
 #include "../logger/gs_logger.h"
@@ -303,7 +301,7 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
     int thumbnail_size = _get_int_option(p_options, OPTION_THUMBNAIL_SIZE, StringName(), preset.default_thumbnail_size);
     bool include_stats = _get_bool_option(p_options, OPTION_INCLUDE_STATS, StringName(), preset.include_statistics);
     bool include_memory = _get_bool_option(p_options, OPTION_INCLUDE_MEMORY, StringName(), preset.include_memory_estimate);
-    bool customized = _get_bool_option(p_options, OPTION_CUSTOMIZED, StringName(), false);
+    bool customized = _get_bool_option(p_options, OPTION_CUSTOMIZED, StringName(), false) || legacy_pack_opacity_requested;
 
     thumbnail_style = CLAMP(thumbnail_style, 0, 3);
     thumbnail_size = CLAMP(thumbnail_size, 32, 512);
@@ -379,17 +377,15 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
 
     uint32_t compression_flags = _build_compression_flags(quantize_positions, quantize_colors, quantize_scales, quantize_rotations);
     asset->set_compression_flags(compression_flags);
-    asset->set_source_path(p_source_file);
-
-    Ref<Texture2D> thumbnail;
+    Ref<Image> thumbnail;
     if (generate_thumbnail) {
         Ref<GaussianThumbnailGenerator> generator;
         generator.instantiate();
-        thumbnail = generator->generate_thumbnail(asset, thumbnail_size,
+        thumbnail = generator->generate_thumbnail_image(asset, thumbnail_size,
                 GaussianThumbnailGenerator::style_from_int(thumbnail_style));
-        asset->set_thumbnail(thumbnail);
+        asset->set_preview_image(thumbnail);
     } else {
-        asset->set_thumbnail(Ref<Texture2D>());
+        asset->set_preview_image(Ref<Image>());
     }
 
     Dictionary option_dict;
@@ -407,6 +403,7 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
     option_dict[OPTION_QUANTIZE_COLORS] = quantize_colors;
     option_dict[OPTION_QUANTIZE_SCALES] = quantize_scales;
     option_dict[OPTION_QUANTIZE_ROTATIONS] = quantize_rotations;
+    option_dict[OPTION_PACK_OPACITY] = legacy_pack_opacity_requested;
     option_dict[OPTION_GENERATE_THUMBNAIL] = generate_thumbnail;
     option_dict[OPTION_THUMBNAIL_STYLE] = thumbnail_style;
     option_dict[OPTION_THUMBNAIL_SIZE] = thumbnail_size;
@@ -455,6 +452,7 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
     import_metadata[StringName("bounds")] = bounds;
 
     asset->set_import_metadata(import_metadata);
+    asset->set_source_path(p_source_file);
 
     String save_path = p_save_path + "." + get_save_extension();
     err = ResourceSaver::save(asset, save_path);

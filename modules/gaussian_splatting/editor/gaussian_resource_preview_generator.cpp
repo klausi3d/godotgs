@@ -22,7 +22,7 @@ Ref<Texture2D> GaussianSplatAssetPreviewGenerator::generate(const Ref<Resource> 
 		return Ref<Texture2D>();
 	}
 
-	Ref<Texture2D> existing_thumbnail = asset->get_thumbnail();
+	Ref<Texture2D> existing_thumbnail = asset->get_preview_texture();
 	if (existing_thumbnail.is_valid()) {
 		p_metadata[StringName("gaussian_preview_source")] = String("stored_thumbnail");
 		return existing_thumbnail;

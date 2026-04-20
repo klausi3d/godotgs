@@ -23,14 +23,7 @@ public:
 
     virtual Error import(ResourceUID::ID p_source_id, const String &p_source_file, const String &p_save_path, const HashMap<StringName, Variant> &p_options, List<String> *r_platform_variants, List<String> *r_gen_files = nullptr, Variant *r_metadata = nullptr) override;
 
-    // Import runs on a WorkerThreadPool thread when this returns true, but our
-    // thumbnail path (ResourceSaver::save -> ImageTexture::_get("image") ->
-    // RenderingServer::texture_2d_get) is FUNC1RC = synchronous push_and_ret to
-    // the render thread. In `--headless --import` the main thread sits in
-    // EditorFileSystem's ep->step busy-loop and never pumps the RS command
-    // queue, so every worker deadlocks. Force serial import until the
-    // thumbnail pipeline no longer takes a sync RS round-trip.
-    virtual bool can_import_threaded() const override { return false; }
+    virtual bool can_import_threaded() const override { return true; }
     virtual bool has_advanced_options() const override;
     virtual void show_advanced_options(const String &p_path) override;
 
@@ -46,7 +39,10 @@ public:
     //       resize_initialized() instead of resize() for POD vectors).
     //       Caches written by v0/v1 may contain 0xC0C0C0C0 poison and must
     //       be re-imported.
-    virtual int get_format_version() const override { return 2; }
+    //   v3: preview thumbnails now serialize as Image resources instead of
+    //       ImageTexture to avoid threaded importer deadlocks under
+    //       `--headless --import`.
+    virtual int get_format_version() const override { return 3; }
 
     // Validation helpers
     Error validate_ply_properties(const Ref<class PLYLoader> &p_loader) const;

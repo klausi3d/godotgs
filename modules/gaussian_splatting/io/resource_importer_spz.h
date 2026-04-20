@@ -32,17 +32,13 @@ public:
             const HashMap<StringName, Variant> &p_options, List<String> *r_platform_variants,
             List<String> *r_gen_files = nullptr, Variant *r_metadata = nullptr) override;
 
-    // Same deadlock as ResourceImporterPLY — thumbnail generation does a
-    // synchronous RenderingServer::texture_2d_get round-trip, which hangs on
-    // worker threads under `--headless --import`.
-    virtual bool can_import_threaded() const override { return false; }
+    virtual bool can_import_threaded() const override { return true; }
     virtual bool has_advanced_options() const override;
     virtual void show_advanced_options(const String &p_path) override;
 
     // See ResourceImporterPLY::get_format_version() for the bump rationale.
-    // SPZ assets share the GaussianSplatAsset deserialization path, so the
-    // same _ensure_buffer_sizes() zero-init fix applies.
-    virtual int get_format_version() const override { return 2; }
+    // SPZ assets share the GaussianSplatAsset deserialization path.
+    virtual int get_format_version() const override { return 3; }
 
     ResourceImporterSPZ();
 };

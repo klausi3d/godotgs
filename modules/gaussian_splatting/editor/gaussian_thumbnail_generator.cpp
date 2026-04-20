@@ -7,6 +7,7 @@
 #include "core/math/color.h"
 #include "core/math/math_funcs.h"
 #include "core/math/quaternion.h"
+#include "core/os/thread.h"
 #include "core/templates/local_vector.h"
 #include "core/variant/dictionary.h"
 #include "scene/resources/image_texture.h"
@@ -181,29 +182,24 @@ String GaussianThumbnailGenerator::_disk_cache_path_for_key(uint64_t p_fingerpri
     return String(DISK_CACHE_DIR) + "/" + String::num_uint64(p_fingerprint, 16) + "_" + itos(p_size) + "_" + itos(int(p_style)) + ".png";
 }
 
-Ref<Texture2D> GaussianThumbnailGenerator::_load_from_disk_cache(uint64_t p_fingerprint, int p_size, ThumbnailStyle p_style) const {
+Ref<Image> GaussianThumbnailGenerator::_load_from_disk_cache(uint64_t p_fingerprint, int p_size, ThumbnailStyle p_style) const {
     String path = _disk_cache_path_for_key(p_fingerprint, p_size, p_style);
     if (!FileAccess::exists(path)) {
-        return Ref<Texture2D>();
+        return Ref<Image>();
     }
 
     Ref<Image> image;
     image.instantiate();
     Error err = image->load(path);
     if (err != OK || image->is_empty()) {
-        return Ref<Texture2D>();
+        return Ref<Image>();
     }
 
-    return ImageTexture::create_from_image(image);
+    return image;
 }
 
-void GaussianThumbnailGenerator::_save_to_disk_cache(uint64_t p_fingerprint, int p_size, ThumbnailStyle p_style, const Ref<Texture2D> &p_texture) const {
-    if (p_texture.is_null()) {
-        return;
-    }
-
-    Ref<Image> image = p_texture->get_image();
-    if (image.is_null() || image->is_empty()) {
+void GaussianThumbnailGenerator::_save_to_disk_cache(uint64_t p_fingerprint, int p_size, ThumbnailStyle p_style, const Ref<Image> &p_image) const {
+    if (p_image.is_null() || p_image->is_empty()) {
         return;
     }
 
@@ -212,7 +208,7 @@ void GaussianThumbnailGenerator::_save_to_disk_cache(uint64_t p_fingerprint, int
     }
 
     String path = _disk_cache_path_for_key(p_fingerprint, p_size, p_style);
-    image->save_png(path);
+    p_image->save_png(path);
 }
 
 Dictionary GaussianThumbnailGenerator::_project_to_canvas(const Ref<GaussianSplatAsset> &p_asset, int p_size,
@@ -304,7 +300,7 @@ Dictionary GaussianThumbnailGenerator::_project_to_canvas(const Ref<GaussianSpla
     return result;
 }
 
-Ref<Texture2D> GaussianThumbnailGenerator::_generate_color_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const {
+Ref<Image> GaussianThumbnailGenerator::_generate_color_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const {
     Vector<int> hits;
     Vector<Color> accum;
     _project_to_canvas(p_asset, p_size, hits, accum);
@@ -324,10 +320,10 @@ Ref<Texture2D> GaussianThumbnailGenerator::_generate_color_thumbnail(const Ref<G
         image->set_pixel(i % p_size, i / p_size, c);
     }
 
-    return ImageTexture::create_from_image(image);
+    return image;
 }
 
-Ref<Texture2D> GaussianThumbnailGenerator::_generate_density_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const {
+Ref<Image> GaussianThumbnailGenerator::_generate_density_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const {
     Vector<int> hits;
     Vector<Color> accum;
     _project_to_canvas(p_asset, p_size, hits, accum);
@@ -350,10 +346,10 @@ Ref<Texture2D> GaussianThumbnailGenerator::_generate_density_thumbnail(const Ref
         image->set_pixel(i % p_size, i / p_size, c);
     }
 
-    return ImageTexture::create_from_image(image);
+    return image;
 }
 
-Ref<Texture2D> GaussianThumbnailGenerator::_generate_normals_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const {
+Ref<Image> GaussianThumbnailGenerator::_generate_normals_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const {
     Vector<int> hits;
     Vector<Color> accum;
     Dictionary projection = _project_to_canvas(p_asset, p_size, hits, accum);
@@ -429,10 +425,10 @@ Ref<Texture2D> GaussianThumbnailGenerator::_generate_normals_thumbnail(const Ref
         image->set_pixel(i % p_size, i / p_size, c);
     }
 
-    return ImageTexture::create_from_image(image);
+    return image;
 }
 
-Ref<Texture2D> GaussianThumbnailGenerator::_generate_heatmap_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const {
+Ref<Image> GaussianThumbnailGenerator::_generate_heatmap_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const {
     Vector<int> hits;
     Vector<Color> accum;
     _project_to_canvas(p_asset, p_size, hits, accum);
@@ -459,21 +455,21 @@ Ref<Texture2D> GaussianThumbnailGenerator::_generate_heatmap_thumbnail(const Ref
         image->set_pixel(i % p_size, i / p_size, c);
     }
 
-    return ImageTexture::create_from_image(image);
+    return image;
 }
 
-Ref<Texture2D> GaussianThumbnailGenerator::generate_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size,
+Ref<Image> GaussianThumbnailGenerator::generate_thumbnail_image(const Ref<GaussianSplatAsset> &p_asset, int p_size,
         ThumbnailStyle p_style) const {
-    ERR_FAIL_COND_V(p_size <= 0, Ref<Texture2D>());
-    ERR_FAIL_COND_V(p_asset.is_null(), Ref<Texture2D>());
-    ERR_FAIL_COND_V(p_asset->get_splat_count() == 0, Ref<Texture2D>());
+    ERR_FAIL_COND_V(p_size <= 0, Ref<Image>());
+    ERR_FAIL_COND_V(p_asset.is_null(), Ref<Image>());
+    ERR_FAIL_COND_V(p_asset->get_splat_count() == 0, Ref<Image>());
 
     const String cache_key = _build_cache_key(p_asset, p_size, p_style);
     const uint64_t fingerprint = _compute_asset_fingerprint(p_asset);
 
     // Check in-memory cache first.
     if (!cache_key.is_empty()) {
-        const Ref<Texture2D> *cached = thumbnail_cache.getptr(cache_key);
+        const Ref<Image> *cached = thumbnail_cache.getptr(cache_key);
         if (cached && cached->is_valid()) {
             cache_hit_count++;
             _touch_cache_key(cache_key);
@@ -483,7 +479,7 @@ Ref<Texture2D> GaussianThumbnailGenerator::generate_thumbnail(const Ref<Gaussian
 
     // Check disk cache before generating.
     if (fingerprint != 0) {
-        Ref<Texture2D> disk_cached = _load_from_disk_cache(fingerprint, p_size, p_style);
+        Ref<Image> disk_cached = _load_from_disk_cache(fingerprint, p_size, p_style);
         if (disk_cached.is_valid()) {
             disk_cache_hit_count++;
             if (!cache_key.is_empty()) {
@@ -497,7 +493,7 @@ Ref<Texture2D> GaussianThumbnailGenerator::generate_thumbnail(const Ref<Gaussian
     }
 
     cache_miss_count++;
-    Ref<Texture2D> generated;
+    Ref<Image> generated;
 
     switch (p_style) {
         case THUMBNAIL_STYLE_COLOR:
@@ -531,6 +527,18 @@ Ref<Texture2D> GaussianThumbnailGenerator::generate_thumbnail(const Ref<Gaussian
     }
 
     return generated;
+}
+
+Ref<Texture2D> GaussianThumbnailGenerator::generate_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size,
+        ThumbnailStyle p_style) const {
+    Ref<Image> image = generate_thumbnail_image(p_asset, p_size, p_style);
+    if (image.is_null() || image->is_empty()) {
+        return Ref<Texture2D>();
+    }
+
+    ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), Ref<Texture2D>(),
+            "GaussianThumbnailGenerator::generate_thumbnail() must only wrap textures on the main thread.");
+    return ImageTexture::create_from_image(image);
 }
 
 Dictionary GaussianThumbnailGenerator::compute_memory_statistics(uint32_t p_splat_count, uint32_t p_compression_flags,
