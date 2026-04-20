@@ -52,9 +52,15 @@ bool gs_is_wind_enabled_for_instance(float encoded_mode, vec4 wind_time_config) 
     return wind_enabled;
 }
 
+// Returns the steady spatial influence (0..1) for the point relative to the
+// effector sphere. `out_anim_factor` carries the per-splat temporal pulse
+// (0..1) driven by `frequency`; position deformation multiplies by it to get
+// wind-like bobbing, opacity deformation does not so dissolve is a steady
+// spatial envelope rather than a flicker at `frequency` Hz.
 float gs_compute_sphere_effector_weight(vec3 world_position, vec4 effector_sphere, vec4 effector_config,
-        float time_seconds, uint stable_seed, out vec3 out_direction) {
+        float time_seconds, uint stable_seed, out vec3 out_direction, out float out_anim_factor) {
     out_direction = vec3(0.0, 1.0, 0.0);
+    out_anim_factor = 0.0;
     if (effector_config.x <= 0.5) {
         return 0.0;
     }
@@ -77,12 +83,12 @@ float gs_compute_sphere_effector_weight(vec3 world_position, vec4 effector_spher
     uint hashed = gs_wind_hash_u32(stable_seed);
     float phase_jitter = (float(hashed & 0xFFFFu) / 65535.0) * 6.28318530718;
     float anim_phase = time_seconds * anim_freq * 6.28318530718 + phase_jitter;
-    float anim_factor = 0.5 + 0.5 * sin(anim_phase);
+    out_anim_factor = 0.5 + 0.5 * sin(anim_phase);
 
     if (distance_to_center > 1e-6) {
         out_direction = delta / distance_to_center;
     }
-    return influence * anim_factor;
+    return influence;
 }
 
 GSDeformationResult gs_apply_sphere_effectors(vec3 world_position,
@@ -121,15 +127,18 @@ GSDeformationResult gs_apply_sphere_effectors(vec3 world_position,
         }
 
         vec3 direction;
+        float anim_factor;
         float weight = gs_compute_sphere_effector_weight(world_position, effector_sphere, effector_config,
-                time_seconds, stable_seed + i * 0x9e3779b9u, direction);
+                time_seconds, stable_seed + i * 0x9e3779b9u, direction, anim_factor);
         if (weight <= 0.0) {
             continue;
         }
 
         float strength = effector_config.y;
         if (effector_opacity_config.x > 0.5 && position_scale > 0.0 && abs(strength) > 1e-8) {
-            total_position_delta += direction * (strength * weight * position_scale);
+            // Position deformation carries the temporal pulse so motion feels
+            // wind-like. Opacity deliberately omits `anim_factor` below.
+            total_position_delta += direction * (strength * weight * anim_factor * position_scale);
         }
 
         if (effector_opacity_config.y > 0.5 && opacity_scale > 0.0) {
