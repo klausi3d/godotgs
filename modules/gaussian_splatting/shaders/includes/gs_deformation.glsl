@@ -53,10 +53,20 @@ bool gs_is_wind_enabled_for_instance(float encoded_mode, vec4 wind_time_config) 
 }
 
 // Returns the steady spatial influence (0..1) for the point relative to the
-// effector sphere. `out_anim_factor` carries the per-splat temporal pulse
-// (0..1) driven by `frequency`; position deformation multiplies by it to get
-// wind-like bobbing, opacity deformation does not so dissolve is a steady
-// spatial envelope rather than a flicker at `frequency` Hz.
+// effector sphere. `out_anim_factor` carries the signed temporal pulse
+// (-1..1) driven by `frequency`. Position deformation multiplies by it so
+// splats oscillate *through* rest (wind-like sway) rather than breathing
+// one-sidedly outward; opacity deformation ignores it so dissolve is a
+// steady spatial envelope rather than a flicker at `frequency` Hz.
+//
+// The phase blends `time_seconds * frequency` with a low-frequency spatial
+// term anchored to the effector center: this keeps neighboring splats
+// correlated (coherent travelling wave across the sphere) instead of
+// per-splat random phases that visually read as noise. The spatial
+// coefficient is scaled by 1/radius so one full wavelength is comparable
+// to the effector diameter — large enough that the whole influence region
+// pulses together, small enough that there's still visible motion across
+// the volume.
 float gs_compute_sphere_effector_weight(vec3 world_position, vec4 effector_sphere, vec4 effector_config,
         float time_seconds, uint stable_seed, out vec3 out_direction, out float out_anim_factor) {
     out_direction = vec3(0.0, 1.0, 0.0);
@@ -80,10 +90,12 @@ float gs_compute_sphere_effector_weight(vec3 world_position, vec4 effector_spher
     float falloff = max(effector_config.z, 0.001);
     float influence = pow(normalized, falloff);
     float anim_freq = effector_config.w > 0.0 ? effector_config.w : 2.0;
-    uint hashed = gs_wind_hash_u32(stable_seed);
-    float phase_jitter = (float(hashed & 0xFFFFu) / 65535.0) * 6.28318530718;
-    float anim_phase = time_seconds * anim_freq * 6.28318530718 + phase_jitter;
-    out_anim_factor = 0.5 + 0.5 * sin(anim_phase);
+    // Spatial phase anchored to the effector center. Coefficient 1/radius
+    // gives wavelength ≈ 2π·radius, so a travelling wave crosses the
+    // sphere every few oscillations rather than standing-waving inside.
+    float spatial_phase = dot(delta, vec3(1.0 / max(radius, 1e-3)));
+    float anim_phase = time_seconds * anim_freq * 6.28318530718 + spatial_phase;
+    out_anim_factor = sin(anim_phase);
 
     if (distance_to_center > 1e-6) {
         out_direction = delta / distance_to_center;
