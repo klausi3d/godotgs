@@ -2419,8 +2419,12 @@ bool GPUSortingPipeline::_sort_instance_pipeline(const Transform3D &p_cam_transf
         params.wind_dir_strength[1] = _get_float_setting(ps, wind_direction_y_path, 0.0f);
         params.wind_dir_strength[2] = _get_float_setting(ps, wind_direction_z_path, 0.0f);
         params.wind_dir_strength[3] = MAX(_get_float_setting(ps, wind_strength_path, 0.0f), 0.0f);
-        params.wind_time_config[0] = float(double(sort_ctx.runtime.frame_counter) * (1.0 / 60.0) *
-                double(wind_time_scale));
+        // Wall-clock animation time for this frame, shared with the tile
+        // pass uniform fill (see FrameState::animation_time_seconds in
+        // render_frame_context_manager.h). Replaces a prior
+        // `frame_counter / 60` derivation that drifted against script-side
+        // real-time animation on non-60Hz frames.
+        params.wind_time_config[0] = float(sort_ctx.runtime.animation_time_seconds * double(wind_time_scale));
         params.wind_time_config[1] = MAX(_get_float_setting(ps, wind_frequency_path, 1.0f), 0.0f);
         params.wind_time_config[2] = _get_float_setting(ps, wind_spatial_frequency_path, 0.1f);
         params.wind_time_config[3] = wind_enabled ? 1.0f : 0.0f;

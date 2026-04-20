@@ -16,7 +16,20 @@ public:
 		uint32_t frame_counter = 0;
 		float sort_time_ms = 0.0f;
 		float render_time_ms = 0.0f;
+		// Monotonic wall-clock seconds sampled once per render frame and
+		// propagated to shader animation phase (wind, sphere effectors).
+		// Previously the shader derived phase from `frame_counter / 60`,
+		// which beat against script-side animations driven by real
+		// `_process(delta)` on non-60Hz displays or under frame drops —
+		// visible as jitter layered on the intended oscillation. Sampling
+		// once per frame keeps the tile and depth stages in lockstep.
+		double animation_time_seconds = 0.0;
 	};
+
+	// Returns monotonic seconds since the first call. Used by the render
+	// pipeline to sample a single animation-time value per frame before
+	// setting shader uniforms; see FrameState::animation_time_seconds.
+	static double sample_render_animation_time_seconds();
 
 	struct ViewState {
 		Transform3D last_camera_to_world_transform;
