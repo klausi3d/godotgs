@@ -52,6 +52,12 @@ struct SortRuntimeState {
     uint32_t *sort_buffer_capacity = nullptr;
     std::atomic<uint32_t> *visible_splat_count = nullptr;
     uint64_t frame_counter = 0;
+    // Wall-clock animation phase time for this frame. Copied from
+    // FrameState::animation_time_seconds by the orchestrator so the sort
+    // pass's shader uniforms use the same value the tile pass did. Replaces
+    // a prior `frame_counter / 60` derivation that drifted against
+    // script-side real-time animation on non-60Hz frames.
+    double animation_time_seconds = 0.0;
     float *sort_time_ms = nullptr;
     float *sort_submission_time_ms = nullptr;
     float *sort_wait_time_ms = nullptr;

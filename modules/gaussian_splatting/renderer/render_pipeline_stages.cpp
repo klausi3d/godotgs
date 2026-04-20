@@ -782,6 +782,13 @@ void RenderPipelineStages::prepare_frame_context(RenderDataRD *p_render_data,
 	const GaussianSplatRenderer::IFrameStateView &state_view = frame_provider;
 	GaussianSplatRenderer::IFrameMutationAccess &state_mut = frame_provider;
 	r_context.frame_id = state_view.get_frame_state_view().frame_counter;
+	// Sample wall-clock animation time once at the start of the render frame
+	// and cache it on FrameState so the tile-pass and depth/sort-pass shader
+	// uniforms see the same value this frame. Previously both stages
+	// independently derived time from `frame_counter / 60`, which beat
+	// against script-side animations on non-60Hz displays.
+	state_mut.get_frame_state_mut().animation_time_seconds =
+			RenderFrameContextManager::sample_render_animation_time_seconds();
 	r_context.painterly_enabled = renderer->get_painterly_config().enabled;
 	r_context.state_view = nullptr;
 	r_context.mutation_access = nullptr;
@@ -1826,7 +1833,11 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 	render_params.wind_strength = MAX(0.0f, wind_strength);
 	render_params.wind_frequency = MAX(0.0f, wind_frequency);
 	render_params.wind_spatial_frequency = wind_spatial_frequency;
-	render_params.wind_time_seconds = float(double(state_view.get_frame_state_view().frame_counter) * (1.0 / 60.0) *
+	// Wall-clock time sampled once per frame in prepare_render_frame_context()
+	// (see RenderFrameContextManager::sample_render_animation_time_seconds).
+	// Shared with the depth/sort pass uniform fill below so both stages see
+	// the same phase this frame.
+	render_params.wind_time_seconds = float(state_view.get_frame_state_view().animation_time_seconds *
 			double(MAX(wind_time_scale, 0.0f)));
 	render_params.sphere_effector_count = 0u;
 	const uint32_t total_scene_effectors = _populate_scene_effector_payload_for_renderer(renderer, &render_params, nullptr);

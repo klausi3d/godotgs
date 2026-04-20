@@ -140,6 +140,7 @@ static SortFrameContext _build_sort_frame_context(const GaussianSplatRenderer::I
 	frame_context.runtime.sort_buffer_capacity = &sorting_state.sort_buffer_capacity;
 	frame_context.runtime.visible_splat_count = &frame_state.visible_splat_count;
 	frame_context.runtime.frame_counter = frame_state.frame_counter;
+	frame_context.runtime.animation_time_seconds = frame_state.animation_time_seconds;
 	frame_context.runtime.sort_time_ms = &frame_state.sort_time_ms;
 	frame_context.runtime.sort_submission_time_ms = &performance_state.metrics.sort_submission_time_ms;
 	frame_context.runtime.sort_wait_time_ms = &performance_state.metrics.sort_wait_time_ms;
