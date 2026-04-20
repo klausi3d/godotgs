@@ -1,8 +1,9 @@
-[gd_scene load_steps=8 format=3 uid="uid://sphere_effector_test"]
+[gd_scene load_steps=9 format=3 uid="uid://sphere_effector_test"]
 
 [ext_resource type="GaussianSplatAsset" uid="uid://vnhu3dprb1x1" path="res://tests/fixtures/test_splats.ply" id="cabin_asset"]
 [ext_resource type="Script" uid="uid://dg380v6a1qpek" path="res://fps_camera_controller.gd" id="fps_script"]
 [ext_resource type="PackedScene" path="res://scenes/ui/performance_overlay.tscn" id="perf_overlay"]
+[ext_resource type="Script" path="res://scenes/sphere_effector_animator.gd" id="effector_animator"]
 
 [sub_resource type="SphereMesh" id="sphere_mesh"]
 radius = 18.0
@@ -38,11 +39,22 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
 enabled = true
 radius = 18.0
 strength = 1.25
-falloff = 2.0
+falloff = 0.5
 frequency = 2.0
 affect_position = true
 affect_opacity = true
 opacity_strength = 0.85
+script = ExtResource("effector_animator")
+label_path = NodePath("Readout")
+
+[node name="Readout" type="Label3D" parent="MainEffector"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 20, 0)
+text = "target_opacity   0.00
+opacity_strength 0.00
+strength         0.00"
+font_size = 80
+outline_size = 10
+modulate = Color(1, 0.9, 0.5, 1)
 
 [node name="Floor" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
