@@ -197,13 +197,32 @@ GSDeformationResult gs_apply_wind_deformation(vec3 world_position,
     }
     float direction_len = length(direction);
     float strength = max(wind_dir_strength.w, 0.0);
+    float base_temporal_frequency = max(wind_time_config.y, 0.0);
+    // Per-instance wind override (rendering/wind_override_enabled + wind_enabled
+    // on the node) bypasses the global enable gate but, without these fallbacks,
+    // is still muted by zero project-level wind_strength / wind_frequency. Since
+    // wind_dir_strength.w is a pass-global uniform, we can't merge a per-instance
+    // value into it on the CPU for mixed scenes — instead, when the instance
+    // explicitly forces wind on and the global base is unset, fall back to unit
+    // strength / frequency here so the instance's own wind_strength (multiplied
+    // into instance_intensity) and wind_frequency (instance_wind_config.w)
+    // become effective.
+    uint mode = gs_decode_instance_wind_mode(instance_wind_mode);
+    if (mode == GS_INSTANCE_WIND_MODE_FORCE_ENABLED) {
+        if (strength <= 0.0) {
+            strength = 1.0;
+        }
+        if (base_temporal_frequency <= 0.0) {
+            base_temporal_frequency = 1.0;
+        }
+    }
     if (direction_len <= 1e-6 || strength <= 0.0) {
         return gs_apply_sphere_effectors(world_position, opacity, instance_effect_config, effector_meta,
                 effector_spheres, effector_configs, effector_opacity_configs, time_seconds, stable_seed);
     }
 
     float instance_frequency_scale = instance_wind_config.w > 0.0 ? instance_wind_config.w : 1.0;
-    float temporal_frequency = max(wind_time_config.y, 0.0) * instance_frequency_scale;
+    float temporal_frequency = base_temporal_frequency * instance_frequency_scale;
     float spatial_frequency = wind_time_config.z;
     float clamped_intensity = max(instance_intensity, 0.0);
     if (clamped_intensity <= 0.0) {
