@@ -109,7 +109,6 @@ static const StringName &WORLD_STREAMING_VRAM_BUDGET_MB() { static const StringN
 static const StringName &WORLD_STREAMING_VRAM_MIN_CHUNKS() { static const StringName s("vram_min_chunks"); return s; }
 static const StringName &WORLD_STREAMING_VRAM_MAX_CHUNKS() { static const StringName s("vram_max_chunks"); return s; }
 static const StringName &WORLD_STREAMING_OVERRIDE_IO_SOURCE() { static const StringName s("override_io_source"); return s; }
-static const StringName &WORLD_STREAMING_IO_SOURCE_PATH() { static const StringName s("io_source_path"); return s; }
 static const StringName &NODE_SCENE_EFFECTORS_ENABLED_PROPERTY() { static const StringName s("rendering/scene_effectors_enabled"); return s; }
 static const StringName &NODE_SCENE_EFFECTOR_LAYER_MASK_PROPERTY() { static const StringName s("rendering/scene_effector_layer_mask"); return s; }
 static const StringName &NODE_SCENE_EFFECTOR_SCOPE_ROOT_PROPERTY() { static const StringName s("rendering/scene_effector_scope_root"); return s; }
@@ -313,9 +312,6 @@ GaussianSplatRenderer::WorldSubmissionContract GaussianSplatSceneDirector::_buil
 		contract.streaming_overrides.override_io_source =
 				_dict_get_bool(streaming_dict, WORLD_STREAMING_OVERRIDE_IO_SOURCE(),
 						contract.streaming_overrides.override_io_source);
-		contract.streaming_overrides.io_source_path =
-				_dict_get_string(streaming_dict, WORLD_STREAMING_IO_SOURCE_PATH(),
-						contract.streaming_overrides.io_source_path);
 		if (contract.streaming_overrides.override_vram_budget) {
 			contract.streaming_overrides.vram_budget_config.min_chunks =
 					MIN(contract.streaming_overrides.vram_budget_config.min_chunks,

@@ -48,7 +48,7 @@ Top 3 recommendations:
 - **Long term**: Move global atlas + residency into a dedicated registry module. This is the largest seam and will reduce complexity in streaming's main update loop.
 
 #### Notes / Potential dead or incomplete areas
-- `ConfigOverrides.override_io_source` exists in the header and is set from `gaussian_splat_world_3d.cpp`, but there is no usage in `gaussian_streaming.cpp`. This looks like an unimplemented override path worth either wiring or removing in a future cleanup.
+- `ConfigOverrides.override_io_source` is set from `gaussian_splat_world_3d.cpp` and consumed in `gaussian_streaming.cpp` to gate IO chunk layout reuse. The companion `io_source_path` string field was removed (no runtime reader); the flag is the only honest remaining knob.
 
 ---
 
@@ -106,8 +106,7 @@ This shows **strong coupling between core/data and renderer/IO/animation**, whic
 3. **Animation adapter**: separate animation caching and sampling from data storage to reduce incidental coupling.
 
 ### Low Priority / Future
-1. **Config override cleanup**: either implement `override_io_source` in streaming or remove unused override fields.
-2. **Telemetry consolidation**: move analytics snapshot assembly into a small utility class.
+1. **Telemetry consolidation**: move analytics snapshot assembly into a small utility class.
 
 ## Risk Assessment
 - **Risks**: high coupling to renderer and threading (upload queue), potential performance regressions if boundaries introduce extra copies or synchronization, subtle changes in streaming timing.

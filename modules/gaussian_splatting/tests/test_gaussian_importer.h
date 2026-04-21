@@ -1196,6 +1196,66 @@ TEST_CASE("[GaussianSplatting][Importer] PLY loader keeps legacy DC encoding") {
     _remove_user_file(source_path);
 }
 
+TEST_CASE("[GaussianSplatting][Importer] PLY ASCII loader hard-fails on malformed rows") {
+    // Behavior change: previously a project-setting could downgrade malformed-row
+    // handling to a warn-and-skip. That path has been removed — malformed ASCII
+    // rows now always return ERR_FILE_CORRUPT.
+    const String source_path = "user://gaussian_ply_malformed_row.ply";
+
+    static const char *k_malformed_ascii_ply = R"(ply
+format ascii 1.0
+element vertex 2
+property float x
+property float y
+property float z
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+property float opacity
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+end_header
+0 0 0 0 0 0 1 0 0 0 0 0.25 0.5 0.75
+0 0 0 1 2 3
+)";
+
+    Ref<FileAccess> file = FileAccess::open(source_path, FileAccess::WRITE);
+    REQUIRE(file.is_valid());
+    file->store_string(k_malformed_ascii_ply);
+    file.unref();
+
+    Ref<PLYLoader> loader;
+    loader.instantiate();
+    Error load_err = loader->load_file(source_path);
+    CHECK_MESSAGE(load_err == ERR_FILE_CORRUPT,
+            "PLY ASCII loader must reject malformed rows with ERR_FILE_CORRUPT (no more silent row skipping).");
+
+    _remove_user_file(source_path);
+}
+
+TEST_CASE("[GaussianSplatting][Importer] GaussianSplatAsset::load_from_file hard-fails on unknown raw extensions") {
+    // Behavior change: unknown raw extensions previously fell through to the PLY loader.
+    // They now hard-fail with ERR_FILE_UNRECOGNIZED instead of probing loosely.
+    const String source_path = "user://gaussian_asset_unknown_ext.xyz";
+    Ref<FileAccess> file = FileAccess::open(source_path, FileAccess::WRITE);
+    REQUIRE(file.is_valid());
+    file->store_string("not a real splat file");
+    file.unref();
+
+    Ref<GaussianSplatAsset> asset;
+    asset.instantiate();
+    const Error err = asset->load_from_file(source_path);
+    CHECK_MESSAGE(err == ERR_FILE_UNRECOGNIZED,
+            "GaussianSplatAsset::load_from_file must hard-fail on unknown raw extensions, not probe as PLY.");
+
+    _remove_user_file(source_path);
+}
+
 TEST_CASE("[GaussianSplatting][Renderer] SH metadata preserves DC encoding mode") {
     SHCompressionMetrics metrics;
     PackedGaussian packed = {};

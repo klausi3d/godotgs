@@ -1,5 +1,4 @@
 #include "gaussian_splat_asset.h"
-#include "../io/gaussian_data_loader.h"
 #include "../io/ply_loader.h"
 #include "../io/spz_loader.h"
 #include "../core/gaussian_data.h"
@@ -1044,15 +1043,10 @@ Error GaussianSplatAsset::load_from_file(const String &p_path) {
 			source_stage = "raw";
 		}
 	} else {
-		GaussianDataLoadResult load_result;
-		err = load_gaussian_data_from_file(p_path, load_result);
-		if (err == OK) {
-			gaussian_data = load_result.data;
-			missing_required = load_result.missing_required;
-			missing_optional = load_result.missing_optional;
-			file_label = load_result.used_spz ? "SPZ" : "PLY";
-			source_stage = "raw";
-		}
+		GS_LOG_ERROR_DEFAULT(vformat(
+				"Unsupported Gaussian splat raw format '%s' for path: %s. Supported extensions: .ply, .spz.",
+				extension, p_path));
+		return ERR_FILE_UNRECOGNIZED;
 	}
 
 	if (err != OK) {

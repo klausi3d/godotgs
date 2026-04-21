@@ -1,7 +1,6 @@
 #ifndef STREAMING_CONFIG_OVERRIDES_H
 #define STREAMING_CONFIG_OVERRIDES_H
 
-#include "core/string/ustring.h"
 #include "streaming_vram_regulator.h"
 #include "../lod/lod_config.h"
 
@@ -29,7 +28,6 @@ struct ConfigOverrides {
     uint32_t max_chunk_loads_per_frame = 0;
 
     bool override_io_source = false;
-    String io_source_path;
 
     bool has_any_override() const {
         return override_chunk_culling || override_prefetch || override_vram_budget ||

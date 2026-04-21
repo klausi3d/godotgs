@@ -153,11 +153,6 @@ These settings are registered with `GLOBAL_DEF(...)` and grouped by key prefix.
       <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1111</code></pre></td>
     </tr>
     <tr>
-      <td><pre><code>rendering/gaussian_splatting/streaming/io_source_path</code></pre></td>
-      <td><pre><code>String()</code></pre></td>
-      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1116</code></pre></td>
-    </tr>
-    <tr>
       <td><pre><code>rendering/gaussian_splatting/streaming/max_chunk_loads_per_frame</code></pre></td>
       <td><pre><code>16</code></pre></td>
       <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1092</code></pre></td>
@@ -775,7 +770,6 @@ These keys are used by module code but are not registered with `GLOBAL_DEF(...)`
 | `rendering/gaussian_splatting/debug/show_residency_hud` | `modules/gaussian_splatting/core/gaussian_splat_settings_manager.cpp:12` |
 | `rendering/gaussian_splatting/debug/show_tile_grid` | `modules/gaussian_splatting/core/gaussian_splat_settings_manager.cpp:9` |
 | `rendering/gaussian_splatting/debug/splat_audit_sample_count` | `modules/gaussian_splatting/renderer/render_debug_state_orchestrator.cpp:369` |
-| `rendering/gaussian_splatting/import/ply_ascii_strict_parse` | `modules/gaussian_splatting/io/ply_loader.cpp:58` |
 | `rendering/gaussian_splatting/lighting/dc_logit` | `modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp:119` |
 | `rendering/gaussian_splatting/lighting/direct_light_scale` | `modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp:116` |
 | `rendering/gaussian_splatting/lighting/indirect_sh_scale` | `modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp:117` |
@@ -814,7 +808,6 @@ These registered keys have no additional string-literal references beyond their 
 | `rendering/gaussian_splatting/debug/enable_mainloop_probes` | `modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1039` |
 | `rendering/gaussian_splatting/max_gpu_buffer_count` | `modules/gaussian_splatting/core/gaussian_splat_manager.cpp:989` |
 | `rendering/gaussian_splatting/streaming/async_io_enabled` | `modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1115` |
-| `rendering/gaussian_splatting/streaming/io_source_path` | `modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1116` |
 
 ## Examples
 ```bash

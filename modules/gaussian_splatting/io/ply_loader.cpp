@@ -53,13 +53,6 @@ static bool _is_ply_cache_enabled() {
     return true;
 }
 
-static bool _is_ascii_strict_parse_enabled() {
-    if (ProjectSettings *ps = ProjectSettings::get_singleton()) {
-        return GaussianSplattingIO::get_bool_setting(ps, "rendering/gaussian_splatting/import/ply_ascii_strict_parse", true);
-    }
-    return true;
-}
-
 } // namespace
 
 PLYLoader::PLYLoader() {
@@ -572,7 +565,6 @@ Error PLYLoader::parse_binary_data(Ref<FileAccess> file) {
 
 Error PLYLoader::parse_ascii_data(Ref<FileAccess> file) {
     gaussian_data->resize(header.vertex_count);
-    const bool strict_ascii_parse = _is_ascii_strict_parse_enabled();
 
     // Check if normal properties exist to determine 2D mode
     bool has_normals = (find_property_index("nx") >= 0 &&
@@ -615,14 +607,10 @@ Error PLYLoader::parse_ascii_data(Ref<FileAccess> file) {
         Vector<String> values = line.split_spaces();
 
         if (values.size() < header.properties.size()) {
-            String msg = vformat("[PLY ASCII] Malformed row at vertex index %d: expected at least %d fields, got %d.",
-                    i, header.properties.size(), values.size());
-            if (strict_ascii_parse) {
-                GS_LOG_ERROR_DEFAULT(msg + " Treating file as corrupt.");
-                return ERR_FILE_CORRUPT;
-            }
-            WARN_PRINT(msg + " Skipping row because strict parsing is disabled.");
-            continue;
+            GS_LOG_ERROR_DEFAULT(vformat(
+                    "[PLY ASCII] Malformed row at vertex index %d: expected at least %d fields, got %d. Treating file as corrupt.",
+                    i, header.properties.size(), values.size()));
+            return ERR_FILE_CORRUPT;
         }
 
         Gaussian g;
@@ -645,7 +633,7 @@ Error PLYLoader::parse_ascii_data(Ref<FileAccess> file) {
         for (int j = 0; j < header.properties.size(); j++) {
             const PLYProperty &prop = header.properties[j];
             const String &token = values[j];
-            if (strict_ascii_parse && !token.is_valid_float()) {
+            if (!token.is_valid_float()) {
                 GS_LOG_ERROR_DEFAULT(vformat("[PLY ASCII] Invalid numeric token at vertex index %d property '%s' (column %d): '%s'.",
                         i, prop.name, j, token));
                 return ERR_FILE_CORRUPT;
