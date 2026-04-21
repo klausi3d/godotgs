@@ -88,7 +88,6 @@ def get_doc_classes():
         "GaussianMemoryStream",
         "GaussianSplatContainer",
         "GaussianSplatDebugHUD",
-        "GaussianSplatDynamicInstance3D",
         "GaussianSplatManager",
         "GaussianSplatNode3D",
         "GaussianSplatRenderer",

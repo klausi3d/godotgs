@@ -76,7 +76,7 @@ Important clarification:
 
 These current facts shape the plan:
 
-- `GaussianSplatNode3D` and `GaussianSplatDynamicInstance3D` already submit through [GaussianSplatSceneDirector](../../modules/gaussian_splatting/core/gaussian_splat_scene_director.cpp).
+- `GaussianSplatNode3D` already submits through [GaussianSplatSceneDirector](../../modules/gaussian_splatting/core/gaussian_splat_scene_director.cpp).
 - `GaussianSplatWorld3D` still pushes renderer data directly through [gaussian_splat_world_3d.cpp](../../modules/gaussian_splatting/nodes/gaussian_splat_world_3d.cpp).
 - `GaussianSplatWorld3D` also owns renderer-setting application, tier overrides, and renderer ownership arbitration.
 - The data-upload path still instantiates a streaming system in [render_data_orchestrator.cpp](../../modules/gaussian_splatting/renderer/render_data_orchestrator.cpp).
@@ -136,7 +136,7 @@ We do not overload `InstanceRecord` for world data.
 
 Instead, the director gains explicit submission adapters:
 
-- instance-backed submissions for node and dynamic-instance paths
+- instance-backed submissions for node paths
 - world-backed submissions for baked/static world payloads
 - preview-backed submissions for editor preview
 
@@ -154,7 +154,7 @@ Exact type names can vary, but the model must stay explicit.
 - Move `GaussianSplatWorld3D` off direct renderer mutation and onto director-managed world submission.
 - Move world-renderer ownership arbitration into the director.
 - Move direct world data upload and direct static-chunk upload into the director-owned submission flow.
-- Keep `GaussianSplatNode3D` and `GaussianSplatDynamicInstance3D` on the existing director-based instance path.
+- Keep `GaussianSplatNode3D` on the existing director-based instance path.
 - Add a dedicated preview adapter so editor preview can participate in the same submission model without requiring a fake `World3D`.
 
 ### Important Constraint

@@ -49,11 +49,6 @@ Use this folder for Gaussian Splatting API references and regeneration scripts.
       <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp</code></td>
     </tr>
     <tr>
-      <td>Read the GaussianSplatDynamicInstance3D API reference.</td>
-      <td><a href="gaussian_splat_dynamic_instance3d.md"><code>gaussian_splat_dynamic_instance3d.md</code></a></td>
-      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_dynamic_instance3d.cpp</code></td>
-    </tr>
-    <tr>
       <td>Read the GaussianSplatManager API reference.</td>
       <td><a href="gaussian_splat_manager.md"><code>gaussian_splat_manager.md</code></a></td>
       <td><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp</code></td>

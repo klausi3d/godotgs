@@ -4,7 +4,6 @@
 #include "../nodes/gaussian_splat_node_3d.h"
 #include "../nodes/sphere_effector_3d.h"
 #include "../nodes/gaussian_splat_world_3d.h"
-#include "../nodes/gaussian_splat_dynamic_instance_3d.h"
 #include "../core/gaussian_data.h"
 #include "../core/effective_config_snapshot.h"
 #include "../core/gaussian_splat_asset.h"
@@ -2675,7 +2674,7 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer ign
     memdelete(node_a);
 }
 
-TEST_CASE("[GaussianSplatting][DynamicInstance][SceneTree] Null or empty data unregisters instance") {
+TEST_CASE("[GaussianSplatting][Node][SceneTree] Clearing canonical asset source unregisters instance") {
     SceneTree *tree = SceneTree::get_singleton();
     REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
 
@@ -2683,7 +2682,7 @@ TEST_CASE("[GaussianSplatting][DynamicInstance][SceneTree] Null or empty data un
     REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
 
     GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
-    CHECK_MESSAGE(director != nullptr, "Scene director singleton must exist for dynamic unregister test");
+    CHECK_MESSAGE(director != nullptr, "Scene director singleton must exist for unregister test");
     if (!director) {
         return;
     }
@@ -2692,33 +2691,22 @@ TEST_CASE("[GaussianSplatting][DynamicInstance][SceneTree] Null or empty data un
     director->build_instance_buffer(instance_buffer);
     const int baseline_count = instance_buffer.size();
 
-    GaussianSplatDynamicInstance3D *dynamic_node = memnew(GaussianSplatDynamicInstance3D);
-    dynamic_node->set_gaussian_data(make_test_gaussian_data(1, 5.0f));
-    root->add_child(dynamic_node);
+    GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
+    node->set_splat_asset(make_single_splat_asset(5.0f));
+    root->add_child(node);
     tree->process(0.0);
 
-    CHECK(dynamic_node->is_registered());
     director->build_instance_buffer(instance_buffer);
     CHECK(instance_buffer.size() > baseline_count);
 
-    Ref<GaussianData> empty_data;
-    empty_data.instantiate();
-    empty_data->resize(0);
-    dynamic_node->set_gaussian_data(empty_data);
+    node->set_splat_asset(Ref<GaussianSplatAsset>());
     tree->process(0.0);
 
-    CHECK_FALSE(dynamic_node->is_registered());
     director->build_instance_buffer(instance_buffer);
     CHECK_EQ(instance_buffer.size(), baseline_count);
 
-    dynamic_node->set_gaussian_data(Ref<GaussianData>());
-    tree->process(0.0);
-    CHECK_FALSE(dynamic_node->is_registered());
-    director->build_instance_buffer(instance_buffer);
-    CHECK_EQ(instance_buffer.size(), baseline_count);
-
-    root->remove_child(dynamic_node);
-    memdelete(dynamic_node);
+    root->remove_child(node);
+    memdelete(node);
 }
 
 // ── Import propagation proof ───────────────────────────────────────────

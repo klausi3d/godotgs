@@ -32,7 +32,6 @@ Related docs: [MEMORY_SUBSYSTEM](MEMORY_SUBSYSTEM.md), [READING_ORDER](READING_O
 - `gaussian_splat_node_3d.*` - Primary scene node
 - `gaussian_splat_container.*` - Multi-splat container
 - `gaussian_splat_world_3d.*` - World-scale streaming entry point
-- `gaussian_splat_dynamic_instance_3d.*` - Lightweight instance registration
 
 ### Interfaces (`interfaces/`)
 - `renderer_interfaces.h` - `IRenderer` contract and provider

@@ -1,8 +1,6 @@
 #pragma once
 
 // Wave 2 node-surface cleanup pins:
-//   - GaussianSplatDynamicInstance3D is deprecated. Its constructor emits
-//     WARN_DEPRECATED with an explicit migration message.
 //   - GaussianSplatNode3D::ply_file_path is deprecated. The setter emits
 //     WARN_DEPRECATED on non-empty assignment and stays silent when cleared.
 //   - rendering/gaussian_splatting/streaming/route_policy is world-only. The
@@ -24,7 +22,6 @@
 #include "gs_test_setting_guard.h"
 
 #include "../core/gs_project_settings.h"
-#include "../nodes/gaussian_splat_dynamic_instance_3d.h"
 #include "../nodes/gaussian_splat_node_3d.h"
 
 #include "core/config/project_settings.h"
@@ -82,30 +79,7 @@ struct NodeSurfaceMessageCapture : public ErrorHandlerList {
 } // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1) GaussianSplatDynamicInstance3D is deprecated; constructing the class emits
-//    a WARN_DEPRECATED banner. We only assert that any captured deprecation
-//    line references this class — the banner is fire-once per process.
-// ─────────────────────────────────────────────────────────────────────────────
-#ifndef DISABLE_DEPRECATED
-TEST_CASE("[GaussianSplatting][NodeSurface][Deprecation] GaussianSplatDynamicInstance3D construction is deprecated") {
-	NodeSurfaceMessageCapture capture;
-
-	GaussianSplatDynamicInstance3D *node = memnew(GaussianSplatDynamicInstance3D);
-	REQUIRE(node != nullptr);
-
-	for (int i = 0; i < capture.messages.size(); i++) {
-		if (capture.messages[i].find("deprecated") != -1) {
-			CHECK(capture.messages[i].find("GaussianSplatDynamicInstance3D") != -1);
-			CHECK(capture.messages[i].find("GaussianSplatNode3D") != -1);
-		}
-	}
-
-	memdelete(node);
-}
-#endif
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 2) ply_file_path on GaussianSplatNode3D is deprecated. The setter still
+// 1) ply_file_path on GaussianSplatNode3D is deprecated. The setter still
 //    writes the field (compat preserved for existing scenes); clearing the
 //    field stays quiet.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -140,7 +114,7 @@ TEST_CASE("[GaussianSplatting][NodeSurface][Deprecation] GaussianSplatNode3D::se
 #endif
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3) streaming/route_policy is a real ProjectSettings key and its accessor
+// 2) streaming/route_policy is a real ProjectSettings key and its accessor
 //    returns the configured enum. The direct-node invariance contract is
 //    pinned in test_scene_director_submission_scaffolding.h's explicit
 //    instance submission round-trip; here we only validate the settings
@@ -173,7 +147,7 @@ TEST_CASE("[GaussianSplatting][NodeSurface][RoutePolicy] streaming/route_policy 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4) The strict identity-transform gate is registered as a ProjectSettings key
+// 3) The strict identity-transform gate is registered as a ProjectSettings key
 //    with a default of false (warn-only legacy behavior preserved). Setting it
 //    true and reading back via gs::settings::get_bool pins the wiring so the
 //    GaussianSplatWorld3D::_apply_world_internal hard-fail branch cannot be
