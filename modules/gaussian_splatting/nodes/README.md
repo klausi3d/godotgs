@@ -76,35 +76,9 @@ The Gaussian Splatting module exposes exactly two canonical scene nodes:
 `GaussianSplatContainer` is an offline/tooling surface only; its output flows
 through one of the two canonical scene nodes.
 
-## GaussianSplatDynamicInstance3D (DEPRECATED)
-
-> **Deprecated.** This node emits `WARN_DEPRECATED` on construction and will be
-> removed in a future release. Migrate to `GaussianSplatNode3D`, which
-> terminates at the same scene-director instance registration with strictly
-> more features (asset loading, painterly effects, color grading, scene
-> effectors, debug HUD, procedural `set_splat_data()`).
-
-Migration:
-
-```
-# Before
-var dynamic = GaussianSplatDynamicInstance3D.new()
-dynamic.splat_asset = preload("res://assets/my_asset.tres")
-add_child(dynamic)
-
-# After (imported asset)
-var node = GaussianSplatNode3D.new()
-node.splat_asset = preload("res://assets/my_asset.tres")
-add_child(node)
-
-# After (runtime / procedural)
-var node = GaussianSplatNode3D.new()
-add_child(node)
-node.set_splat_data(positions, colors, scales, opacities, rotations)
-```
-
-The deprecated `ply_file_path` compatibility path exists on both node classes
-and also emits `WARN_DEPRECATED`. Prefer an imported `GaussianSplatAsset`.
+The deprecated `ply_file_path` compatibility path exists on
+`GaussianSplatNode3D` and emits `WARN_DEPRECATED`. Prefer an imported
+`GaussianSplatAsset`.
 
 ## Features
 
