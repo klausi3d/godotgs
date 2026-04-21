@@ -42,7 +42,7 @@ class GaussianSplatDebugHUD;
  * GaussianSplatNode3D is the main scene node for integrating Gaussian Splatting
  * into Godot projects. It provides:
  *
- * - **Asset Loading**: Load .ply or .spz files via file path or GaussianSplatAsset resource
+ * - **Asset Loading**: Load .ply or .spz content via GaussianSplatAsset resources
  * - **Quality Presets**: Performance, Balanced, Quality, and Custom modes
  * - **LOD Control**: Level-of-detail bias, max distance, and splat count limits
  * - **Painterly Effects**: Optional stylized brush-stroke rendering
@@ -68,10 +68,10 @@ class GaussianSplatDebugHUD;
  * add_child(splat_node)
  * @endcode
  *
- * @note `ply_file_path` is DEPRECATED. It emits WARN_DEPRECATED on use and will
- *       be removed. Use `splat_asset` (imported PLY/SPZ) or `set_splat_data()`
- *       (procedural) instead. This node and GaussianSplatWorld3D are the two
- *       canonical public scene surfaces for Gaussian splatting content.
+ * @note Use `splat_asset` (imported or raw PLY/SPZ resource) or
+ *       `set_splat_data()` (procedural) instead. This node and
+ *       GaussianSplatWorld3D are the two canonical public scene surfaces for
+ *       Gaussian splatting content.
  * @note This node participates in the shared scene renderer registry and does not
  *       own a dedicated GaussianSplatRenderer instance. It always registers as
  *       a resident instance submission; the project-wide streaming/route_policy
@@ -128,10 +128,8 @@ private:
     friend class GaussianSplatNodeRendererHelper;
 
     // Asset management
-    String ply_file_path;
     Ref<GaussianSplatAsset> splat_asset;
     Ref<GaussianSplatAsset> runtime_asset;
-    bool auto_load = true;
     bool asset_loading = false;
 
     // Quality settings
@@ -343,10 +341,6 @@ private:
     void _notification_enter_world();
     void _notification_exit_tree();
     void _notification_process();
-#ifdef TOOLS_ENABLED
-    void _notification_editor_post_save();
-#endif
-    bool _has_inconsistent_dual_source_configuration(String *r_asset_source_path = nullptr) const;
 
     void _ensure_gaussian_base();
     void _release_gaussian_base();
@@ -407,44 +401,12 @@ public:
     /// @name Asset Management
     /// @{
 
-    /**
-     * @brief DEPRECATED. Sets the path to a Gaussian splat file to load.
-     * @param p_path Resource path (res://) or absolute path to the file.
-     *
-     * Supported formats:
-     * - .ply: Standard PLY format (ASCII or binary)
-     * - .spz: Niantic compressed format
-     *
-     * @deprecated This compatibility route emits WARN_DEPRECATED on assignment
-     *             and will be removed in a future release. Import the file as a
-     *             [code]GaussianSplatAsset[/code] resource and assign it to
-     *             [code]splat_asset[/code] instead. The importer handles both
-     *             PLY and SPZ formats.
-     *
-     * If auto_load is enabled, the file will be loaded immediately.
-     */
-    void set_ply_file_path(const String &p_path);
-    String get_ply_file_path() const { return ply_file_path; }
-
-    /**
-     * @brief Sets a GaussianSplatAsset resource to display.
-     * @param p_asset Asset containing pre-processed splat data.
-     */
+    /** @brief Sets a GaussianSplatAsset resource to display. */
     void set_splat_asset(const Ref<GaussianSplatAsset> &p_asset);
     Ref<GaussianSplatAsset> get_splat_asset() const { return splat_asset; }
     String get_asset_origin_label() const;
 
-    /**
-     * @brief Enables automatic loading when ply_file_path is set.
-     * @param p_enabled When true, files are loaded when the path changes.
-     *
-     * @note Loading only occurs when the node is inside the scene tree.
-     *       If set before adding to tree, loading happens on _ready().
-     */
-    void set_auto_load(bool p_enabled);
-    bool is_auto_load_enabled() const { return auto_load; }
-
-    /** @brief Forces a reload of the current asset or PLY file. */
+    /** @brief Forces a reload of the current bound asset from its source path. */
     void reload_asset();
 
     /** @brief Returns true if an asset is currently being loaded asynchronously. */

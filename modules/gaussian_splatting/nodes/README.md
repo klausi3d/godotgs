@@ -76,10 +76,6 @@ The Gaussian Splatting module exposes exactly two canonical scene nodes:
 `GaussianSplatContainer` is an offline/tooling surface only; its output flows
 through one of the two canonical scene nodes.
 
-The deprecated `ply_file_path` compatibility path exists on
-`GaussianSplatNode3D` and emits `WARN_DEPRECATED`. Prefer an imported
-`GaussianSplatAsset`.
-
 ## Features
 
 - **Scene Integration**: Assign GaussianSplatAsset resources or drag and drop Gaussian splat files for asset-backed scene setup
@@ -103,13 +99,8 @@ The deprecated `ply_file_path` compatibility path exists on
 ### Properties
 
 #### File Management
-- `splat_asset`: Reference to a GaussianSplatAsset resource (preferred)
-- `ply_file_path`: Deprecated compatibility path to the Gaussian splat file (.ply or .spz)
-- `auto_load`: Automatically load the file when the compatibility path is set
-
-> **Deprecated:** `ply_file_path` emits `WARN_DEPRECATED` on assignment and
-> will be removed. Import the file as a `GaussianSplatAsset` resource and
-> assign it to `splat_asset` instead. The importer handles both PLY and SPZ.
+- `splat_asset`: Reference to a GaussianSplatAsset resource
+- `reload_asset()`: Reload the assigned asset from its resource path or recorded source path
 
 #### Quality Settings
 - `quality/preset`: Choose from predefined quality levels
@@ -218,8 +209,8 @@ print("GPU memory: ", stats.gpu_memory_mb)
 
 ### Signals
 
-- `asset_loaded`: Emitted when PLY file is successfully loaded
-- `asset_loading_failed(error)`: Emitted when loading fails
+- `asset_loaded`: Emitted when the assigned GaussianSplatAsset reload succeeds
+- `asset_loading_failed(error)`: Emitted when asset reload fails
 - `viewport_visibility_changed(visible)`: Emitted when visibility state changes
 
 ## Editor Integration
