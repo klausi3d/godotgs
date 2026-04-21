@@ -76,6 +76,36 @@ The Gaussian Splatting module exposes exactly two canonical scene nodes:
 `GaussianSplatContainer` is an offline/tooling surface only; its output flows
 through one of the two canonical scene nodes.
 
+## GaussianSplatDynamicInstance3D (DEPRECATED)
+
+> **Deprecated.** This node emits `WARN_DEPRECATED` on construction and will be
+> removed in a future release. Migrate to `GaussianSplatNode3D`, which
+> terminates at the same scene-director instance registration with strictly
+> more features (asset loading, painterly effects, color grading, scene
+> effectors, debug HUD, procedural `set_splat_data()`).
+
+Migration:
+
+```
+# Before
+var dynamic = GaussianSplatDynamicInstance3D.new()
+dynamic.splat_asset = preload("res://assets/my_asset.tres")
+add_child(dynamic)
+
+# After (imported asset)
+var node = GaussianSplatNode3D.new()
+node.splat_asset = preload("res://assets/my_asset.tres")
+add_child(node)
+
+# After (runtime / procedural)
+var node = GaussianSplatNode3D.new()
+add_child(node)
+node.set_splat_data(positions, colors, scales, opacities, rotations)
+```
+
+The deprecated `ply_file_path` compatibility path exists on both node classes
+and also emits `WARN_DEPRECATED`. Prefer an imported `GaussianSplatAsset`.
+
 ## Features
 
 - **Scene Integration**: Assign GaussianSplatAsset resources or drag and drop Gaussian splat files for asset-backed scene setup
@@ -99,8 +129,13 @@ through one of the two canonical scene nodes.
 ### Properties
 
 #### File Management
-- `splat_asset`: Reference to a GaussianSplatAsset resource
-- `reload_asset()`: Reload the assigned asset from its resource path or recorded source path
+- `splat_asset`: Reference to a GaussianSplatAsset resource (preferred)
+- `ply_file_path`: Deprecated compatibility path to the Gaussian splat file (.ply or .spz)
+- `auto_load`: Automatically load the file when the compatibility path is set
+
+> **Deprecated:** `ply_file_path` emits `WARN_DEPRECATED` on assignment and
+> will be removed. Import the file as a `GaussianSplatAsset` resource and
+> assign it to `splat_asset` instead. The importer handles both PLY and SPZ.
 
 #### Quality Settings
 - `quality/preset`: Choose from predefined quality levels
@@ -209,8 +244,8 @@ print("GPU memory: ", stats.gpu_memory_mb)
 
 ### Signals
 
-- `asset_loaded`: Emitted when the assigned GaussianSplatAsset reload succeeds
-- `asset_loading_failed(error)`: Emitted when asset reload fails
+- `asset_loaded`: Emitted when PLY file is successfully loaded
+- `asset_loading_failed(error)`: Emitted when loading fails
 - `viewport_visibility_changed(visible)`: Emitted when visibility state changes
 
 ## Editor Integration
