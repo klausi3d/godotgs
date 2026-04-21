@@ -436,13 +436,24 @@ Error GaussianSceneSerializer::_read_gaussian_data_chunk(Ref<FileAccess> file, c
     const uint64_t expected_payload_size = sizeof(uint32_t) + uint64_t(count) * sizeof(Gaussian);
     ERR_FAIL_COND_V(expected_payload_size > uint64_t(payload.size()), ERR_FILE_CORRUPT);
 
-    gaussian_data->resize(count);
+    // Reconstruct through the canonical bulk setter so octree, overlays,
+    // animation caches, SH first-order count, and content revision are all
+    // invalidated/recomputed in one place. The previous resize()+set_gaussian()
+    // loop left sh_first_order_count at 0 because set_gaussian does not scan
+    // sh_1[] to rederive SH metadata.
+    //
+    // Format limitation: the GAUSSIAN_DATA chunk carries only the per-splat
+    // `Gaussian` struct bytes (which embed the first-order SH triplet `sh_1[3]`).
+    // The high-order SH sidecar (`sh_high_order_coefficients`) is NOT persisted
+    // by this format, and the 2D-mode flag is not persisted either. After load
+    // both reset to defaults (sh_high_order_count == 0, is_2d_mode == false).
+    // Callers that need high-order SH must persist it outside this serializer.
+    LocalVector<Gaussian> loaded_gaussians;
     if (count > 0) {
-        const Gaussian *gaussians = reinterpret_cast<const Gaussian *>(r + sizeof(uint32_t));
-        for (uint32_t i = 0; i < count; i++) {
-            gaussian_data->set_gaussian(i, gaussians[i]);
-        }
+        loaded_gaussians.resize(count);
+        memcpy(loaded_gaussians.ptr(), r + sizeof(uint32_t), uint64_t(count) * sizeof(Gaussian));
     }
+    gaussian_data->set_gaussians(loaded_gaussians);
 
     return OK;
 }

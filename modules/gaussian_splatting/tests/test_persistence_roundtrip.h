@@ -4,6 +4,7 @@
 #include "../persistence/gaussian_scene_serializer.h"
 #include "../persistence/incremental_saver.h"
 #include "../core/gaussian_splat_world.h"
+#include "../core/streaming_chunk_payload_source.h"
 
 #include "core/io/file_access.h"
 #include "core/io/dir_access.h"
@@ -186,6 +187,207 @@ TEST_CASE("[GaussianSplatting][Persistence] GSF round-trip serialization") {
     }
 
     _remove_persistence_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][Persistence] GSF round-trip preserves first-order SH metadata and payload") {
+    // First-order SH lives inside the persisted `Gaussian` struct (sh_1[3]) and
+    // must survive a round-trip. The reconstruction path must also rebuild
+    // GaussianData::get_sh_first_order_count() so downstream consumers see a
+    // non-zero SH metadata count.
+    const String path = _make_persistence_fixture_path("test_sh_first_order_roundtrip");
+    const bool fixture_dir_ready = _ensure_persistence_fixture_dir(path);
+    CHECK_MESSAGE(fixture_dir_ready, "Persistence fixture directory should be available");
+    if (!fixture_dir_ready) {
+        return;
+    }
+
+    Ref<GaussianData> original_data;
+    original_data.instantiate();
+
+    Vector<Gaussian> gaussians;
+    gaussians.resize(4);
+    for (int i = 0; i < 4; i++) {
+        Gaussian &g = gaussians.write[i];
+        g.position = Vector3(i, 0, 0);
+        g.scale = Vector3(1, 1, 1);
+        g.rotation = Quaternion();
+        g.opacity = 1.0f;
+        g.sh_dc = Color(0.5f, 0.5f, 0.5f, 1.0f);
+        // Populate all three first-order SH bands with non-zero values so the
+        // derived sh_first_order_count is exactly 3.
+        g.sh_1[0] = Vector3(0.10f + 0.01f * i, 0.20f, 0.30f);
+        g.sh_1[1] = Vector3(-0.15f, 0.25f + 0.01f * i, -0.05f);
+        g.sh_1[2] = Vector3(0.08f, -0.12f, 0.40f + 0.01f * i);
+    }
+    original_data->set_gaussians(gaussians);
+    CHECK_MESSAGE(original_data->get_sh_first_order_count() == 3,
+            "Source data should advertise sh_first_order_count == 3 before save");
+
+    GaussianSplatting::GaussianSceneSerializer serializer;
+    Error save_err = serializer.save_scene(path, original_data.ptr(), nullptr, Dictionary());
+    CHECK_MESSAGE(save_err == OK, "GSF save should succeed");
+    if (save_err != OK) {
+        _remove_persistence_fixture(path);
+        return;
+    }
+
+    Ref<GaussianData> loaded_data;
+    loaded_data.instantiate();
+    Error load_err = serializer.load_scene(path, loaded_data.ptr(), nullptr, nullptr);
+    CHECK_MESSAGE(load_err == OK, "GSF load should succeed");
+
+    if (load_err == OK) {
+        CHECK_MESSAGE(loaded_data->get_sh_first_order_count() == 3,
+                "Reconstructed GaussianData must report sh_first_order_count == 3");
+        CHECK_EQ(loaded_data->get_count(), 4);
+        for (int i = 0; i < loaded_data->get_count(); i++) {
+            Gaussian g = loaded_data->get_gaussian(i);
+            CHECK(g.sh_1[0].is_equal_approx(Vector3(0.10f + 0.01f * i, 0.20f, 0.30f)));
+            CHECK(g.sh_1[1].is_equal_approx(Vector3(-0.15f, 0.25f + 0.01f * i, -0.05f)));
+            CHECK(g.sh_1[2].is_equal_approx(Vector3(0.08f, -0.12f, 0.40f + 0.01f * i)));
+        }
+    }
+
+    _remove_persistence_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][Persistence] GSF load documents high-order SH loss explicitly") {
+    // The GAUSSIAN_DATA chunk format only carries per-splat `Gaussian` struct
+    // bytes; it does NOT persist the `sh_high_order_coefficients` sidecar.
+    // This test pins that limitation: after a save/load round-trip the loaded
+    // GaussianData reports sh_high_order_count == 0 regardless of the source
+    // data. If a future format revision starts persisting the sidecar, this
+    // test should be updated (and the reconstruction path in
+    // _read_gaussian_data_chunk must pass the sidecar to set_gaussian_payload).
+    const String path = _make_persistence_fixture_path("test_sh_high_order_loss");
+    const bool fixture_dir_ready = _ensure_persistence_fixture_dir(path);
+    CHECK_MESSAGE(fixture_dir_ready, "Persistence fixture directory should be available");
+    if (!fixture_dir_ready) {
+        return;
+    }
+
+    Ref<GaussianData> original_data;
+    original_data.instantiate();
+
+    LocalVector<Gaussian> gaussians;
+    gaussians.resize(2);
+    for (uint32_t i = 0; i < gaussians.size(); i++) {
+        Gaussian &g = gaussians[i];
+        g.position = Vector3(i, 0, 0);
+        g.scale = Vector3(1, 1, 1);
+        g.rotation = Quaternion();
+        g.opacity = 1.0f;
+        g.sh_dc = Color(1, 1, 1, 1);
+        g.sh_1[0] = Vector3(0.1f, 0.2f, 0.3f);
+    }
+
+    LocalVector<Vector3> high_order;
+    const uint32_t high_order_per_splat = 5;
+    high_order.resize(gaussians.size() * high_order_per_splat);
+    for (uint32_t i = 0; i < high_order.size(); i++) {
+        high_order[i] = Vector3(float(i) * 0.01f, 0.0f, 0.0f);
+    }
+
+    original_data->set_gaussian_payload(gaussians, high_order, 1, high_order_per_splat, false);
+    CHECK_MESSAGE(original_data->get_sh_high_order_count() == high_order_per_splat,
+            "Source data should carry high-order SH before save");
+
+    GaussianSplatting::GaussianSceneSerializer serializer;
+    Error save_err = serializer.save_scene(path, original_data.ptr(), nullptr, Dictionary());
+    CHECK_MESSAGE(save_err == OK, "GSF save should succeed");
+    if (save_err != OK) {
+        _remove_persistence_fixture(path);
+        return;
+    }
+
+    Ref<GaussianData> loaded_data;
+    loaded_data.instantiate();
+    Error load_err = serializer.load_scene(path, loaded_data.ptr(), nullptr, nullptr);
+    CHECK_MESSAGE(load_err == OK, "GSF load should succeed");
+    if (load_err == OK) {
+        CHECK_MESSAGE(loaded_data->get_sh_high_order_count() == 0,
+                "High-order SH is not carried by the GAUSSIAN_DATA chunk format and must reset to 0 on load");
+        CHECK_MESSAGE(loaded_data->get_sh_high_order_coefficients_ptr() == nullptr,
+                "High-order SH sidecar must be empty after reconstruction");
+        // First-order SH still survives because it is embedded in the Gaussian struct bytes.
+        CHECK_MESSAGE(loaded_data->get_sh_first_order_count() == 1,
+                "First-order SH metadata should be recovered from the persisted Gaussian bytes");
+    }
+
+    _remove_persistence_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][Persistence] GSF load clears pre-existing state on the target GaussianData") {
+    // Loading into a GaussianData that already carries derived/overlay state
+    // must funnel through the canonical invalidation path so leftover high-order
+    // SH / overlays / octree state do not survive into the loaded resource.
+    const String path = _make_persistence_fixture_path("test_load_clears_state");
+    const bool fixture_dir_ready = _ensure_persistence_fixture_dir(path);
+    CHECK_MESSAGE(fixture_dir_ready, "Persistence fixture directory should be available");
+    if (!fixture_dir_ready) {
+        return;
+    }
+
+    Ref<GaussianSplatWorld> world = create_test_world();
+    Ref<GaussianData> source_data = world->get_gaussian_data();
+    CHECK(source_data.is_valid());
+
+    GaussianSplatting::GaussianSceneSerializer serializer;
+    Error save_err = serializer.save_scene(path, source_data.ptr(), nullptr, Dictionary());
+    CHECK_MESSAGE(save_err == OK, "GSF save should succeed");
+    if (save_err != OK) {
+        _remove_persistence_fixture(path);
+        return;
+    }
+
+    Ref<GaussianData> loaded_data;
+    loaded_data.instantiate();
+
+    // Seed the target with leftover high-order SH + an overlay modification
+    // that must be wiped on load.
+    LocalVector<Gaussian> seed_gaussians;
+    seed_gaussians.resize(5);
+    LocalVector<Vector3> seed_high_order;
+    seed_high_order.resize(seed_gaussians.size() * 3);
+    loaded_data->set_gaussian_payload(seed_gaussians, seed_high_order, 0, 3, false);
+    loaded_data->set_runtime_position(0, Vector3(42.0f, 0.0f, 0.0f));
+    CHECK_MESSAGE(loaded_data->has_modifications(),
+            "Seeded data should carry a runtime overlay modification before load");
+    CHECK_MESSAGE(loaded_data->get_sh_high_order_count() == 3,
+            "Seeded data should carry high-order SH before load");
+
+    Error load_err = serializer.load_scene(path, loaded_data.ptr(), nullptr, nullptr);
+    CHECK_MESSAGE(load_err == OK, "GSF load should succeed");
+    if (load_err == OK) {
+        CHECK_EQ(loaded_data->get_count(), source_data->get_count());
+        CHECK_MESSAGE(!loaded_data->has_modifications(),
+                "Runtime overlays must be cleared when load replaces storage");
+        CHECK_MESSAGE(loaded_data->get_sh_high_order_count() == 0,
+                "Stale high-order SH must be cleared when load replaces storage");
+    }
+
+    _remove_persistence_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldLifetime] GaussianSplatWorld::clear() drops chunk_payload_source") {
+    Ref<GaussianSplatWorld> world = create_test_world();
+    Ref<GaussianData> data = world->get_gaussian_data();
+    CHECK(data.is_valid());
+
+    Ref<InMemoryChunkPayloadSource> payload_source;
+    payload_source.instantiate();
+    payload_source->set_data(data);
+
+    world->set_chunk_payload_source(payload_source);
+    CHECK_MESSAGE(world->get_chunk_payload_source().is_valid(),
+            "Sanity: payload source should be attached before clear()");
+
+    world->clear();
+
+    CHECK_MESSAGE(world->get_gaussian_data().is_null(),
+            "clear() must drop gaussian_data");
+    CHECK_MESSAGE(world->get_chunk_payload_source().is_null(),
+            "clear() must drop chunk_payload_source");
 }
 
 TEST_CASE("[GaussianSplatting][Persistence] validate_file accepts valid GSF") {
