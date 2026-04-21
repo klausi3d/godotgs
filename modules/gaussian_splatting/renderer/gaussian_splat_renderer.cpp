@@ -174,21 +174,6 @@ static bool _renderer_requests_conservative_full_fidelity_runtime(const Gaussian
     return true;
 }
 
-static void _apply_resident_rejection_to_backend_plan(GaussianSplatRenderer::FrameBackendPlan &r_plan,
-        const String &p_resident_attempt_reason) {
-    const String resident_rejection_reason =
-            vformat("%s_not_feasible:%s", r_plan.resident_backend_reason, p_resident_attempt_reason);
-    r_plan.prefer_resident_backend = false;
-    r_plan.should_attempt_streaming_bootstrap = r_plan.streaming_requested && !r_plan.streaming_ready;
-    r_plan.resident_rejection_reason = resident_rejection_reason;
-    r_plan.streaming_backend_reason = resident_rejection_reason;
-    r_plan.streaming_contract_ready_reason = vformat("%s -> streaming_contract_published", resident_rejection_reason);
-    r_plan.streaming_not_ready_fallback_reason = vformat("%s -> streaming_frame_not_ready_fallback",
-            resident_rejection_reason);
-    r_plan.streaming_unavailable_fallback_reason = vformat("%s -> streaming_unavailable_fallback",
-            resident_rejection_reason);
-}
-
 // Convert SH band level (0-3) to coefficient count limit
 static uint8_t _sh_band_to_coeff_limit(int p_band) {
     // SH bands: 0 -> 1 coeff (DC only), 1 -> 4, 2 -> 9, 3 -> 16
@@ -345,6 +330,15 @@ static void _trace_render_path(bool p_enabled, uint64_t p_frame, bool p_streamin
 
 static String _streaming_not_ready_route_uid(const char *p_state_token) {
     return String("COMMON.SKIP.STREAMING_NOT_READY.") + String(p_state_token ? p_state_token : "UNKNOWN");
+}
+
+static String _resident_not_feasible_route_uid(const String &p_reason) {
+    String suffix = p_reason.strip_edges();
+    if (suffix.is_empty()) {
+        suffix = "unknown";
+    }
+    suffix = suffix.to_upper().replace(" ", "_").replace(":", "_");
+    return String("COMMON.SKIP.RESIDENT_NOT_FEASIBLE.") + suffix;
 }
 
 static bool _is_typed_streaming_not_ready_route(const String &p_route_uid) {
@@ -2225,18 +2219,21 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
             return;
         }
 
-        // Preserve the rejected resident reason when we pivot into the streaming backend so
-        // stats/HUD surfaces can explain both "why resident was rejected" and "what won next".
-        _apply_resident_rejection_to_backend_plan(backend_plan, resident_attempt_reason);
-        _set_instance_backend_diagnostics(InstanceBackendPolicy::STREAMING,
-                backend_plan.streaming_backend_reason,
+        const String resident_rejection_reason =
+                vformat("%s_not_feasible:%s", backend_plan.resident_backend_reason, resident_attempt_reason);
+        const String resident_rejection_route_uid = _resident_not_feasible_route_uid(resident_attempt_reason);
+        get_performance_state().metrics.cull_route_uid = resident_rejection_route_uid;
+        get_performance_state().metrics.cull_route_reason = String("resident_not_feasible_") + resident_attempt_reason;
+        if (debug_state_orchestrator) {
+            get_debug_state().route_uid = resident_rejection_route_uid;
+        }
+        _set_instance_backend_diagnostics(InstanceBackendPolicy::RESIDENT,
+                resident_rejection_reason,
                 false,
                 "atlas_emulation");
-        if (backend_plan.streaming_requested && !backend_plan.streaming_ready && streaming_orchestrator) {
-            if (streaming_orchestrator->ensure_instance_streaming_system(backend_plan)) {
-                backend_plan.streaming_ready = get_streaming_state().current_streaming_system.is_valid();
-            }
-        }
+        WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Resident route rejected (reason=%s); frame skipped to preserve single-route-per-frame contract.",
+                resident_rejection_reason));
+        return;
     }
     if (backend_plan.streaming_requested && backend_plan.streaming_ready) {
         _set_instance_backend_diagnostics(InstanceBackendPolicy::STREAMING,
