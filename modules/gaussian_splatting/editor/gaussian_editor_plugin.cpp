@@ -93,8 +93,7 @@ static String _get_node_source_path(GaussianSplatNode3D *p_node) {
         return String();
     }
 
-    return GaussianSplatSourcePath::resolve_primary_source_path(
-            p_node->get_splat_asset(), p_node->get_ply_file_path());
+    return GaussianSplatSourcePath::resolve_primary_source_path(p_node->get_splat_asset());
 }
 
 static Ref<GaussianSplatAsset> _load_gaussian_splat_asset(const String &p_path, bool p_force_reload) {

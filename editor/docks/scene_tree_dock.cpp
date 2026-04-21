@@ -68,6 +68,7 @@
 #include "servers/display_server.h"
 
 #ifdef MODULE_GAUSSIAN_SPLATTING_ENABLED
+#include "modules/gaussian_splatting/core/gaussian_splat_asset.h"
 #include "modules/gaussian_splatting/nodes/gaussian_splat_node_3d.h"
 #endif
 
@@ -454,8 +455,15 @@ void SceneTreeDock::_perform_create_gaussian_splats(const Vector<String> &p_file
 		}
 
 		String resource_path = ProjectSettings::get_singleton()->localize_path(path);
-		splat_node->set_ply_file_path(resource_path);
-		splat_node->set_auto_load(true);
+		Ref<GaussianSplatAsset> splat_asset = ResourceLoader::load(resource_path, "GaussianSplatAsset");
+		if (splat_asset.is_null()) {
+			splat_asset.instantiate();
+			if (splat_asset->load_from_file(resource_path) != OK) {
+				memdelete(splat_node);
+				continue;
+			}
+		}
+		splat_node->set_splat_asset(splat_asset);
 
 		nodes.push_back(splat_node);
 	}

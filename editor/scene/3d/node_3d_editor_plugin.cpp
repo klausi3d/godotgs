@@ -5013,6 +5013,7 @@ bool Node3DEditorViewport::_create_instance(Node *p_parent, const String &p_path
 bool Node3DEditorViewport::_create_gaussian_instance(Node *p_parent, const String &p_path, const Ref<Resource> &p_resource, const Point2 &p_point) {
 	ERR_FAIL_COND_V(p_parent == nullptr, false);
 	ERR_FAIL_COND_V(p_resource.is_null(), false);
+	ERR_FAIL_COND_V(!ClassDB::is_parent_class(p_resource->get_class(), "GaussianSplatAsset"), false);
 
 	Object *instantiated_object = ClassDB::instantiate("GaussianSplatNode3D");
 	ERR_FAIL_COND_V(instantiated_object == nullptr, false);
@@ -5025,26 +5026,6 @@ bool Node3DEditorViewport::_create_gaussian_instance(Node *p_parent, const Strin
 	}
 
 	gaussian_node->set("splat_asset", p_resource);
-
-	// Preserve raw source path semantics: `ply_file_path` should point to .ply/.spz source,
-	// not to the imported .gaussiansplat resource path.
-	String source_path;
-	if (p_resource->has_method("get_source_path")) {
-		source_path = p_resource->call("get_source_path");
-	}
-	if (source_path.is_empty() && p_resource->has_method("get_import_metadata")) {
-		const Variant metadata_variant = p_resource->call("get_import_metadata");
-		if (metadata_variant.get_type() == Variant::DICTIONARY) {
-			const Dictionary import_metadata = metadata_variant;
-			if (import_metadata.has(StringName("source_path"))) {
-				source_path = import_metadata[StringName("source_path")];
-			}
-		}
-	}
-	const String source_extension = source_path.get_extension().to_lower();
-	if (!source_path.is_empty() && (source_extension == "ply" || source_extension == "spz")) {
-		gaussian_node->set("ply_file_path", source_path);
-	}
 
 	// Adjust casing according to project setting. The file name is expected to be in snake_case, but will work for others.
 	const String &node_name = Node::adjust_name_casing(p_path.get_file().get_basename());

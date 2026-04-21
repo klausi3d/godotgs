@@ -842,10 +842,6 @@ TEST_CASE("[GaussianSplatting][Node] Asset origin label describes active ingress
 
     CHECK(node->get_asset_origin_label() == String("No asset assigned"));
 
-    node->set_ply_file_path("res://direct_only.ply");
-    CHECK(node->get_asset_origin_label().contains("Direct file path"));
-    CHECK(node->get_asset_origin_label().contains("res://direct_only.ply"));
-
     Ref<GaussianSplatAsset> asset = make_single_splat_asset();
     asset->set_source_path("res://imported_source.ply");
     node->set_splat_asset(asset);
@@ -853,12 +849,11 @@ TEST_CASE("[GaussianSplatting][Node] Asset origin label describes active ingress
     const String asset_origin = node->get_asset_origin_label();
     CHECK(asset_origin.contains("Assigned GaussianSplatAsset"));
     CHECK(asset_origin.contains("source: res://imported_source.ply"));
-    CHECK(asset_origin.contains("ply_file_path: res://direct_only.ply"));
 
     memdelete(node);
 }
 
-TEST_CASE("[GaussianSplatting][Node] Source path helper preserves asset-first precedence") {
+TEST_CASE("[GaussianSplatting][Node] Source path helper resolves asset-only source metadata") {
     Ref<GaussianSplatAsset> asset;
     asset.instantiate();
 
@@ -867,58 +862,52 @@ TEST_CASE("[GaussianSplatting][Node] Source path helper preserves asset-first pr
     asset->set_import_metadata(metadata);
 
     CHECK(GaussianSplatSourcePath::get_asset_source_path(asset) == String("res://metadata_source.ply"));
-    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset, "res://fallback_path.ply") ==
-            String("res://metadata_source.ply"));
+    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset) == String("res://metadata_source.ply"));
 
     metadata.erase(StringName("source_file"));
     metadata[StringName("runtime_load_source_path")] = String("res://runtime_source.ply");
     asset->set_import_metadata(metadata);
 
     CHECK(GaussianSplatSourcePath::get_asset_source_path(asset) == String("res://runtime_source.ply"));
-    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset, "res://fallback_path.ply") ==
-            String("res://runtime_source.ply"));
+    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset) == String("res://runtime_source.ply"));
 
     asset->set_source_path("res://asset_source.ply");
     CHECK(GaussianSplatSourcePath::get_asset_source_path(asset) == String("res://asset_source.ply"));
-    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset, "res://fallback_path.ply") ==
-            String("res://asset_source.ply"));
+    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset) == String("res://asset_source.ply"));
 
     asset->set_source_path(String());
     asset->set_import_metadata(Dictionary());
     CHECK(GaussianSplatSourcePath::get_asset_source_path(asset).is_empty());
-    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset, "res://fallback_path.ply") ==
-            String("res://fallback_path.ply"));
+    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset).is_empty());
 }
 
-TEST_CASE("[GaussianSplatting][Node] Configuration warnings flag inconsistent dual-path sources") {
+TEST_CASE("[GaussianSplatting][Node] Configuration warnings follow asset-only source contract") {
     GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
     REQUIRE(node != nullptr);
+
+    PackedStringArray warnings = node->get_configuration_warnings();
+    bool has_missing_asset_warning = false;
+    for (int i = 0; i < warnings.size(); i++) {
+        if (String(warnings[i]).contains("No Gaussian splat asset or runtime data assigned")) {
+            has_missing_asset_warning = true;
+            break;
+        }
+    }
+    CHECK(has_missing_asset_warning);
 
     Ref<GaussianSplatAsset> asset = make_single_splat_asset();
     asset->set_source_path("res://asset_source.ply");
     node->set_splat_asset(asset);
-    node->set_ply_file_path("res://other_source.ply");
 
-    PackedStringArray warnings = node->get_configuration_warnings();
-    bool has_dual_source_warning = false;
-    for (int i = 0; i < warnings.size(); i++) {
-        if (String(warnings[i]).contains("Both splat_asset and ply_file_path are set to different sources")) {
-            has_dual_source_warning = true;
-            break;
-        }
-    }
-    CHECK(has_dual_source_warning);
-
-    node->set_ply_file_path("res://asset_source.ply");
     warnings = node->get_configuration_warnings();
-    has_dual_source_warning = false;
+    bool mentions_legacy_dual_source = false;
     for (int i = 0; i < warnings.size(); i++) {
-        if (String(warnings[i]).contains("Both splat_asset and ply_file_path")) {
-            has_dual_source_warning = true;
+        if (String(warnings[i]).contains("ply_file_path")) {
+            mentions_legacy_dual_source = true;
             break;
         }
     }
-    CHECK_FALSE(has_dual_source_warning);
+    CHECK_FALSE(mentions_legacy_dual_source);
 
     memdelete(node);
 }

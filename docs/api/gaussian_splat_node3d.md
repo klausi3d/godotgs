@@ -19,9 +19,9 @@ Use `GaussianSplatNode3D` to render Gaussian splat assets or procedural splat ar
       <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:511</code></td>
     </tr>
     <tr>
-      <td>Load from file path (compatibility path).</td>
-      <td><code>set_ply_file_path(path)</code>, <code>set_auto_load(enabled)</code></td>
-      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:496</code></td>
+      <td>Reload the assigned asset.</td>
+      <td><code>reload_asset()</code></td>
+      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp</code></td>
     </tr>
     <tr>
       <td>Push procedural data.</td>
@@ -83,25 +83,11 @@ Use `GaussianSplatNode3D` to render Gaussian splat assets or procedural splat ar
   </thead>
   <tbody>
     <tr>
-      <td><code>ply_file_path</code></td>
-      <td><code>String</code></td>
-      <td><code>set_ply_file_path</code>, <code>get_ply_file_path</code></td>
-      <td>Deprecated compatibility path. Accepts <code>.ply</code> and <code>.spz</code> by file hint, but new scene workflows should prefer <code>splat_asset</code>.</td>
-      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:89</code></td>
-    </tr>
-    <tr>
       <td><code>splat_asset</code></td>
       <td><code>GaussianSplatAsset</code></td>
       <td><code>set_splat_asset</code>, <code>get_splat_asset</code></td>
-      <td>Assign a preprocessed resource instead of a file path.</td>
+      <td>Assign the GaussianSplatAsset resource that owns the node's splat data.</td>
       <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:93</code></td>
-    </tr>
-    <tr>
-      <td><code>auto_load</code></td>
-      <td><code>bool</code></td>
-      <td><code>set_auto_load</code>, <code>is_auto_load_enabled</code></td>
-      <td>Loads automatically only when the node is inside the tree.</td>
-      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:536</code></td>
     </tr>
     <tr>
       <td><code>quality/preset</code></td>

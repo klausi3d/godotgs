@@ -147,14 +147,8 @@ func _ensure_container_assets(container: GaussianSplatContainer) -> void:
         var splat_node := child as GaussianSplatNode3D
         if splat_node == null:
             continue
-        if splat_node.get_splat_asset() != null:
-            continue
-        var ply_path := splat_node.get_ply_file_path()
-        if ply_path.is_empty():
-            continue
-        var asset := _load_asset(ply_path)
-        if asset != null:
-            splat_node.set_splat_asset(asset)
+        if splat_node.get_splat_asset() == null:
+            printerr("GaussianSplatNode3D is missing splat_asset: %s" % splat_node.get_path())
 
 func _load_asset(path: String) -> GaussianSplatAsset:
     var ext := path.get_extension().to_lower()

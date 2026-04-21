@@ -12,7 +12,6 @@ class GaussianSplatNodeAssetHelper {
 public:
     explicit GaussianSplatNodeAssetHelper(GaussianSplatNode3D &p_owner) : owner(p_owner) {}
 
-    void load_asset();
     void update_asset();
     void clear_asset();
 

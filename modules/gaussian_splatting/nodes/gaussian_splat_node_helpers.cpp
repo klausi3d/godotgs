@@ -131,42 +131,6 @@ static String _quality_value_source_label(GaussianSplatNode3D::QualityPreset p_p
 
 } // namespace
 
-void GaussianSplatNodeAssetHelper::load_asset() {
-    if (GaussianSplatting::is_debug_frame_logging_enabled()) {
-        GS_LOG_STREAMING_DEBUG(vformat("[ASSET-HELPER] load_asset helper, ply=%s", owner.ply_file_path));
-    }
-    if (owner.ply_file_path.is_empty()) {
-        if (GaussianSplatting::is_debug_frame_logging_enabled()) {
-            GS_LOG_STREAMING_DEBUG(vformat("[ASSET-HELPER] load_asset called, ply_path=%s", owner.ply_file_path));
-        }
-        return;
-    }
-
-    owner.asset_loading = true;
-
-    Ref<GaussianSplatAsset> new_asset;
-    new_asset.instantiate();
-
-    Error load_error = new_asset->load_from_file(owner.ply_file_path);
-    if (GaussianSplatting::is_debug_frame_logging_enabled()) {
-        GS_LOG_STREAMING_DEBUG(vformat("[ASSET-HELPER] load_from_file returned err=%d count=%d",
-                (int)load_error, new_asset->get_splat_count()));
-    }
-
-    if (load_error == OK && new_asset->get_splat_count() > 0) {
-        owner.set_splat_asset(new_asset);
-        if (GaussianSplatting::is_debug_frame_logging_enabled()) {
-            GS_LOG_STREAMING_DEBUG(vformat("[ASSET-HELPER] Load success, splat_count=%d", new_asset->get_splat_count()));
-        }
-        owner.emit_signal("asset_loaded");
-    } else {
-        String error_message = vformat("Failed to load PLY file: %s (Error %d)", owner.ply_file_path, (int)load_error);
-        owner.emit_signal("asset_loading_failed", error_message);
-    }
-
-    owner.asset_loading = false;
-}
-
 void GaussianSplatNodeAssetHelper::update_asset() {
     if (!owner.splat_asset.is_valid()) {
         return;

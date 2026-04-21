@@ -602,7 +602,6 @@ void GaussianImportSettingsDialog::_build_viewport_scene() {
 	{
 		splat_node = memnew(GaussianSplatNode3D);
 		splat_node->set_name("ImportPreviewSplat");
-		splat_node->set_auto_load(false);
 		splat_node->set_splat_asset(loaded_asset);
 		splat_node->set_quality_preset(GaussianSplatNode3D::QUALITY_BALANCED);
 		splat_node->set_update_mode(GaussianSplatNode3D::UPDATE_MODE_ALWAYS);

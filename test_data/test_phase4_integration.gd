@@ -45,6 +45,15 @@ func _create_splat_node() -> Node3D:
     assert(node != null, "GaussianSplatNode3D class must be registered")
     return node
 
+func _assign_splat_asset(node: Node3D, path: String) -> void:
+    var asset := GaussianSplatAsset.new()
+    var err := asset.load_from_file(path)
+    if err != OK:
+        node.set("splat_asset", null)
+        return
+    asset.set_source_path(path)
+    node.set("splat_asset", asset)
+
 # TEST 1: PLY File Loading
 ## Validates loading behavior for PLY files of varying sizes and invalid input.
 func test_ply_loading():
@@ -53,7 +62,7 @@ func test_ply_loading():
     # Test small file (1K splats)
     run_test("Load small PLY (1K splats)", func():
         var node = _create_splat_node()
-        node.ply_file_path = "res://test_data/small_sphere_1k.ply"
+        _assign_splat_asset(node, "res://test_data/small_sphere_1k.ply")
         await get_tree().process_frame
 
         assert(node.get_splat_count() == 1000, "Expected 1000 splats")
@@ -64,7 +73,7 @@ func test_ply_loading():
     # Test medium file (100K splats)
     run_test("Load medium PLY (100K splats)", func():
         var node = _create_splat_node()
-        node.ply_file_path = "res://test_data/medium_sphere_100k.ply"
+        _assign_splat_asset(node, "res://test_data/medium_sphere_100k.ply")
         await get_tree().process_frame
 
         assert(node.get_splat_count() == 100000, "Expected 100K splats")
@@ -75,7 +84,7 @@ func test_ply_loading():
     # Test large file (1M splats)
     run_test("Load large PLY (1M splats)", func():
         var node = _create_splat_node()
-        node.ply_file_path = "res://test_data/large_sphere_1m.ply"
+        _assign_splat_asset(node, "res://test_data/large_sphere_1m.ply")
         await get_tree().process_frame
 
         assert(node.get_splat_count() == 1000000, "Expected 1M splats")
@@ -86,7 +95,7 @@ func test_ply_loading():
     # Test invalid file
     run_test("Handle invalid PLY file", func():
         var node = _create_splat_node()
-        node.ply_file_path = "res://test_data/nonexistent.ply"
+        _assign_splat_asset(node, "res://test_data/nonexistent.ply")
         await get_tree().process_frame
 
         assert(node.get_splat_count() == 0, "Should have 0 splats for invalid file")
@@ -104,7 +113,7 @@ func test_rendering_quality():
     for preset in presets:
         run_test("Quality preset: " + preset, func():
             var node = _create_splat_node()
-            node.ply_file_path = "res://test_data/small_sphere_1k.ply"
+            _assign_splat_asset(node, "res://test_data/small_sphere_1k.ply")
             node.quality_preset = preset
             await get_tree().process_frame
 
@@ -123,7 +132,7 @@ func test_rendering_quality():
     # Test transparency sorting
     run_test("Transparency sorting", func():
         var node = _create_splat_node()
-        node.ply_file_path = "res://test_data/small_sphere_1k.ply"
+        _assign_splat_asset(node, "res://test_data/small_sphere_1k.ply")
         node.enable_transparency_sorting = true
         await get_tree().process_frame
 
@@ -150,7 +159,7 @@ func test_performance_benchmarks():
 
         run_test("Performance: %d splats" % count, func():
             var node = _create_splat_node()
-            node.ply_file_path = "res://test_data/" + file
+            _assign_splat_asset(node, "res://test_data/" + file)
 
             # Add to scene for rendering
             get_root().add_child(node)
@@ -194,7 +203,7 @@ func test_memory_management():
         # Create and destroy multiple instances
         for i in range(5):
             var node = _create_splat_node()
-            node.ply_file_path = "res://test_data/medium_sphere_100k.ply"
+            _assign_splat_asset(node, "res://test_data/medium_sphere_100k.ply")
             get_root().add_child(node)
             await get_tree().process_frame
             node.queue_free()
@@ -221,7 +230,7 @@ func test_memory_management():
 
         # Monitor GPU memory usage
         var node = _create_splat_node()
-        node.ply_file_path = "res://test_data/large_sphere_1m.ply"
+        _assign_splat_asset(node, "res://test_data/large_sphere_1m.ply")
         get_root().add_child(node)
         await get_tree().process_frame
 
@@ -246,7 +255,7 @@ func test_multi_instance():
         # Create multiple instances
         for i in range(5):
             var node = _create_splat_node()
-            node.ply_file_path = "res://test_data/small_sphere_1k.ply"
+            _assign_splat_asset(node, "res://test_data/small_sphere_1k.ply")
             node.position = Vector3(i * 5, 0, 0)  # Spread them out
             get_root().add_child(node)
             nodes.append(node)
@@ -273,7 +282,7 @@ func test_multi_instance():
         var nodes = []
         for i in range(test_configs.size()):
             var node = _create_splat_node()
-            node.ply_file_path = "res://test_data/" + test_configs[i][0]
+            _assign_splat_asset(node, "res://test_data/" + test_configs[i][0])
             get_root().add_child(node)
             nodes.append(node)
 
@@ -295,7 +304,7 @@ func test_streaming_buffer():
 
     run_test("Triple buffering validation", func():
         var node = _create_splat_node()
-        node.ply_file_path = "res://test_data/medium_sphere_100k.ply"
+        _assign_splat_asset(node, "res://test_data/medium_sphere_100k.ply")
         get_root().add_child(node)
 
         # Simulate multiple frames to test buffer rotation
@@ -310,7 +319,7 @@ func test_streaming_buffer():
 
     run_test("Dynamic LOD streaming", func():
         var node = _create_splat_node()
-        node.ply_file_path = "res://test_data/large_sphere_1m.ply"
+        _assign_splat_asset(node, "res://test_data/large_sphere_1m.ply")
         node.enable_lod = true
         get_root().add_child(node)
 
@@ -343,7 +352,7 @@ func test_error_handling():
     run_test("Handle corrupted PLY data", func():
         # Attempt to load non-PLY file
         var node = _create_splat_node()
-        node.ply_file_path = "res://project.godot"  # Not a PLY file
+        _assign_splat_asset(node, "res://project.godot")  # Not a PLY file
         get_root().add_child(node)
         await get_tree().process_frame
 
@@ -355,7 +364,7 @@ func test_error_handling():
 
     run_test("Recover from GPU errors", func():
         var node = _create_splat_node()
-        node.ply_file_path = "res://test_data/small_sphere_1k.ply"
+        _assign_splat_asset(node, "res://test_data/small_sphere_1k.ply")
         get_root().add_child(node)
 
         # Simulate resource pressure
@@ -376,7 +385,7 @@ func test_visual_regression():
 
     run_test("Render consistency", func():
         var node = _create_splat_node()
-        node.ply_file_path = "res://test_data/small_bunny_1k.ply"
+        _assign_splat_asset(node, "res://test_data/small_bunny_1k.ply")
         get_root().add_child(node)
 
         # Create camera and viewport for rendering
