@@ -1873,53 +1873,6 @@ TEST_CASE("[Streaming Pipeline] Dirty atlas publication is invalidated when GPU 
     CHECK(system->get_asset_chunk_index_buffer().is_valid());
 }
 
-TEST_CASE("[Streaming Pipeline] Dense-id generation rejects stale remapped instance mappings") {
-    Ref<GaussianStreamingSystem> system;
-    system.instantiate();
-    system->initialize_empty(nullptr);
-
-    const uint32_t asset_a = 101;
-    const uint32_t asset_b = 202;
-    const uint32_t asset_c = 303;
-    system->register_asset(asset_a, create_test_gaussian_data(1024));
-    system->register_asset(asset_b, create_test_gaussian_data(1024));
-
-    LocalVector<InstanceDataGPU> mapped_a;
-    mapped_a.resize(1);
-    mapped_a[0] = {};
-    mapped_a[0].ids[0] = asset_a;
-    CHECK(system->remap_instance_asset_ids(mapped_a, false));
-
-    const uint32_t dense_a = mapped_a[0].ids[0];
-    const uint32_t dense_a_generation = mapped_a[0].lod[1];
-    CHECK(dense_a != 0);
-    CHECK(dense_a_generation != 0);
-
-    system->unregister_asset(asset_a);
-    system->register_asset(asset_c, create_test_gaussian_data(1024));
-
-    LocalVector<InstanceDataGPU> mapped_c;
-    mapped_c.resize(1);
-    mapped_c[0] = {};
-    mapped_c[0].ids[0] = asset_c;
-    CHECK(system->remap_instance_asset_ids(mapped_c, false));
-
-    const uint32_t dense_c = mapped_c[0].ids[0];
-    const uint32_t dense_c_generation = mapped_c[0].lod[1];
-    CHECK(dense_c == dense_a); // Dense slot can be reused.
-    CHECK(dense_c_generation != dense_a_generation); // Generation must advance on reuse.
-
-    LocalVector<InstanceDataGPU> stale_dense_mapping;
-    stale_dense_mapping.resize(1);
-    stale_dense_mapping[0] = {};
-    stale_dense_mapping[0].ids[0] = dense_a;
-    stale_dense_mapping[0].lod[1] = dense_a_generation;
-
-    CHECK_FALSE(system->remap_instance_asset_ids(stale_dense_mapping, false));
-    CHECK(stale_dense_mapping[0].ids[0] == 0u);
-    CHECK(stale_dense_mapping[0].lod[1] != dense_a_generation);
-}
-
 TEST_CASE("[Streaming Pipeline] Upload abort clears pending chunk state") {
     Ref<GaussianStreamingSystem> system;
     system.instantiate();

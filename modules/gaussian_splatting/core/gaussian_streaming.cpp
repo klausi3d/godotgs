@@ -1674,10 +1674,6 @@ uint32_t GaussianStreamingSystem::get_dense_asset_id(uint32_t asset_id) const {
 
 bool GaussianStreamingSystem::remap_instance_asset_ids(LocalVector<InstanceDataGPU> &p_instances, bool p_warn_on_missing) const {
     bool ok = true;
-    uint32_t primary_dense_generation = _get_dense_generation(PRIMARY_ASSET_ID);
-    if (primary_dense_generation == 0) {
-        primary_dense_generation = 1;
-    }
     for (uint32_t i = 0; i < p_instances.size(); i++) {
         const uint32_t incoming_asset_id = p_instances[i].ids[0];
         const uint32_t incoming_dense_generation = p_instances[i].lod[1];
@@ -1698,20 +1694,19 @@ bool GaussianStreamingSystem::remap_instance_asset_ids(LocalVector<InstanceDataG
             } else {
                 ok = false;
                 if (p_warn_on_missing) {
-                    WARN_PRINT_ONCE(vformat("[Streaming] Stale dense asset mapping detected (dense_id=%u, generation=%u); using primary asset.",
+                    WARN_PRINT_ONCE(vformat("[Streaming] Stale dense asset mapping detected (dense_id=%u, generation=%u); rejecting instance mapping.",
                             incoming_asset_id, incoming_dense_generation));
                 }
             }
         } else {
             ok = false;
             if (p_warn_on_missing) {
-                WARN_PRINT_ONCE(vformat("[Streaming] Instance asset_id %u is not registered; using primary asset.", incoming_asset_id));
+                WARN_PRINT_ONCE(vformat("[Streaming] Instance asset_id %u is not registered; rejecting instance mapping.", incoming_asset_id));
             }
         }
 
         if (dense_id == INVALID_ASSET_ID || dense_generation == 0) {
-            dense_id = PRIMARY_ASSET_ID;
-            dense_generation = primary_dense_generation;
+            continue;
         }
 
         p_instances[i].ids[0] = dense_id;
