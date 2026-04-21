@@ -29,10 +29,28 @@ static String _describe_streaming_not_ready_route(const String &p_route_uid) {
 	return vformat("Skipped because streaming data is not ready (%s)", suffix);
 }
 
+static String _describe_resident_not_feasible_route(const String &p_route_uid) {
+	static const String prefix = "COMMON.SKIP.RESIDENT_NOT_FEASIBLE.";
+	if (!p_route_uid.begins_with(prefix)) {
+		return String();
+	}
+
+	String suffix = p_route_uid.substr(prefix.length()).to_lower().replace("_", " ");
+	if (suffix.is_empty()) {
+		return "Skipped because the resident route was not feasible";
+	}
+	return vformat("Skipped because the resident route was not feasible (%s)", suffix);
+}
+
 static String _describe_common_route_uid(const String &p_route_uid) {
 	const String streaming_not_ready = _describe_streaming_not_ready_route(p_route_uid);
 	if (!streaming_not_ready.is_empty()) {
 		return streaming_not_ready;
+	}
+
+	const String resident_not_feasible = _describe_resident_not_feasible_route(p_route_uid);
+	if (!resident_not_feasible.is_empty()) {
+		return resident_not_feasible;
 	}
 
 	if (p_route_uid == String(RenderRouteUID::COMMON_UNSET_ROUTE)) {
@@ -202,6 +220,22 @@ static String _describe_cull_reason_token(const String &p_reason) {
 			return "Streaming data was not ready";
 		}
 		return vformat("Streaming data was not ready (%s)", suffix);
+	}
+
+	static const String resident_not_feasible_prefix = "resident_not_feasible_";
+	if (p_reason.begins_with(resident_not_feasible_prefix)) {
+		const String failure_reason = p_reason.substr(resident_not_feasible_prefix.length());
+		const String failure_description = _describe_backend_reason_segment(failure_reason);
+		if (!failure_description.is_empty()) {
+			return vformat("Resident route was not feasible because %s",
+					_lowercase_first(failure_description));
+		}
+
+		const String suffix = failure_reason.to_lower().replace("_", " ");
+		if (suffix.is_empty()) {
+			return "Resident route was not feasible";
+		}
+		return vformat("Resident route was not feasible (%s)", suffix);
 	}
 
 	if (p_reason == "gpu_culler_unavailable") {
