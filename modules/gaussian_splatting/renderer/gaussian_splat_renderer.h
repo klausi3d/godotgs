@@ -250,7 +250,6 @@ public:
         bool has_active_world_submission = false;
         String primary_fallback_instance_reason = "primary_gaussian_data_unavailable";
         String resident_backend_reason = "requested_streaming_policy";
-        String resident_rejection_reason = "none";
         String streaming_backend_reason = "requested_streaming_policy";
         String streaming_contract_ready_reason = "streaming_contract_published";
         String streaming_not_ready_fallback_reason = "streaming_frame_not_ready_fallback";

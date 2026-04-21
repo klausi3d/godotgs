@@ -12,6 +12,7 @@ struct RenderRouteUID {
 	static constexpr const char *COMMON_SKIP_NO_VISIBLE = "COMMON.SKIP.NO_VISIBLE";
 	static constexpr const char *COMMON_SKIP_CAMERA_STABLE = "COMMON.SKIP.CAMERA_STABLE";
 	static constexpr const char *COMMON_SKIP_STREAMING_NOT_READY = "COMMON.SKIP.STREAMING_NOT_READY";
+	static constexpr const char *COMMON_SKIP_RESIDENT_NOT_FEASIBLE = "COMMON.SKIP.RESIDENT_NOT_FEASIBLE";
 	static constexpr const char *COMMON_SKIP_GPU_CULLER_UNAVAILABLE = "COMMON.SKIP.GPU_CULLER_UNAVAILABLE";
 	static constexpr const char *COMMON_FAIL_NO_DEVICE = "COMMON.FAIL.NO_DEVICE";
 	static constexpr const char *COMMON_FAIL_SORT_FAILED = "COMMON.FAIL.SORT_FAILED";

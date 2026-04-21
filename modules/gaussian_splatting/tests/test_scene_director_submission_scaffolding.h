@@ -841,7 +841,7 @@ TEST_CASE("[GaussianSplatting][World][SceneTree][RequiresGPU] World submission r
 	tree->process(0.0);
 }
 
-TEST_CASE("[GaussianSplatting][World][SceneTree][RequiresGPU] Resident rejection preserves chained streaming fallback diagnostics") {
+TEST_CASE("[GaussianSplatting][World][SceneTree][RequiresGPU] Resident rejection preserves resident diagnostics and skips streaming pivot") {
 	RenderingServer *rs = RenderingServer::get_singleton();
 	if (rs == nullptr) {
 		MESSAGE("Skipping test - Rendering server unavailable");
@@ -909,19 +909,24 @@ TEST_CASE("[GaussianSplatting][World][SceneTree][RequiresGPU] Resident rejection
 
 	renderer->render_scene_instance(&render_data);
 
-	CHECK(renderer->test_has_current_streaming_system());
+	CHECK_FALSE(renderer->test_has_current_streaming_system());
+	CHECK_FALSE(renderer->has_instance_pipeline_buffers());
+	CHECK_FALSE(renderer->has_instance_asset_remap());
+	CHECK_FALSE(renderer->is_instance_contract_ready());
+	CHECK_FALSE(renderer->has_rendered_content());
 	const Dictionary stats = renderer->get_render_stats();
-	CHECK(stats.get("route_uid", String()) == String("INSTANCE.STREAMING"));
+	const String route_uid = stats.get("route_uid", String());
+	CHECK(route_uid.begins_with(String(RenderRouteUID::COMMON_SKIP_RESIDENT_NOT_FEASIBLE)));
 	CHECK(stats.get("requested_route_policy", String()) == String("streaming"));
-	CHECK(stats.get("instance_backend_policy", String()) == String("streaming"));
+	CHECK(stats.get("instance_backend_policy", String()) == String("resident"));
 	CHECK(stats.get("backend_selection_reason", String()) ==
-			String("submission_hint_resident:world_submission_not_feasible:resident_quantization_unsupported -> streaming_contract_published"));
+			String("submission_hint_resident:world_submission_not_feasible:resident_quantization_unsupported"));
+	CHECK(stats.get("cull_route_uid", String()) == route_uid);
+	CHECK(stats.get("cull_route_reason", String()) == String("resident_not_feasible_resident_quantization_unsupported"));
 	CHECK(String(stats.get("backend_selection_reason_label", String())).find(
 			"Resident was requested by the world submission") != -1);
 	CHECK(String(stats.get("backend_selection_reason_label", String())).find(
 			"quantized resident data cannot publish the resident instance contract") != -1);
-	CHECK(String(stats.get("backend_selection_reason_label", String())).find(
-			"published the streaming instance contract") != -1);
 
 	root->remove_child(node);
 	memdelete(node);
