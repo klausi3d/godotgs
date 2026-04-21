@@ -17,9 +17,6 @@ struct RenderRouteUID {
 	static constexpr const char *COMMON_FAIL_SORT_FAILED = "COMMON.FAIL.SORT_FAILED";
 	static constexpr const char *COMMON_FAIL_NO_OUTPUT = "COMMON.FAIL.NO_OUTPUT";
 
-	static constexpr const char *RESIDENT_SELECTED = "RESIDENT.SELECTED";
-
-	static constexpr const char *INSTANCE_ENTRY_INSTANCED_FAST = "INSTANCE.ENTRY.INSTANCED_FAST";
 	static constexpr const char *INSTANCE_RESIDENT = "INSTANCE.RESIDENT";
 	static constexpr const char *INSTANCE_STREAMING = "INSTANCE.STREAMING";
 	static constexpr const char *INSTANCE_CULL_GPU = "INSTANCE.CULL.GPU";
@@ -31,7 +28,6 @@ struct RenderRouteUID {
 	static constexpr const char *INSTANCE_SORT_GPU = "INSTANCE.SORT.GPU";
 	static constexpr const char *INSTANCE_SORT_CPU_FALLBACK = "INSTANCE.SORT.CPU_FALLBACK";
 	static constexpr const char *INSTANCE_SORT_CACHED = "INSTANCE.SORT.CACHED";
-	static constexpr const char *INSTANCE_SORT_IDENTITY_FALLBACK = "INSTANCE.SORT.IDENTITY_FALLBACK";
 	static constexpr const char *INSTANCE_RASTER_COMPUTE = "INSTANCE.RASTER.COMPUTE";
 	static constexpr const char *INSTANCE_RASTER_FRAGMENT = "INSTANCE.RASTER.FRAGMENT";
 	static constexpr const char *INSTANCE_RASTER_CACHED = "INSTANCE.RASTER.CACHED";
