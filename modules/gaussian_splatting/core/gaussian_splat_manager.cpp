@@ -997,7 +997,7 @@ void GaussianSplatManager::initialize_module() {
     GLOBAL_DEF("rendering/gaussian_splatting/streaming/zero_visible_recovery_cooldown_frames", 30);
     GLOBAL_DEF("rendering/gaussian_splatting/streaming/zero_visible_recovery_log_interval_frames", 120);
     GLOBAL_DEF("rendering/gaussian_splatting/max_gpu_buffer_count", 128);
-    // Cache PLY loads into a sibling .gsplatworld file for faster subsequent loads.
+    // Cache PLY loads into a sibling .gsplatcache file for faster subsequent loads.
     GLOBAL_DEF("rendering/gaussian_splatting/import/use_gsplatworld_cache", true);
     // Disable by default to avoid heavy gzip decompression cost on large cache-hit loads.
     GLOBAL_DEF("rendering/gaussian_splatting/import/gsplatworld_compression_enabled", false);
