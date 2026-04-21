@@ -536,8 +536,11 @@ Ref<Texture2D> GaussianThumbnailGenerator::generate_thumbnail(const Ref<Gaussian
         return Ref<Texture2D>();
     }
 
-    ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), Ref<Texture2D>(),
-            "GaussianThumbnailGenerator::generate_thumbnail() must only wrap textures on the main thread.");
+    // Safe to call from `EditorResourcePreview`'s worker threads in editor
+    // mode: the main thread pumps the RS command queue so the sync RS call
+    // chain underneath `create_from_image` completes. The `--headless
+    // --import` deadlock case that motivated #251 is avoided by having the
+    // importer call `generate_thumbnail_image()` directly (no RS calls).
     return ImageTexture::create_from_image(image);
 }
 

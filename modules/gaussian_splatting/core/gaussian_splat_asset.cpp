@@ -963,9 +963,12 @@ Ref<Texture2D> GaussianSplatAsset::get_preview_texture() const {
         return Ref<Texture2D>();
     }
 
-    ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), Ref<Texture2D>(),
-            "GaussianSplatAsset preview textures must be created on the main thread.");
-
+    // Safe to call from `EditorResourcePreview`'s worker threads: the main
+    // thread services the RS command queue in editor mode, so the sync RS
+    // chain underneath `create_from_image` completes. The `--headless
+    // --import` deadlock motivating #251 is avoided because the import path
+    // stores `preview_image` directly via `set_preview_image()` and never
+    // invokes this lazy texture-creation accessor.
     preview_texture_cache = ImageTexture::create_from_image(preview_image);
     return preview_texture_cache;
 }
