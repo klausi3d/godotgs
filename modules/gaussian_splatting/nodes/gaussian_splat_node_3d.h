@@ -68,10 +68,14 @@ class GaussianSplatDebugHUD;
  * add_child(splat_node)
  * @endcode
  *
- * @note `ply_file_path` remains available as a compatibility route and accepts
- *       both PLY and SPZ formats.
+ * @note `ply_file_path` is DEPRECATED. It emits WARN_DEPRECATED on use and will
+ *       be removed. Use `splat_asset` (imported PLY/SPZ) or `set_splat_data()`
+ *       (procedural) instead. This node and GaussianSplatWorld3D are the two
+ *       canonical public scene surfaces for Gaussian splatting content.
  * @note This node participates in the shared scene renderer registry and does not
- *       own a dedicated GaussianSplatRenderer instance.
+ *       own a dedicated GaussianSplatRenderer instance. It always registers as
+ *       a resident instance submission; the project-wide streaming/route_policy
+ *       applies to GaussianSplatWorld3D only.
  */
 class GaussianSplatNode3D : public Node3D {
     GDCLASS(GaussianSplatNode3D, Node3D);
@@ -404,19 +408,20 @@ public:
     /// @{
 
     /**
-     * @brief Sets the path to a Gaussian splat file to load.
+     * @brief DEPRECATED. Sets the path to a Gaussian splat file to load.
      * @param p_path Resource path (res://) or absolute path to the file.
      *
      * Supported formats:
      * - .ply: Standard PLY format (ASCII or binary)
      * - .spz: Niantic compressed format
      *
-     * If auto_load is enabled, the file will be loaded immediately.
+     * @deprecated This compatibility route emits WARN_DEPRECATED on assignment
+     *             and will be removed in a future release. Import the file as a
+     *             [code]GaussianSplatAsset[/code] resource and assign it to
+     *             [code]splat_asset[/code] instead. The importer handles both
+     *             PLY and SPZ formats.
      *
-     * @note Compatibility route. Prefer assigning [code]splat_asset[/code] for
-     *       new editor and script workflows. The property name includes "ply"
-     *       for historical reasons but the loader auto-detects format based on
-     *       file extension.
+     * If auto_load is enabled, the file will be loaded immediately.
      */
     void set_ply_file_path(const String &p_path);
     String get_ply_file_path() const { return ply_file_path; }

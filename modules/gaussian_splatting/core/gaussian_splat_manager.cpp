@@ -978,7 +978,14 @@ void GaussianSplatManager::initialize_module() {
     // Scene composite depth policy: 0=strict (skip frame if depth contract is missing), 1=relaxed (allow no-depth blend fallback).
     GLOBAL_DEF("rendering/gaussian_splatting/composite/scene_depth_policy", 0);
     // Streaming route policy: 0=resident (no streaming overhead), 1=streaming (current default).
+    // Scope: GaussianSplatWorld3D submissions only. GaussianSplatNode3D direct
+    // instances always register as resident regardless of this setting.
     GLOBAL_DEF("rendering/gaussian_splatting/streaming/route_policy", 1);
+    // When true, GaussianSplatWorld3D rejects (ERR_PRINT + no submission) any
+    // non-identity global transform instead of warning once and continuing.
+    // World assets are authored in world space; this gate makes the authoring
+    // invariant explicit for debug/QA builds.
+    GLOBAL_DEF("rendering/gaussian_splatting/world/strict_identity_transform", false);
     // Chunk-level frustum culling for streaming (FlashGS/LiteGS/H3DGS technique)
     // Culls entire chunks before loading, reducing GPU resource waste on off-screen chunks
     GLOBAL_DEF("rendering/gaussian_splatting/streaming/chunk_frustum_culling_enabled", true);

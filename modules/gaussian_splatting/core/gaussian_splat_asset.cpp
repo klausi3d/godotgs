@@ -203,6 +203,19 @@ void GaussianSplatAsset::_invalidate_gaussian_data_cache() {
     gaussian_data_cache.unref();
 }
 
+bool GaussianSplatAsset::_runtime_mutation_permitted(const char *p_method) const {
+    if (!payload_sealed) {
+        return true;
+    }
+    ERR_PRINT(vformat(
+            "[GaussianSplatAsset] %s() rejected: asset payload is sealed "
+            "(runtime-authoritative). The Packed setters are not a supported "
+            "runtime mutation API. Use GaussianData for runtime edits, or "
+            "rebuild/populate a fresh asset before handing it out again.",
+            p_method));
+    return false;
+}
+
 void GaussianSplatAsset::_invalidate_bounds_metadata() {
     import_metadata.erase(StringName("bounds"));
     import_metadata[StringName("bounds_dirty")] = true;
@@ -216,6 +229,9 @@ void GaussianSplatAsset::set_asset_type(AssetType p_type) {
 }
 
 void GaussianSplatAsset::set_splat_count(uint32_t p_count) {
+    if (!_runtime_mutation_permitted("set_splat_count")) {
+        return;
+    }
     if (splat_count != p_count) {
         splat_count = p_count;
         _ensure_buffer_sizes();
@@ -647,6 +663,9 @@ PackedFloat32Array GaussianSplatAsset::get_stroke_ages_buffer() const {
 }
 
 void GaussianSplatAsset::set_positions(const PackedFloat32Array &p_positions) {
+    if (!_runtime_mutation_permitted("set_positions")) {
+        return;
+    }
     positions = p_positions;
     // Always update splat count based on position array size (3 floats per splat)
     uint32_t new_count = p_positions.size() / 3;
@@ -661,6 +680,9 @@ void GaussianSplatAsset::set_positions(const PackedFloat32Array &p_positions) {
 }
 
 void GaussianSplatAsset::set_colors(const PackedColorArray &p_colors) {
+    if (!_runtime_mutation_permitted("set_colors")) {
+        return;
+    }
     colors = p_colors;
     // Update splat count if not already set by positions
     if (splat_count == 0 && !p_colors.is_empty()) {
@@ -673,6 +695,9 @@ void GaussianSplatAsset::set_colors(const PackedColorArray &p_colors) {
 }
 
 void GaussianSplatAsset::set_scales(const PackedFloat32Array &p_scales) {
+    if (!_runtime_mutation_permitted("set_scales")) {
+        return;
+    }
     scales = p_scales;
     // Update splat count if not already set
     if (splat_count == 0 && !p_scales.is_empty()) {
@@ -686,6 +711,9 @@ void GaussianSplatAsset::set_scales(const PackedFloat32Array &p_scales) {
 }
 
 void GaussianSplatAsset::set_rotations(const PackedFloat32Array &p_rotations) {
+    if (!_runtime_mutation_permitted("set_rotations")) {
+        return;
+    }
     rotations = p_rotations;
     // Update splat count if not already set
     if (splat_count == 0 && !p_rotations.is_empty()) {
@@ -699,6 +727,9 @@ void GaussianSplatAsset::set_rotations(const PackedFloat32Array &p_rotations) {
 }
 
 void GaussianSplatAsset::set_sh_dc_coefficients(const PackedFloat32Array &p_coefficients) {
+    if (!_runtime_mutation_permitted("set_sh_dc_coefficients")) {
+        return;
+    }
     sh_dc_coefficients = p_coefficients;
     has_sh_dc_coefficients = !p_coefficients.is_empty();
     if (splat_count == 0 && p_coefficients.size() >= 3) {
@@ -711,6 +742,9 @@ void GaussianSplatAsset::set_sh_dc_coefficients(const PackedFloat32Array &p_coef
 }
 
 void GaussianSplatAsset::set_sh_first_order_coefficients(const PackedFloat32Array &p_coefficients) {
+    if (!_runtime_mutation_permitted("set_sh_first_order_coefficients")) {
+        return;
+    }
     sh_first_order_coefficients = p_coefficients;
     if (splat_count > 0 && !p_coefficients.is_empty()) {
         sh_first_order_terms = MIN<uint32_t>(p_coefficients.size() / (splat_count * 3), 3u);
@@ -724,6 +758,9 @@ void GaussianSplatAsset::set_sh_first_order_coefficients(const PackedFloat32Arra
 }
 
 void GaussianSplatAsset::set_sh_high_order_coefficients(const PackedFloat32Array &p_coefficients) {
+    if (!_runtime_mutation_permitted("set_sh_high_order_coefficients")) {
+        return;
+    }
     sh_high_order_coefficients = p_coefficients;
     if (splat_count > 0 && !p_coefficients.is_empty()) {
         sh_high_order_terms = p_coefficients.size() / (splat_count * 3);
@@ -737,6 +774,9 @@ void GaussianSplatAsset::set_sh_high_order_coefficients(const PackedFloat32Array
 }
 
 void GaussianSplatAsset::set_opacity_logits(const PackedFloat32Array &p_opacity_logits) {
+    if (!_runtime_mutation_permitted("set_opacity_logits")) {
+        return;
+    }
     opacity_logits = p_opacity_logits;
     if (splat_count == 0 && !p_opacity_logits.is_empty()) {
         splat_count = p_opacity_logits.size();
@@ -748,6 +788,9 @@ void GaussianSplatAsset::set_opacity_logits(const PackedFloat32Array &p_opacity_
 }
 
 void GaussianSplatAsset::set_palette_ids(const PackedInt32Array &p_palette_ids) {
+    if (!_runtime_mutation_permitted("set_palette_ids")) {
+        return;
+    }
     palette_ids = p_palette_ids;
     if (splat_count == 0 && !p_palette_ids.is_empty()) {
         splat_count = p_palette_ids.size();
@@ -759,6 +802,9 @@ void GaussianSplatAsset::set_palette_ids(const PackedInt32Array &p_palette_ids) 
 }
 
 void GaussianSplatAsset::set_painterly_flags(const PackedInt32Array &p_flags) {
+    if (!_runtime_mutation_permitted("set_painterly_flags")) {
+        return;
+    }
     painterly_flags = p_flags;
     if (splat_count == 0 && !p_flags.is_empty()) {
         splat_count = p_flags.size();
@@ -772,10 +818,14 @@ void GaussianSplatAsset::set_painterly_flags(const PackedInt32Array &p_flags) {
 }
 
 void GaussianSplatAsset::set_brush_override_ids(const PackedInt32Array &p_override_ids) {
+    // set_painterly_flags() performs its own gate check.
     set_painterly_flags(p_override_ids);
 }
 
 void GaussianSplatAsset::set_normals(const PackedFloat32Array &p_normals) {
+    if (!_runtime_mutation_permitted("set_normals")) {
+        return;
+    }
     normals = p_normals;
     if (splat_count == 0 && p_normals.size() >= 3) {
         splat_count = p_normals.size() / 3;
@@ -787,6 +837,9 @@ void GaussianSplatAsset::set_normals(const PackedFloat32Array &p_normals) {
 }
 
 void GaussianSplatAsset::set_brush_axes(const PackedFloat32Array &p_brush_axes) {
+    if (!_runtime_mutation_permitted("set_brush_axes")) {
+        return;
+    }
     brush_axes = p_brush_axes;
     if (splat_count == 0 && p_brush_axes.size() >= 2) {
         splat_count = p_brush_axes.size() / 2;
@@ -798,6 +851,9 @@ void GaussianSplatAsset::set_brush_axes(const PackedFloat32Array &p_brush_axes) 
 }
 
 void GaussianSplatAsset::set_stroke_ages(const PackedFloat32Array &p_stroke_ages) {
+    if (!_runtime_mutation_permitted("set_stroke_ages")) {
+        return;
+    }
     stroke_ages = p_stroke_ages;
     if (splat_count == 0 && !p_stroke_ages.is_empty()) {
         splat_count = p_stroke_ages.size();
@@ -810,6 +866,9 @@ void GaussianSplatAsset::set_stroke_ages(const PackedFloat32Array &p_stroke_ages
 
 void GaussianSplatAsset::set_sh_component_terms(uint32_t p_first_order_terms, uint32_t p_high_order_terms) {
     if (sh_first_order_terms == p_first_order_terms && sh_high_order_terms == p_high_order_terms) {
+        return;
+    }
+    if (!_runtime_mutation_permitted("set_sh_component_terms")) {
         return;
     }
     sh_first_order_terms = MIN<uint32_t>(p_first_order_terms, 3u);
@@ -1125,6 +1184,9 @@ Ref<::GaussianData> GaussianSplatAsset::get_gaussian_data() const {
             "[GaussianSplatAsset] get_gaussian_data() called on unloaded asset (splat_count == 0); returning null.");
 
     if (gaussian_data_cache.is_valid()) {
+        // The cache has been handed out once already; keep the payload sealed
+        // so no external code can mutate it behind the consumer's back.
+        payload_sealed = true;
         return gaussian_data_cache;
     }
 
@@ -1135,6 +1197,10 @@ Ref<::GaussianData> GaussianSplatAsset::get_gaussian_data() const {
     }
 
     gaussian_data_cache = data;
+    // Asset arrays have been promoted to runtime authority (GaussianData).
+    // Seal so that asset->set_positions()/... cannot silently diverge the
+    // asset payload from the runtime GaussianData that was just handed out.
+    payload_sealed = true;
     const double rebuild_ms = _elapsed_msec(rebuild_start_usec);
     GS_LOG_STREAMING_INFO(vformat(
             "[LoadTiming][GaussianSplatAsset] rebuilt GaussianData from asset arrays: splats=%d rebuild_ms=%.2f",
@@ -1190,6 +1256,10 @@ Error GaussianSplatAsset::populate_from_gaussian_data(const Ref<::GaussianData> 
         return ERR_INVALID_PARAMETER;
     }
 
+    // This is the one legitimate runtime-to-asset persistence writer. It
+    // bypasses the public Packed setter gate because it mutates the internal
+    // fields directly under the class's own control.
+    payload_sealed = false;
     _invalidate_gaussian_data_cache();
 
     int count = p_gaussian_data->get_count();
@@ -1385,6 +1455,11 @@ Error GaussianSplatAsset::populate_from_gaussian_data(const Ref<::GaussianData> 
     } else {
         _invalidate_bounds_metadata();
     }
+
+    // The packed arrays now mirror an authoritative GaussianData payload.
+    // Seal so that subsequent external set_* calls must first re-seat via
+    // set_splat_count() or call populate_from_gaussian_data() again.
+    payload_sealed = true;
 
     emit_changed();
 

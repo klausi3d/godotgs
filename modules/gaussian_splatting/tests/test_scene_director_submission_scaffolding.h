@@ -556,6 +556,57 @@ TEST_CASE("[GaussianSplatting][World][SceneTree] World node forwards desired ove
 	}
 }
 
+TEST_CASE("[GaussianSplatting][World][SceneTree] strict identity transform rejects non-identity world submissions") {
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	const bool owns_director = (director == nullptr);
+	if (!director) {
+		director = memnew(GaussianSplatSceneDirector);
+	}
+	REQUIRE(director != nullptr);
+
+	ProjectSettings *project_settings = ProjectSettings::get_singleton();
+	REQUIRE(project_settings != nullptr);
+	ProjectSettingGuard strict_identity_guard(project_settings,
+			"rendering/gaussian_splatting/world/strict_identity_transform");
+	project_settings->set_setting("rendering/gaussian_splatting/world/strict_identity_transform", true);
+
+	Ref<GaussianSplatWorld> world_resource;
+	world_resource.instantiate();
+	world_resource->set_gaussian_data(stage1a_make_submission_test_data(2, 3.0f));
+
+	GaussianSplatWorld3D *node = memnew(GaussianSplatWorld3D);
+	REQUIRE(node != nullptr);
+	node->set_auto_apply_on_ready(false);
+	node->set_world(world_resource);
+	node->set_transform(Transform3D(Basis(), Vector3(1.0f, 0.0f, 0.0f)));
+
+	root->add_child(node);
+	tree->process(0.0);
+
+	GaussianSplatSceneDirector::WorldSubmission submission;
+	node->apply_world();
+	CHECK_FALSE(director->get_world_submission(node->get_instance_id(), &submission));
+
+	node->set_transform(Transform3D());
+	node->apply_world();
+	CHECK(director->get_world_submission(node->get_instance_id(), &submission));
+
+	node->clear_world();
+	root->remove_child(node);
+	memdelete(node);
+	tree->process(0.0);
+
+	if (owns_director) {
+		memdelete(director);
+	}
+}
+
 TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Zero-splat submissions do not surface residency authority") {
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
 	const bool owns_director = (director == nullptr);

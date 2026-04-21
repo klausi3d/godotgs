@@ -15,6 +15,7 @@
 
 // Include all test suites
 #include "test_gaussian_data.h"
+#include "test_data_authority_hardening.h"
 #include "test_gpu_streaming.h"
 #include "test_gpu_sorting.h"
 #include "test_asset_dependency_manager.h"
@@ -44,6 +45,7 @@
 #include "test_synthetic_bml_traffic_generator.h"
 #include "test_gaussian_splat_node.h"
 #include "test_node_bootstrap.h"
+#include "test_node_surface_cleanup.h"
 #include "test_shadow_instance_subset.h"
 #include "test_scene_director_submission_scaffolding.h"
 #include "test_sentinel_tier_defaults.h"

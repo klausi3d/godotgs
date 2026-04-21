@@ -206,7 +206,14 @@ static inline const char *get_streaming_route_policy_source(ProjectSettings *p_p
 /**
  * @brief Resolve the effective streaming route policy.
  *
- * Route policy is the sole settings-boundary control for backend selection.
+ * Scope: **world submissions only.** Consumed by GaussianSplatWorld3D when it
+ * builds its WorldSubmission's residency hint (streaming vs resident backend).
+ *
+ * GaussianSplatNode3D (direct per-instance content) always publishes
+ * SUBMISSION_RESIDENCY_HINT_RESIDENT regardless of this setting; do not treat
+ * route_policy as a project-wide backend knob. If per-node backend steering is
+ * ever needed, introduce a narrow per-world-group setting rather than
+ * broadening this one.
  */
 static inline int get_streaming_route_policy(ProjectSettings *p_ps) {
 	if (!p_ps) {

@@ -37,6 +37,14 @@ void GaussianSplatDynamicInstance3D::_bind_methods() {
 }
 
 GaussianSplatDynamicInstance3D::GaussianSplatDynamicInstance3D() {
+#ifndef DISABLE_DEPRECATED
+    WARN_DEPRECATED_MSG(
+            "GaussianSplatDynamicInstance3D is deprecated and will be removed in a "
+            "future release. It terminates at the same scene-director instance "
+            "registration as GaussianSplatNode3D with strictly fewer features. "
+            "Migrate to GaussianSplatNode3D and use `splat_asset` (for imported "
+            "assets) or `set_splat_data()` (for runtime/procedural splats).");
+#endif
     set_notify_transform(true);
 }
 

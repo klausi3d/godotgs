@@ -328,6 +328,28 @@ void GaussianSplatWorld3D::_apply_world_internal() {
         return;
     }
 
+    // GaussianSplatWorld assets are authored in world space, so any non-identity
+    // transform on this node silently misplaces splats. The default policy is a
+    // one-shot warning (compat). Setting
+    // `rendering/gaussian_splatting/world/strict_identity_transform` to true
+    // promotes the check to a hard-fail and skips registration entirely.
+    const bool has_non_identity_transform =
+            !get_global_transform().is_equal_approx(Transform3D());
+    if (has_non_identity_transform) {
+        const bool strict_identity = gs::settings::get_bool(
+                ProjectSettings::get_singleton(),
+                "rendering/gaussian_splatting/world/strict_identity_transform",
+                false);
+        if (strict_identity) {
+            ERR_PRINT("GaussianSplatWorld3D: non-identity transform rejected under "
+                      "'rendering/gaussian_splatting/world/strict_identity_transform'. "
+                      "World assets are authored in world space; apply the transform "
+                      "to the world resource instead. Skipping submission.");
+            clear_world();
+            return;
+        }
+    }
+
     if (log_enabled) {
         GS_LOG_RENDERER_DEBUG("[GSWORLD-DBG] _apply_world_internal: calling _register_shared_renderer");
     }
@@ -347,7 +369,7 @@ void GaussianSplatWorld3D::_apply_world_internal() {
         GS_LOG_RENDERER_DEBUG("[GSWORLD-DBG] _apply_world_internal: _update_render_instance done");
     }
 
-    if (!warned_non_identity_transform && !get_global_transform().is_equal_approx(Transform3D())) {
+    if (!warned_non_identity_transform && has_non_identity_transform) {
         warned_non_identity_transform = true;
         GS_LOG_WARN_DEFAULT("GaussianSplatWorld3D: non-identity transform detected. World assets are assumed to be in world space.");
     }

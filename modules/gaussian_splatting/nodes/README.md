@@ -61,30 +61,50 @@ Notes:
 - This node is the recommended path for large static scenes (global sort per
   renderer).
 
-## GaussianSplatDynamicInstance3D (instance registry)
+## Canonical scene surfaces
 
-Lightweight node that registers a `GaussianSplatAsset` with the instance registry so the shared renderer can stream and draw it alongside other instances. It does not render by itself; keep at least one `GaussianSplatNode3D` or `GaussianSplatWorld3D` in the scene to own the renderer.
+The Gaussian Splatting module exposes exactly two canonical scene nodes:
 
-Quick usage:
+1. **`GaussianSplatNode3D`** — per-instance splat content from a
+   `GaussianSplatAsset` or runtime `set_splat_data()`. Always registers as a
+   resident instance submission through `GaussianSplatSceneDirector`.
+2. **`GaussianSplatWorld3D`** — world-space baked/streaming content from a
+   `GaussianSplatWorld` resource. Is the only surface that honors
+   `rendering/gaussian_splatting/streaming/route_policy`; one active submission
+   per scenario.
+
+`GaussianSplatContainer` is an offline/tooling surface only; its output flows
+through one of the two canonical scene nodes.
+
+## GaussianSplatDynamicInstance3D (DEPRECATED)
+
+> **Deprecated.** This node emits `WARN_DEPRECATED` on construction and will be
+> removed in a future release. Migrate to `GaussianSplatNode3D`, which
+> terminates at the same scene-director instance registration with strictly
+> more features (asset loading, painterly effects, color grading, scene
+> effectors, debug HUD, procedural `set_splat_data()`).
+
+Migration:
+
 ```
+# Before
 var dynamic = GaussianSplatDynamicInstance3D.new()
-dynamic.splat_asset = preload("res://assets/dynamic_splat_asset.tres")
+dynamic.splat_asset = preload("res://assets/my_asset.tres")
 add_child(dynamic)
+
+# After (imported asset)
+var node = GaussianSplatNode3D.new()
+node.splat_asset = preload("res://assets/my_asset.tres")
+add_child(node)
+
+# After (runtime / procedural)
+var node = GaussianSplatNode3D.new()
+add_child(node)
+node.set_splat_data(positions, colors, scales, opacities, rotations)
 ```
 
-Properties:
-- `splat_asset`: GaussianSplatAsset used by the instance registry (required for rendering).
-- `gaussian_data`: Optional GaussianData resource for authoring; must be converted to an asset for runtime rendering.
-- `ply_file_path`: Deprecated compatibility path that loads directly into GaussianData. Prefer `splat_asset` or explicit `gaussian_data`.
-- `auto_load`: Load asset/path on enter tree when true.
-
-Methods:
-- `reload_asset()` – (re)load and register the instance.
-- `register_instance()` / `unregister_instance()` – manual control.
-
-Notes:
-- Visibility toggles registration; hidden nodes are removed from the instance registry.
-- Requires the instance pipeline to be enabled; otherwise the node will warn and no-op.
+The deprecated `ply_file_path` compatibility path exists on both node classes
+and also emits `WARN_DEPRECATED`. Prefer an imported `GaussianSplatAsset`.
 
 ## Features
 
@@ -113,7 +133,9 @@ Notes:
 - `ply_file_path`: Deprecated compatibility path to the Gaussian splat file (.ply or .spz)
 - `auto_load`: Automatically load the file when the compatibility path is set
 
-> **Note:** The property is named `ply_file_path` for historical reasons but accepts both PLY and SPZ formats.
+> **Deprecated:** `ply_file_path` emits `WARN_DEPRECATED` on assignment and
+> will be removed. Import the file as a `GaussianSplatAsset` resource and
+> assign it to `splat_asset` instead. The importer handles both PLY and SPZ.
 
 #### Quality Settings
 - `quality/preset`: Choose from predefined quality levels

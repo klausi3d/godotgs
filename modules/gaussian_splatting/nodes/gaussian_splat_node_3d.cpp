@@ -639,6 +639,16 @@ void GaussianSplatNode3D::set_ply_file_path(const String &p_path) {
         return;
     }
 
+#ifndef DISABLE_DEPRECATED
+    if (!p_path.is_empty()) {
+        WARN_DEPRECATED_MSG(
+                "GaussianSplatNode3D::ply_file_path is deprecated and will be "
+                "removed in a future release. Import the file as a "
+                "GaussianSplatAsset resource and assign it to `splat_asset` "
+                "instead. Both PLY and SPZ are handled by the importer.");
+    }
+#endif
+
     ply_file_path = p_path;
 
     if (auto_load && is_inside_tree()) {
@@ -2319,12 +2329,12 @@ void GaussianSplatNode3D::_register_instance_in_director() {
     if (!director) {
         return;
     }
-    // Direct single-asset nodes request the resident backend. The streaming
-    // backend is opt-in via GaussianSplatWorld3D (which publishes its own
-    // streaming hint). Without this, a direct-node-only scene with default
-    // project settings (route_policy=STREAMING) would fall into the streaming
-    // branch and rely on an unintended resident-fallback detour that emits a
-    // WARN_PRINT_ONCE on every cold start.
+    // Direct single-asset nodes are resident-only by contract. The streaming
+    // backend is opt-in via GaussianSplatWorld3D, which is the only surface
+    // that honors `rendering/gaussian_splatting/streaming/route_policy` when
+    // publishing its WorldSubmission residency hint. Direct-node instances
+    // always pin SUBMISSION_RESIDENCY_HINT_RESIDENT; route_policy is
+    // deliberately ignored here to keep backend selection world-scoped.
     director->register_instance(get_instance_id(), asset, get_global_transform(),
             opacity, lod_bias, _get_instance_flags(), cast_shadow,
             _get_instance_wind_intensity(), _get_instance_wind_mode(),

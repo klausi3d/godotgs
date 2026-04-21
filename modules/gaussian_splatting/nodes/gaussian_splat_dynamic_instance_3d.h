@@ -1,6 +1,12 @@
 /**
  * @file gaussian_splat_dynamic_instance_3d.h
- * @brief Scene node that registers instance-pipeline splats without a full renderer.
+ * @brief DEPRECATED transitional scene node for dynamic splat registration.
+ *
+ * This node is retained only for backwards compatibility with scenes/scripts
+ * that reference the class name. New code must use GaussianSplatNode3D, which
+ * terminates at the same GaussianSplatSceneDirector::register_instance() path
+ * with strictly more features (asset loading, painterly effects, color grading,
+ * scene-effector scoping, debug HUD, set_splat_data() procedural path).
  */
 
 #ifndef GAUSSIAN_SPLAT_DYNAMIC_INSTANCE_3D_H
@@ -12,12 +18,19 @@
 
 /**
  * @class GaussianSplatDynamicInstance3D
- * @brief Lightweight node that feeds dynamic splats into the shared instance renderer.
+ * @brief DEPRECATED. Use GaussianSplatNode3D instead.
  *
- * This node does not render by itself. It registers an instance in the scene
- * director so the instance pipeline can render it alongside other splat nodes.
- * Prefer GaussianSplatAsset or explicit GaussianData assignment. The raw
- * ply_file_path compatibility path is deprecated.
+ * Emits a WARN_DEPRECATED on construction. The class is kept as a transitional
+ * compatibility shim for one release and will be removed; there is no distinct
+ * rendering, ownership, or residency contract — it terminates at the same
+ * GaussianSplatSceneDirector::register_instance() as GaussianSplatNode3D.
+ *
+ * Migration:
+ *  - Imported asset: set `GaussianSplatNode3D.splat_asset`.
+ *  - Runtime/procedural splats: call `GaussianSplatNode3D::set_splat_data()`.
+ *
+ * The raw ply_file_path compatibility path is also deprecated (both here and on
+ * GaussianSplatNode3D); use a GaussianSplatAsset resource instead.
  */
 class GaussianSplatDynamicInstance3D : public Node3D {
     GDCLASS(GaussianSplatDynamicInstance3D, Node3D);
