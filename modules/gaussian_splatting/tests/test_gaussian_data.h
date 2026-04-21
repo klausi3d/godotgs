@@ -10,6 +10,7 @@
 
 #include "../core/gaussian_data.h"
 #include "core/io/dir_access.h"
+#include "core/io/file_access.h"
 #include "core/math/math_defs.h"
 #include "core/math/random_number_generator.h"
 #include "core/os/os.h"
@@ -269,6 +270,26 @@ TEST_CASE("[GaussianSplatting] GaussianData load_from_file invalidates storage-d
 
 	DirAccess::remove_absolute(path_a);
 	DirAccess::remove_absolute(path_b);
+}
+
+TEST_CASE("[GaussianSplatting] GaussianData::load_from_file hard-fails on unknown raw extensions") {
+	// Behavior change: unknown raw extensions previously fell through to the PLY loader.
+	// They now hard-fail with ERR_FILE_UNRECOGNIZED instead of probing loosely.
+	const String path = _make_gaussian_data_fixture_path("unknown_ext", ".xyz");
+
+	{
+		Ref<FileAccess> f = FileAccess::open(path, FileAccess::WRITE);
+		REQUIRE(f.is_valid());
+		f->store_string("not a real splat file");
+	}
+
+	Ref<::GaussianData> data;
+	data.instantiate();
+	Error err = data->load_from_file(path);
+	CHECK_MESSAGE(err == ERR_FILE_UNRECOGNIZED,
+			"GaussianData::load_from_file must hard-fail on unknown raw extensions, not probe as PLY.");
+
+	DirAccess::remove_absolute(path);
 }
 
 TEST_CASE("[GaussianSplatting] GaussianData GPU payload validation rejects non-finite and out-of-range values") {

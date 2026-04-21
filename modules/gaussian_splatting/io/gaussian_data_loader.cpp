@@ -1,5 +1,6 @@
 #include "gaussian_data_loader.h"
 
+#include "../logger/gs_logger.h"
 #include "ply_loader.h"
 #include "spz_loader.h"
 
@@ -24,6 +25,13 @@ Error load_gaussian_data_from_file(const String &p_path, GaussianDataLoadResult 
         r_result.data = gaussian_data;
         r_result.used_spz = true;
         return OK;
+    }
+
+    if (extension != "ply") {
+        GS_LOG_ERROR_DEFAULT(vformat(
+                "Unsupported Gaussian splat raw format '%s' for path: %s. Supported extensions: .ply, .spz.",
+                extension, p_path));
+        return ERR_FILE_UNRECOGNIZED;
     }
 
     Ref<PLYLoader> ply_loader;

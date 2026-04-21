@@ -145,7 +145,7 @@ void GaussianAssetPreviewControl::_update_fallback_texture() {
 
 	Ref<Texture2D> texture;
 	if (asset.is_valid()) {
-		texture = asset->get_thumbnail();
+		texture = asset->get_preview_texture();
 	}
 
 	if (texture.is_null() && thumbnail_generator.is_valid() && asset.is_valid() && asset->get_splat_count() > 0) {

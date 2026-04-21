@@ -273,8 +273,6 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Same-owner resubm
 			baseline_renderer_state.streaming_overrides.vram_budget_config.max_chunks);
 	CHECK(restored_renderer_state.streaming_overrides.override_io_source ==
 			baseline_renderer_state.streaming_overrides.override_io_source);
-	CHECK(restored_renderer_state.streaming_overrides.io_source_path ==
-			baseline_renderer_state.streaming_overrides.io_source_path);
 	CHECK(restored_renderer_state.has_active_world_submission == baseline_renderer_state.has_active_world_submission);
 	CHECK(restored_renderer_state.has_desired_residency_hint == baseline_renderer_state.has_desired_residency_hint);
 	CHECK(restored_renderer_state.desired_residency_hint == baseline_renderer_state.desired_residency_hint);
@@ -479,7 +477,9 @@ TEST_CASE("[GaussianSplatting][World][SceneTree] World node forwards desired ove
 	CHECK(int64_t(streaming_overrides[StringName("vram_min_chunks")]) == 2);
 	CHECK(int64_t(streaming_overrides[StringName("vram_max_chunks")]) == 32);
 	CHECK((bool)streaming_overrides[StringName("override_io_source")]);
-	CHECK(streaming_overrides[StringName("io_source_path")] == String("res://stage1b_world.gsplatworld"));
+	// io_source_path was removed: only the override_io_source flag is published now. Any string
+	// payload is dropped by the director because no runtime consumer reads it.
+	CHECK(!streaming_overrides.has(StringName("io_source_path")));
 
 	if (renderer.is_valid()) {
 		int32_t residency_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING;
@@ -536,8 +536,6 @@ TEST_CASE("[GaussianSplatting][World][SceneTree] World node forwards desired ove
 				baseline_renderer_state.streaming_overrides.vram_budget_config.max_chunks);
 		CHECK(restored_renderer_state.streaming_overrides.override_io_source ==
 				baseline_renderer_state.streaming_overrides.override_io_source);
-		CHECK(restored_renderer_state.streaming_overrides.io_source_path ==
-				baseline_renderer_state.streaming_overrides.io_source_path);
 		CHECK(restored_renderer_state.has_active_world_submission == baseline_renderer_state.has_active_world_submission);
 		CHECK(restored_renderer_state.has_desired_residency_hint == baseline_renderer_state.has_desired_residency_hint);
 		CHECK(restored_renderer_state.desired_residency_hint == baseline_renderer_state.desired_residency_hint);

@@ -236,12 +236,6 @@ String describe_route_uid(const String &p_route_uid) {
 	if (!common.is_empty()) {
 		return common;
 	}
-	if (route_uid == String(RenderRouteUID::RESIDENT_SELECTED)) {
-		return "Selected the resident backend";
-	}
-	if (route_uid == String(RenderRouteUID::INSTANCE_ENTRY_INSTANCED_FAST)) {
-		return "Entered the shared instance pipeline";
-	}
 	if (route_uid == String(RenderRouteUID::INSTANCE_RESIDENT)) {
 		return "Resident instanced path";
 	}
@@ -277,9 +271,6 @@ String describe_sort_route_uid(const String &p_sort_route_uid) {
 	}
 	if (sort_route_uid == String(RenderRouteUID::INSTANCE_SORT_CACHED)) {
 		return "Reused cached sort order";
-	}
-	if (sort_route_uid == String(RenderRouteUID::INSTANCE_SORT_IDENTITY_FALLBACK)) {
-		return "Used the incoming cull order without a fresh sort";
 	}
 	return "Using an unrecognized sort route";
 }

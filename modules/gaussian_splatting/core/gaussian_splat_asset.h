@@ -2,6 +2,7 @@
 #define GAUSSIAN_SPLAT_ASSET_H
 
 #include "core/io/resource.h"
+#include "core/io/image.h"
 #include "scene/resources/texture.h"
 #include "core/io/resource_loader.h"
 #include "core/math/quaternion.h"
@@ -12,6 +13,7 @@
 #include <atomic>
 
 class GaussianData;
+class ImageTexture;
 
 class GaussianSplatAsset : public Resource {
     GDCLASS(GaussianSplatAsset, Resource);
@@ -53,7 +55,8 @@ private:
     uint32_t compression_flags = COMPRESSION_NONE;
     String import_quality_preset = "high";
     Dictionary import_metadata;
-    Ref<Texture2D> thumbnail;
+    Ref<Image> preview_image;
+    mutable Ref<ImageTexture> preview_texture_cache;
     bool has_sh_dc_coefficients = false;
     mutable Ref<::GaussianData> gaussian_data_cache;
 
@@ -66,6 +69,9 @@ private:
 
 protected:
     static void _bind_methods();
+    bool _set(const StringName &p_name, const Variant &p_value);
+    bool _get(const StringName &p_name, Variant &r_ret) const;
+    void _get_property_list(List<PropertyInfo> *p_list) const;
 
 public:
     GaussianSplatAsset();
@@ -137,8 +143,12 @@ public:
     void set_compression_flags(uint32_t p_flags);
     uint32_t get_compression_flags() const { return compression_flags; }
 
+    void set_preview_image(const Ref<Image> &p_image);
+    Ref<Image> get_preview_image() const { return preview_image; }
+    Ref<Texture2D> get_preview_texture() const;
+
     void set_thumbnail(const Ref<Texture2D> &p_thumbnail);
-    Ref<Texture2D> get_thumbnail() const { return thumbnail; }
+    Ref<Texture2D> get_thumbnail() const { return get_preview_texture(); }
 
     void set_source_path(const String &p_path);
     String get_source_path() const;

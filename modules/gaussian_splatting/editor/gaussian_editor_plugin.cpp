@@ -537,7 +537,7 @@ Ref<Texture2D> GaussianEditorPlugin::_resolve_asset_thumbnail(const Ref<Gaussian
         return Ref<Texture2D>();
     }
 
-    Ref<Texture2D> existing = p_asset->get_thumbnail();
+    Ref<Texture2D> existing = p_asset->get_preview_texture();
     if (existing.is_valid()) {
         return existing;
     }

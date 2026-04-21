@@ -179,4 +179,38 @@ TEST_CASE("[GaussianSplatting][Container][SceneTree] Merged child splats preserv
     memdelete(container);
 }
 
+TEST_CASE("[GaussianSplatting][Container][SceneTree] apply_to_node pushes merged asset into a GaussianSplatNode3D target") {
+    // Regression guard for the apply_to_renderer() deletion: apply_to_node() must
+    // continue to be the canonical tooling handoff into the scene surface.
+    SceneTree *tree = SceneTree::get_singleton();
+    REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+    Window *root = tree->get_root();
+    REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+    GaussianSplatContainer *container = memnew(GaussianSplatContainer);
+    container->set_chunk_size(5.0f);
+    root->add_child(container);
+
+    GaussianSplatNode3D *source = memnew(GaussianSplatNode3D);
+    source->set_splat_asset(create_single_splat_asset(Vector3(0, 0, 0)));
+    container->add_child(source);
+
+    GaussianSplatNode3D *target = memnew(GaussianSplatNode3D);
+    root->add_child(target);
+
+    tree->process(0.0);
+    container->merge_children();
+
+    const Error apply_err = container->apply_to_node(target);
+    CHECK_MESSAGE(apply_err == OK, "apply_to_node should succeed with a GaussianSplatNode3D target.");
+    CHECK_MESSAGE(target->get_splat_asset().is_valid(),
+            "apply_to_node must populate the target node's splat_asset.");
+
+    root->remove_child(target);
+    memdelete(target);
+    root->remove_child(container);
+    memdelete(container);
+}
+
 #endif // TESTS_ENABLED || TOOLS_ENABLED

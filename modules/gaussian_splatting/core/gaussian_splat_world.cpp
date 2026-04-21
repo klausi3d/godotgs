@@ -113,6 +113,10 @@ Array GaussianSplatWorld::get_chunk_aabbs() const {
 
 void GaussianSplatWorld::clear() {
     gaussian_data.unref();
+    // Payload source lifetime is tied to world liveness; leaving it live
+    // across clear() would retain file handles / in-memory splat data after
+    // the world has been logically emptied.
+    chunk_payload_source.unref();
     static_chunks.clear();
     bounds = AABB();
     metadata.clear();

@@ -22,7 +22,6 @@ void GaussianSplatContainer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_target_node_path"), &GaussianSplatContainer::get_target_node_path);
     ClassDB::bind_method(D_METHOD("merge_children"), &GaussianSplatContainer::merge_children);
     ClassDB::bind_method(D_METHOD("clear_merged_data"), &GaussianSplatContainer::clear_merged_data);
-    ClassDB::bind_method(D_METHOD("apply_to_renderer", "renderer"), &GaussianSplatContainer::apply_to_renderer);
     ClassDB::bind_method(D_METHOD("apply_to_node", "node"), &GaussianSplatContainer::apply_to_node);
     ClassDB::bind_method(D_METHOD("merge_children_to_node", "node"), &GaussianSplatContainer::merge_children_to_node);
     ClassDB::bind_method(D_METHOD("export_world_resource"), &GaussianSplatContainer::export_world_resource);
@@ -81,23 +80,6 @@ void GaussianSplatContainer::merge_children() {
             apply_to_node(target);
         }
     }
-}
-
-Error GaussianSplatContainer::apply_to_renderer(const Ref<GaussianSplatRenderer> &p_renderer) {
-    ERR_FAIL_COND_V(p_renderer.is_null(), ERR_INVALID_PARAMETER);
-    WARN_PRINT_ONCE("GaussianSplatContainer::apply_to_renderer() is a low-level compatibility helper. Prefer apply_to_node() or export_world_resource() for scene workflows.");
-    if (merged_data.is_null() || merged_data->get_count() == 0) {
-        GS_LOG_WARN_DEFAULT("GaussianSplatContainer: no merged data available to apply.");
-        return ERR_UNAVAILABLE;
-    }
-
-    Error err = p_renderer->set_gaussian_data(merged_data);
-    if (err != OK) {
-        GS_LOG_WARN_DEFAULT(vformat("GaussianSplatContainer: failed to apply merged data (err=%d).", err));
-        return err;
-    }
-    p_renderer->set_static_chunks(merged_chunks);
-    return OK;
 }
 
 Error GaussianSplatContainer::apply_to_node(Node *p_node) {

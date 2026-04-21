@@ -418,9 +418,9 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 	world->set_metadata(file_metadata);
 	world->set_static_chunks(chunks);
 
-	// For uncompressed files, create a file-backed payload source so the streaming
-	// system can load chunk payloads on demand without retaining the full gaussian
-	// array in process memory.
+	// Only uncompressed files support file-backed chunk payload reads. Compressed
+	// .gsplatworld files are resident-only: the decoded payload lives in memory on
+	// the GaussianData above and no staged-file payload source is attached.
 	if (!gaussian_data_compressed) {
 		Ref<StagedFileChunkPayloadSource> file_source;
 		file_source.instantiate();

@@ -13,8 +13,6 @@
 #include "core/string/print_string.h"
 #include "core/templates/vector.h"
 #include "core/variant/dictionary.h"
-#include "scene/resources/texture.h"
-
 #include "../core/gaussian_data.h"
 #include "../editor/gaussian_thumbnail_generator.h"
 #include "../logger/gs_logger.h"
@@ -346,19 +344,37 @@ Error ResourceImporterSPZ::import(ResourceUID::ID p_source_id, const String &p_s
 
     uint32_t compression_flags = _build_compression_flags(quantize_positions, quantize_colors, quantize_scales, quantize_rotations);
     asset->set_compression_flags(compression_flags);
-    asset->set_source_path(p_source_file);
-
     // Generate thumbnail
-    Ref<Texture2D> thumbnail;
+    Ref<Image> thumbnail;
     if (generate_thumbnail) {
         Ref<GaussianThumbnailGenerator> generator;
         generator.instantiate();
-        thumbnail = generator->generate_thumbnail(asset, thumbnail_size,
+        thumbnail = generator->generate_thumbnail_image(asset, thumbnail_size,
                 GaussianThumbnailGenerator::style_from_int(thumbnail_style));
-        asset->set_thumbnail(thumbnail);
+        asset->set_preview_image(thumbnail);
     } else {
-        asset->set_thumbnail(Ref<Texture2D>());
+        asset->set_preview_image(Ref<Image>());
     }
+
+    Dictionary option_dict;
+    option_dict[OPTION_PRESET] = preset_name;
+    option_dict[OPTION_ASSET_TYPE] = asset_type_value;
+    option_dict[OPTION_MAX_SPLATS] = max_splats;
+    option_dict[OPTION_DENSITY] = density_multiplier;
+    option_dict[OPTION_ENABLE_LOD] = enable_lod;
+    option_dict[OPTION_OPTIMIZE_GPU] = optimize_for_gpu;
+    option_dict[OPTION_NORMALIZE_OPACITY] = normalize_opacity;
+    option_dict[OPTION_SORT_OPACITY] = sort_by_opacity;
+    option_dict[OPTION_QUANTIZE_POSITIONS] = quantize_positions;
+    option_dict[OPTION_QUANTIZE_COLORS] = quantize_colors;
+    option_dict[OPTION_QUANTIZE_SCALES] = quantize_scales;
+    option_dict[OPTION_QUANTIZE_ROTATIONS] = quantize_rotations;
+    option_dict[OPTION_PACK_OPACITY] = legacy_pack_opacity_requested;
+    option_dict[OPTION_GENERATE_THUMBNAIL] = generate_thumbnail;
+    option_dict[OPTION_THUMBNAIL_STYLE] = thumbnail_style;
+    option_dict[OPTION_THUMBNAIL_SIZE] = thumbnail_size;
+    option_dict[OPTION_INCLUDE_STATS] = include_stats;
+    option_dict[OPTION_INCLUDE_MEMORY] = include_memory;
 
     // Build metadata
     Dictionary import_metadata;
@@ -378,6 +394,7 @@ Error ResourceImporterSPZ::import(ResourceUID::ID p_source_id, const String &p_s
     import_metadata[StringName("normalize_opacity")] = normalize_opacity;
     import_metadata[StringName("sort_by_opacity")] = sort_by_opacity;
     import_metadata[StringName("compression_flags")] = int(compression_flags);
+    import_metadata[StringName("options")] = option_dict;
     import_metadata[StringName("thumbnail_generated")] = generate_thumbnail;
     import_metadata[StringName("thumbnail_style")] = thumbnail_style;
     import_metadata[StringName("thumbnail_size")] = thumbnail_size;
@@ -406,6 +423,7 @@ Error ResourceImporterSPZ::import(ResourceUID::ID p_source_id, const String &p_s
     import_metadata[StringName("bounds")] = bounds;
 
     asset->set_import_metadata(import_metadata);
+    asset->set_source_path(p_source_file);
 
     // Save asset
     String save_path = p_save_path + "." + get_save_extension();

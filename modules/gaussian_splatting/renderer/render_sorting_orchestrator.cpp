@@ -991,43 +991,6 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 		}
 	}
 
-		auto publish_instance_identity_fallback = [&](const String &p_reason) -> bool {
-			if (!GaussianSplatting::allow_instance_identity_fallback_in_orchestrator(
-						strict_global_sort, instance_pipeline_active, sorting_pipeline != nullptr, instance_visible_splats)) {
-				// Correctness-first mode must never publish an unsorted identity frame.
-				return false;
-			}
-
-			sorting_state.sort_index_bytes.resize(instance_visible_splats * sizeof(uint32_t));
-			uint32_t *indices_ptr = reinterpret_cast<uint32_t *>(sorting_state.sort_index_bytes.ptrw());
-			for (uint32_t i = 0; i < instance_visible_splats; i++) {
-				indices_ptr[i] = i;
-			}
-			_bind_sort_pipeline_host_context(sorting_pipeline, renderer);
-			sorting_pipeline->ensure_sort_buffers(instance_visible_splats);
-			RID sort_indices_buffer = sorting_pipeline->get_sort_indices_buffer();
-			if (!sort_indices_buffer.is_valid()) {
-				return false;
-			}
-			RenderingDevice *target_device = renderer->get_resource_owner(sort_indices_buffer, renderer->get_device_state().rd);
-			if (!target_device) {
-				target_device = renderer->get_device_state().rd;
-			}
-			if (!target_device) {
-				return false;
-			}
-			target_device->buffer_update(sort_indices_buffer, 0,
-					sorting_state.sort_index_bytes.size(),
-					sorting_state.sort_index_bytes.ptr());
-			sorting_state.sorted_splat_count = instance_visible_splats;
-			_publish_rendered_splat_count(frame_state, performance_state, instance_visible_splats);
-			debug_state.sort_route_uid = RenderRouteUID::INSTANCE_SORT_IDENTITY_FALLBACK;
-			sorting_state.last_sort_transform_valid = false;
-			set_active_sort_algorithm("GPU (identity fallback)", p_reason);
-			GS_LOG_WARN_DEFAULT(vformat("[GPU Sort] %s; publishing identity order for instance sort domain", p_reason));
-			return true;
-		};
-
 	if (!need_sort) {
 		const bool can_reuse_previous_sorted =
 				sorting_pipeline &&
@@ -1040,49 +1003,14 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 			const uint32_t reused_count = instance_pipeline_active ? sorting_state.sorted_splat_count : available_splats;
 			sorting_state.sorted_splat_count = reused_count;
 			_publish_rendered_splat_count(frame_state, performance_state, reused_count);
-		} else if (publish_instance_identity_fallback("Missing previous sorted buffer on camera-stable frame")) {
-			reset_sort_metrics();
-			return build_summary();
-		} else if (GaussianSplatting::allow_camera_stable_cull_order_bootstrap_in_orchestrator(
-						   strict_global_sort, instance_pipeline_active, !cull_state.culled_indices.is_empty(), sorting_pipeline != nullptr)) {
-			// Last resort bootstrap: if the previous sorted buffer is unavailable,
-			// keep rendering progress with current cull order instead of showing zero splats.
-			// Strict mode is excluded above because correctness-first mode must never
-			// publish approximate ordering.
-			const uint32_t copy_count = MIN<uint32_t>(available_splats,
-					static_cast<uint32_t>(cull_state.culled_indices.size()));
-			if (copy_count > 0) {
-				sorting_state.sort_index_bytes.resize(copy_count * sizeof(uint32_t));
-				uint32_t *indices_ptr = reinterpret_cast<uint32_t *>(sorting_state.sort_index_bytes.ptrw());
-				for (uint32_t i = 0; i < copy_count; i++) {
-					indices_ptr[i] = cull_state.culled_indices[i];
-				}
-				_bind_sort_pipeline_host_context(sorting_pipeline, renderer);
-				sorting_pipeline->ensure_sort_buffers(copy_count);
-				RID sort_indices_buffer = sorting_pipeline->get_sort_indices_buffer();
-				if (sort_indices_buffer.is_valid()) {
-					RenderingDevice *target_device = renderer->get_resource_owner(sort_indices_buffer, renderer->get_device_state().rd);
-					if (!target_device) {
-						target_device = renderer->get_device_state().rd;
-					}
-					if (target_device) {
-						target_device->buffer_update(sort_indices_buffer, 0,
-								sorting_state.sort_index_bytes.size(),
-								sorting_state.sort_index_bytes.ptr());
-					}
-				}
-				sorting_state.sorted_splat_count = copy_count;
-				_publish_rendered_splat_count(frame_state, performance_state, copy_count);
-				// Force a real re-sort on the next frame; this bootstrap order is not depth-sorted.
-				sorting_state.last_sort_transform_valid = false;
-			}
-		} else if (strict_global_sort && available_splats > 0) {
-			// Strict mode cannot publish fallback ordering. If the stable-frame fast path
-			// has no reusable sorted buffer, force a real sort this frame instead of
-			// returning with stale/invalid state.
+		} else if (available_splats > 0) {
+			// No reusable sorted buffer on a camera-stable frame. Publishing an
+			// unsorted identity order or seeding from current cull order would
+			// produce depth-incorrect frames, so force a real sort this frame
+			// instead of returning with stale/invalid state.
 			need_sort = true;
 			sorting_state.last_sort_transform_valid = false;
-			GS_LOG_WARN_DEFAULT("[GPU Sort] Strict mode missing previous sorted buffer on camera-stable frame; forcing immediate re-sort");
+			GS_LOG_WARN_DEFAULT("[GPU Sort] Missing previous sorted buffer on camera-stable frame; forcing immediate re-sort");
 		}
 		if (!need_sort) {
 			refresh_cull_signature_tracking();
@@ -1266,12 +1194,6 @@ GaussianRenderState::SortStageSummary RenderSortingOrchestrator::sort_gaussians_
 				switch (policy.actions[i]) {
 				case GaussianSplatting::SortFallbackAction::REUSE_PREVIOUS_SORT:
 					if (reuse_previous_sort(p_reason, reuse_route_uid)) {
-						return;
-					}
-					break;
-				case GaussianSplatting::SortFallbackAction::PUBLISH_INSTANCE_IDENTITY:
-					if (publish_instance_identity_fallback(p_reason)) {
-						reset_sort_metrics();
 						return;
 					}
 					break;

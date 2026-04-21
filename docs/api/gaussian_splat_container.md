@@ -117,11 +117,6 @@ This class does not define any enums.
       <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:159</code></td>
     </tr>
     <tr>
-      <td><code>apply_to_renderer(renderer)</code></td>
-      <td>Low-level compatibility helper that pushes merged <code>GaussianData</code> and static chunks to the given <code>GaussianSplatRenderer</code>. Prefer <code>apply_to_node()</code> or <code>export_world_resource()</code> for normal scene workflows. Returns <code>ERR_UNAVAILABLE</code> when no merged data exists.</td>
-      <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:86</code></td>
-    </tr>
-    <tr>
       <td><code>apply_to_node(node)</code></td>
       <td>Applies merged data to a <code>GaussianSplatWorld3D</code> (via <code>export_world_resource()</code>) or a <code>GaussianSplatNode3D</code> (via asset conversion). Returns <code>ERR_INVALID_PARAMETER</code> for unsupported node types.</td>
       <td><code>modules/gaussian_splatting/nodes/gaussian_splat_container.cpp:102</code></td>

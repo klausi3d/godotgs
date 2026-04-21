@@ -1412,6 +1412,74 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Missing renderer data publishes an e
     renderer.unref();
 }
 
+TEST_CASE("[GaussianSplatting][RequiresGPU] Streaming-requested failure hard-fails without bouncing to resident render") {
+    // When route_policy is STREAMING and the streaming system is unavailable,
+    // render_scene_instance must publish a typed COMMON.SKIP.STREAMING_NOT_READY.*
+    // route and must not silently fall through to INSTANCE.RESIDENT. This is the
+    // terminal streaming -> resident bounce contract.
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (rs == nullptr) {
+        MESSAGE("Skipping test - Rendering server unavailable");
+        return;
+    }
+
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    if (project_settings == nullptr) {
+        MESSAGE("Skipping test - ProjectSettings unavailable");
+        return;
+    }
+
+    const String route_policy_setting = "rendering/gaussian_splatting/streaming/route_policy";
+    ScopedProjectSetting route_guard(project_settings, route_policy_setting);
+    project_settings->set_setting(route_policy_setting, int64_t(gs::settings::GS_ROUTE_STREAMING));
+
+    ScopedGaussianManagerPipeline manager_scope;
+    GaussianSplatManager *manager = manager_scope.get();
+    if (manager == nullptr) {
+        MESSAGE("Skipping test - GaussianSplatManager unavailable");
+        return;
+    }
+
+    ScopedRenderingDeviceLease device_lease;
+    RenderingDevice *primary_rd = device_lease.acquire(rs, manager);
+    if (primary_rd == nullptr) {
+        MESSAGE("Skipping test - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianSplatRenderer> renderer;
+    renderer.instantiate(primary_rd);
+    CHECK(renderer.is_valid());
+    if (!renderer.is_valid()) {
+        return;
+    }
+    renderer->initialize();
+    renderer->test_release_current_streaming_system();
+
+    RenderSceneDataRD scene_data;
+    scene_data.cam_transform = Transform3D(Basis(), Vector3(0.0f, 0.0f, 5.0f));
+    scene_data.cam_projection.set_perspective(70.0f, 1.0f, 0.1f, 100.0f);
+
+    RenderDataRD render_data;
+    render_data.scene_data = &scene_data;
+    render_data.render_buffers = Ref<RenderSceneBuffersRD>();
+
+    renderer->render_scene_instance(&render_data);
+
+    const String route_uid = renderer->get_debug_state().route_uid;
+    CHECK_MESSAGE(route_uid.begins_with("COMMON.SKIP.STREAMING_NOT_READY."),
+            vformat("Expected streaming-requested failure to publish a typed streaming-not-ready route, got '%s'", route_uid));
+    CHECK_MESSAGE(route_uid != String(RenderRouteUID::INSTANCE_RESIDENT),
+            "Streaming-requested failure must not bounce to INSTANCE.RESIDENT");
+
+    const Dictionary stats = renderer->get_render_stats();
+    const String cull_route_uid = stats.get("cull_route_uid", String());
+    CHECK_MESSAGE(cull_route_uid != String(RenderRouteUID::INSTANCE_RESIDENT),
+            "Streaming-requested failure must not produce a resident cull route");
+
+    renderer.unref();
+}
+
 TEST_CASE("[GaussianSplatting][RequiresGPU] Static layout fallback publishes typed validator-aligned diagnostics") {
     RenderingServer *rs = RenderingServer::get_singleton();
     if (rs == nullptr) {
@@ -2090,7 +2158,11 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] CPU fallback publishes unsorted cull
     renderer.unref();
 }
 
-TEST_CASE("[GaussianSplatting][RequiresGPU] Camera-stable instance path publishes identity fallback when strict sort is disabled") {
+TEST_CASE("[GaussianSplatting][RequiresGPU] Camera-stable instance path never publishes identity fallback") {
+    // Instance-domain identity fallback has been deleted. When the camera is
+    // stable, the instance pipeline is active, and no reusable sorted buffer
+    // exists, the orchestrator must either produce a real sort or hard-fail the
+    // frame — it must never emit INSTANCE.SORT.IDENTITY_FALLBACK.
     RenderingServer *rs = RenderingServer::get_singleton();
     if (rs == nullptr) {
         MESSAGE("Skipping test - Rendering server unavailable");
@@ -2103,6 +2175,8 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Camera-stable instance path publishe
         return;
     }
 
+    // Flip strict_global_sort off explicitly to prove that even the pre-existing
+    // escape hatch no longer revives the identity fallback path.
     const String force_cpu_setting = "rendering/gaussian_splatting/sorting/force_cpu_sort";
     const String strict_sort_setting = "rendering/gaussian_splatting/sorting/strict_global_sort";
     ScopedGpuSortingConfigReload strict_reload_guard;
@@ -2150,16 +2224,10 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Camera-stable instance path publishe
     sorting_state.last_sort_transform_valid = true;
     renderer->get_subsystem_state().gpu_culler->get_config().cull_params_dirty = false;
 
-    GaussianSplatRenderer::SortStageSummary summary =
-            renderer->test_sort_for_view(Transform3D(), GaussianRenderState::IndexDomain::CHUNK_REF);
+    renderer->test_sort_for_view(Transform3D(), GaussianRenderState::IndexDomain::CHUNK_REF);
 
-    CHECK_FALSE(summary.did_execute);
-    CHECK(summary.sorted_count == 1);
-    CHECK(renderer->get_debug_state().sort_route_uid == String(RenderRouteUID::INSTANCE_SORT_IDENTITY_FALLBACK));
-    CHECK(renderer->get_visible_splat_count() == 1);
-    const Vector<uint32_t> sorted_indices = read_renderer_sort_indices(renderer, 1);
-    REQUIRE(sorted_indices.size() == 1);
-    CHECK(sorted_indices[0] == 0);
+    const String sort_route = renderer->get_debug_state().sort_route_uid;
+    CHECK(sort_route != "INSTANCE.SORT.IDENTITY_FALLBACK");
 
     renderer.unref();
 }
@@ -3760,7 +3828,6 @@ TEST_CASE("[GaussianSplatting] frame backend plan centralizes streaming bootstra
 	CHECK_FALSE(backend_plan.prefer_resident_backend);
 	CHECK_FALSE(backend_plan.streaming_ready);
 	CHECK(backend_plan.should_attempt_streaming_bootstrap);
-	CHECK_FALSE(backend_plan.allow_legacy_resident_fallback);
 	CHECK(backend_plan.allow_primary_fallback_instance);
 }
 
@@ -3784,7 +3851,6 @@ TEST_CASE("[GaussianSplatting] frame backend plan preserves resident request sem
 	CHECK_FALSE(backend_plan.streaming_requested);
 	CHECK(backend_plan.prefer_resident_backend);
 	CHECK_FALSE(backend_plan.should_attempt_streaming_bootstrap);
-	CHECK(backend_plan.allow_legacy_resident_fallback);
 	CHECK_FALSE(backend_plan.allow_primary_fallback_instance);
 	CHECK(backend_plan.resident_backend_reason == String("requested_resident_policy"));
 }

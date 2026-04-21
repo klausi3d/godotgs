@@ -1,15 +1,17 @@
 #include "gaussian_splat_asset.h"
-#include "../io/gaussian_data_loader.h"
 #include "../io/ply_loader.h"
 #include "../io/spz_loader.h"
 #include "../core/gaussian_data.h"
 #include "core/error/error_macros.h"
 #include "core/io/file_access.h"
+#include "core/io/image.h"
 #include "core/math/basis.h"
 #include "core/math/math_funcs.h"
 #include "core/math/quaternion.h"
 #include "core/os/os.h"
+#include "core/os/thread.h"
 #include "../logger/gs_logger.h"
+#include "scene/resources/image_texture.h"
 
 namespace {
 
@@ -101,6 +103,9 @@ void GaussianSplatAsset::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_import_quality_preset"), &GaussianSplatAsset::get_import_quality_preset);
     ClassDB::bind_method(D_METHOD("set_compression_flags", "flags"), &GaussianSplatAsset::set_compression_flags);
     ClassDB::bind_method(D_METHOD("get_compression_flags"), &GaussianSplatAsset::get_compression_flags);
+    ClassDB::bind_method(D_METHOD("set_preview_image", "image"), &GaussianSplatAsset::set_preview_image);
+    ClassDB::bind_method(D_METHOD("get_preview_image"), &GaussianSplatAsset::get_preview_image);
+    ClassDB::bind_method(D_METHOD("get_preview_texture"), &GaussianSplatAsset::get_preview_texture);
     ClassDB::bind_method(D_METHOD("set_thumbnail", "texture"), &GaussianSplatAsset::set_thumbnail);
     ClassDB::bind_method(D_METHOD("get_thumbnail"), &GaussianSplatAsset::get_thumbnail);
     ClassDB::bind_method(D_METHOD("set_source_path", "path"), &GaussianSplatAsset::set_source_path);
@@ -117,8 +122,6 @@ void GaussianSplatAsset::_bind_methods() {
     ADD_PROPERTY(PropertyInfo(Variant::INT, "import/compression_flags", PROPERTY_HINT_FLAGS, "Positions,Colors,Scales,Rotations"),
             "set_compression_flags", "get_compression_flags");
     ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "import/metadata"), "set_import_metadata", "get_import_metadata");
-    ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "import/thumbnail", PROPERTY_HINT_RESOURCE_TYPE, "Texture2D"),
-            "set_thumbnail", "get_thumbnail");
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "import/source_path", PROPERTY_HINT_FILE, "*.ply,*.spz"),
             "set_source_path", "get_source_path");
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "data/positions"), "set_positions", "get_positions");
@@ -142,6 +145,50 @@ void GaussianSplatAsset::_bind_methods() {
     BIND_ENUM_CONSTANT(COMPRESSION_COLORS);
     BIND_ENUM_CONSTANT(COMPRESSION_SCALES);
     BIND_ENUM_CONSTANT(COMPRESSION_ROTATIONS);
+}
+
+bool GaussianSplatAsset::_set(const StringName &p_name, const Variant &p_value) {
+    if (p_name == StringName("import/thumbnail")) {
+        if (p_value.get_type() == Variant::NIL) {
+            set_preview_image(Ref<Image>());
+            return true;
+        }
+
+        Ref<Image> image = p_value;
+        if (image.is_valid()) {
+            set_preview_image(image);
+            return true;
+        }
+
+        Ref<Texture2D> texture = p_value;
+        if (texture.is_valid()) {
+            ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), false,
+                    "Legacy GaussianSplatAsset thumbnails must be converted on the main thread.");
+            Ref<Image> texture_image = texture->get_image();
+            if (texture_image.is_null()) {
+                return true;
+            }
+            set_preview_image(texture_image);
+            return true;
+        }
+
+        return false;
+    }
+
+    return false;
+}
+
+bool GaussianSplatAsset::_get(const StringName &p_name, Variant &r_ret) const {
+    if (p_name == StringName("import/thumbnail")) {
+        r_ret = preview_image;
+        return true;
+    }
+
+    return false;
+}
+
+void GaussianSplatAsset::_get_property_list(List<PropertyInfo> *p_list) const {
+    p_list->push_back(PropertyInfo(Variant::OBJECT, "import/thumbnail", PROPERTY_HINT_RESOURCE_TYPE, "Image"));
 }
 
 GaussianSplatAsset::GaussianSplatAsset() {
@@ -895,13 +942,46 @@ void GaussianSplatAsset::set_compression_flags(uint32_t p_flags) {
     emit_changed();
 }
 
-void GaussianSplatAsset::set_thumbnail(const Ref<Texture2D> &p_thumbnail) {
-    if (thumbnail == p_thumbnail) {
+void GaussianSplatAsset::set_preview_image(const Ref<Image> &p_image) {
+    if (preview_image == p_image) {
         return;
     }
-    thumbnail = p_thumbnail;
-    import_metadata[StringName("has_thumbnail")] = thumbnail.is_valid();
+
+    preview_image = p_image;
+    preview_texture_cache.unref();
+    import_metadata[StringName("has_thumbnail")] = preview_image.is_valid() && !preview_image->is_empty();
     emit_changed();
+}
+
+Ref<Texture2D> GaussianSplatAsset::get_preview_texture() const {
+    if (preview_texture_cache.is_valid()) {
+        return preview_texture_cache;
+    }
+
+    if (preview_image.is_null() || preview_image->is_empty()) {
+        return Ref<Texture2D>();
+    }
+
+    // Safe to call from `EditorResourcePreview`'s worker threads: the main
+    // thread services the RS command queue in editor mode, so the sync RS
+    // chain underneath `create_from_image` completes. The `--headless
+    // --import` deadlock motivating #251 is avoided because the import path
+    // stores `preview_image` directly via `set_preview_image()` and never
+    // invokes this lazy texture-creation accessor.
+    preview_texture_cache = ImageTexture::create_from_image(preview_image);
+    return preview_texture_cache;
+}
+
+void GaussianSplatAsset::set_thumbnail(const Ref<Texture2D> &p_thumbnail) {
+    if (p_thumbnail.is_null()) {
+        set_preview_image(Ref<Image>());
+        return;
+    }
+
+    ERR_FAIL_COND_MSG(!Thread::is_main_thread(),
+            "GaussianSplatAsset::set_thumbnail() can only convert textures on the main thread. Use set_preview_image() during threaded import.");
+    Ref<Image> image = p_thumbnail->get_image();
+    set_preview_image(image);
 }
 
 void GaussianSplatAsset::set_source_path(const String &p_path) {
@@ -963,15 +1043,10 @@ Error GaussianSplatAsset::load_from_file(const String &p_path) {
 			source_stage = "raw";
 		}
 	} else {
-		GaussianDataLoadResult load_result;
-		err = load_gaussian_data_from_file(p_path, load_result);
-		if (err == OK) {
-			gaussian_data = load_result.data;
-			missing_required = load_result.missing_required;
-			missing_optional = load_result.missing_optional;
-			file_label = load_result.used_spz ? "SPZ" : "PLY";
-			source_stage = "raw";
-		}
+		GS_LOG_ERROR_DEFAULT(vformat(
+				"Unsupported Gaussian splat raw format '%s' for path: %s. Supported extensions: .ply, .spz.",
+				extension, p_path));
+		return ERR_FILE_UNRECOGNIZED;
 	}
 
 	if (err != OK) {

@@ -1391,7 +1391,6 @@ GaussianSplatRenderer::FrameBackendPlan GaussianSplatRenderer::build_frame_backe
     plan.streaming_ready = p_streaming_ready;
     plan.should_attempt_streaming_bootstrap =
             plan.streaming_requested && !plan.prefer_resident_backend && !plan.streaming_ready;
-    plan.allow_legacy_resident_fallback = !plan.streaming_requested;
     // Allow the streaming path to inject a synthetic identity instance when
     // the SceneDirector has no instances and no world submission is active.
     // World submissions (gsplatworld) own the streaming cull/sort/raster
@@ -1983,8 +1982,7 @@ void GaussianSplatRenderer::_reset_legacy_streaming_data_path_state() {
 bool GaussianSplatRenderer::_try_render_resident_frame(RenderDataRD *p_render_data,
         const Transform3D &p_world_to_camera_transform, const Projection &p_projection,
         const Projection &p_render_projection, RenderSceneBuffersRD *p_render_buffers,
-        bool p_allow_legacy_resident_fallback, String *r_reason) {
-    // Fallback to test data if streaming is not active.
+        String *r_reason) {
     _reset_legacy_streaming_data_path_state();
 
     if (r_reason) {
@@ -1997,9 +1995,6 @@ bool GaussianSplatRenderer::_try_render_resident_frame(RenderDataRD *p_render_da
     if (has_buffer_manager_data) {
         has_buffer_manager_data = get_resource_state().buffer_manager->get_gaussian_count() > 0;
     }
-
-    // Legacy instance transforms removed; use the view transform directly.
-    Transform3D effective_view_transform = p_world_to_camera_transform;
 
 #if defined(DEBUG_ENABLED) || kLogFrameDebug
     // DEBUG: Log instance transform in resident path
@@ -2017,17 +2012,7 @@ bool GaussianSplatRenderer::_try_render_resident_frame(RenderDataRD *p_render_da
         if (r_reason) {
             *r_reason = "no_render_data";
         }
-        if (!p_allow_legacy_resident_fallback) {
-            return false;
-        }
-        _run_cull_sort_pipeline_frame(p_render_data, effective_view_transform, p_projection, p_render_projection,
-                p_render_buffers, false,
-                "Cull skipped: no render data",
-                "Sort skipped: no render data",
-                RenderFallbackReason::DATA_UNAVAILABLE,
-                RenderFallbackReason::DATA_UNAVAILABLE,
-                true, true);
-        return true;
+        return false;
     }
 
     String resident_contract_reason = "resident_contract_published";
@@ -2055,26 +2040,13 @@ bool GaussianSplatRenderer::_try_render_resident_frame(RenderDataRD *p_render_da
     if (r_reason) {
         *r_reason = resident_contract_reason;
     }
-    if (!p_allow_legacy_resident_fallback) {
-        return false;
-    }
-    WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Resident instance contract not ready; falling back to legacy resident path (%s).",
-            resident_contract_reason));
-    _run_cull_sort_pipeline_frame(p_render_data, effective_view_transform, p_projection, p_render_projection,
-            p_render_buffers, true,
-            String(),
-            String(),
-            RenderFallbackReason::NONE,
-            RenderFallbackReason::NONE,
-            false, false);
-    return true;
+    return false;
 }
 
 void GaussianSplatRenderer::_render_resident_frame(RenderDataRD *p_render_data, const Transform3D &p_world_to_camera_transform,
-        const Projection &p_projection, const Projection &p_render_projection, RenderSceneBuffersRD *p_render_buffers,
-        bool p_allow_legacy_resident_fallback) {
+        const Projection &p_projection, const Projection &p_render_projection, RenderSceneBuffersRD *p_render_buffers) {
     _try_render_resident_frame(p_render_data, p_world_to_camera_transform, p_projection,
-            p_render_projection, p_render_buffers, p_allow_legacy_resident_fallback, nullptr);
+            p_render_projection, p_render_buffers, nullptr);
 }
 
 void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
@@ -2245,7 +2217,7 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
     if (backend_plan.prefer_resident_backend) {
         String resident_attempt_reason;
         if (_try_render_resident_frame(p_render_data, view_transform, cam_projection, render_projection,
-                    render_buffers_rd, backend_plan.allow_legacy_resident_fallback, &resident_attempt_reason)) {
+                    render_buffers_rd, &resident_attempt_reason)) {
             _set_instance_backend_diagnostics(InstanceBackendPolicy::RESIDENT,
                     backend_plan.resident_backend_reason,
                     is_instance_contract_ready(),
@@ -2283,44 +2255,36 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
                     get_instance_contract_shape());
             return;
         }
+    }
+    // Streaming was requested. Either bootstrap failed, ready state was false, or
+    // render_streaming_frame() rejected the frame. Hard-fail with the typed skip
+    // route rather than silently falling through to the resident render path —
+    // that bounce is exactly the fallback-for-fallback sprawl we are retiring.
+    if (backend_plan.streaming_requested) {
         String fallback_route_uid;
         if (debug_state_orchestrator) {
             DebugState &debug_state = get_debug_state();
-            if (debug_state.route_uid.is_empty() ||
-                    debug_state.route_uid == RenderRouteUID::INSTANCE_STREAMING ||
-                    debug_state.route_uid == RenderRouteUID::COMMON_SKIP_STREAMING_NOT_READY) {
-                debug_state.route_uid = _streaming_not_ready_route_uid("UNKNOWN");
+            const bool prior_is_typed = !debug_state.route_uid.is_empty() &&
+                    _is_typed_streaming_not_ready_route(debug_state.route_uid) &&
+                    debug_state.route_uid != RenderRouteUID::COMMON_SKIP_STREAMING_NOT_READY;
+            if (!prior_is_typed) {
+                const char *state_token = backend_plan.streaming_ready ? "UNKNOWN" : "MISSING_STREAMING_SYSTEM";
+                debug_state.route_uid = _streaming_not_ready_route_uid(state_token);
             }
             fallback_route_uid = debug_state.route_uid;
         }
-        if (fallback_route_uid.is_empty()) {
-            WARN_PRINT_ONCE("[GaussianSplatRenderer] Streaming resources not ready; falling back to resident render path.");
-        } else {
-            WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Streaming resources not ready (route=%s); falling back to resident render path.",
-                    fallback_route_uid));
-        }
-        _set_instance_backend_diagnostics(InstanceBackendPolicy::RESIDENT,
-                backend_plan.streaming_not_ready_fallback_reason, has_instance_pipeline_buffers(), "atlas_emulation");
-    } else {
-        // Streaming was requested but the system failed to initialize.
-        _set_instance_backend_diagnostics(InstanceBackendPolicy::RESIDENT,
-                backend_plan.streaming_unavailable_fallback_reason, has_instance_pipeline_buffers(), "atlas_emulation");
-        String fallback_route_uid = _streaming_not_ready_route_uid("MISSING_STREAMING_SYSTEM");
-        if (debug_state_orchestrator) {
-            DebugState &debug_state = get_debug_state();
-            if (debug_state.route_uid.is_empty() ||
-                    debug_state.route_uid == RenderRouteUID::COMMON_SKIP_STREAMING_NOT_READY ||
-                    !_is_typed_streaming_not_ready_route(debug_state.route_uid)) {
-                debug_state.route_uid = fallback_route_uid;
-            } else {
-                fallback_route_uid = debug_state.route_uid;
-            }
-        }
-        WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Streaming unavailable (route=%s); falling back to resident render path.",
+        const String &reason = backend_plan.streaming_ready
+                ? backend_plan.streaming_not_ready_fallback_reason
+                : backend_plan.streaming_unavailable_fallback_reason;
+        _set_instance_backend_diagnostics(InstanceBackendPolicy::STREAMING, reason,
+                has_instance_pipeline_buffers(), "atlas_emulation");
+        WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Streaming requested but not ready (route=%s); frame skipped to preserve single-route-per-frame contract.",
                 fallback_route_uid));
+        return;
     }
-    _render_resident_frame(p_render_data, view_transform, cam_projection, render_projection, render_buffers_rd,
-            backend_plan.allow_legacy_resident_fallback);
+    // Streaming was not requested at all (explicit resident policy). Run the
+    // resident render path normally; this is not a bounce.
+    _render_resident_frame(p_render_data, view_transform, cam_projection, render_projection, render_buffers_rd);
 }
 
 void GaussianSplatRenderer::tick_streaming_only(const Transform3D &p_camera_to_world_transform, const Projection &p_projection) {

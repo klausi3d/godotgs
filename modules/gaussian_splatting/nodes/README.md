@@ -17,14 +17,13 @@ container.apply_to_node($MergedWorldRenderer)  # GaussianSplatNode3D
 
 Methods:
 - `merge_children()` – build merged data + chunk cache.
-- `apply_to_renderer(renderer)` – legacy low-level convenience helper that pushes merged data + static chunks into a renderer. Prefer `apply_to_node(node)` or `export_world_resource()` for normal scene workflows.
 - `apply_to_node(node)` – convenience wrapper for GaussianSplatNode3D and GaussianSplatWorld3D targets.
 - `merge_children_to_node(node)` – merge + apply in one step.
 - `export_world_resource()` – build a GaussianSplatWorld resource from merged data.
 
-Note: `apply_to_renderer()` bypasses the canonical node/world submission flow and
-is kept only as a low-level convenience while direct raw-data renderer binding
-still exists.
+`GaussianSplatContainer` is an offline/tooling node: its output always flows
+through `GaussianSplatNode3D` or `GaussianSplatWorld3D`. Direct renderer binding
+has been removed.
 
 Optional properties:
 - `apply_to_target_on_merge`: auto-apply after merge.

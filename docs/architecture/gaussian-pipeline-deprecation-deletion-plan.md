@@ -53,7 +53,7 @@ That means the remaining cleanup work is concentrated in compatibility seams, no
 | `GaussianSplatNode3D::ply_file_path` | Raw file load, auto-load, drag/drop, validation | Runtime and editor compatibility route | Demote from editor-primary path first; later decide whether runtime raw-load survives | Bucket C |
 | `GaussianSplatDynamicInstance3D::ply_file_path` | Raw file to `GaussianData` bypass | Runtime compatibility route | Deprecate earlier than normal node path; require `splat_asset` or explicit `GaussianData` later | Bucket B/C |
 | `GaussianSplatRenderer::set_gaussian_data()` | Low-level renderer/test/tool hook | Public low-level API | Keep for now, narrow usage contract, remove only after replacements exist | Bucket C |
-| `GaussianSplatContainer::apply_to_renderer()` | Container-level direct renderer bypass | Low-level convenience API | Demote in README/API docs now; keep only while the direct raw-data renderer route still exists | Bucket C |
+| `GaussianSplatContainer::apply_to_renderer()` | Container-level direct renderer bypass | Removed in Wave 1 cleanup | Delete outright; keep `apply_to_node()` / export workflows only | Complete |
 | Duplicated source-path resolution helpers | Same logic in node/editor code | Internal duplication | Consolidate into one shared helper | Bucket A |
 | Explicit-resident legacy resident fallback | Accepted runtime fallback when resident atlas publish is infeasible | Runtime compatibility behavior | Keep until resident atlas covers explicit-resident edge cases or the fallback is intentionally retired | Bucket C |
 
@@ -269,7 +269,7 @@ Verified blockers:
 Secondary callers that should not drive the keep/remove decision by themselves:
 
 - Editor preview direct upload in [gaussian_editor_plugin.cpp](../../modules/gaussian_splatting/editor/gaussian_editor_plugin.cpp)
-- [GaussianSplatContainer::apply_to_renderer()](../../modules/gaussian_splatting/nodes/gaussian_splat_container.cpp)
+- `GaussianSplatContainer::apply_to_renderer()` was removed in Wave 1 cleanup; container tooling now hands off through `apply_to_node()` or world export only.
 
 Why it still exists:
 
@@ -281,9 +281,7 @@ Recommended action:
 - Do not delete it yet.
 - Narrow its contract instead:
   - document `set_gaussian_data()` as a low-level/test/tool/editor-preview API, not the canonical high-level scene path
-  - demote `GaussianSplatContainer::apply_to_renderer()` in README/API docs to legacy low-level convenience usage
   - migrate or explicitly bless editor preview
-  - retire container-level convenience usage
   - keep high-level scene code off it
   - remove the underlying runtime route only after world submission realization, streaming bootstrap, and explicit-resident fallback no longer depend on primary `gaussian_data`
 

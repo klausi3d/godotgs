@@ -294,7 +294,6 @@ Dictionary GaussianSplatWorld3D::_build_desired_renderer_overrides() const {
     const String world_path = world.is_valid() ? world->get_path() : String();
     if (!world_path.is_empty() && world_path.get_extension().to_lower() == "gsplatworld") {
         streaming_overrides[StringName("override_io_source")] = true;
-        streaming_overrides[StringName("io_source_path")] = world_path;
     }
 
     overrides[StringName("streaming")] = streaming_overrides;

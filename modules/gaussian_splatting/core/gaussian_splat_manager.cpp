@@ -1120,7 +1120,6 @@ void GaussianSplatManager::initialize_module() {
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/max_evictions_per_frame", 4);
 	// Async IO for gsplatworld sources.
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/async_io_enabled", false);
-	GLOBAL_DEF("rendering/gaussian_splatting/streaming/io_source_path", String());
 
 	// VRAM budget auto-regulation settings for streaming system (H3DGS-style).
 	// Enables graceful degradation when approaching memory limits.

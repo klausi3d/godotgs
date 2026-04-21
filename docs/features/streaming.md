@@ -13,6 +13,18 @@ Load and evict Gaussian splat chunks on demand so that datasets larger than avai
 | Camera moves continuously through a large environment | Enable predictive prefetch to preload chunks along the camera path. |
 | Multiple Gaussian assets share a single world | Use multi-asset registration so the atlas shares VRAM across assets. |
 
+## Source residency model
+
+Streaming behavior depends on the format of the source asset:
+
+| Source | Residency | Chunk payloads | Notes |
+| --- | --- | --- | --- |
+| Uncompressed `.gsplatworld` | Resident `GaussianData` plus file-backed `StagedFileChunkPayloadSource` | Loaded on demand from the source file | Only format that supports file-backed streaming reads. |
+| Compressed `.gsplatworld` | Resident only | None — full gaussian array is decoded into memory at load | Format is resident-only and has no "out-of-core" streaming path; the streaming system still manages visibility, LOD, and VRAM residency. |
+| `.ply` / `.spz` via `GaussianSplatNode3D` | Resident only | None | Direct instance nodes always publish a resident submission hint. |
+
+`GaussianStreamingSystem` runs in all three cases, but "streaming" here means GPU residency and LOD management, not out-of-core source loading, except for uncompressed `.gsplatworld`.
+
 ## Enabling streaming
 
 Streaming is enabled globally through a project setting and is active by default.

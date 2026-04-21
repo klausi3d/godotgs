@@ -358,6 +358,34 @@ Error _write_binary_file(const String &p_path, const PackedByteArray &p_bytes) {
     return OK;
 }
 
+Error _write_text_file(const String &p_path, const String &p_text) {
+    Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::WRITE);
+    if (file.is_null()) {
+        return ERR_CANT_CREATE;
+    }
+
+    file->store_string(p_text);
+    file.unref();
+    return OK;
+}
+
+Ref<Image> _make_thumbnail_test_image() {
+    Ref<Image> image = Image::create_empty(2, 2, false, Image::FORMAT_RGBA8);
+    image->fill(Color(0.0f, 0.0f, 0.0f, 0.0f));
+    image->set_pixel(0, 0, Color(0.9f, 0.2f, 0.1f, 1.0f));
+    image->set_pixel(1, 0, Color(0.1f, 0.8f, 0.3f, 1.0f));
+    image->set_pixel(0, 1, Color(0.2f, 0.4f, 0.9f, 1.0f));
+    image->set_pixel(1, 1, Color(1.0f, 0.9f, 0.2f, 1.0f));
+    return image;
+}
+
+bool _color_approx_eq(const Color &p_a, const Color &p_b, float p_epsilon = 0.01f) {
+    return Math::abs(p_a.r - p_b.r) <= p_epsilon &&
+            Math::abs(p_a.g - p_b.g) <= p_epsilon &&
+            Math::abs(p_a.b - p_b.b) <= p_epsilon &&
+            Math::abs(p_a.a - p_b.a) <= p_epsilon;
+}
+
 Ref<GaussianSplatAsset> _make_thumbnail_fixture_asset(int p_splat_count = 6) {
     Ref<GaussianSplatAsset> asset;
     asset.instantiate();
@@ -417,10 +445,7 @@ Ref<GaussianSplatAsset> _make_thumbnail_fixture_asset(int p_splat_count = 6) {
 
 } // namespace
 
-TEST_CASE("[GaussianSplatting][Importer][RequiresGPU] PLY importer produces metadata and thumbnails") {
-    // Thumbnail generation requires a functional RenderingDevice for ImageTexture.
-    REQUIRE_GPU_DEVICE();
-
+TEST_CASE("[GaussianSplatting][Importer] PLY importer produces metadata and preview images") {
     const String source_path = "user://test_fixture_metadata_thumb.ply";
     {
         Error ply_err = _write_minimal_ascii_ply(source_path);
@@ -463,7 +488,7 @@ TEST_CASE("[GaussianSplatting][Importer][RequiresGPU] PLY importer produces meta
     CHECK(asset->get_splat_count() > 0);
     CHECK(asset->get_import_quality_preset() == String("desktop"));
     CHECK((asset->get_compression_flags() & GaussianSplatAsset::COMPRESSION_POSITIONS) != 0);
-    CHECK_MESSAGE(asset->get_thumbnail().is_valid(), "Importer should generate a thumbnail for the Gaussian asset.");
+    CHECK_MESSAGE(asset->get_preview_image().is_valid(), "Importer should store a preview image for the Gaussian asset.");
     CHECK(asset->get_source_path() == source_path);
 
     Dictionary metadata = metadata_variant;
@@ -480,10 +505,7 @@ TEST_CASE("[GaussianSplatting][Importer][RequiresGPU] PLY importer produces meta
     _remove_user_file(source_path);
 }
 
-TEST_CASE("[GaussianSplatting][Importer][RequiresGPU] Reimport updates quality options") {
-    // First import generates a thumbnail which requires a GPU device.
-    REQUIRE_GPU_DEVICE();
-
+TEST_CASE("[GaussianSplatting][Importer] Reimport updates quality options") {
     const String source_path = "user://test_fixture_reimport.ply";
     {
         Error ply_err = _write_minimal_ascii_ply(source_path);
@@ -529,7 +551,7 @@ TEST_CASE("[GaussianSplatting][Importer][RequiresGPU] Reimport updates quality o
     }
 
     CHECK(asset->get_import_quality_preset() == String("mobile"));
-    CHECK(!asset->get_thumbnail().is_valid());
+    CHECK(!asset->get_preview_image().is_valid());
 
     Dictionary metadata = second_metadata_variant;
     CHECK(String(metadata.get(StringName("quality_preset"), String())) == String("mobile"));
@@ -747,10 +769,7 @@ TEST_CASE("[GaussianSplatting][Importer] Missing required PLY properties fail co
     _remove_user_file(save_base_path + ".tres");
 }
 
-TEST_CASE("[GaussianSplatting][Thumbnail][RequiresGPU] Generator produces textures for each style") {
-    // Thumbnail generation creates ImageTextures which require a GPU device.
-    REQUIRE_GPU_DEVICE();
-
+TEST_CASE("[GaussianSplatting][Thumbnail] Generator produces preview images for each style") {
     Ref<GaussianSplatAsset> asset = _make_thumbnail_fixture_asset();
     const int splat_count = asset->get_splat_count();
 
@@ -758,27 +777,24 @@ TEST_CASE("[GaussianSplatting][Thumbnail][RequiresGPU] Generator produces textur
     generator.instantiate();
 
     for (int style = 0; style < 4; style++) {
-        Ref<Texture2D> texture = generator->generate_thumbnail(asset, 96,
+        Ref<Image> image = generator->generate_thumbnail_image(asset, 96,
                 GaussianThumbnailGenerator::style_from_int(style));
-        CHECK_MESSAGE(texture.is_valid(), "Thumbnail generator should return a valid texture for each style.");
+        CHECK_MESSAGE(image.is_valid(), "Thumbnail generator should return a valid image for each style.");
     }
 
     Dictionary memory = generator->compute_memory_statistics(splat_count, GaussianSplatAsset::COMPRESSION_NONE, false);
     CHECK(float(memory.get(StringName("total_mb"), 0.0)) > 0.0f);
 }
 
-TEST_CASE("[GaussianSplatting][Thumbnail][RequiresGPU] Generator caches deterministic asset+settings keys") {
-    // Thumbnail generation creates ImageTextures which require a GPU device.
-    REQUIRE_GPU_DEVICE();
-
+TEST_CASE("[GaussianSplatting][Thumbnail] Generator caches deterministic asset+settings keys") {
     Ref<GaussianSplatAsset> asset = _make_thumbnail_fixture_asset();
 
     Ref<GaussianThumbnailGenerator> generator;
     generator.instantiate();
 
-    Ref<Texture2D> first = generator->generate_thumbnail(asset, 96, GaussianThumbnailGenerator::THUMBNAIL_STYLE_COLOR);
-    Ref<Texture2D> second = generator->generate_thumbnail(asset, 96, GaussianThumbnailGenerator::THUMBNAIL_STYLE_COLOR);
-    Ref<Texture2D> alternate_style = generator->generate_thumbnail(asset, 96, GaussianThumbnailGenerator::THUMBNAIL_STYLE_HEATMAP);
+    Ref<Image> first = generator->generate_thumbnail_image(asset, 96, GaussianThumbnailGenerator::THUMBNAIL_STYLE_COLOR);
+    Ref<Image> second = generator->generate_thumbnail_image(asset, 96, GaussianThumbnailGenerator::THUMBNAIL_STYLE_COLOR);
+    Ref<Image> alternate_style = generator->generate_thumbnail_image(asset, 96, GaussianThumbnailGenerator::THUMBNAIL_STYLE_HEATMAP);
     CHECK(first.is_valid());
     CHECK(second.is_valid());
     CHECK(alternate_style.is_valid());
@@ -790,11 +806,122 @@ TEST_CASE("[GaussianSplatting][Thumbnail][RequiresGPU] Generator caches determin
     CHECK(int64_t(stats.get(StringName("misses"), int64_t(0))) >= 2);
 
     asset->set_source_path("res://thumbnail_fixture_reimported.ply");
-    Ref<Texture2D> after_source_change = generator->generate_thumbnail(asset, 96, GaussianThumbnailGenerator::THUMBNAIL_STYLE_COLOR);
+    Ref<Image> after_source_change = generator->generate_thumbnail_image(asset, 96, GaussianThumbnailGenerator::THUMBNAIL_STYLE_COLOR);
     CHECK(after_source_change.is_valid());
 
     stats = generator->get_cache_statistics();
     CHECK(int(stats.get(StringName("entries"), 0)) == 3);
+}
+
+TEST_CASE("[GaussianSplatting][Importer] GaussianSplatAsset serializes preview images without ImageTexture state") {
+    const String save_path = "user://gaussian_asset_preview_image_roundtrip.tres";
+
+    Ref<GaussianSplatAsset> asset;
+    asset.instantiate();
+    asset->set_splat_count(1);
+    asset->set_source_path("res://preview_image_fixture.ply");
+    asset->set_preview_image(_make_thumbnail_test_image());
+
+    const Error save_err = ResourceSaver::save(asset, save_path);
+    CHECK_MESSAGE(save_err == OK, "Saving a GaussianSplatAsset with a preview image should succeed.");
+    if (save_err != OK) {
+        _remove_user_file(save_path);
+        return;
+    }
+
+    const String saved_text = _load_text_fixture_or_empty(save_path);
+    CHECK_MESSAGE(saved_text.contains("import/thumbnail = SubResource("),
+            "Serialized GaussianSplatAsset should persist the preview image property.");
+    CHECK_MESSAGE(!saved_text.contains("type=\"ImageTexture\""),
+            "Serialized GaussianSplatAsset should not embed an ImageTexture subresource.");
+    CHECK_MESSAGE(!saved_text.contains("rid://"),
+            "Serialized GaussianSplatAsset should not persist texture RID state.");
+
+    Ref<GaussianSplatAsset> loaded = ResourceLoader::load(save_path, "GaussianSplatAsset");
+    CHECK_MESSAGE(loaded.is_valid(), "Roundtripped GaussianSplatAsset should load from disk.");
+    if (loaded.is_valid()) {
+        Ref<Image> preview = loaded->get_preview_image();
+        CHECK(preview.is_valid());
+        if (preview.is_valid()) {
+            CHECK(preview->get_width() == 2);
+            CHECK(preview->get_height() == 2);
+            CHECK(_color_approx_eq(preview->get_pixel(0, 0), Color(0.9f, 0.2f, 0.1f, 1.0f)));
+        }
+    }
+
+    _remove_user_file(save_path);
+}
+
+TEST_CASE("[GaussianSplatting][Importer][RequiresGPU] GaussianSplatAsset loads legacy ImageTexture thumbnails") {
+    REQUIRE_GPU_DEVICE();
+
+    const String modern_path = "user://gaussian_asset_preview_modern.tres";
+    const String legacy_path = "user://gaussian_asset_preview_legacy.tres";
+
+    Ref<GaussianSplatAsset> asset;
+    asset.instantiate();
+    asset->set_splat_count(1);
+    asset->set_source_path("res://legacy_preview_fixture.ply");
+    asset->set_preview_image(_make_thumbnail_test_image());
+
+    const Error save_err = ResourceSaver::save(asset, modern_path);
+    CHECK_MESSAGE(save_err == OK, "Saving the modern preview-image asset should succeed.");
+    if (save_err != OK) {
+        _remove_user_file(modern_path);
+        _remove_user_file(legacy_path);
+        return;
+    }
+
+    String legacy_text = _load_text_fixture_or_empty(modern_path);
+    const String property_prefix = "import/thumbnail = SubResource(\"";
+    const int property_pos = legacy_text.find(property_prefix);
+    REQUIRE_MESSAGE(property_pos >= 0, "Modern GaussianSplatAsset should serialize preview image subresources.");
+    const int id_start = property_pos + property_prefix.length();
+    const int id_end = legacy_text.find("\")", id_start);
+    REQUIRE_MESSAGE(id_end > id_start, "Modern preview image subresource id should be parseable.");
+    const String image_id = legacy_text.substr(id_start, id_end - id_start);
+
+    legacy_text = legacy_text.replace(String("import/thumbnail = SubResource(\"") + image_id + "\")",
+            "import/thumbnail = SubResource(\"ImageTexture_legacy_preview\")");
+
+    const int resource_pos = legacy_text.find("[resource]");
+    REQUIRE_MESSAGE(resource_pos >= 0, "Modern GaussianSplatAsset text resource should contain a [resource] block.");
+    const String legacy_subresource =
+            "[sub_resource type=\"ImageTexture\" id=\"ImageTexture_legacy_preview\"]\n"
+            "image = SubResource(\"" + image_id + "\")\n\n";
+    legacy_text = legacy_text.insert(resource_pos, legacy_subresource);
+
+    const Error legacy_write_err = _write_text_file(legacy_path, legacy_text);
+    CHECK_MESSAGE(legacy_write_err == OK, "Writing the legacy ImageTexture fixture should succeed.");
+    if (legacy_write_err != OK) {
+        _remove_user_file(modern_path);
+        _remove_user_file(legacy_path);
+        return;
+    }
+
+    Ref<GaussianSplatAsset> loaded = ResourceLoader::load(legacy_path, "GaussianSplatAsset");
+    CHECK_MESSAGE(loaded.is_valid(), "Legacy ImageTexture-backed GaussianSplatAsset should still load.");
+    if (loaded.is_valid()) {
+        Ref<Image> preview = loaded->get_preview_image();
+        CHECK(preview.is_valid());
+        if (preview.is_valid()) {
+            CHECK(_color_approx_eq(preview->get_pixel(1, 1), Color(1.0f, 0.9f, 0.2f, 1.0f)));
+        }
+
+        const String resaved_path = "user://gaussian_asset_preview_legacy_resaved.tres";
+        const Error resave_err = ResourceSaver::save(loaded, resaved_path);
+        CHECK_MESSAGE(resave_err == OK, "Resaving a legacy GaussianSplatAsset should migrate the preview to Image storage.");
+        if (resave_err == OK) {
+            const String resaved_text = _load_text_fixture_or_empty(resaved_path);
+            CHECK(!resaved_text.contains("type=\"ImageTexture\""));
+            _remove_user_file(resaved_path);
+        } else {
+            _remove_user_file(resaved_path);
+        }
+    }
+
+    _remove_user_file(modern_path);
+    _remove_user_file(legacy_path);
 }
 
 TEST_CASE("[GaussianSplatting][Editor] Import dialog respects metadata baselines") {
@@ -1065,6 +1192,66 @@ TEST_CASE("[GaussianSplatting][Importer] PLY loader keeps legacy DC encoding") {
 
     const Gaussian g = data->get_gaussian(0);
     CHECK(gaussian_get_dc_encoding(g.render_meta) == GAUSSIAN_DC_ENCODING_LEGACY_BIAS);
+
+    _remove_user_file(source_path);
+}
+
+TEST_CASE("[GaussianSplatting][Importer] PLY ASCII loader hard-fails on malformed rows") {
+    // Behavior change: previously a project-setting could downgrade malformed-row
+    // handling to a warn-and-skip. That path has been removed — malformed ASCII
+    // rows now always return ERR_FILE_CORRUPT.
+    const String source_path = "user://gaussian_ply_malformed_row.ply";
+
+    static const char *k_malformed_ascii_ply = R"(ply
+format ascii 1.0
+element vertex 2
+property float x
+property float y
+property float z
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+property float opacity
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+end_header
+0 0 0 0 0 0 1 0 0 0 0 0.25 0.5 0.75
+0 0 0 1 2 3
+)";
+
+    Ref<FileAccess> file = FileAccess::open(source_path, FileAccess::WRITE);
+    REQUIRE(file.is_valid());
+    file->store_string(k_malformed_ascii_ply);
+    file.unref();
+
+    Ref<PLYLoader> loader;
+    loader.instantiate();
+    Error load_err = loader->load_file(source_path);
+    CHECK_MESSAGE(load_err == ERR_FILE_CORRUPT,
+            "PLY ASCII loader must reject malformed rows with ERR_FILE_CORRUPT (no more silent row skipping).");
+
+    _remove_user_file(source_path);
+}
+
+TEST_CASE("[GaussianSplatting][Importer] GaussianSplatAsset::load_from_file hard-fails on unknown raw extensions") {
+    // Behavior change: unknown raw extensions previously fell through to the PLY loader.
+    // They now hard-fail with ERR_FILE_UNRECOGNIZED instead of probing loosely.
+    const String source_path = "user://gaussian_asset_unknown_ext.xyz";
+    Ref<FileAccess> file = FileAccess::open(source_path, FileAccess::WRITE);
+    REQUIRE(file.is_valid());
+    file->store_string("not a real splat file");
+    file.unref();
+
+    Ref<GaussianSplatAsset> asset;
+    asset.instantiate();
+    const Error err = asset->load_from_file(source_path);
+    CHECK_MESSAGE(err == ERR_FILE_UNRECOGNIZED,
+            "GaussianSplatAsset::load_from_file must hard-fail on unknown raw extensions, not probe as PLY.");
 
     _remove_user_file(source_path);
 }
