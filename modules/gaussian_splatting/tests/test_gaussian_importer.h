@@ -2289,6 +2289,22 @@ TEST_CASE("[GaussianSplatting][Editor] Hot reload fans one watched source path o
 	memdelete(plugin);
 }
 
+TEST_CASE("[GaussianSplatting][Editor] Plugin does not handle standalone renderer selections") {
+	GaussianEditorPlugin *plugin = memnew(GaussianEditorPlugin);
+	GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
+	Ref<GaussianSplatAsset> asset;
+	asset.instantiate();
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate();
+
+	CHECK(plugin->handles(node));
+	CHECK(plugin->handles(asset.ptr()));
+	CHECK_FALSE(plugin->handles(renderer.ptr()));
+
+	memdelete(node);
+	memdelete(plugin);
+}
+
 TEST_CASE("[GaussianSplatting][Editor] Hot reload leaves watched nodes unchanged when no refreshed asset is available") {
 	const String source_path = "user://hot_reload_failure_fixture.ply";
 
