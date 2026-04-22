@@ -243,12 +243,9 @@ public:
         bool prefer_resident_backend = false;
         bool streaming_ready = false;
         bool should_attempt_streaming_bootstrap = false;
-        bool allow_primary_fallback_instance = false;
         // True when an active gsplatworld submission owns this renderer's
-        // streaming path. Suppresses the synthetic primary-data fallback so
-        // staged worlds cannot be re-routed onto the resident-style path.
+        // streaming path.
         bool has_active_world_submission = false;
-        String primary_fallback_instance_reason = "primary_gaussian_data_unavailable";
         String resident_backend_reason = "requested_streaming_policy";
         String streaming_backend_reason = "requested_streaming_policy";
         String streaming_contract_ready_reason = "streaming_contract_published";

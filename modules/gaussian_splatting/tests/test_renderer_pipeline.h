@@ -3925,7 +3925,7 @@ TEST_CASE("[GaussianSplatting] runtime fidelity policy centralizes route policy 
 	CHECK(runtime_policy.runtime_budget_splats == 8);
 }
 
-TEST_CASE("[GaussianSplatting] frame backend plan centralizes streaming bootstrap and fallback eligibility") {
+TEST_CASE("[GaussianSplatting] frame backend plan centralizes streaming bootstrap without synthetic primary fallback") {
 	ProjectSettings *project_settings = ProjectSettings::get_singleton();
 	if (project_settings == nullptr) {
 		MESSAGE("Skipping test - ProjectSettings unavailable");
@@ -3953,7 +3953,7 @@ TEST_CASE("[GaussianSplatting] frame backend plan centralizes streaming bootstra
 	CHECK_FALSE(backend_plan.prefer_resident_backend);
 	CHECK_FALSE(backend_plan.streaming_ready);
 	CHECK(backend_plan.should_attempt_streaming_bootstrap);
-	CHECK(backend_plan.allow_primary_fallback_instance);
+	CHECK_FALSE(backend_plan.has_active_world_submission);
 }
 
 TEST_CASE("[GaussianSplatting] frame backend plan preserves resident request semantics") {
@@ -3976,7 +3976,7 @@ TEST_CASE("[GaussianSplatting] frame backend plan preserves resident request sem
 	CHECK_FALSE(backend_plan.streaming_requested);
 	CHECK(backend_plan.prefer_resident_backend);
 	CHECK_FALSE(backend_plan.should_attempt_streaming_bootstrap);
-	CHECK_FALSE(backend_plan.allow_primary_fallback_instance);
+	CHECK_FALSE(backend_plan.has_active_world_submission);
 	CHECK(backend_plan.resident_backend_reason == String("requested_resident_policy"));
 }
 
