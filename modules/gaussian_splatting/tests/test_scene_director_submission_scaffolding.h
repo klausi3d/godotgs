@@ -682,7 +682,13 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Zero-splat submis
 	}
 }
 
-TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Staged world submissions mark streaming path ownership in the backend plan") {
+TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission][RequiresGPU] Staged world submissions mark streaming path ownership in the backend plan") {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (rs == nullptr) {
+		MESSAGE("Skipping test - Rendering server unavailable");
+		return;
+	}
+
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
 	const bool owns_director = (director == nullptr);
 	if (!director) {
