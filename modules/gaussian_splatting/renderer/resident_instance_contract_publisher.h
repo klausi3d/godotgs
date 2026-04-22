@@ -7,7 +7,7 @@ class GaussianSplatRenderer;
 
 namespace ResidentInstanceContractPublisher {
 
-bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_instance, String *r_reason = nullptr);
+bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, bool p_allow_empty_instance_bootstrap, String *r_reason = nullptr);
 
 } // namespace ResidentInstanceContractPublisher
 
