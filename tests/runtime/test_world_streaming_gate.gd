@@ -46,12 +46,17 @@ var metrics: Dictionary = {
     "streaming_visible_count_max": 0,
     "renderer_visible_splats_max": 0,
     "streaming_data_source_seen": false,
+    "streaming_route_seen": false,
+    "streaming_backend_seen": false,
+    "typed_streaming_not_ready_seen": false,
     "renderer_data_source": "",
     "streaming_diagnostics_category": "",
     "streaming_diagnostics_reason": "",
     "streaming_diagnostics_fingerprint": "",
     "streaming_render_readiness_state": "",
     "renderer_route_uid": "",
+    "renderer_cull_route_uid": "",
+    "renderer_backend_policy": "",
     "manager_total_gaussians_max": 0,
     "gate_ready": false,
     "return_path_ready": false,
@@ -209,6 +214,20 @@ func _sample_metrics(frame_index: int) -> void:
                 var route_uid := str(stats.get("route_uid", ""))
                 if not route_uid.is_empty():
                     metrics["renderer_route_uid"] = route_uid
+                    if route_uid == "INSTANCE.STREAMING":
+                        metrics["streaming_route_seen"] = true
+
+                var cull_route_uid := str(stats.get("cull_route_uid", ""))
+                if not cull_route_uid.is_empty():
+                    metrics["renderer_cull_route_uid"] = cull_route_uid
+                    if cull_route_uid.begins_with("COMMON.SKIP.STREAMING_NOT_READY."):
+                        metrics["typed_streaming_not_ready_seen"] = true
+
+                var backend_policy := str(stats.get("instance_backend_policy", ""))
+                if not backend_policy.is_empty():
+                    metrics["renderer_backend_policy"] = backend_policy
+                    if backend_policy == "streaming":
+                        metrics["streaming_backend_seen"] = true
 
                 var diag_category := str(stats.get("streaming_diagnostics_category", ""))
                 if not diag_category.is_empty():
@@ -245,10 +264,12 @@ func _is_gate_ready() -> bool:
     var visible_count := int(metrics.get("streaming_visible_count_max", 0))
     var renderer_visible := int(metrics.get("renderer_visible_splats_max", 0))
     var streaming_source := bool(metrics.get("streaming_data_source_seen", false))
+    var streaming_route := bool(metrics.get("streaming_route_seen", false))
+    var streaming_backend := bool(metrics.get("streaming_backend_seen", false))
 
     var chunk_signal := total_chunks > 0 and loaded_chunks > 0
     var visibility_signal := visible_chunks > 0 or visible_count > 0 or renderer_visible > 0
-    return monitor_ready and chunk_signal and visibility_signal and streaming_source
+    return monitor_ready and chunk_signal and visibility_signal and streaming_source and streaming_route and streaming_backend
 
 
 func _has_return_path_ready() -> bool:
@@ -295,7 +316,7 @@ func _run() -> void:
         return
 
     var passed := false
-    var failure_reason := "World streaming gate did not reach long-walk return-path readiness within frame budget."
+    var failure_reason := "World streaming gate did not reach long-walk return-path readiness with streaming route evidence within frame budget."
 
     for frame_idx in range(MAX_TEST_FRAMES):
         await process_frame
