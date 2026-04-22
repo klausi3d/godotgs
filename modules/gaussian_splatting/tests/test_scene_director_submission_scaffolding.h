@@ -682,7 +682,7 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Zero-splat submis
 	}
 }
 
-TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Staged world submissions do not synthesize a primary fallback instance") {
+TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Staged world submissions mark streaming path ownership in the backend plan") {
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
 	const bool owns_director = (director == nullptr);
 	if (!director) {
@@ -714,7 +714,7 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Staged world subm
 
 	Ref<GaussianSplatRenderer> renderer = director->get_shared_renderer(world.ptr());
 	if (!renderer.is_valid()) {
-		MESSAGE("Skipping staged world fallback test - shared renderer unavailable");
+		MESSAGE("Skipping staged world backend-plan test - shared renderer unavailable");
 		root->remove_child(owner);
 		memdelete(owner);
 		tree->process(0.0);
@@ -743,7 +743,7 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Staged world subm
 
 	const GaussianSplatRenderer::FrameBackendPlan backend_plan = renderer->build_frame_backend_plan(false);
 	CHECK(backend_plan.streaming_requested);
-	CHECK_FALSE(backend_plan.allow_primary_fallback_instance);
+	CHECK(backend_plan.has_active_world_submission);
 
 	director->release_world_submission(owner->get_instance_id());
 

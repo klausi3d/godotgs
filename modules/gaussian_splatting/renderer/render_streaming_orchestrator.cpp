@@ -1548,46 +1548,9 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 		instance_pipeline_instance_cache = selection.get_instances();
 		consume_visible_lod_selection_for_residency(selection, streaming_system, trace_enabled);
 	}
-	// Some supported callsites (world/static scenes, direct-data renderer tests) can
-	// render primary gaussian data without SceneDirector instances. In those cases we
-	// still need a synthetic instance entry so the instance-pipeline cull/sort/raster
-	// contracts can come up without silently falling back to the resident path.
-	if (p_backend_plan.allow_primary_fallback_instance &&
-			instance_pipeline_instance_cache.is_empty() &&
-			state_view.get_scene_state().gaussian_data.is_valid() &&
-			state_view.get_scene_state().gaussian_data->get_count() > 0) {
-		InstanceDataGPU fallback_instance = {};
-		fallback_instance.rotation[3] = 1.0f;
-		fallback_instance.inv_rotation[3] = 1.0f;
-		fallback_instance.translation_scale[3] = 1.0f;
-		fallback_instance.params[0] = 1.0f;
-		fallback_instance.params[1] = 1.0f;
-		fallback_instance.params[2] = 1.0f;
-		fallback_instance.params[3] = 0.0f;
-		fallback_instance.ids[0] = 0u;
-		fallback_instance.ids[1] = GS_INSTANCE_FLAG_ROTATION_IDENTITY |
-				GS_INSTANCE_FLAG_SCALE_IDENTITY |
-				GS_INSTANCE_FLAG_TRANSLATION_ZERO;
-		fallback_instance.lod[0] = 0;
-		fallback_instance.lod[1] = 0;
-		fallback_instance.wind_params[0] = 0.0f;
-		fallback_instance.wind_params[1] = 0.0f;
-		fallback_instance.wind_params[2] = 0.0f;
-		fallback_instance.wind_params[3] = 1.0f;
-		fallback_instance.effect_params[0] = 1.0f;
-		fallback_instance.effect_params[1] = 1.0f;
-		instance_pipeline_instance_cache.push_back(fallback_instance);
-		if (trace_enabled) {
-			GaussianSplatting::debug_trace_record_event("instance_pipeline",
-					vformat("Injected primary fallback instance for empty-instance streaming path (%s)",
-							p_backend_plan.primary_fallback_instance_reason),
-					false);
-		}
-	}
 	const uint32_t registered_assets_with_data = streaming_system->get_registered_asset_count_with_data();
 	if (!instance_pipeline_instance_cache.is_empty() &&
-			registered_assets_with_data == 0 &&
-			!p_backend_plan.allow_primary_fallback_instance) {
+			registered_assets_with_data == 0) {
 		const StreamingReadinessState readiness_state = StreamingReadinessState::REGISTRATION_PENDING;
 		ERR_PRINT("[GaussianSplatRenderer] Streaming bootstrap produced instances but no registered streaming assets with data; resetting streaming system.");
 		finalize_streaming_frame(readiness_state,
