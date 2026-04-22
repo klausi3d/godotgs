@@ -1873,11 +1873,10 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 						director->build_instance_grading_buffer_for_renderer(renderer, gradings,
 								renderer->is_shadow_instance_filter_enabled());
 					}
-					// Fallback: if the director produced no rows but the streaming cache has
-					// synthetic primary-fallback instances injected at line ~1541-1577, seed the
-					// rows from the renderer's legacy color_grading default so worldless /
-					// direct-data renderers keep their grading instead of being forced to
-					// neutral. Mirror the row count of instance_pipeline_instance_cache.
+					// If the instance cache is populated but the director produced no grading
+					// rows, mirror the cache length with the renderer's default grading so the
+					// downstream SSBO contract stays aligned instead of silently forcing every
+					// instance to neutral grading.
 					if (gradings.is_empty() && !instance_pipeline_instance_cache.is_empty()) {
 						const Ref<ColorGradingResource> renderer_default = renderer->get_color_grading();
 						gradings.resize(instance_pipeline_instance_cache.size());
