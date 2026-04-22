@@ -126,16 +126,16 @@ struct InstanceAssetRegistration {
  *
  * In production scenes this is typically created and managed by
  * GaussianSplatNode3D, GaussianSplatWorld3D, or the shared scene-director
- * renderer flow. Direct `set_gaussian_data()` calls are the low-level raw-data
- * path kept for tests, tools, editor preview, and internal world-submission
- * realization.
+ * renderer flow. Direct `set_gaussian_data()` calls are the low-level
+ * resident direct-data path kept for tests, tools, editor preview, and
+ * internal world-submission realization.
  *
  * Low-level usage:
  * @code
  * Ref<GaussianSplatRenderer> renderer;
  * renderer.instantiate();
  * renderer->initialize();
- * renderer->set_gaussian_data(my_data); // low-level raw-data binding
+ * renderer->set_gaussian_data(my_data); // low-level resident direct-data binding
  * renderer->render_for_view(camera_transform, projection, render_target, viewport_size);
  * @endcode
  *
@@ -666,7 +666,7 @@ public:
     void _refresh_streaming_route_policy_cache();
     void _set_instance_backend_diagnostics(InstanceBackendPolicy p_backend_policy, const String &p_reason,
             bool p_contract_ready, const String &p_contract_shape = "atlas_emulation");
-    bool _publish_resident_instance_pipeline_contract(bool p_allow_primary_fallback_instance,
+    bool _publish_resident_direct_data_contract(bool p_allow_empty_instance_bootstrap,
             String *r_reason = nullptr);
     bool _try_render_resident_frame(RenderDataRD *p_render_data, const Transform3D &p_world_to_camera_transform,
             const Projection &p_projection, const Projection &p_render_projection,
@@ -890,13 +890,14 @@ public:
      * @param p_data GaussianData resource containing splat data.
      * @return OK on success, or an error code if data cannot be loaded.
      *
-     * @note Low-level raw-data API for tests, tools, editor preview, and
-     * internal world-submission realization. High-level scene code should
-     * prefer node/world submission paths instead of calling this directly.
+     * @note Low-level resident direct-data API for tests, tools, editor
+     * preview, and internal world-submission realization. High-level scene
+     * code should prefer node/world submission paths instead of calling this
+     * directly.
      */
     Error set_gaussian_data(const Ref<::GaussianData> &p_data) override;
 
-    /** @brief Returns the currently assigned Gaussian data. */
+    /** @brief Returns the currently assigned resident direct-data binding. */
     Ref<::GaussianData> get_gaussian_data() const override { return get_scene_state().gaussian_data; }
 
     /**

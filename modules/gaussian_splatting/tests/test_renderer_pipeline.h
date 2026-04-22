@@ -727,7 +727,7 @@ TEST_CASE("[GaussianSplatting] Clearing the published instance contract also cle
     CHECK(renderer->get_instance_asset_remap().generation == 0u);
 }
 
-TEST_CASE("[GaussianSplatting][RequiresGPU] Resident route publishes an atlas-shaped instance contract without a streaming system") {
+TEST_CASE("[GaussianSplatting][RequiresGPU] Direct gaussian data publishes a resident atlas-shaped instance contract without a streaming system") {
     RenderingServer *rs = RenderingServer::get_singleton();
     if (rs == nullptr) {
         MESSAGE("Skipping test - Rendering server unavailable");
@@ -778,6 +778,7 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Resident route publishes an atlas-sh
     data->set_gaussians(gaussians);
 
     renderer->set_max_splats(64);
+    // Direct gaussian data is the low-level resident direct-data path.
     const Error set_data_err = renderer->set_gaussian_data(data);
     CHECK(set_data_err == OK);
     if (set_data_err != OK) {
