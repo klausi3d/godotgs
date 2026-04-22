@@ -666,7 +666,8 @@ public:
     void _refresh_streaming_route_policy_cache();
     void _set_instance_backend_diagnostics(InstanceBackendPolicy p_backend_policy, const String &p_reason,
             bool p_contract_ready, const String &p_contract_shape = "atlas_emulation");
-    bool _publish_resident_direct_data_contract(String *r_reason = nullptr);
+    bool _publish_resident_direct_data_contract(bool p_allow_empty_instance_bootstrap,
+            String *r_reason = nullptr);
     bool _try_render_resident_frame(RenderDataRD *p_render_data, const Transform3D &p_world_to_camera_transform,
             const Projection &p_projection, const Projection &p_render_projection,
             RenderSceneBuffersRD *p_render_buffers,

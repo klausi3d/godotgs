@@ -2016,7 +2016,8 @@ bool GaussianSplatRenderer::_try_render_resident_frame(RenderDataRD *p_render_da
     }
 
     String resident_contract_reason = "resident_contract_published";
-    const bool resident_contract_ready = _publish_resident_direct_data_contract(&resident_contract_reason);
+    const bool resident_contract_ready = _publish_resident_direct_data_contract(has_gaussian_dataset,
+            &resident_contract_reason);
     _set_instance_backend_diagnostics(InstanceBackendPolicy::RESIDENT,
             resident_contract_ready ? String("resident_contract_published") : resident_contract_reason,
             resident_contract_ready,
@@ -2584,8 +2585,9 @@ void GaussianSplatRenderer::_set_instance_backend_diagnostics(InstanceBackendPol
     debug_state.instance_contract_ready = p_contract_ready;
 }
 
-bool GaussianSplatRenderer::_publish_resident_direct_data_contract(String *r_reason) {
-    return ResidentInstanceContractPublisher::publish_resident_direct_data_contract(this, r_reason);
+bool GaussianSplatRenderer::_publish_resident_direct_data_contract(bool p_allow_empty_instance_bootstrap,
+        String *r_reason) {
+    return ResidentInstanceContractPublisher::publish_resident_direct_data_contract(this, p_allow_empty_instance_bootstrap, r_reason);
 }
 
 void GaussianSplatRenderer::publish_instance_pipeline_contract(const InstancePipelineBuffers &p_buffers,
