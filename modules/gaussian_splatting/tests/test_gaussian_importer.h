@@ -1630,7 +1630,7 @@ TEST_CASE("[GaussianSplatting][Importer] gsplatworld importer preserves payload 
     Ref<ResourceImporterGSplatWorld> importer;
     importer.instantiate();
     CHECK(importer->get_save_extension() == "gsplatworld");
-    CHECK(importer->get_format_version() == 1);
+    CHECK(importer->get_format_version() == 2);
 
     HashMap<StringName, Variant> options;
     Error import_err = importer->import(ResourceUID::INVALID_ID, source_path, save_base_path, options,
