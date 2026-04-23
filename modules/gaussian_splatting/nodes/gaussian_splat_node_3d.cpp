@@ -2414,7 +2414,6 @@ void GaussianSplatNode3D::_register_shared_renderer() {
         return;
     }
     _register_instance_in_director();
-
 }
 
 void GaussianSplatNode3D::_unregister_shared_renderer() {
