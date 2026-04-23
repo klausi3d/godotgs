@@ -317,9 +317,6 @@ func _exercise_tier(tier: Dictionary) -> Dictionary:
     }
 
     print("\n[Streaming] Preparing dataset with %d splats" % size)
-    var current_budget = int(renderer.get_max_splats())
-    if current_budget < size:
-        renderer.set_max_splats(size)
     var dataset = _build_dataset(size)
     if not _setup_world_scene(dataset):
         _record_failure("world-backed setup failed", {"dataset_size": size})
@@ -338,6 +335,14 @@ func _exercise_tier(tier: Dictionary) -> Dictionary:
         tier_result["budget_failures"] = ["renderer_unavailable"]
         _teardown_world_scene()
         return tier_result
+
+    # Raise the splat budget on the world-owned renderer if the tier needs
+    # more than the default. _teardown_world_scene() nils `renderer`, so the
+    # budget must be adjusted after the world renderer is re-acquired rather
+    # than against the pre-setup handle (which crashed the 1m/2.5m tiers).
+    var current_budget := int(renderer.get_max_splats())
+    if current_budget < size:
+        renderer.set_max_splats(size)
 
     print("  -> Exercising %s (%s)" % [SORT_METHOD_NAME, tier_name])
 
