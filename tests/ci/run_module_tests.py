@@ -70,19 +70,7 @@ MODULE_TEST_FILTERS: tuple[tuple[str, tuple[str, ...], tuple[str, ...], bool], .
     ("GaussianSplatting [Editor]", ("*GaussianSplatting*][Editor]*",), ("*][RequiresGPU]*",), True),
     ("GaussianSplatting [Importer]", ("*GaussianSplatting*][Importer]*",), ("*][RequiresGPU]*",), True),
     ("Gaussian Logger", ("*Gaussian Logger*",), ("*][RequiresGPU]*",), True),
-    (
-        "GaussianSplatting [Node]",
-        ("*GaussianSplatting*][Node]*",),
-        (
-            "*][RequiresGPU]*",
-            # These fixtures touch SceneTree/renderer-sensitive node setup and
-            # crash Godot's headless --test harness on Windows, so keep them out
-            # of the strict headless lane.
-            "*Asset buffers populate GaussianData with painterly metadata*",
-            "*][Node][SceneTree]*",
-        ),
-        True,
-    ),
+    ("GaussianSplatting [Node]", ("*GaussianSplatting*][Node]*",), ("*][RequiresGPU]*",), True),
     ("GaussianSplatting [PLY]", ("*GaussianSplatting*][PLY]*",), ("*][RequiresGPU]*",), True),
     ("GaussianSplatting [Persistence]", ("*GaussianSplatting*][Persistence]*",), ("*][RequiresGPU]*",), True),
     (
