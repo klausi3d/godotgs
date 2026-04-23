@@ -219,6 +219,23 @@ function Mark-Check {
     return "[ ]"
 }
 
+function Test-ObjectHasProperty {
+    param(
+        [object]$Object,
+        [string]$Name
+    )
+
+    if ($null -eq $Object) {
+        return $false
+    }
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        return $Object.Contains($Name)
+    }
+
+    return $null -ne $Object.PSObject.Properties[$Name]
+}
+
 function Get-ObjectPropertyValue {
     param(
         [object]$Object,
@@ -237,8 +254,9 @@ function Get-ObjectPropertyValue {
         return $Default
     }
 
-    if ($Object.PSObject.Properties.Name -contains $Name) {
-        return $Object.$Name
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -ne $property) {
+        return $property.Value
     }
 
     return $Default
@@ -462,16 +480,16 @@ if ($runtimeMetrics.Contains("runtime_gpu_streaming_stress")) {
     $streamingBudgetMetrics = $runtimeMetrics["runtime_gpu_streaming_stress"]
 }
 if ($null -ne $streamingBudgetMetrics) {
-    if ($streamingBudgetMetrics.PSObject.Properties.Name -contains "baseline_tier" -and
-        $null -ne $streamingBudgetMetrics.baseline_tier) {
-        $streamingBudgetBaselineTier = [string]$streamingBudgetMetrics.baseline_tier
+    $baselineTier = Get-ObjectPropertyValue -Object $streamingBudgetMetrics -Name "baseline_tier"
+    if ($null -ne $baselineTier) {
+        $streamingBudgetBaselineTier = [string]$baselineTier
     }
-    if ($streamingBudgetMetrics.PSObject.Properties.Name -contains "baseline_passed") {
-        $streamingBudgetBaselinePassed = [bool]$streamingBudgetMetrics.baseline_passed
+    if (Test-ObjectHasProperty -Object $streamingBudgetMetrics -Name "baseline_passed") {
+        $streamingBudgetBaselinePassed = [bool](Get-ObjectPropertyValue -Object $streamingBudgetMetrics -Name "baseline_passed")
     }
-    if ($streamingBudgetMetrics.PSObject.Properties.Name -contains "tiers" -and
-        $null -ne $streamingBudgetMetrics.tiers) {
-        $streamingBudgetTiers = @($streamingBudgetMetrics.tiers)
+    $tiers = Get-ObjectPropertyValue -Object $streamingBudgetMetrics -Name "tiers"
+    if ($null -ne $tiers) {
+        $streamingBudgetTiers = @($tiers)
     }
 }
 $streamingBudgetTierCount = $streamingBudgetTiers.Count
