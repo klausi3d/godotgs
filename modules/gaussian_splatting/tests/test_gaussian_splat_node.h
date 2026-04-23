@@ -2724,22 +2724,17 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree] Two nodes sharing one asset both
 	CHECK(node_a->get_total_splat_count() == 1);
 	CHECK(node_b->get_total_splat_count() == 1);
 
-	// Mutate the shared asset: grow to 5 splats.
-	// This simulates what happens when Godot reloads an imported resource in-place.
-	shared_asset->set_splat_count(5);
-	PackedFloat32Array new_positions;
-	new_positions.resize(5 * 3);
-	{
-		float *ptr = new_positions.ptrw();
-		for (int i = 0; i < 5 * 3; i++) {
-			ptr[i] = float(i);
-		}
-	}
-	shared_asset->set_positions(new_positions);
+	// Mutate the shared asset: grow to 5 splats. The Packed-array setters
+	// are sealed once runtime GaussianData has been handed out (see
+	// GaussianSplatAsset::_runtime_mutation_permitted), so drive the
+	// change through populate_from_gaussian_data — the documented
+	// runtime-to-asset persistence writer that resets the seal.
+	Ref<GaussianData> grown_data = make_test_gaussian_data(5, 0.0f);
+	REQUIRE_EQ(shared_asset->populate_from_gaussian_data(grown_data), OK);
 
-	// The asset emits "changed" on set_positions(). Both nodes should have
-	// received _on_asset_changed() which calls _update_asset() and re-reads
-	// total_splat_count from the asset.
+	// The asset emits "changed" when its data is reseeded. Both nodes
+	// should have received _on_asset_changed() which calls _update_asset()
+	// and re-reads total_splat_count from the asset.
 	CHECK(node_a->get_total_splat_count() == 5);
 	CHECK(node_b->get_total_splat_count() == 5);
 
@@ -2773,17 +2768,10 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree] Two nodes with separate asset Re
 	CHECK(node_a->get_total_splat_count() == 1);
 	CHECK(node_b->get_total_splat_count() == 1);
 
-	// Mutate only asset_a.
-	asset_a->set_splat_count(7);
-	PackedFloat32Array new_positions;
-	new_positions.resize(7 * 3);
-	{
-		float *ptr = new_positions.ptrw();
-		for (int i = 0; i < 7 * 3; i++) {
-			ptr[i] = float(i);
-		}
-	}
-	asset_a->set_positions(new_positions);
+	// Mutate only asset_a. Drive the change through populate_from_gaussian_data
+	// since the Packed-array setters are sealed after first hand-out.
+	Ref<GaussianData> grown_data = make_test_gaussian_data(7, 0.0f);
+	REQUIRE_EQ(asset_a->populate_from_gaussian_data(grown_data), OK);
 
 	// node_a should see 7; node_b should still see 1.
 	CHECK(node_a->get_total_splat_count() == 7);
