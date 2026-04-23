@@ -25,6 +25,10 @@
 #include <limits>
 #include <random>
 
+extern "C" int test_gpu_streaming_cpp_force_link() {
+    return 0;
+}
+
 // Helper to create test gaussian data
 LocalVector<Gaussian> create_test_gaussians(uint32_t count) {
     LocalVector<Gaussian> gaussians;

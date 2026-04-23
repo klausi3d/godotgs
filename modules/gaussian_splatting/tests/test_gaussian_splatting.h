@@ -51,6 +51,9 @@
 #include "test_sentinel_tier_defaults.h"
 #include "generate_synthetic_ply_fixtures.h"
 
+extern "C" int test_gpu_streaming_cpp_force_link();
+static const volatile int test_gpu_streaming_cpp_force_link_anchor = test_gpu_streaming_cpp_force_link();
+
 namespace TestGaussianSplatting {
 
 // Main test runner that executes all tests when called with --test
