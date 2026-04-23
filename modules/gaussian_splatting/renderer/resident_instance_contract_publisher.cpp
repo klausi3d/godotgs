@@ -154,7 +154,7 @@ static void _append_chunk_descriptors_for_asset(const ResidentAssetDescriptor &p
 
 namespace ResidentInstanceContractPublisher {
 
-bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, bool p_allow_empty_instance_bootstrap, String *r_reason) {
+bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, String *r_reason) {
 	ERR_FAIL_NULL_V(p_renderer, false);
 
 	if (r_reason) {
@@ -247,7 +247,6 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, bo
 	source_generation = _mix_generation(source_generation,
 			p_renderer->get_resource_state().instance_grading_defaults_generation.load(std::memory_order_relaxed));
 	source_generation = _mix_generation(source_generation, p_renderer->is_shadow_instance_filter_enabled() ? 1ULL : 0ULL);
-	source_generation = _mix_generation(source_generation, p_allow_empty_instance_bootstrap ? 1ULL : 0ULL);
 	source_generation = _mix_generation(source_generation, uint64_t(p_renderer->get_performance_settings().max_splats));
 	for (const ResidentAssetDescriptor &asset : assets) {
 		source_generation = _mix_generation(source_generation, asset.submission_asset_id);
