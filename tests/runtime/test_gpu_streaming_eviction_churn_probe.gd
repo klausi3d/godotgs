@@ -50,6 +50,9 @@ const OVERRIDES := {
 }
 
 var renderer: GaussianSplatRenderer
+var scene_root: Node3D
+var camera: Camera3D
+var world_node: GaussianSplatWorld3D
 var failures: Array[String] = []
 var skip_reasons: Array[String] = []
 var previous_settings: Dictionary = {}
@@ -159,6 +162,41 @@ func _build_dataset(size: int) -> GaussianData:
     data.set_spherical_harmonics(sh_dc)
     return data
 
+func _build_world_resource(dataset: GaussianData) -> GaussianSplatWorld:
+    var world := GaussianSplatWorld.new()
+    world.set_gaussian_data(dataset)
+    world.set_bounds(dataset.get_aabb())
+    return world
+
+func _setup_world_scene(dataset: GaussianData) -> bool:
+    scene_root = Node3D.new()
+    scene_root.name = "GpuStreamingEvictionProbeRoot"
+    get_root().add_child(scene_root)
+
+    camera = Camera3D.new()
+    camera.name = "GpuStreamingEvictionProbeCamera"
+    camera.position = Vector3(0.0, 0.0, 6.0)
+    camera.look_at(Vector3.ZERO, Vector3.UP)
+    camera.make_current()
+    scene_root.add_child(camera)
+
+    world_node = GaussianSplatWorld3D.new()
+    world_node.name = "GpuStreamingEvictionProbeWorld"
+    scene_root.add_child(world_node)
+
+    var world := _build_world_resource(dataset)
+    world_node.set_world(world)
+    world_node.apply_world()
+    return true
+
+func _teardown_world_scene() -> void:
+    if scene_root != null:
+        scene_root.queue_free()
+    scene_root = null
+    camera = null
+    world_node = null
+    renderer = null
+
 func _capture_settings() -> void:
     previous_settings.clear()
     for key in OVERRIDES.keys():
@@ -196,15 +234,30 @@ func _run() -> void:
         return
     renderer.initialize()
 
-    renderer.set_max_splats(DATASET_SIZE)
     var dataset := _build_dataset(DATASET_SIZE)
-    var set_err := renderer.set_gaussian_data(dataset)
-    if set_err != OK:
-        _record_failure("set_gaussian_data failed", {"err": set_err})
+    if not _setup_world_scene(dataset):
+        _record_failure("world-backed setup failed", {"err": ERR_CANT_CREATE})
         print("%s %s" % [METRICS_MARKER, JSON.stringify({"status": "failed", "failures": failures})])
         _restore_settings()
         quit(1)
         return
+
+    for _frame in range(3):
+        await process_frame
+        if world_node != null:
+            renderer = world_node.get_renderer()
+        if renderer != null:
+            break
+
+    if renderer == null:
+        _record_failure("renderer unavailable after world apply", {"err": ERR_UNAVAILABLE})
+        _teardown_world_scene()
+        print("%s %s" % [METRICS_MARKER, JSON.stringify({"status": "failed", "failures": failures})])
+        _restore_settings()
+        quit(1)
+        return
+
+    renderer.set_max_splats(DATASET_SIZE)
 
     for i in range(WARMUP_FRAMES):
         await process_frame
@@ -653,5 +706,6 @@ func _run() -> void:
     }
 
     print("%s %s" % [METRICS_MARKER, JSON.stringify(payload)])
+    _teardown_world_scene()
     _restore_settings()
     quit(0 if failures.is_empty() else 1)

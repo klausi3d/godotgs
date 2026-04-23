@@ -34,7 +34,6 @@ public:
 
     EvictionResult evict_least_recently_used(GaussianStreamingSystem &system, bool p_allow_visible_eviction);
     bool evict_non_primary_lru(GaussianStreamingSystem &system);
-    bool ensure_atlas_slot_available(GaussianStreamingSystem &system, uint32_t requesting_asset_id);
 
 private:
     uint64_t chunk_load_counter = 0;

@@ -21,6 +21,7 @@ public:
         bool can_replace_without_eviction = false;
         bool enforce_vram_regulator_gate = false;
         bool vram_regulator_allows_load = true;
+        bool atlas_slots_full = false;
     };
 
     struct AdmissionContext {
@@ -31,6 +32,7 @@ public:
         bool eviction_blocked = false;
         bool enforce_vram_regulator_gate = false;
         bool vram_regulator_allows_load = true;
+        bool atlas_slots_full = false;
     };
 
     struct AdmissionGate {
@@ -49,7 +51,7 @@ public:
     static void note_successful_eviction(AdmissionFrameBudget &p_frame_budget);
     static void note_blocked_eviction(AdmissionFrameBudget &p_frame_budget);
     // Visible-eviction fallback is valid only when admission required eviction due
-    // to hard chunk-cap pressure or regulator-gated pressure.
+    // to hard chunk-cap pressure, atlas-slot pressure, or regulator-gated pressure.
     static bool should_attempt_visible_evict_fallback(const AdmissionGate &p_gate);
     static AdmissionDecision decide_admission(const AdmissionContext &p_context);
 };

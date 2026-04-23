@@ -10,11 +10,13 @@ static bool _admission_gate_invariant_holds(const ResidencyBudgetController::Adm
     const bool can_evict_for_load = p_context.has_eviction_budget && !p_context.eviction_blocked;
     const bool vram_regulator_denies_load =
             p_context.enforce_vram_regulator_gate && !p_context.vram_regulator_allows_load;
+    const bool atlas_slots_full = p_context.atlas_slots_full;
 
-    if (!at_or_over_capacity && !vram_regulator_denies_load) {
+    if (!at_or_over_capacity && !vram_regulator_denies_load && !atlas_slots_full) {
         return p_decision == ResidencyBudgetController::AdmissionDecision::LoadDirect;
     }
-    if (at_or_over_capacity && p_context.can_replace_without_eviction && !vram_regulator_denies_load) {
+    if (at_or_over_capacity && p_context.can_replace_without_eviction && !vram_regulator_denies_load &&
+            !atlas_slots_full) {
         return p_decision == ResidencyBudgetController::AdmissionDecision::LoadDirect;
     }
     if (can_evict_for_load) {
@@ -46,6 +48,7 @@ ResidencyBudgetController::AdmissionGate ResidencyBudgetController::compute_admi
     gate.context.eviction_blocked = p_frame_budget.eviction_blocked;
     gate.context.enforce_vram_regulator_gate = p_policy.enforce_vram_regulator_gate;
     gate.context.vram_regulator_allows_load = p_policy.vram_regulator_allows_load;
+    gate.context.atlas_slots_full = p_policy.atlas_slots_full;
     gate.decision = decide_admission(gate.context);
     if (!_admission_gate_invariant_holds(gate.context, gate.decision)) {
         ERR_PRINT("[Streaming][Invariant] Residency admission gate produced invalid decision; forcing Skip.");
@@ -77,7 +80,7 @@ bool ResidencyBudgetController::should_attempt_visible_evict_fallback(const Admi
     const bool at_or_over_capacity = context.loaded_chunks >= context.effective_max;
     const bool regulator_gated =
             context.enforce_vram_regulator_gate && !context.vram_regulator_allows_load;
-    return at_or_over_capacity || regulator_gated;
+    return at_or_over_capacity || regulator_gated || context.atlas_slots_full;
 }
 
 ResidencyBudgetController::AdmissionDecision ResidencyBudgetController::decide_admission(
@@ -86,6 +89,14 @@ ResidencyBudgetController::AdmissionDecision ResidencyBudgetController::decide_a
     const bool can_evict_for_load = p_context.has_eviction_budget && !p_context.eviction_blocked;
     const bool vram_regulator_denies_load =
             p_context.enforce_vram_regulator_gate && !p_context.vram_regulator_allows_load;
+    const bool atlas_slots_full = p_context.atlas_slots_full;
+
+    if (atlas_slots_full) {
+        if (can_evict_for_load) {
+            return AdmissionDecision::EvictThenLoad;
+        }
+        return AdmissionDecision::Skip;
+    }
 
     if (at_or_over_capacity) {
         if (p_context.can_replace_without_eviction && !vram_regulator_denies_load) {
