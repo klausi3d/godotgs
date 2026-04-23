@@ -104,14 +104,14 @@ function Invoke-LoggedCommand {
     }
 
     $exe = $Command[0]
-    $args = @()
+    $commandArgs = @()
     if ($Command.Count -gt 1) {
-        $args = $Command[1..($Command.Count - 1)]
+        $commandArgs = $Command[1..($Command.Count - 1)]
     }
 
     Write-Host ""
     Write-Host "=== $Name ==="
-    Write-Host "$exe $($args -join ' ')"
+    Write-Host "$exe $($commandArgs -join ' ')"
 
     $start = Get-Date
     $exitCode = 1
@@ -133,7 +133,7 @@ function Invoke-LoggedCommand {
         }
         $ErrorActionPreference = "SilentlyContinue"
 
-        & $exe @args 2>&1 | Tee-Object -FilePath $LogPath | Out-Host
+        & $exe @commandArgs 2>&1 | Tee-Object -FilePath $LogPath | Out-Host
         if ($null -eq $LASTEXITCODE) {
             $exitCode = 0
         } else {
@@ -156,7 +156,7 @@ function Invoke-LoggedCommand {
     return [pscustomobject]@{
         name = $Name
         executable = $exe
-        arguments = ($args -join " ")
+        arguments = ($commandArgs -join " ")
         working_directory = $WorkingDirectory
         log_path = $LogPath
         exit_code = $exitCode
@@ -368,11 +368,11 @@ $signatureRules = @(
 
 $signatureHits = @()
 foreach ($rule in $signatureRules) {
-    $matches = @()
+    $ruleMatches = @()
     if ($allLogFiles.Count -gt 0) {
-        $matches = @(Select-String -Path $allLogFiles.FullName -Pattern $rule.regex -CaseSensitive:$false -ErrorAction SilentlyContinue)
+        $ruleMatches = @(Select-String -Path $allLogFiles.FullName -Pattern $rule.regex -CaseSensitive:$false -ErrorAction SilentlyContinue)
     }
-    foreach ($match in $matches) {
+    foreach ($match in $ruleMatches) {
         $signatureHits += [pscustomobject]@{
             rule = $rule.id
             pattern = $rule.regex
