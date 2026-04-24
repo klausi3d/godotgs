@@ -333,7 +333,7 @@ func _exercise_tier(tier: Dictionary) -> Dictionary:
     if renderer == null:
         _record_failure("renderer unavailable after world apply", {"dataset_size": size})
         tier_result["budget_failures"] = ["renderer_unavailable"]
-        _teardown_world_scene()
+        await _teardown_world_scene()
         return tier_result
 
     # Raise the splat budget on the world-owned renderer if the tier needs
@@ -582,7 +582,7 @@ func _exercise_tier(tier: Dictionary) -> Dictionary:
     )
     tier_result["scheduler_update_cpu_p95_ms"] = scheduler_update_cpu_p95_ms
     tier_result["scheduler_cpu_total_attributed_p95_ms"] = scheduler_cpu_total_attributed_p95_ms
-    _teardown_world_scene()
+    await _teardown_world_scene()
     return tier_result
 
 ## Validates GPU sort metrics and history for the given dataset size.
@@ -774,9 +774,27 @@ func _setup_world_scene(dataset: GaussianData) -> bool:
     return true
 
 func _teardown_world_scene() -> void:
-    if scene_root != null:
-        scene_root.queue_free()
+    var pending := scene_root
+    if pending != null:
+        pending.queue_free()
     scene_root = null
     camera = null
     world_node = null
     renderer = null
+    if pending == null:
+        return
+    # Wait until the queued scene root has actually exited the tree and been
+    # freed before returning. GaussianSplatWorld3D releases its shared-renderer
+    # submission ownership only on NOTIFICATION_EXIT_TREE (see
+    # gaussian_splat_world_3d.cpp:113), and the shared renderer is re-bound
+    # whenever a new GaussianSplatWorld3D enters the tree via _ensure_renderer()
+    # (line 92 of the same file). Without this barrier, the next tier's
+    # _setup_world_scene() runs synchronously after queue_free() in the same
+    # frame, so the new world binds the same shared renderer while the old
+    # world's submission state is still resident — which produced stale
+    # 250K totals on tier_1m after tier_250k. Bound the wait so a stuck free
+    # cannot hang the test.
+    for _i in range(8):
+        if not is_instance_valid(pending):
+            break
+        await process_frame
