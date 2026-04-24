@@ -642,7 +642,7 @@ func _validate_sort_metrics(method_name: String, size: int, stats: Dictionary, h
                 {"dataset_size": size, "last_entry": last_entry}
             )
 
-## Validates upload residency and visibility ratios for the dataset.
+## Validates residency and visibility ratios for the dataset.
 ## @param size: Dataset size.
 ## @param stats: Renderer stats dictionary.
 func _validate_residency(size: int, stats: Dictionary) -> Dictionary:
@@ -654,16 +654,30 @@ func _validate_residency(size: int, stats: Dictionary) -> Dictionary:
         "visible_ratio": 0.0
     }
 
-    var uploaded = _read_stat_int_max(stats, ["uploaded_splat_count", "buffer_manager_count", "total_splats"])
-    residency_result["uploaded_splats"] = uploaded
-    if uploaded < size * 0.75:
+    # `uploaded_splat_count` is reset in render_data_orchestrator.cpp but the
+    # streaming render path never increments it, so it reports 0 for streaming
+    # worlds even when the pipeline is fully loaded. Use renderer-side
+    # residency proxies (`buffer_manager_count`, `total_splats`) as the primary
+    # signal, and fall back to `visible_splats` only when the streaming atlas
+    # custom monitor is registered — mirroring benchmark_suite_lane.gd's
+    # `_proof_last_uploaded_splats → _proof_last_visible_splats` gate.
+    var visible = _read_stat_int_max(stats, ["visible_after_culling", "visible_splats", "cull_cpu_visible_count"])
+    var total = _read_stat_int_max(stats, ["total_splats", "buffer_manager_count"])
+    var residency_numerator := _read_stat_int_max(stats, ["buffer_manager_count", "total_splats"])
+    var atlas_monitor_available := (
+        Performance.has_custom_monitor("gaussian_splatting/streaming_loaded_chunks")
+        or Performance.has_custom_monitor("gaussian_splatting/streaming_atlas_published_chunks")
+    )
+    if residency_numerator == 0 and atlas_monitor_available and visible > 0:
+        residency_numerator = visible
+
+    residency_result["uploaded_splats"] = residency_numerator
+    if residency_numerator < size * 0.75:
         _record_failure(
-            "[Streaming] Upload residency dropped below 75%% (%d/%d)" % [uploaded, size],
+            "[Streaming] Residency dropped below 75%% (%d/%d)" % [residency_numerator, size],
             {"dataset_size": size}
         )
 
-    var visible = _read_stat_int_max(stats, ["visible_after_culling", "visible_splats", "cull_cpu_visible_count"])
-    var total = _read_stat_int_max(stats, ["total_splats", "uploaded_splat_count", "buffer_manager_count"])
     residency_result["visible_splats"] = visible
     residency_result["total_splats"] = total
     if total <= 0:
@@ -673,7 +687,7 @@ func _validate_residency(size: int, stats: Dictionary) -> Dictionary:
         )
         return residency_result
 
-    residency_result["residency_ratio"] = float(uploaded) / float(max(1, size))
+    residency_result["residency_ratio"] = float(residency_numerator) / float(max(1, size))
     var visible_ratio = float(visible) / float(total)
     residency_result["visible_ratio"] = visible_ratio
     if visible_ratio < (1.0 - MAX_VISIBLE_RATIO_DROP):
