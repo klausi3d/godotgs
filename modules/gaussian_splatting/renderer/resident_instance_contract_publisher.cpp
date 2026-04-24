@@ -595,6 +595,16 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 	}
 	buffers.instance_count_buffer = resource_state.instance_count_buffer;
 
+	// Mirror the render_streaming_orchestrator pattern: forward the persistent
+	// per-renderer instance_grading_buffer RID through the local `buffers`
+	// snapshot so it survives publish_instance_pipeline_contract() below. The
+	// subsequent update_instance_grading_buffer() call (~line 687) refreshes
+	// the GPU contents; this line ensures the RID itself lands in
+	// instance_pipeline_buffers even on paths that hit clear-then-republish
+	// sequences, so first_raster_violation() doesn't read a stale RID() in
+	// the gap before update_instance_grading_buffer() runs.
+	buffers.instance_grading_buffer = resource_state.instance_grading_buffer;
+
 	Ref<GPUSortingPipeline> sorting_pipeline = p_renderer->get_subsystem_state().sorting_pipeline;
 	if (sorting_pipeline.is_null()) {
 		if (r_reason) {
