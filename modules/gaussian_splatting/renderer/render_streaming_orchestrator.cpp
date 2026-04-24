@@ -1801,6 +1801,23 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 			buffers.instance_count_buffer = resource_state_mut.instance_count_buffer;
 		}
 
+		// Propagate the persistent per-renderer instance_grading_buffer RID
+		// into the local `buffers` snapshot before it is handed to
+		// publish_instance_pipeline_contract(). Every other persistent SSBO
+		// above (splat_ref, counter, chunk_dispatch, indirect_count,
+		// instance_count) is forwarded the same way; grading was the only
+		// one whose RID lived only on `instance_pipeline_buffers` via
+		// update_instance_grading_buffer() (gaussian_splat_renderer.cpp:2720),
+		// which runs inside the `upload_changed` branch. When a contract
+		// republish landed with `upload_changed == false` — or when
+		// clear_instance_pipeline_buffers() had zeroed the pipeline buffers
+		// between a prior world teardown and the next world bind — the
+		// grading RID never made it back into instance_pipeline_buffers,
+		// tripping first_raster_violation()'s
+		// RASTER_INSTANCE_GRADING_BUFFER_MISSING check on the next readiness
+		// evaluation even though atlas/cull/sort were valid.
+		buffers.instance_grading_buffer = resource_state_mut.instance_grading_buffer;
+
 		GPUSortingPipeline *sorting_pipeline = state_view.get_subsystem_state_view().sorting_pipeline.ptr();
 		if (sorting_pipeline) {
 			// Instance pipeline may need more sort capacity than the per-instance
