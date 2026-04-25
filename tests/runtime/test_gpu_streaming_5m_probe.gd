@@ -406,6 +406,18 @@ func _run_tier(name: String, size: int) -> Dictionary:
         "last_total_splats": _read_int(last_stats, ["total_splats", "uploaded_splat_count", "buffer_manager_count"]),
         "last_sort_avg_ms": _read_float(last_stats, ["gpu_sorter_avg_sort_ms", "gpu_sorter_avg_sort_time_ms"])
     }
+    # World-backed setup that succeeds at apply_world() but never publishes
+    # streaming source data / never makes any splat visible used to report
+    # status=passed. Promote those silent no-shows to failures — a probe that
+    # green-lights "rendered nothing" is worse than a probe that fails loudly.
+    var tier_context := {"tier": name, "size": size}
+    if first_visible_ms < 0:
+        _record_failure("tier never reached first-visible frame", tier_context)
+    if source_frames <= 0:
+        _record_failure("tier published zero streaming source_frames", tier_context)
+    if int(result["last_visible_splats"]) <= 0:
+        _record_failure("tier ended with zero visible splats", tier_context)
+
     await _teardown_world_scene()
     return result
 
