@@ -110,12 +110,31 @@ func _setup_world_scene(dataset: GaussianData) -> bool:
     return true
 
 func _teardown_world_scene() -> void:
-    if scene_root != null:
-        scene_root.queue_free()
+    var pending := scene_root
+    if pending != null:
+        pending.queue_free()
     scene_root = null
     camera = null
     world_node = null
     renderer = null
+    if pending == null:
+        return
+    # Wait until the queued scene root has actually exited the tree and been
+    # freed before returning. GaussianSplatWorld3D releases its shared-renderer
+    # submission ownership only on NOTIFICATION_EXIT_TREE
+    # (gaussian_splat_world_3d.cpp:113), and the shared renderer is re-bound
+    # whenever a new GaussianSplatWorld3D enters the tree via
+    # `_ensure_renderer()` (line 92). Without this barrier the next probe
+    # tier's `_setup_world_scene()` would run synchronously after
+    # `queue_free()` in the same frame, and the new world would bind the
+    # same shared renderer while the old world's submission was still
+    # resident — causing cross-tier residency / sort metric bleed. Same
+    # pattern as test_gpu_streaming_stress.gd. Bound the wait so a stuck
+    # free cannot hang CI.
+    for _i in range(8):
+        if not is_instance_valid(pending):
+            break
+        await process_frame
 
 func _read_int(stats: Dictionary, keys: Array[String], default_value: int = 0) -> int:
     for key in keys:
@@ -173,7 +192,7 @@ func _run_tier(name: String, size: int) -> Dictionary:
 
     if renderer == null:
         _record_failure("renderer unavailable after world apply", {"tier": name, "size": size})
-        _teardown_world_scene()
+        await _teardown_world_scene()
         return {"name": name, "size": size, "set_error": ERR_UNAVAILABLE}
 
     if renderer.get_max_splats() < size:
@@ -387,7 +406,7 @@ func _run_tier(name: String, size: int) -> Dictionary:
         "last_total_splats": _read_int(last_stats, ["total_splats", "uploaded_splat_count", "buffer_manager_count"]),
         "last_sort_avg_ms": _read_float(last_stats, ["gpu_sorter_avg_sort_ms", "gpu_sorter_avg_sort_time_ms"])
     }
-    _teardown_world_scene()
+    await _teardown_world_scene()
     return result
 
 func _run() -> void:
