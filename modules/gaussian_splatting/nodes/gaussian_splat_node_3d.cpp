@@ -1683,10 +1683,28 @@ void GaussianSplatNode3D::_load_asset() {
     String load_error_message;
 
     if (!asset_resource_path.is_empty()) {
+        // Use the Error* overload because CACHE_MODE_REPLACE's disk-read
+        // failure path returns the previously cached resource (non-null)
+        // with a non-OK error code (core/io/resource_loader.cpp ~471-484).
+        // Without inspecting r_load_error a corrupt/missing .gaussiansplat
+        // would silently look like a successful reload of stale cached data
+        // even when splat_count > 0.
+        Error r_load_error = OK;
         reloaded_asset = ResourceLoader::load(asset_resource_path, "GaussianSplatAsset",
-                ResourceFormatLoader::CACHE_MODE_REPLACE);
-        if (reloaded_asset.is_null()) {
-            load_error_message = vformat("Failed to reload GaussianSplatAsset resource: %s", asset_resource_path);
+                ResourceFormatLoader::CACHE_MODE_REPLACE, &r_load_error);
+        // Three failure cases:
+        //   1. Disk read failure under CACHE_MODE_REPLACE returns the
+        //      previously cached resource with r_load_error != OK.
+        //   2. Null return — generic load failure.
+        //   3. Successfully-parsed but empty asset (splat_count == 0) for
+        //      stale or partially-imported resources.
+        // Treat all as reload failure so the asset_source_path fallback
+        // below can re-import from .ply/.spz instead of silently swapping
+        // the node payload to empty/stale data and emitting `asset_loaded`.
+        if (r_load_error != OK || reloaded_asset.is_null() || reloaded_asset->get_splat_count() == 0) {
+            load_error_message = vformat("Failed to reload GaussianSplatAsset resource: %s (Error %d)",
+                    asset_resource_path, (int)r_load_error);
+            reloaded_asset.unref();
         }
     }
 
