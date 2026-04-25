@@ -25,6 +25,7 @@
 #include "nodes/gaussian_splat_node_3d.h"
 #include "nodes/gaussian_splat_debug_hud.h"
 #include "nodes/gaussian_splat_container.h"
+#include "nodes/gaussian_splat_dynamic_instance_3d.h"
 #include "nodes/gaussian_splat_world_3d.h"
 #include "nodes/sphere_effector_3d.h"
 #include "interfaces/cluster_culler.h"
@@ -81,6 +82,12 @@ void initialize_gaussian_splatting_module(ModuleInitializationLevel p_level) {
             GDREGISTER_CLASS(GaussianSplatNode3D);
             GDREGISTER_CLASS(GaussianSplatDebugHUD);
             GDREGISTER_CLASS(GaussianSplatContainer);
+#ifndef DISABLE_DEPRECATED
+            // One-release compatibility shim — keeps serialized scenes that still
+            // reference GaussianSplatDynamicInstance3D loadable. Inherits from
+            // GaussianSplatNode3D verbatim and emits WARN_DEPRECATED on construction.
+            GDREGISTER_CLASS(GaussianSplatDynamicInstance3D);
+#endif
             GDREGISTER_CLASS(GaussianSplatWorld3D);
             GDREGISTER_CLASS(SphereEffector3D);
 
