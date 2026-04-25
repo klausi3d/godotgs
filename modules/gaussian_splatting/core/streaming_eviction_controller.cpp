@@ -126,9 +126,15 @@ StreamingEvictionController::EvictionResult StreamingEvictionController::evict_l
     return EvictionResult::NoEviction;
 }
 
-bool StreamingEvictionController::evict_non_primary_lru(GaussianStreamingSystem &system) {
+StreamingEvictionController::EvictionResult StreamingEvictionController::evict_non_primary_lru(GaussianStreamingSystem &system) {
+    // Contract: this returns EvictionResult and does NOT internally call
+    // record_eviction_result(). Callers are responsible for recording the
+    // result so per-frame eviction-budget bookkeeping stays single-source.
+    // (Previously this function returned bool and self-recorded, which made
+    // it incompatible with helpers like _evict_for_admission_gate() whose
+    // callers also record — producing double-counts.)
     if (max_evictions_per_frame > 0 && chunks_evicted_this_frame >= max_evictions_per_frame) {
-        return false;
+        return EvictionResult::NoEviction;
     }
 
     if (cached_non_primary_lru_frame != system.total_frame_count) {
@@ -145,6 +151,23 @@ bool StreamingEvictionController::evict_non_primary_lru(GaussianStreamingSystem 
             for (uint32_t chunk_id = 0; chunk_id < asset_chunks.size(); chunk_id++) {
                 const GaussianStreamingSystem::StreamingChunk &chunk = asset_chunks[chunk_id];
                 if (!chunk.is_loaded) {
+                    continue;
+                }
+                // Match the hysteresis filter primary LRU enforces. Without it,
+                // a sync-fallback drain that just loaded a non-primary chunk in
+                // this same frame can immediately re-evict it as the next
+                // admission victim — load-then-evict churn instead of forward
+                // progress.
+                if (eviction_hysteresis_frames > 0 &&
+                        system.total_frame_count - chunk.last_loaded_frame < eviction_hysteresis_frames) {
+                    continue;
+                }
+                // Skip explicitly-requested chunks. _unload_chunk() does not
+                // downgrade request status, so evicting one would leave the
+                // caller observing "requested = satisfied" while the chunk is
+                // already gone — breaking requested-residency semantics under
+                // multi-asset atlas pressure.
+                if (system._is_requested_chunk_in_current_generation(*asset, chunk_id)) {
                     continue;
                 }
                 NonPrimaryEvictionCandidate candidate;
@@ -192,9 +215,8 @@ bool StreamingEvictionController::evict_non_primary_lru(GaussianStreamingSystem 
 
         const bool was_visible = asset_chunks[candidate.chunk_id].is_visible;
         system._unload_chunk(candidate.asset_id, candidate.chunk_id);
-        record_eviction_result(was_visible ? EvictionResult::EvictedVisible : EvictionResult::EvictedNonVisible);
-        return true;
+        return was_visible ? EvictionResult::EvictedVisible : EvictionResult::EvictedNonVisible;
     }
 
-    return false;
+    return EvictionResult::NoEviction;
 }

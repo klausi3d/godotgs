@@ -236,7 +236,6 @@ Error GaussianSplatAsset::copy_from(const Ref<Resource> &p_resource) {
     }
     return err;
 }
-
 void GaussianSplatAsset::_invalidate_bounds_metadata() {
     import_metadata.erase(StringName("bounds"));
     import_metadata[StringName("bounds_dirty")] = true;
