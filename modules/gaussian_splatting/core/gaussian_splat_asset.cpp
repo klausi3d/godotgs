@@ -216,6 +216,27 @@ bool GaussianSplatAsset::_runtime_mutation_permitted(const char *p_method) const
     return false;
 }
 
+Error GaussianSplatAsset::copy_from(const Ref<Resource> &p_resource) {
+    // ResourceLoader's CACHE_MODE_REPLACE path applies replacements via
+    // Resource::copy_from(), which iterates storage properties and writes
+    // them back through set(...) (core/io/resource.cpp:225-252). Our packed
+    // setters refuse mutations once payload_sealed is true (post first
+    // get_gaussian_data()), so a replace-load on a previously hot asset
+    // would silently drop every data/* property and the engine-driven
+    // hot-reload would be a no-op. Unseal here so the engine's reload
+    // semantics still work; the next get_gaussian_data() call re-seals
+    // naturally on the next runtime hand-out.
+    const bool previous_seal = payload_sealed;
+    payload_sealed = false;
+    const Error err = Resource::copy_from(p_resource);
+    if (err != OK) {
+        // Restore seal on failure so a rejected copy (null/incompatible
+        // resource) does not leave a runtime-authoritative asset mutable.
+        payload_sealed = previous_seal;
+    }
+    return err;
+}
+
 void GaussianSplatAsset::_invalidate_bounds_metadata() {
     import_metadata.erase(StringName("bounds"));
     import_metadata[StringName("bounds_dirty")] = true;

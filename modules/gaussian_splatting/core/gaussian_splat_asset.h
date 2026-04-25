@@ -93,6 +93,15 @@ public:
     // Returns true when the asset has been populated with splat data (splat_count > 0).
     bool is_loaded() const { return splat_count > 0; }
 
+    // Override Resource::copy_from so engine-driven hot-reload via
+    // ResourceLoader::load(..., CACHE_MODE_REPLACE) can repopulate a sealed
+    // asset. The base implementation iterates storage properties and writes
+    // them back through set(...) (core/io/resource.cpp:225-252); without
+    // this override, a sealed GaussianSplatAsset would silently drop every
+    // data/* setter and reload would appear to succeed while leaving stale
+    // arrays in place.
+    virtual Error copy_from(const Ref<Resource> &p_resource) override;
+
     void set_asset_type(AssetType p_type);
     AssetType get_asset_type() const { return asset_type; }
 
