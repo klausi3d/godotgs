@@ -216,6 +216,27 @@ bool GaussianSplatAsset::_runtime_mutation_permitted(const char *p_method) const
     return false;
 }
 
+Error GaussianSplatAsset::copy_from(const Ref<Resource> &p_resource) {
+    // ResourceLoader's CACHE_MODE_REPLACE path applies replacements via
+    // Resource::copy_from(), which iterates storage properties and writes
+    // them back through set(...) (core/io/resource.cpp:225-252). Our packed
+    // setters refuse mutations once payload_sealed is true (post first
+    // get_gaussian_data()), so a replace-load on a previously hot asset
+    // would silently drop every data/* property and the engine-driven
+    // hot-reload would be a no-op. Unseal here so the engine's reload
+    // semantics still work; the next get_gaussian_data() call re-seals
+    // naturally on the next runtime hand-out.
+    const bool previous_seal = payload_sealed;
+    payload_sealed = false;
+    const Error err = Resource::copy_from(p_resource);
+    if (err != OK) {
+        // Restore seal on failure so a rejected copy (null/incompatible
+        // resource) does not leave a runtime-authoritative asset mutable.
+        payload_sealed = previous_seal;
+    }
+    return err;
+}
+
 void GaussianSplatAsset::_invalidate_bounds_metadata() {
     import_metadata.erase(StringName("bounds"));
     import_metadata[StringName("bounds_dirty")] = true;
@@ -1258,13 +1279,20 @@ Error GaussianSplatAsset::populate_from_gaussian_data(const Ref<::GaussianData> 
 
     // This is the one legitimate runtime-to-asset persistence writer. It
     // bypasses the public Packed setter gate because it mutates the internal
-    // fields directly under the class's own control.
+    // fields directly under the class's own control. Snapshot the prior seal
+    // so any early-failure return below restores it — otherwise a failed
+    // populate on a previously sealed (runtime-authoritative) asset would
+    // silently re-enable packed setters and let arrays diverge from already
+    // handed-out GaussianData. The success path re-asserts seal=true at the
+    // end of the function.
+    const bool previous_seal = payload_sealed;
     payload_sealed = false;
     _invalidate_gaussian_data_cache();
 
     int count = p_gaussian_data->get_count();
     if (count <= 0) {
         GS_LOG_ERROR_DEFAULT("GaussianData contains no splats");
+        payload_sealed = previous_seal;
         return ERR_FILE_CORRUPT;
     }
 
