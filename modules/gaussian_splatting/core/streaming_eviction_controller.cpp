@@ -126,9 +126,15 @@ StreamingEvictionController::EvictionResult StreamingEvictionController::evict_l
     return EvictionResult::NoEviction;
 }
 
-bool StreamingEvictionController::evict_non_primary_lru(GaussianStreamingSystem &system) {
+StreamingEvictionController::EvictionResult StreamingEvictionController::evict_non_primary_lru(GaussianStreamingSystem &system) {
+    // Contract: this returns EvictionResult and does NOT internally call
+    // record_eviction_result(). Callers are responsible for recording the
+    // result so per-frame eviction-budget bookkeeping stays single-source.
+    // (Previously this function returned bool and self-recorded, which made
+    // it incompatible with helpers like _evict_for_admission_gate() whose
+    // callers also record — producing double-counts.)
     if (max_evictions_per_frame > 0 && chunks_evicted_this_frame >= max_evictions_per_frame) {
-        return false;
+        return EvictionResult::NoEviction;
     }
 
     if (cached_non_primary_lru_frame != system.total_frame_count) {
@@ -192,9 +198,8 @@ bool StreamingEvictionController::evict_non_primary_lru(GaussianStreamingSystem 
 
         const bool was_visible = asset_chunks[candidate.chunk_id].is_visible;
         system._unload_chunk(candidate.asset_id, candidate.chunk_id);
-        record_eviction_result(was_visible ? EvictionResult::EvictedVisible : EvictionResult::EvictedNonVisible);
-        return true;
+        return was_visible ? EvictionResult::EvictedVisible : EvictionResult::EvictedNonVisible;
     }
 
-    return false;
+    return EvictionResult::NoEviction;
 }

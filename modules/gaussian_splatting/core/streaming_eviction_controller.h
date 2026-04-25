@@ -33,7 +33,11 @@ public:
     uint32_t get_visible_chunks_evicted_this_frame() const { return visible_chunks_evicted_this_frame; }
 
     EvictionResult evict_least_recently_used(GaussianStreamingSystem &system, bool p_allow_visible_eviction);
-    bool evict_non_primary_lru(GaussianStreamingSystem &system);
+    // Returns EvictionResult and does NOT internally call record_eviction_result(),
+    // matching the contract of evict_least_recently_used() so callers can drive
+    // bookkeeping explicitly. Returns NoEviction when nothing was evicted (either
+    // budget exhausted or no eligible candidates).
+    EvictionResult evict_non_primary_lru(GaussianStreamingSystem &system);
 
 private:
     uint64_t chunk_load_counter = 0;
