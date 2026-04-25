@@ -2665,8 +2665,14 @@ void GaussianStreamingSystem::_evict_for_vram_budget(uint32_t &evictions_left, b
     while (budget.loaded_chunks_count > 0 &&
             budget.vram_regulator->should_trigger_eviction(_get_total_vram_usage_bytes()) &&
             evictions_left > 0) {
-        if (_evict_non_primary_lru()) {
-            // Non-primary-first eviction keeps primary visible residency stable under budget pressure.
+        // Non-primary-first eviction keeps primary visible residency stable
+        // under budget pressure. _evict_non_primary_lru() now returns
+        // EvictionResult and does NOT internally record (matches
+        // _evict_least_recently_used()'s contract), so we record here.
+        EvictionResult non_primary_result = _evict_non_primary_lru();
+        if (non_primary_result == EvictionResult::EvictedNonVisible ||
+                non_primary_result == EvictionResult::EvictedVisible) {
+            eviction_controller.record_eviction_result(non_primary_result);
             evictions_left--;
             continue;
         }
@@ -2688,6 +2694,22 @@ void GaussianStreamingSystem::_evict_for_vram_budget(uint32_t &evictions_left, b
 GaussianStreamingSystem::EvictionResult GaussianStreamingSystem::_evict_for_admission_gate(
         const ResidencyBudgetController::AdmissionGate &p_admission_gate, bool &r_visible_fallback_attempted) {
     r_visible_fallback_attempted = false;
+
+    // Prefer evicting a non-primary-asset chunk first under atlas-slot
+    // pressure. `_evict_least_recently_used()` walks `system.chunks`
+    // (the primary-asset chunk list), so without this preliminary pass an
+    // atlas-slot shortage triggered by a non-primary-asset load would
+    // either evict primary chunks or report SkippedAllVisible even when
+    // non-primary chunks are available, stalling multi-asset streaming.
+    // Mirrors the VRAM-budget path in `_evict_for_vram_budget()` (~line 2668).
+    // _evict_non_primary_lru() returns the actual EvictionResult; propagate it
+    // so callers record visible-vs-nonvisible counts correctly (the previous
+    // hardcoded EvictedNonVisible under-counted visible evictions).
+    EvictionResult non_primary_result = _evict_non_primary_lru();
+    if (non_primary_result == EvictionResult::EvictedNonVisible ||
+            non_primary_result == EvictionResult::EvictedVisible) {
+        return non_primary_result;
+    }
 
     EvictionResult result = _evict_least_recently_used(false);
     if (result == EvictionResult::SkippedAllVisible &&
@@ -3515,7 +3537,7 @@ GaussianStreamingSystem::EvictionResult GaussianStreamingSystem::_evict_least_re
     return eviction_controller.evict_least_recently_used(*this, p_allow_visible_eviction);
 }
 
-bool GaussianStreamingSystem::_evict_non_primary_lru() {
+GaussianStreamingSystem::EvictionResult GaussianStreamingSystem::_evict_non_primary_lru() {
     return eviction_controller.evict_non_primary_lru(*this);
 }
 

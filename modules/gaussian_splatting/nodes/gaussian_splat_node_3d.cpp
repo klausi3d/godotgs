@@ -1685,8 +1685,19 @@ void GaussianSplatNode3D::_load_asset() {
     if (!asset_resource_path.is_empty()) {
         reloaded_asset = ResourceLoader::load(asset_resource_path, "GaussianSplatAsset",
                 ResourceFormatLoader::CACHE_MODE_REPLACE);
-        if (reloaded_asset.is_null()) {
+        // Two failure cases the engine returns as "non-null but useless":
+        //   1. Disk read failure under CACHE_MODE_REPLACE returns the
+        //      previously cached resource (core/io/resource_loader.cpp
+        //      ~471-484), so a corrupt/missing .gaussiansplat looks like
+        //      a successful reload of stale cached data.
+        //   2. A successfully-parsed but empty asset (splat_count == 0)
+        //      can happen for stale or partially-imported resources.
+        // Treat both as reload failure so the asset_source_path fallback
+        // below can re-import from .ply/.spz instead of silently swapping
+        // the node payload to empty/stale data and emitting `asset_loaded`.
+        if (reloaded_asset.is_null() || reloaded_asset->get_splat_count() == 0) {
             load_error_message = vformat("Failed to reload GaussianSplatAsset resource: %s", asset_resource_path);
+            reloaded_asset.unref();
         }
     }
 

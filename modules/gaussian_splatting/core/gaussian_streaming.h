@@ -440,7 +440,7 @@ private:
     EvictionResult _evict_for_admission_gate(
             const ResidencyBudgetController::AdmissionGate &p_admission_gate,
             bool &r_visible_fallback_attempted);
-    bool _evict_non_primary_lru();
+    EvictionResult _evict_non_primary_lru();
 
     // Distance-based LOD (Octree-GS) helpers
     void _update_chunk_lod_parameters(const Vector3 &camera_pos);
