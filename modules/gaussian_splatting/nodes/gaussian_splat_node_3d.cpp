@@ -538,6 +538,38 @@ bool GaussianSplatNode3D::_set(const StringName &p_name, const Variant &p_value)
         set_use_occlusion_culling((bool)p_value);
         return true;
     }
+#ifndef DISABLE_DEPRECATED
+    // One-release compatibility for the removed `ply_file_path` property
+    // (commit "remove node raw file path surface"). Old `.tscn` files still
+    // serialize this property; without an _set hook Godot would silently
+    // discard it on load and the node would come up with no asset. Migrate
+    // by loading the path into a runtime GaussianSplatAsset and assigning
+    // it to splat_asset. The property is intentionally NOT re-bound, so a
+    // re-save of the scene drops the legacy field.
+    if (p_name == StringName("ply_file_path")) {
+        const String path = String(p_value);
+        if (path.is_empty()) {
+            return true;
+        }
+        WARN_DEPRECATED_MSG(vformat(
+                "GaussianSplatNode3D.ply_file_path is deprecated and will be removed in a "
+                "future release. The path '%s' was migrated at scene load to a runtime "
+                "GaussianSplatAsset; assign a GaussianSplatAsset resource to `splat_asset` "
+                "directly. Re-saving this scene will drop the legacy field.",
+                path));
+        Ref<GaussianSplatAsset> migrated_asset;
+        migrated_asset.instantiate();
+        const Error err = migrated_asset->load_from_file(path);
+        if (err != OK || migrated_asset->get_splat_count() == 0) {
+            ERR_PRINT(vformat(
+                    "GaussianSplatNode3D: ply_file_path migration failed for '%s' (Error %d).",
+                    path, (int)err));
+            return true;
+        }
+        set_splat_asset(migrated_asset);
+        return true;
+    }
+#endif
     return false;
 }
 
