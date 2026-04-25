@@ -1404,6 +1404,25 @@ GaussianSplatRenderer::FrameBackendPlan GaussianSplatRenderer::build_frame_backe
     plan.has_active_world_submission = any_world_submission;
     plan.resident_backend_reason = plan.runtime_policy.backend_preference_reason;
     plan.streaming_backend_reason = plan.runtime_policy.backend_preference_reason;
+
+    // Direct-data callers (`set_gaussian_data()` on a standalone renderer
+    // without any SceneDirector / world submission, e.g. tests, tools,
+    // editor preview) have no instance to populate
+    // `instance_pipeline_instance_cache`. Under the default streaming route
+    // policy the streaming backend would then run with an empty instance
+    // cache and emit zero splats — the fallback bootstrap instance that
+    // used to cover this case was removed when the synthetic-instance shim
+    // was pruned (commit de71685b08). Force resident here when we observe
+    // direct data on the renderer with no submission, so callers don't
+    // need to manually pin `route_policy=resident`.
+    if (!plan.prefer_resident_backend && !any_world_submission) {
+        const Ref<::GaussianData> &direct_data = get_scene_state().gaussian_data;
+        if (direct_data.is_valid() && direct_data->get_count() > 0) {
+            plan.prefer_resident_backend = true;
+            plan.resident_backend_reason = "direct_data_no_submission";
+            plan.should_attempt_streaming_bootstrap = false;
+        }
+    }
     return plan;
 }
 
