@@ -31,7 +31,7 @@ GaussianTemplate (Node3D, `scripts/main_scene.gd`)
 
 The template applies the recommended inspector values programmatically and in the packed scene:
 
-- **Asset**: `ply_file_path = res://assets/template_splats.ply`, `auto_load = true`.
+- **Asset**: assign the imported `GaussianSplatAsset` for `res://assets/template_splats.ply` to `splat_asset`.
 - **Quality**: `preset = Balanced`, `lod_bias = 1.0`, `max_render_distance = 150m`, `max_splat_count = 750,000`.
 - **Painterly**: enabled with edge threshold `0.25`, stroke opacity `0.85`, stroke width `1.1`, color variation `0.12`, temporal blend `0.35`, seed `1337`.
 - **Rendering**: update when visible, cast shadows, frustum and occlusion culling on, opacity `1.0`.
@@ -44,6 +44,6 @@ These values mirror the guidance in the Gaussian Splatting inspector documentati
 1. Open the Godot project manager and import `project.godot` from this folder.
 2. Press **F5** to run the template scene. You should see the sample splat cloud rendered with painterly shading.
 3. Use the navigation controls listed in the on-screen overlay to orbit and inspect the splats.
-4. Duplicate `scenes/main.tscn` to bootstrap new levels or swap `default_ply_path` in `scripts/main_scene.gd` to point at your own `.ply`/`.gsf` assets.
+4. Duplicate `scenes/main.tscn` to bootstrap new levels or swap `default_splat_asset` in `scripts/main_scene.gd` to point at your own imported `.ply` or `.spz` asset.
 
 For more details on Gaussian splatting workflows, review the documentation in `docs/getting-started/` and `docs/artist_pipeline.md`.

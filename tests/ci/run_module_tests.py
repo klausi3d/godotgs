@@ -28,16 +28,13 @@ SYNTHETIC_ASSET_PREP_SCRIPT = ROOT / "tests" / "runtime" / "prepare_synthetic_as
 BENCHMARK_ASSET_GUARD_SCRIPT = ROOT / "tests" / "runtime" / "check_benchmark_asset_paths.py"
 SOURCE_TREES = (ROOT,)
 HEADLESS_GAUSSIAN_SCOPED_TAGS: tuple[str, ...] = (
-    # Only tags whose TEST_CASEs are registered at runtime belong here.
-    # Standalone .cpp test files compile into the module static library but their
-    # doctest registrations are stripped by the linker — only .h tests included
-    # via modules_tests.gen.h actually register.  Phantom tags (zero runtime
-    # tests) must NOT appear here because strict lanes fail on zero coverage.
+    # Only tags whose TEST_CASEs are registered at runtime belong here. Phantom
+    # tags (zero runtime tests) must NOT appear here because strict lanes fail on
+    # zero coverage.
     "Animation",
     "ComputeInfra",
     "Config",
     "Container",
-    "DynamicInstance",
     "Editor",
     "Importer",
     "Node",
@@ -70,7 +67,6 @@ MODULE_TEST_FILTERS: tuple[tuple[str, tuple[str, ...], tuple[str, ...], bool], .
     ("GaussianSplatting [Config]", ("*GaussianSplatting*][Config]*",), ("*][RequiresGPU]*",), True),
     ("GaussianSplatting [Container]", ("*GaussianSplatting*][Container]*",), ("*][RequiresGPU]*",), True),
     ("Gaussian Diagnostics", ("*Gaussian Diagnostics*",), ("*][RequiresGPU]*",), True),
-    ("GaussianSplatting [DynamicInstance]", ("*GaussianSplatting*][DynamicInstance]*",), ("*][RequiresGPU]*",), True),
     ("GaussianSplatting [Editor]", ("*GaussianSplatting*][Editor]*",), ("*][RequiresGPU]*",), True),
     ("GaussianSplatting [Importer]", ("*GaussianSplatting*][Importer]*",), ("*][RequiresGPU]*",), True),
     ("Gaussian Logger", ("*Gaussian Logger*",), ("*][RequiresGPU]*",), True),
@@ -84,7 +80,6 @@ MODULE_TEST_FILTERS: tuple[tuple[str, tuple[str, ...], tuple[str, ...], bool], .
             "*][RequiresGPU]*",
             "*][Node][SceneTree]*",
             "*][Container][SceneTree]*",
-            "*][DynamicInstance][SceneTree]*",
             "*][World][SceneTree]*",
         ),
         True,

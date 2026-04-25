@@ -388,32 +388,34 @@ TEST_SUITE("[Gaussian Splatting Integration]") {
         }
 
         renderer->set_debug_show_performance_hud(true);
-        renderer->get_debug_state().route_uid = RenderRouteUID::INSTANCE_STREAMING;
+        renderer->get_debug_state().route_uid =
+                String(RenderRouteUID::COMMON_SKIP_RESIDENT_NOT_FEASIBLE) + ".RESIDENT_QUANTIZATION_UNSUPPORTED";
         renderer->get_debug_state().sort_route_uid = RenderRouteUID::INSTANCE_SORT_GPU;
         renderer->get_debug_state().requested_route_policy = "streaming";
         renderer->get_debug_state().requested_route_policy_source = "route_policy";
-        renderer->get_debug_state().instance_backend_policy = "streaming";
+        renderer->get_debug_state().instance_backend_policy = "resident";
         renderer->get_debug_state().backend_selection_reason =
-                "submission_hint_resident:world_submission_not_feasible:resident_quantization_unsupported -> streaming_contract_published";
+                "submission_hint_resident:world_submission_not_feasible:resident_quantization_unsupported";
         renderer->get_debug_state().instance_contract_shape = "atlas_emulation";
-        renderer->get_debug_state().instance_contract_ready = true;
-        renderer->get_performance_state().metrics.cull_route_uid = RenderRouteUID::INSTANCE_CULL_GPU;
-        renderer->get_performance_state().metrics.cull_route_reason = "instance_pipeline_active";
+        renderer->get_debug_state().instance_contract_ready = false;
+        renderer->get_performance_state().metrics.cull_route_uid =
+                String(RenderRouteUID::COMMON_SKIP_RESIDENT_NOT_FEASIBLE) + ".RESIDENT_QUANTIZATION_UNSUPPORTED";
+        renderer->get_performance_state().metrics.cull_route_reason =
+                "resident_not_feasible_resident_quantization_unsupported";
 
         Dictionary stats = renderer->get_render_stats();
         CHECK(stats.has("backend_selection_reason_label"));
         CHECK(stats.has("cull_route_reason_label"));
-        CHECK(String(stats.get("route_label", String())) == String("Streaming instanced path"));
+        CHECK(String(stats.get("route_label", String())).find(
+                "Skipped because the resident route was not feasible") != -1);
         CHECK(String(stats.get("sort_route_label", String())).length() > 0);
         CHECK(String(stats.get("cull_route_label", String())).length() > 0);
         CHECK(String(stats.get("backend_selection_reason", String())) ==
-                String("submission_hint_resident:world_submission_not_feasible:resident_quantization_unsupported -> streaming_contract_published"));
+                String("submission_hint_resident:world_submission_not_feasible:resident_quantization_unsupported"));
         CHECK(String(stats.get("backend_selection_reason_label", String())).find(
                 "Resident was requested by the world submission was not feasible because quantized resident data cannot publish the resident instance contract") != -1);
-        CHECK(String(stats.get("backend_selection_reason_label", String())).find(
-                "published the streaming instance contract") != -1);
-        CHECK(String(stats.get("cull_route_reason_label", String())) ==
-                String("Instance pipeline culling handled the frame"));
+        CHECK(String(stats.get("cull_route_reason_label", String())).find(
+                "Resident route was not feasible because quantized resident data cannot publish the resident instance contract") != -1);
 
         Array hud_lines = stats["performance_hud_lines"];
         CHECK(has_prefixed_line(hud_lines, "Route: "));

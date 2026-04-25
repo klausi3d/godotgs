@@ -104,14 +104,14 @@ function Invoke-LoggedCommand {
     }
 
     $exe = $Command[0]
-    $args = @()
+    $commandArgs = @()
     if ($Command.Count -gt 1) {
-        $args = $Command[1..($Command.Count - 1)]
+        $commandArgs = $Command[1..($Command.Count - 1)]
     }
 
     Write-Host ""
     Write-Host "=== $Name ==="
-    Write-Host "$exe $($args -join ' ')"
+    Write-Host "$exe $($commandArgs -join ' ')"
 
     $start = Get-Date
     $exitCode = 1
@@ -133,7 +133,7 @@ function Invoke-LoggedCommand {
         }
         $ErrorActionPreference = "SilentlyContinue"
 
-        & $exe @args 2>&1 | Tee-Object -FilePath $LogPath | Out-Host
+        & $exe @commandArgs 2>&1 | Tee-Object -FilePath $LogPath | Out-Host
         if ($null -eq $LASTEXITCODE) {
             $exitCode = 0
         } else {
@@ -156,7 +156,7 @@ function Invoke-LoggedCommand {
     return [pscustomobject]@{
         name = $Name
         executable = $exe
-        arguments = ($args -join " ")
+        arguments = ($commandArgs -join " ")
         working_directory = $WorkingDirectory
         log_path = $LogPath
         exit_code = $exitCode
@@ -217,6 +217,49 @@ function Mark-Check {
     }
 
     return "[ ]"
+}
+
+function Test-ObjectHasProperty {
+    param(
+        [object]$Object,
+        [string]$Name
+    )
+
+    if ($null -eq $Object) {
+        return $false
+    }
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        return $Object.Contains($Name)
+    }
+
+    return $null -ne $Object.PSObject.Properties[$Name]
+}
+
+function Get-ObjectPropertyValue {
+    param(
+        [object]$Object,
+        [string]$Name,
+        [object]$Default = $null
+    )
+
+    if ($null -eq $Object) {
+        return $Default
+    }
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        if ($Object.Contains($Name)) {
+            return $Object[$Name]
+        }
+        return $Default
+    }
+
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -ne $property) {
+        return $property.Value
+    }
+
+    return $Default
 }
 
 $Root = Resolve-RepoRoot -ExplicitRoot $Root
@@ -343,11 +386,11 @@ $signatureRules = @(
 
 $signatureHits = @()
 foreach ($rule in $signatureRules) {
-    $matches = @()
+    $ruleMatches = @()
     if ($allLogFiles.Count -gt 0) {
-        $matches = @(Select-String -Path $allLogFiles.FullName -Pattern $rule.regex -CaseSensitive:$false -ErrorAction SilentlyContinue)
+        $ruleMatches = @(Select-String -Path $allLogFiles.FullName -Pattern $rule.regex -CaseSensitive:$false -ErrorAction SilentlyContinue)
     }
-    foreach ($match in $matches) {
+    foreach ($match in $ruleMatches) {
         $signatureHits += [pscustomobject]@{
             rule = $rule.id
             pattern = $rule.regex
@@ -437,16 +480,16 @@ if ($runtimeMetrics.Contains("runtime_gpu_streaming_stress")) {
     $streamingBudgetMetrics = $runtimeMetrics["runtime_gpu_streaming_stress"]
 }
 if ($null -ne $streamingBudgetMetrics) {
-    if ($streamingBudgetMetrics.PSObject.Properties.Name -contains "baseline_tier" -and
-        $null -ne $streamingBudgetMetrics.baseline_tier) {
-        $streamingBudgetBaselineTier = [string]$streamingBudgetMetrics.baseline_tier
+    $baselineTier = Get-ObjectPropertyValue -Object $streamingBudgetMetrics -Name "baseline_tier"
+    if ($null -ne $baselineTier) {
+        $streamingBudgetBaselineTier = [string]$baselineTier
     }
-    if ($streamingBudgetMetrics.PSObject.Properties.Name -contains "baseline_passed") {
-        $streamingBudgetBaselinePassed = [bool]$streamingBudgetMetrics.baseline_passed
+    if (Test-ObjectHasProperty -Object $streamingBudgetMetrics -Name "baseline_passed") {
+        $streamingBudgetBaselinePassed = [bool](Get-ObjectPropertyValue -Object $streamingBudgetMetrics -Name "baseline_passed")
     }
-    if ($streamingBudgetMetrics.PSObject.Properties.Name -contains "tiers" -and
-        $null -ne $streamingBudgetMetrics.tiers) {
-        $streamingBudgetTiers = @($streamingBudgetMetrics.tiers)
+    $tiers = Get-ObjectPropertyValue -Object $streamingBudgetMetrics -Name "tiers"
+    if ($null -ne $tiers) {
+        $streamingBudgetTiers = @($tiers)
     }
 }
 $streamingBudgetTierCount = $streamingBudgetTiers.Count
@@ -696,40 +739,51 @@ $issue943Lines = @(
 
 if ($streamingBudgetTierCount -gt 0) {
     foreach ($tier in $streamingBudgetTiers) {
-        $tierName = [string]$tier.name
-        $tierSize = [int]$tier.dataset_size
-        $tierEnforce = [bool]$tier.enforce
-        $tierWithin = [bool]$tier.within_budget
+        $tierName = [string](Get-ObjectPropertyValue -Object $tier -Name "name" -Default "unknown")
+        $tierSize = [int](Get-ObjectPropertyValue -Object $tier -Name "dataset_size" -Default 0)
+        $tierEnforce = [bool](Get-ObjectPropertyValue -Object $tier -Name "enforce" -Default $false)
+        $tierWithin = [bool](Get-ObjectPropertyValue -Object $tier -Name "within_budget" -Default $false)
         $sourceStatus = "unknown"
-        if ($tier.PSObject.Properties.Name -contains "source_data_status" -and
-            -not [string]::IsNullOrWhiteSpace([string]$tier.source_data_status)) {
-            $sourceStatus = [string]$tier.source_data_status
-        } elseif ($tier.PSObject.Properties.Name -contains "source_data_available") {
-            $sourceStatus = if ([bool]$tier.source_data_available) { "available" } else { "missing" }
+        $sourceDataStatus = Get-ObjectPropertyValue -Object $tier -Name "source_data_status"
+        if (-not [string]::IsNullOrWhiteSpace([string]$sourceDataStatus)) {
+            $sourceStatus = [string]$sourceDataStatus
+        } else {
+            $sourceDataAvailable = Get-ObjectPropertyValue -Object $tier -Name "source_data_available"
+            if ($null -ne $sourceDataAvailable) {
+                $sourceStatus = if ([bool]$sourceDataAvailable) { "available" } else { "missing" }
+            }
         }
         $sortEvidenceStatus = "unknown"
-        if ($tier.PSObject.Properties.Name -contains "sort_evidence_status" -and
-            -not [string]::IsNullOrWhiteSpace([string]$tier.sort_evidence_status)) {
-            $sortEvidenceStatus = [string]$tier.sort_evidence_status
-        } elseif ($tier.PSObject.Properties.Name -contains "sort_evidence_available") {
-            $sortEvidenceStatus = if ([bool]$tier.sort_evidence_available) { "available" } else { "missing" }
+        $sortEvidenceProperty = Get-ObjectPropertyValue -Object $tier -Name "sort_evidence_status"
+        if (-not [string]::IsNullOrWhiteSpace([string]$sortEvidenceProperty)) {
+            $sortEvidenceStatus = [string]$sortEvidenceProperty
+        } else {
+            $sortEvidenceAvailable = Get-ObjectPropertyValue -Object $tier -Name "sort_evidence_available"
+            if ($null -ne $sortEvidenceAvailable) {
+                $sortEvidenceStatus = if ([bool]$sortEvidenceAvailable) { "available" } else { "missing" }
+            }
         }
         $fallbackStatus = "unknown"
-        if ($tier.PSObject.Properties.Name -contains "fallback_rate_status" -and
-            -not [string]::IsNullOrWhiteSpace([string]$tier.fallback_rate_status)) {
-            $fallbackStatus = [string]$tier.fallback_rate_status
-        } elseif ($tier.PSObject.Properties.Name -contains "fallback_rate_available") {
-            $fallbackStatus = if ([bool]$tier.fallback_rate_available) { "available" } else { "missing" }
+        $fallbackRateStatus = Get-ObjectPropertyValue -Object $tier -Name "fallback_rate_status"
+        if (-not [string]::IsNullOrWhiteSpace([string]$fallbackRateStatus)) {
+            $fallbackStatus = [string]$fallbackRateStatus
+        } else {
+            $fallbackRateAvailable = Get-ObjectPropertyValue -Object $tier -Name "fallback_rate_available"
+            if ($null -ne $fallbackRateAvailable) {
+                $fallbackStatus = if ([bool]$fallbackRateAvailable) { "available" } else { "missing" }
+            }
         }
         $firstVisibleText = "n/a"
-        if ($tier.PSObject.Properties.Name -contains "first_visible_ms" -and [double]$tier.first_visible_ms -ge 0.0) {
-            $firstVisibleText = "{0:N2}" -f [double]$tier.first_visible_ms
+        $firstVisibleMs = Get-ObjectPropertyValue -Object $tier -Name "first_visible_ms"
+        if ($null -ne $firstVisibleMs -and [double]$firstVisibleMs -ge 0.0) {
+            $firstVisibleText = "{0:N2}" -f [double]$firstVisibleMs
         }
-        $residencyText = "{0:N3}" -f [double]$tier.residency_ratio
-        $frameP95Text = "{0:N2}" -f [double]$tier.frame_p95_ms
+        $residencyText = "{0:N3}" -f [double](Get-ObjectPropertyValue -Object $tier -Name "residency_ratio" -Default 0.0)
+        $frameP95Text = "{0:N2}" -f [double](Get-ObjectPropertyValue -Object $tier -Name "frame_p95_ms" -Default 0.0)
         $fallbackText = "n/a"
-        if ($tier.PSObject.Properties.Name -contains "fallback_rate" -and $null -ne $tier.fallback_rate) {
-            $fallbackText = "{0:N3}" -f [double]$tier.fallback_rate
+        $fallbackRate = Get-ObjectPropertyValue -Object $tier -Name "fallback_rate"
+        if ($null -ne $fallbackRate) {
+            $fallbackText = "{0:N3}" -f [double]$fallbackRate
         }
         $issue943Lines += ("| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} | {8} | {9} | {10} |" -f
             $tierName, $tierSize, $tierEnforce, $tierWithin, $sourceStatus, $sortEvidenceStatus, $fallbackStatus, $firstVisibleText, $residencyText, $frameP95Text, $fallbackText)

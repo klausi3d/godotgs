@@ -1,7 +1,7 @@
 extends Node3D
 class_name GaussianTemplateRoot
 
-@export_file("*.ply") var default_ply_path: String = "res://assets/template_splats.ply"
+@export var default_splat_asset: GaussianSplatAsset
 @export var enable_demo_painterly: bool = true
 
 @onready var gaussian_node: GaussianSplatNode3D = $GaussianSplatNode3D
@@ -20,10 +20,9 @@ func _configure_gaussian_node() -> void:
         push_error("GaussianSplatNode3D is missing from the template scene")
         return
 
-    if default_ply_path != "" and gaussian_node.get_ply_file_path() == "":
-        gaussian_node.set_ply_file_path(default_ply_path)
+    if default_splat_asset != null and gaussian_node.get_splat_asset() == null:
+        gaussian_node.set_splat_asset(default_splat_asset)
 
-    gaussian_node.set_auto_load(true)
     gaussian_node.set_quality_preset(GaussianSplatNode3D.QUALITY_BALANCED)
     gaussian_node.set_lod_bias(1.0)
     gaussian_node.set_max_render_distance(150.0)

@@ -154,7 +154,7 @@ static void _append_chunk_descriptors_for_asset(const ResidentAssetDescriptor &p
 
 namespace ResidentInstanceContractPublisher {
 
-bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_instance, String *r_reason) {
+bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, String *r_reason) {
 	ERR_FAIL_NULL_V(p_renderer, false);
 
 	if (r_reason) {
@@ -237,17 +237,16 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 		source_generation = _mix_generation(source_generation, director->get_instance_generation_for_renderer(p_renderer));
 		source_generation = _mix_generation(source_generation, director->get_sphere_effector_generation_for_renderer(p_renderer));
 	}
-	// Mix the renderer-wide grading-defaults counter so fallback grading rows
-	// (rows with no per-instance grading ref — director-less direct-data flows
-	// and the shim path) force a republish when the renderer's default
+	// Mix the renderer-wide grading-defaults counter so resident direct-data
+	// grading rows (rows with no per-instance grading ref in director-less
+	// direct-data flows) force a republish when the renderer's default
 	// ColorGradingResource is swapped or mutated in place. The streaming
 	// orchestrator already consumes this atomic in its fingerprint; the
-	// resident publisher must do the same or fallback-graded buffers stay
-	// stale until an unrelated content/topology change lands.
+	// resident publisher must do the same or these grading rows stay stale
+	// until an unrelated content/topology change lands.
 	source_generation = _mix_generation(source_generation,
 			p_renderer->get_resource_state().instance_grading_defaults_generation.load(std::memory_order_relaxed));
 	source_generation = _mix_generation(source_generation, p_renderer->is_shadow_instance_filter_enabled() ? 1ULL : 0ULL);
-	source_generation = _mix_generation(source_generation, p_allow_primary_fallback_instance ? 1ULL : 0ULL);
 	source_generation = _mix_generation(source_generation, uint64_t(p_renderer->get_performance_settings().max_splats));
 	for (const ResidentAssetDescriptor &asset : assets) {
 		source_generation = _mix_generation(source_generation, asset.submission_asset_id);
@@ -285,22 +284,22 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 		director->build_instance_buffer_for_renderer(p_renderer, instances,
 				p_renderer->is_shadow_instance_filter_enabled());
 	}
-	if (instances.is_empty() && p_allow_primary_fallback_instance && has_primary_data) {
-		InstanceDataGPU fallback_instance = {};
-		fallback_instance.rotation[3] = 1.0f;
-		fallback_instance.inv_rotation[3] = 1.0f;
-		fallback_instance.translation_scale[3] = 1.0f;
-		fallback_instance.params[0] = 1.0f;
-		fallback_instance.params[1] = 1.0f;
-		fallback_instance.params[2] = 1.0f;
-		fallback_instance.wind_params[3] = 1.0f;
-		fallback_instance.effect_params[0] = 1.0f;
-		fallback_instance.effect_params[1] = 1.0f;
-		fallback_instance.ids[0] = kPrimaryResidentAssetId;
-		fallback_instance.ids[1] = GS_INSTANCE_FLAG_ROTATION_IDENTITY |
+	if (instances.is_empty() && has_primary_data) {
+		InstanceDataGPU bootstrap_instance = {};
+		bootstrap_instance.rotation[3] = 1.0f;
+		bootstrap_instance.inv_rotation[3] = 1.0f;
+		bootstrap_instance.translation_scale[3] = 1.0f;
+		bootstrap_instance.params[0] = 1.0f;
+		bootstrap_instance.params[1] = 1.0f;
+		bootstrap_instance.params[2] = 1.0f;
+		bootstrap_instance.wind_params[3] = 1.0f;
+		bootstrap_instance.effect_params[0] = 1.0f;
+		bootstrap_instance.effect_params[1] = 1.0f;
+		bootstrap_instance.ids[0] = kPrimaryResidentAssetId;
+		bootstrap_instance.ids[1] = GS_INSTANCE_FLAG_ROTATION_IDENTITY |
 				GS_INSTANCE_FLAG_SCALE_IDENTITY |
 				GS_INSTANCE_FLAG_TRANSLATION_ZERO;
-		instances.push_back(fallback_instance);
+		instances.push_back(bootstrap_instance);
 	}
 
 	if (instances.is_empty()) {
@@ -596,6 +595,16 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 	}
 	buffers.instance_count_buffer = resource_state.instance_count_buffer;
 
+	// Mirror the render_streaming_orchestrator pattern: forward the persistent
+	// per-renderer instance_grading_buffer RID through the local `buffers`
+	// snapshot so it survives publish_instance_pipeline_contract() below. The
+	// subsequent update_instance_grading_buffer() call (~line 687) refreshes
+	// the GPU contents; this line ensures the RID itself lands in
+	// instance_pipeline_buffers even on paths that hit clear-then-republish
+	// sequences, so first_raster_violation() doesn't read a stale RID() in
+	// the gap before update_instance_grading_buffer() runs.
+	buffers.instance_grading_buffer = resource_state.instance_grading_buffer;
+
 	Ref<GPUSortingPipeline> sorting_pipeline = p_renderer->get_subsystem_state().sorting_pipeline;
 	if (sorting_pipeline.is_null()) {
 		if (r_reason) {
@@ -658,11 +667,10 @@ bool publish(GaussianSplatRenderer *p_renderer, bool p_allow_primary_fallback_in
 					p_renderer->is_shadow_instance_filter_enabled());
 		}
 		if (gradings.is_empty() && !instances.is_empty()) {
-			// Fallback when director has no records but we injected a primary-resident
-			// fallback instance above. Seed from the renderer's legacy renderer-wide
-			// color_grading so direct-data / worldless renderers that still rely on
-			// `renderer->set_color_grading()` keep their grading on this path instead
-			// of being forced to neutral.
+			// If director records are absent but the resident direct-data path
+			// injected a bootstrap instance above, seed grading rows from the
+			// renderer-wide color_grading so direct-data / worldless renderers
+			// keep their grading on this path instead of being forced to neutral.
 			const Ref<ColorGradingResource> renderer_default = p_renderer->get_color_grading();
 			gradings.resize(instances.size());
 			for (uint32_t i = 0; i < gradings.size(); ++i) {

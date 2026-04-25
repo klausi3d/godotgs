@@ -62,7 +62,7 @@ The Gaussian bottom panel is no longer part of the normal editor flow.
 ### Follow-up improvements
 
 - [ ] Implement viewport-level drag-and-drop for `GaussianSplatAsset` (create node on drop with undo/redo).
-- [ ] Verify direct raw `.ply`/`.spz` drag semantics in the viewport and decide whether to support them explicitly. Currently falls back to `ply_file_path` if asset load fails.
+- [ ] Verify direct raw `.ply`/`.spz` drag semantics in the viewport and decide whether to support them explicitly. On-node drops should remain asset-only.
 - [ ] Replace the proxy inspector preview with a deeper renderer-backed preview if coupling stays manageable.
 - [ ] Tighten asset inspector layout and styling once the workflow is stable.
 - [ ] Add fuller automated tests or scripted editor QA for preview, reimport, and multi-node hot-reload behavior. Current automation only covers stable non-GUI seams.
@@ -89,7 +89,7 @@ Run these steps in the editor on a clean project copy:
 14. ~~Use undo after the drop and confirm the node creation is reverted.~~ **Blocked: viewport drop not implemented.**
 15. ~~Use redo after undo and confirm the node is restored.~~ **Blocked: viewport drop not implemented.**
 16. Instead: manually add a `GaussianSplatNode3D`, assign the imported asset via the inspector, and confirm it loads and renders.
-17. Drag a `.ply` file onto an existing `GaussianSplatNode3D` and confirm asset-first load (not `ply_file_path` fallback if already imported).
+17. Drag a `.ply` file onto an existing `GaussianSplatNode3D` and confirm it resolves to an assigned `GaussianSplatAsset` without any node-local raw-file fallback.
 18. Modify the asset, reimport it from the advanced import settings dialog, and confirm the dialog preview/stats refresh without reopening.
 19. Trigger any hot-reload path available on this branch and confirm all registered live nodes tied to the changed source/asset path refresh without losing their asset links or crashing.
 20. Add two `GaussianSplatNode3D` instances sharing one renderer. Confirm `rendering/color_grading` property remains visible on both nodes (per-node grading is now the design intent — see PR #245).
@@ -101,7 +101,7 @@ Run these steps in the editor on a clean project copy:
 ## Risk Notes
 
 - The current asset preview is a proxy visualization plus thumbnail fallback, not full renderer-viewport parity yet.
-- **Viewport-level drag-and-drop is not implemented.** Only on-node drops (onto an existing `GaussianSplatNode3D`) work. On-node drops try asset-first load, then fall back to `ply_file_path`. Direct raw file-drop semantics should be tested explicitly once viewport drop is implemented.
+- **Viewport-level drag-and-drop is not implemented.** Only on-node drops (onto an existing `GaussianSplatNode3D`) work, and those drops now stay asset-only. Direct raw file-drop semantics should be tested explicitly once viewport drop is implemented.
 - Any future move from proxy preview to renderer-backed preview should be treated as a coupling risk and validated against editor stability.
 - Bottom-panel removal should be sequenced after drag/drop and node-inspector behavior are fully stable.
 

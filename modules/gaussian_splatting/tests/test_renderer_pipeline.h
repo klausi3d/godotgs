@@ -15,12 +15,16 @@
 #include "core/variant/variant.h"
 #include "../core/effective_config_snapshot.h"
 #include "../core/gaussian_data.h"
+#include "../core/gaussian_splat_scene_director.h"
 #include "../core/gaussian_splat_manager.h"
+#include "../core/gaussian_splat_world.h"
 #include "../core/gaussian_streaming.h"
 #include "../core/gs_project_settings.h"
+#include "../nodes/gaussian_splat_world_3d.h"
 #include "../renderer/gaussian_gpu_layout.h"
 #include "../renderer/gpu_sorting_config.h"
 #include "../renderer/gaussian_splat_renderer.h"
+#include "../renderer/quantization_config.h"
 #include "../renderer/pipeline_feature_set.h"
 #include "../renderer/render_debug_state_orchestrator.h"
 #include "../renderer/render_instancing_orchestrator.h"
@@ -33,6 +37,8 @@
 #include "servers/rendering/renderer_rd/storage_rd/render_data_rd.h"
 #include "servers/rendering/renderer_rd/storage_rd/render_scene_data_rd.h"
 #include "servers/rendering/storage/render_scene_buffers.h"
+#include "scene/main/scene_tree.h"
+#include "scene/main/window.h"
 
 namespace TestGaussianSplatting {
 
@@ -227,6 +233,51 @@ static Vector<GaussianSplatRenderer::StaticChunk> make_single_static_chunk(uint3
 
     chunks.write[0] = chunk;
     return chunks;
+}
+
+struct ScopedWorldStreamingRenderer {
+	SceneTree *tree = nullptr;
+	Window *root = nullptr;
+	GaussianSplatWorld3D *node = nullptr;
+	Ref<GaussianSplatRenderer> renderer;
+
+	~ScopedWorldStreamingRenderer() {
+		if (tree != nullptr && root != nullptr && node != nullptr) {
+			root->remove_child(node);
+			memdelete(node);
+			tree->process(0.0);
+		}
+	}
+};
+
+static bool setup_world_streaming_renderer(const Ref<GaussianData> &p_data,
+		const Vector<GaussianSplatRenderer::StaticChunk> &p_chunks,
+		ScopedWorldStreamingRenderer &r_fixture) {
+	r_fixture.tree = SceneTree::get_singleton();
+	if (r_fixture.tree == nullptr) {
+		return false;
+	}
+	r_fixture.root = r_fixture.tree->get_root();
+	if (r_fixture.root == nullptr) {
+		return false;
+	}
+
+	Ref<GaussianSplatWorld> world_resource;
+	world_resource.instantiate();
+	world_resource->set_gaussian_data(p_data);
+	world_resource->set_static_chunks(p_chunks);
+
+	r_fixture.node = memnew(GaussianSplatWorld3D);
+	if (r_fixture.node == nullptr) {
+		return false;
+	}
+	r_fixture.node->set_auto_apply_on_ready(false);
+	r_fixture.node->set_world(world_resource);
+	r_fixture.root->add_child(r_fixture.node);
+	r_fixture.tree->process(0.0);
+	r_fixture.node->apply_world();
+	r_fixture.renderer = r_fixture.node->get_renderer();
+	return r_fixture.renderer.is_valid();
 }
 
 static Vector<GaussianSplatRenderer::StaticChunk> make_overlapping_static_chunks(uint32_t p_chunk_size, const AABB &p_bounds) {
@@ -725,7 +776,7 @@ TEST_CASE("[GaussianSplatting] Clearing the published instance contract also cle
     CHECK(renderer->get_instance_asset_remap().generation == 0u);
 }
 
-TEST_CASE("[GaussianSplatting][RequiresGPU] Resident route publishes an atlas-shaped instance contract without a streaming system") {
+TEST_CASE("[GaussianSplatting][RequiresGPU] Direct gaussian data publishes a resident atlas-shaped instance contract without a streaming system") {
     RenderingServer *rs = RenderingServer::get_singleton();
     if (rs == nullptr) {
         MESSAGE("Skipping test - Rendering server unavailable");
@@ -776,6 +827,7 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Resident route publishes an atlas-sh
     data->set_gaussians(gaussians);
 
     renderer->set_max_splats(64);
+    // Direct gaussian data is the low-level resident direct-data path.
     const Error set_data_err = renderer->set_gaussian_data(data);
     CHECK(set_data_err == OK);
     if (set_data_err != OK) {
@@ -872,34 +924,32 @@ TEST_CASE("[GaussianSplatting] Pipeline feature snapshot distinguishes code defa
     g_pipeline_feature_set.load_from_project_settings();
 }
 
-TEST_CASE("[GaussianSplatting][RequiresGPU] RenderSceneInstance drives GPU streaming + sorting") {
+TEST_CASE("[GaussianSplatting][RequiresGPU] World-backed RenderSceneInstance drives GPU streaming + sorting") {
     RenderingServer *rs = RenderingServer::get_singleton();
     if (rs == nullptr) {
         MESSAGE("Skipping test - Rendering server unavailable");
         return;
     }
 
-    ScopedGaussianManagerPipeline manager_scope;
-    GaussianSplatManager *manager = manager_scope.get();
-    if (manager == nullptr) {
-        MESSAGE("Skipping test - GaussianSplatManager unavailable");
+    SceneTree *tree = SceneTree::get_singleton();
+    if (tree == nullptr || tree->get_root() == nullptr) {
+        MESSAGE("Skipping test - SceneTree unavailable");
         return;
     }
 
-    ScopedRenderingDeviceLease device_lease;
-    RenderingDevice *primary_rd = device_lease.acquire(rs, manager);
-    if (primary_rd == nullptr) {
-        MESSAGE("Skipping test - Rendering device unavailable");
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    if (project_settings == nullptr) {
+        MESSAGE("Skipping test - ProjectSettings unavailable");
         return;
     }
 
-    Ref<GaussianSplatRenderer> renderer;
-    renderer.instantiate(primary_rd);
-    CHECK(renderer.is_valid());
-    if (!renderer.is_valid()) {
-        return;
-    }
-    renderer->initialize();
+    const String route_policy_setting = "rendering/gaussian_splatting/streaming/route_policy";
+    const String instance_pipeline_setting = "rendering/gaussian_splatting/instance_pipeline/enabled";
+    ScopedProjectSetting route_guard(project_settings, route_policy_setting);
+    ScopedProjectSetting instance_pipeline_guard(project_settings, instance_pipeline_setting);
+    project_settings->set_setting(route_policy_setting, int64_t(gs::settings::GS_ROUTE_STREAMING));
+    project_settings->set_setting(instance_pipeline_setting, true);
+    project_settings->emit_signal("settings_changed");
 
     const uint32_t chunk_size = GaussianStreamingSystem::CHUNK_SIZE;
     const uint32_t total_gaussians = chunk_size * 3;
@@ -911,12 +961,13 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] RenderSceneInstance drives GPU strea
     data.instantiate();
     data->set_gaussians(gaussians);
 
-    renderer->set_max_splats(total_gaussians);
-    Error set_data_err = renderer->set_gaussian_data(data);
-    CHECK(set_data_err == OK);
-    if (set_data_err != OK) {
+    ScopedWorldStreamingRenderer fixture;
+    if (!setup_world_streaming_renderer(data, make_single_static_chunk(total_gaussians, data->get_aabb()), fixture)) {
+        MESSAGE("Skipping test - world-backed renderer unavailable");
         return;
     }
+    Ref<GaussianSplatRenderer> renderer = fixture.renderer;
+    renderer->test_release_current_streaming_system();
 
     RenderSceneDataRD scene_data;
     scene_data.cam_transform = Transform3D(Basis(), Vector3(0.0f, 0.0f, 5.0f));
@@ -948,7 +999,6 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] RenderSceneInstance drives GPU strea
                 "visible_splat_count=" << visible_splat_count
                 << " has_instance_pipeline_buffers=" << renderer->has_instance_pipeline_buffers());
         renderer->commit_to_render_buffers(&render_data);
-        renderer.unref();
         return;
     }
 
@@ -979,8 +1029,6 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] RenderSceneInstance drives GPU strea
     }
 
     renderer->commit_to_render_buffers(&render_data);
-
-	renderer.unref();
 }
 
 TEST_CASE("[GaussianSplatting][RequiresGPU] Upload processing rescues stranded async pack work") {
@@ -1161,37 +1209,25 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] World static chunks keep streaming i
         return;
     }
 
+    SceneTree *tree = SceneTree::get_singleton();
+    if (tree == nullptr || tree->get_root() == nullptr) {
+        MESSAGE("Skipping test - SceneTree unavailable");
+        return;
+    }
+
     ProjectSettings *project_settings = ProjectSettings::get_singleton();
     if (project_settings == nullptr) {
         MESSAGE("Skipping test - ProjectSettings unavailable");
         return;
     }
 
+    const String route_policy_setting = "rendering/gaussian_splatting/streaming/route_policy";
     const String instance_pipeline_setting = "rendering/gaussian_splatting/instance_pipeline/enabled";
+    ScopedProjectSetting route_guard(project_settings, route_policy_setting);
     ScopedProjectSetting instance_pipeline_guard(project_settings, instance_pipeline_setting);
+    project_settings->set_setting(route_policy_setting, int64_t(gs::settings::GS_ROUTE_STREAMING));
     project_settings->set_setting(instance_pipeline_setting, true);
-
-    ScopedGaussianManagerPipeline manager_scope;
-    GaussianSplatManager *manager = manager_scope.get();
-    if (manager == nullptr) {
-        MESSAGE("Skipping test - GaussianSplatManager unavailable");
-        return;
-    }
-
-    ScopedRenderingDeviceLease device_lease;
-    RenderingDevice *primary_rd = device_lease.acquire(rs, manager);
-    if (primary_rd == nullptr) {
-        MESSAGE("Skipping test - Rendering device unavailable");
-        return;
-    }
-
-    Ref<GaussianSplatRenderer> renderer;
-    renderer.instantiate(primary_rd);
-    CHECK(renderer.is_valid());
-    if (!renderer.is_valid()) {
-        return;
-    }
-    renderer->initialize();
+    project_settings->emit_signal("settings_changed");
 
     const uint32_t total_gaussians = GaussianStreamingSystem::CHUNK_SIZE * 2;
     LocalVector<Gaussian> gaussians;
@@ -1201,17 +1237,16 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] World static chunks keep streaming i
     data.instantiate();
     data->set_gaussians(gaussians);
 
-    renderer->set_max_splats(total_gaussians);
-    Error set_data_err = renderer->set_gaussian_data(data);
-    CHECK(set_data_err == OK);
-    if (set_data_err != OK) {
+    ScopedWorldStreamingRenderer fixture;
+    if (!setup_world_streaming_renderer(data, make_single_static_chunk(total_gaussians, data->get_aabb()), fixture)) {
+        MESSAGE("Skipping test - world-backed renderer unavailable");
         return;
     }
-
-    renderer->set_static_chunks(make_single_static_chunk(total_gaussians, data->get_aabb()));
+    Ref<GaussianSplatRenderer> renderer = fixture.renderer;
 
     // Simulate a world/static setup where gaussian data is present but the
-    // streaming system was not bootstrapped yet (e.g. data set before RD ready).
+    // streaming system was not bootstrapped yet (e.g. world submission applied
+    // before the renderer had initialized its streaming state).
     renderer->test_release_current_streaming_system();
     CHECK_MESSAGE(!renderer->test_has_current_streaming_system(),
             "Expected precondition: streaming system starts invalid before render bootstrap");
@@ -1249,7 +1284,6 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] World static chunks keep streaming i
 
     if (!streaming_system_ready) {
         MESSAGE("Skipping test - streaming system unavailable");
-        renderer.unref();
         return;
     }
 
@@ -1477,6 +1511,129 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Streaming-requested failure hard-fai
     CHECK_MESSAGE(cull_route_uid != String(RenderRouteUID::INSTANCE_RESIDENT),
             "Streaming-requested failure must not produce a resident cull route");
 
+    renderer.unref();
+}
+
+TEST_CASE("[GaussianSplatting][RequiresGPU] Resident-selected failure does not pivot into streaming") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (rs == nullptr) {
+        MESSAGE("Skipping test - Rendering server unavailable");
+        return;
+    }
+
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    if (project_settings == nullptr) {
+        MESSAGE("Skipping test - ProjectSettings unavailable");
+        return;
+    }
+
+    const String route_policy_setting = "rendering/gaussian_splatting/streaming/route_policy";
+    ScopedProjectSetting route_guard(project_settings, route_policy_setting);
+    project_settings->set_setting(route_policy_setting, int64_t(gs::settings::GS_ROUTE_STREAMING));
+
+    ScopedGaussianManagerPipeline manager_scope;
+    GaussianSplatManager *manager = manager_scope.get();
+    if (manager == nullptr) {
+        MESSAGE("Skipping test - GaussianSplatManager unavailable");
+        return;
+    }
+
+    ScopedRenderingDeviceLease device_lease;
+    RenderingDevice *primary_rd = device_lease.acquire(rs, manager);
+    if (primary_rd == nullptr) {
+        MESSAGE("Skipping test - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianSplatRenderer> renderer;
+    renderer.instantiate(primary_rd);
+    CHECK(renderer.is_valid());
+    if (!renderer.is_valid()) {
+        return;
+    }
+    renderer->initialize();
+
+    const uint32_t chunk_size = 64;
+    LocalVector<Gaussian> gaussians;
+    fill_gaussians(gaussians, chunk_size);
+
+    Ref<GaussianData> data;
+    data.instantiate();
+    data->set_gaussians(gaussians);
+
+    renderer->set_max_splats(chunk_size);
+    const Error set_data_err = renderer->set_gaussian_data(data);
+    CHECK(set_data_err == OK);
+    if (set_data_err != OK) {
+        renderer.unref();
+        return;
+    }
+    renderer->set_static_chunks(make_single_static_chunk(chunk_size, data->get_aabb()));
+
+    RenderSceneDataRD scene_data;
+    scene_data.cam_transform = Transform3D(Basis(), Vector3(0.0f, 0.0f, 5.0f));
+    scene_data.cam_projection.set_perspective(70.0f, 1.0f, 0.1f, 100.0f);
+
+    RenderDataRD render_data;
+    render_data.scene_data = &scene_data;
+    render_data.render_buffers = Ref<RenderSceneBuffersRD>();
+
+    bool streaming_system_ready = false;
+    for (int i = 0; i < 16; i++) {
+        renderer->render_scene_instance(&render_data);
+        if (renderer->test_has_current_streaming_system()) {
+            streaming_system_ready = true;
+            break;
+        }
+    }
+
+    if (!streaming_system_ready) {
+        MESSAGE("Skipping test - streaming system did not become ready");
+        renderer.unref();
+        return;
+    }
+
+    const QuantizationConfig saved_quantization_config = g_quantization_config;
+    g_quantization_config.per_chunk_quantization = true;
+    g_quantization_config.position_bits = 16;
+    g_quantization_config.scale_bits = 12;
+    g_quantization_config.quantize_scales = false;
+
+    GaussianSplatRenderer::WorldSubmissionContract contract;
+    contract.gaussian_data = data;
+    contract.static_chunks = make_single_static_chunk(chunk_size, data->get_aabb());
+    contract.debug_label = "resident_rejection_guard";
+    contract.has_desired_residency_hint = true;
+    contract.desired_residency_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT;
+    contract.max_splats = int(chunk_size);
+
+    const Error apply_err = renderer->apply_world_submission_contract(contract);
+    CHECK(apply_err == OK);
+    if (apply_err != OK) {
+        g_quantization_config = saved_quantization_config;
+        renderer.unref();
+        return;
+    }
+
+    renderer->render_scene_instance(&render_data);
+
+    const Dictionary stats = renderer->get_render_stats();
+    const String route_uid = stats.get("route_uid", String());
+    CHECK_MESSAGE(route_uid.begins_with(String(RenderRouteUID::COMMON_SKIP_RESIDENT_NOT_FEASIBLE)),
+            vformat("Expected typed resident rejection route, got '%s'", route_uid));
+    CHECK_MESSAGE(stats.get("instance_backend_policy", String()) == String("resident"),
+            "Resident rejection must keep resident backend diagnostics");
+    const String backend_reason = stats.get("backend_selection_reason", String());
+    CHECK_MESSAGE(backend_reason.find("not_feasible") != -1,
+            vformat("Expected resident rejection diagnostics, got '%s'", backend_reason));
+    CHECK_MESSAGE(backend_reason.find("resident_quantization_unsupported") != -1,
+            vformat("Expected resident quantization rejection to be preserved, got '%s'", backend_reason));
+    CHECK_MESSAGE(stats.get("cull_route_uid", String()) == route_uid,
+            "Resident rejection must stamp matching cull skip diagnostics");
+    CHECK_MESSAGE(stats.get("cull_route_reason", String()) == String("resident_not_feasible_resident_quantization_unsupported"),
+            "Resident rejection must stamp a typed cull skip reason");
+
+    g_quantization_config = saved_quantization_config;
     renderer.unref();
 }
 
@@ -2635,29 +2792,22 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Stage results report streaming not-r
         return;
     }
 
-    ScopedGaussianManagerPipeline manager_scope;
-    GaussianSplatManager *manager = manager_scope.get();
-    if (manager == nullptr) {
-        MESSAGE("Skipping test - GaussianSplatManager unavailable");
+    SceneTree *tree = SceneTree::get_singleton();
+    if (tree == nullptr || tree->get_root() == nullptr) {
+        MESSAGE("Skipping test - SceneTree unavailable");
         return;
     }
 
-    RenderingDevice *primary_rd = manager->get_primary_rendering_device();
-    if (!primary_rd) {
-        primary_rd = rs->create_local_rendering_device();
-    }
-    if (primary_rd == nullptr) {
-        MESSAGE("Skipping test - Rendering device unavailable");
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    if (project_settings == nullptr) {
+        MESSAGE("Skipping test - ProjectSettings unavailable");
         return;
     }
 
-    Ref<GaussianSplatRenderer> renderer;
-    renderer.instantiate(primary_rd);
-    CHECK(renderer.is_valid());
-    if (!renderer.is_valid()) {
-        return;
-    }
-    renderer->initialize();
+    const String route_policy_setting = "rendering/gaussian_splatting/streaming/route_policy";
+    ScopedProjectSetting route_guard(project_settings, route_policy_setting);
+    project_settings->set_setting(route_policy_setting, int64_t(gs::settings::GS_ROUTE_STREAMING));
+    project_settings->emit_signal("settings_changed");
 
     const uint32_t total_gaussians = GaussianStreamingSystem::CHUNK_SIZE * 2;
     LocalVector<Gaussian> gaussians;
@@ -2667,13 +2817,14 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Stage results report streaming not-r
     data.instantiate();
     data->set_gaussians(gaussians);
 
-    renderer->set_max_splats(total_gaussians);
-    renderer->set_painterly_enabled(true);
-    Error set_data_err = renderer->set_gaussian_data(data);
-    CHECK(set_data_err == OK);
-    if (set_data_err != OK) {
+    ScopedWorldStreamingRenderer fixture;
+    if (!setup_world_streaming_renderer(data, make_single_static_chunk(total_gaussians, data->get_aabb()), fixture)) {
+        MESSAGE("Skipping test - world-backed renderer unavailable");
         return;
     }
+    Ref<GaussianSplatRenderer> renderer = fixture.renderer;
+    renderer->set_painterly_enabled(true);
+    renderer->test_release_current_streaming_system();
 
     RenderSceneDataRD scene_data;
     scene_data.cam_transform = Transform3D(Basis(), Vector3(0.0f, 0.0f, 5.0f));
@@ -2706,7 +2857,6 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Stage results report streaming not-r
     CHECK_MESSAGE(!bool(stats.get("cull_route_uid_missing", true)),
             "Expected cull route UID to be present for streaming not-ready skips");
 
-    renderer.unref();
 }
 
 static RID create_test_texture(RenderingDevice *p_rd, const Vector2i &p_size, RD::DataFormat p_format, RD::TextureUsageBits p_usage) {
@@ -3800,7 +3950,7 @@ TEST_CASE("[GaussianSplatting] runtime fidelity policy centralizes route policy 
 	CHECK(runtime_policy.runtime_budget_splats == 8);
 }
 
-TEST_CASE("[GaussianSplatting] frame backend plan centralizes streaming bootstrap and fallback eligibility") {
+TEST_CASE("[GaussianSplatting] frame backend plan centralizes streaming bootstrap without synthetic primary fallback") {
 	ProjectSettings *project_settings = ProjectSettings::get_singleton();
 	if (project_settings == nullptr) {
 		MESSAGE("Skipping test - ProjectSettings unavailable");
@@ -3828,7 +3978,7 @@ TEST_CASE("[GaussianSplatting] frame backend plan centralizes streaming bootstra
 	CHECK_FALSE(backend_plan.prefer_resident_backend);
 	CHECK_FALSE(backend_plan.streaming_ready);
 	CHECK(backend_plan.should_attempt_streaming_bootstrap);
-	CHECK(backend_plan.allow_primary_fallback_instance);
+	CHECK_FALSE(backend_plan.has_active_world_submission);
 }
 
 TEST_CASE("[GaussianSplatting] frame backend plan preserves resident request semantics") {
@@ -3851,7 +4001,7 @@ TEST_CASE("[GaussianSplatting] frame backend plan preserves resident request sem
 	CHECK_FALSE(backend_plan.streaming_requested);
 	CHECK(backend_plan.prefer_resident_backend);
 	CHECK_FALSE(backend_plan.should_attempt_streaming_bootstrap);
-	CHECK_FALSE(backend_plan.allow_primary_fallback_instance);
+	CHECK_FALSE(backend_plan.has_active_world_submission);
 	CHECK(backend_plan.resident_backend_reason == String("requested_resident_policy"));
 }
 

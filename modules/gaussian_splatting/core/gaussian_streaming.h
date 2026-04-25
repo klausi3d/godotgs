@@ -11,10 +11,10 @@
 
 class GaussianMemoryStream;
 class OS;
-class ResidencyBudgetController;
 
 // Extracted subsystem headers (ISSUE-006 split)
 #include "streaming_config_overrides.h"
+#include "residency_budget_controller.h"
 #include "streaming_quantization.h"
 #include "streaming_vram_regulator.h"
 #include "streaming_asset_types.h"
@@ -437,7 +437,9 @@ private:
             LocalVector<StreamingChunk> &asset_chunks);
     bool _load_requested_chunks(uint32_t asset_id, AtlasAssetState &asset,
             LocalVector<StreamingChunk> &asset_chunks, bool trace_enabled, bool can_async_pack);
-    bool _ensure_atlas_slot_available(uint32_t requesting_asset_id);
+    EvictionResult _evict_for_admission_gate(
+            const ResidencyBudgetController::AdmissionGate &p_admission_gate,
+            bool &r_visible_fallback_attempted);
     bool _evict_non_primary_lru();
 
     // Distance-based LOD (Octree-GS) helpers

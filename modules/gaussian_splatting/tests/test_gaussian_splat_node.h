@@ -4,7 +4,6 @@
 #include "../nodes/gaussian_splat_node_3d.h"
 #include "../nodes/sphere_effector_3d.h"
 #include "../nodes/gaussian_splat_world_3d.h"
-#include "../nodes/gaussian_splat_dynamic_instance_3d.h"
 #include "../core/gaussian_data.h"
 #include "../core/effective_config_snapshot.h"
 #include "../core/gaussian_splat_asset.h"
@@ -843,10 +842,6 @@ TEST_CASE("[GaussianSplatting][Node] Asset origin label describes active ingress
 
     CHECK(node->get_asset_origin_label() == String("No asset assigned"));
 
-    node->set_ply_file_path("res://direct_only.ply");
-    CHECK(node->get_asset_origin_label().contains("Direct file path"));
-    CHECK(node->get_asset_origin_label().contains("res://direct_only.ply"));
-
     Ref<GaussianSplatAsset> asset = make_single_splat_asset();
     asset->set_source_path("res://imported_source.ply");
     node->set_splat_asset(asset);
@@ -854,12 +849,11 @@ TEST_CASE("[GaussianSplatting][Node] Asset origin label describes active ingress
     const String asset_origin = node->get_asset_origin_label();
     CHECK(asset_origin.contains("Assigned GaussianSplatAsset"));
     CHECK(asset_origin.contains("source: res://imported_source.ply"));
-    CHECK(asset_origin.contains("ply_file_path: res://direct_only.ply"));
 
     memdelete(node);
 }
 
-TEST_CASE("[GaussianSplatting][Node] Source path helper preserves asset-first precedence") {
+TEST_CASE("[GaussianSplatting][Node] Source path helper resolves asset-only source metadata") {
     Ref<GaussianSplatAsset> asset;
     asset.instantiate();
 
@@ -868,58 +862,52 @@ TEST_CASE("[GaussianSplatting][Node] Source path helper preserves asset-first pr
     asset->set_import_metadata(metadata);
 
     CHECK(GaussianSplatSourcePath::get_asset_source_path(asset) == String("res://metadata_source.ply"));
-    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset, "res://fallback_path.ply") ==
-            String("res://metadata_source.ply"));
+    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset) == String("res://metadata_source.ply"));
 
     metadata.erase(StringName("source_file"));
     metadata[StringName("runtime_load_source_path")] = String("res://runtime_source.ply");
     asset->set_import_metadata(metadata);
 
     CHECK(GaussianSplatSourcePath::get_asset_source_path(asset) == String("res://runtime_source.ply"));
-    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset, "res://fallback_path.ply") ==
-            String("res://runtime_source.ply"));
+    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset) == String("res://runtime_source.ply"));
 
     asset->set_source_path("res://asset_source.ply");
     CHECK(GaussianSplatSourcePath::get_asset_source_path(asset) == String("res://asset_source.ply"));
-    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset, "res://fallback_path.ply") ==
-            String("res://asset_source.ply"));
+    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset) == String("res://asset_source.ply"));
 
     asset->set_source_path(String());
     asset->set_import_metadata(Dictionary());
     CHECK(GaussianSplatSourcePath::get_asset_source_path(asset).is_empty());
-    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset, "res://fallback_path.ply") ==
-            String("res://fallback_path.ply"));
+    CHECK(GaussianSplatSourcePath::resolve_primary_source_path(asset).is_empty());
 }
 
-TEST_CASE("[GaussianSplatting][Node] Configuration warnings flag inconsistent dual-path sources") {
+TEST_CASE("[GaussianSplatting][Node] Configuration warnings follow asset-only source contract") {
     GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
     REQUIRE(node != nullptr);
+
+    PackedStringArray warnings = node->get_configuration_warnings();
+    bool has_missing_asset_warning = false;
+    for (int i = 0; i < warnings.size(); i++) {
+        if (String(warnings[i]).contains("No Gaussian splat asset or runtime data assigned")) {
+            has_missing_asset_warning = true;
+            break;
+        }
+    }
+    CHECK(has_missing_asset_warning);
 
     Ref<GaussianSplatAsset> asset = make_single_splat_asset();
     asset->set_source_path("res://asset_source.ply");
     node->set_splat_asset(asset);
-    node->set_ply_file_path("res://other_source.ply");
 
-    PackedStringArray warnings = node->get_configuration_warnings();
-    bool has_dual_source_warning = false;
-    for (int i = 0; i < warnings.size(); i++) {
-        if (String(warnings[i]).contains("Both splat_asset and ply_file_path are set to different sources")) {
-            has_dual_source_warning = true;
-            break;
-        }
-    }
-    CHECK(has_dual_source_warning);
-
-    node->set_ply_file_path("res://asset_source.ply");
     warnings = node->get_configuration_warnings();
-    has_dual_source_warning = false;
+    bool mentions_legacy_dual_source = false;
     for (int i = 0; i < warnings.size(); i++) {
-        if (String(warnings[i]).contains("Both splat_asset and ply_file_path")) {
-            has_dual_source_warning = true;
+        if (String(warnings[i]).contains("ply_file_path")) {
+            mentions_legacy_dual_source = true;
             break;
         }
     }
-    CHECK_FALSE(has_dual_source_warning);
+    CHECK_FALSE(mentions_legacy_dual_source);
 
     memdelete(node);
 }
@@ -2675,7 +2663,7 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree][RequiresGPU] Shared renderer ign
     memdelete(node_a);
 }
 
-TEST_CASE("[GaussianSplatting][DynamicInstance][SceneTree] Null or empty data unregisters instance") {
+TEST_CASE("[GaussianSplatting][Node][SceneTree] Clearing canonical asset source unregisters instance") {
     SceneTree *tree = SceneTree::get_singleton();
     REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
 
@@ -2683,7 +2671,7 @@ TEST_CASE("[GaussianSplatting][DynamicInstance][SceneTree] Null or empty data un
     REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
 
     GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
-    CHECK_MESSAGE(director != nullptr, "Scene director singleton must exist for dynamic unregister test");
+    CHECK_MESSAGE(director != nullptr, "Scene director singleton must exist for unregister test");
     if (!director) {
         return;
     }
@@ -2692,33 +2680,22 @@ TEST_CASE("[GaussianSplatting][DynamicInstance][SceneTree] Null or empty data un
     director->build_instance_buffer(instance_buffer);
     const int baseline_count = instance_buffer.size();
 
-    GaussianSplatDynamicInstance3D *dynamic_node = memnew(GaussianSplatDynamicInstance3D);
-    dynamic_node->set_gaussian_data(make_test_gaussian_data(1, 5.0f));
-    root->add_child(dynamic_node);
+    GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
+    node->set_splat_asset(make_single_splat_asset(5.0f));
+    root->add_child(node);
     tree->process(0.0);
 
-    CHECK(dynamic_node->is_registered());
     director->build_instance_buffer(instance_buffer);
     CHECK(instance_buffer.size() > baseline_count);
 
-    Ref<GaussianData> empty_data;
-    empty_data.instantiate();
-    empty_data->resize(0);
-    dynamic_node->set_gaussian_data(empty_data);
+    node->set_splat_asset(Ref<GaussianSplatAsset>());
     tree->process(0.0);
 
-    CHECK_FALSE(dynamic_node->is_registered());
     director->build_instance_buffer(instance_buffer);
     CHECK_EQ(instance_buffer.size(), baseline_count);
 
-    dynamic_node->set_gaussian_data(Ref<GaussianData>());
-    tree->process(0.0);
-    CHECK_FALSE(dynamic_node->is_registered());
-    director->build_instance_buffer(instance_buffer);
-    CHECK_EQ(instance_buffer.size(), baseline_count);
-
-    root->remove_child(dynamic_node);
-    memdelete(dynamic_node);
+    root->remove_child(node);
+    memdelete(node);
 }
 
 // ── Import propagation proof ───────────────────────────────────────────
@@ -2747,22 +2724,17 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree] Two nodes sharing one asset both
 	CHECK(node_a->get_total_splat_count() == 1);
 	CHECK(node_b->get_total_splat_count() == 1);
 
-	// Mutate the shared asset: grow to 5 splats.
-	// This simulates what happens when Godot reloads an imported resource in-place.
-	shared_asset->set_splat_count(5);
-	PackedFloat32Array new_positions;
-	new_positions.resize(5 * 3);
-	{
-		float *ptr = new_positions.ptrw();
-		for (int i = 0; i < 5 * 3; i++) {
-			ptr[i] = float(i);
-		}
-	}
-	shared_asset->set_positions(new_positions);
+	// Mutate the shared asset: grow to 5 splats. The Packed-array setters
+	// are sealed once runtime GaussianData has been handed out (see
+	// GaussianSplatAsset::_runtime_mutation_permitted), so drive the
+	// change through populate_from_gaussian_data — the documented
+	// runtime-to-asset persistence writer that resets the seal.
+	Ref<GaussianData> grown_data = make_test_gaussian_data(5, 0.0f);
+	REQUIRE_EQ(shared_asset->populate_from_gaussian_data(grown_data), OK);
 
-	// The asset emits "changed" on set_positions(). Both nodes should have
-	// received _on_asset_changed() which calls _update_asset() and re-reads
-	// total_splat_count from the asset.
+	// The asset emits "changed" when its data is reseeded. Both nodes
+	// should have received _on_asset_changed() which calls _update_asset()
+	// and re-reads total_splat_count from the asset.
 	CHECK(node_a->get_total_splat_count() == 5);
 	CHECK(node_b->get_total_splat_count() == 5);
 
@@ -2796,17 +2768,10 @@ TEST_CASE("[GaussianSplatting][Node][SceneTree] Two nodes with separate asset Re
 	CHECK(node_a->get_total_splat_count() == 1);
 	CHECK(node_b->get_total_splat_count() == 1);
 
-	// Mutate only asset_a.
-	asset_a->set_splat_count(7);
-	PackedFloat32Array new_positions;
-	new_positions.resize(7 * 3);
-	{
-		float *ptr = new_positions.ptrw();
-		for (int i = 0; i < 7 * 3; i++) {
-			ptr[i] = float(i);
-		}
-	}
-	asset_a->set_positions(new_positions);
+	// Mutate only asset_a. Drive the change through populate_from_gaussian_data
+	// since the Packed-array setters are sealed after first hand-out.
+	Ref<GaussianData> grown_data = make_test_gaussian_data(7, 0.0f);
+	REQUIRE_EQ(asset_a->populate_from_gaussian_data(grown_data), OK);
 
 	// node_a should see 7; node_b should still see 1.
 	CHECK(node_a->get_total_splat_count() == 7);

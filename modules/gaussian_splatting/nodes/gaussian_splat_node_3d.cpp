@@ -69,17 +69,9 @@ static void _collect_scene_tree_ancestor_ids(const Node *p_node, LocalVector<Obj
 void GaussianSplatNode3D::_bind_methods() {
     // Asset management
     ADD_GROUP("Asset", "");
-    ClassDB::bind_method(D_METHOD("set_ply_file_path", "path"), &GaussianSplatNode3D::set_ply_file_path);
-    ClassDB::bind_method(D_METHOD("get_ply_file_path"), &GaussianSplatNode3D::get_ply_file_path);
-    ADD_PROPERTY(PropertyInfo(Variant::STRING, "ply_file_path", PROPERTY_HINT_FILE, "*.ply,*.spz"), "set_ply_file_path", "get_ply_file_path");
-
     ClassDB::bind_method(D_METHOD("set_splat_asset", "asset"), &GaussianSplatNode3D::set_splat_asset);
     ClassDB::bind_method(D_METHOD("get_splat_asset"), &GaussianSplatNode3D::get_splat_asset);
     ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "splat_asset", PROPERTY_HINT_RESOURCE_TYPE, "GaussianSplatAsset"), "set_splat_asset", "get_splat_asset");
-
-    ClassDB::bind_method(D_METHOD("set_auto_load", "enabled"), &GaussianSplatNode3D::set_auto_load);
-    ClassDB::bind_method(D_METHOD("is_auto_load_enabled"), &GaussianSplatNode3D::is_auto_load_enabled);
-    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "auto_load"), "set_auto_load", "is_auto_load_enabled");
 
     ClassDB::bind_method(D_METHOD("reload_asset"), &GaussianSplatNode3D::reload_asset);
     ClassDB::bind_method(D_METHOD("is_asset_loading"), &GaussianSplatNode3D::is_asset_loading);
@@ -367,9 +359,6 @@ void GaussianSplatNode3D::_notification_enter_tree() {
         set_update_mode(update_mode);
     }
 
-    if (auto_load && !ply_file_path.is_empty() && splat_asset.is_null()) {
-        _load_asset();
-    }
     _update_bounds();
     _update_visibility();
     Viewport *initial_viewport = Engine::get_singleton()->is_editor_hint() ? _find_editor_scene_viewport() : get_viewport();
@@ -442,15 +431,6 @@ void GaussianSplatNode3D::_notification_process() {
     }
 }
 
-#ifdef TOOLS_ENABLED
-void GaussianSplatNode3D::_notification_editor_post_save() {
-    // Restore editor state after the scene is saved and resources are reloaded.
-    if (!ply_file_path.is_empty() && splat_asset.is_null()) {
-        _load_asset();
-    }
-}
-#endif
-
 void GaussianSplatNode3D::_notification(int p_what) {
     switch (p_what) {
         case NOTIFICATION_ENTER_TREE: {
@@ -491,15 +471,6 @@ void GaussianSplatNode3D::_notification(int p_what) {
             _notification_process();
         } break;
 
-#ifdef TOOLS_ENABLED
-        case NOTIFICATION_EDITOR_PRE_SAVE: {
-            // Store editor state before saving
-        } break;
-
-        case NOTIFICATION_EDITOR_POST_SAVE: {
-            _notification_editor_post_save();
-        } break;
-#endif
     }
 }
 
@@ -634,21 +605,6 @@ void GaussianSplatNode3D::_get_property_list(List<PropertyInfo> *p_list) const {
     }
 }
 
-void GaussianSplatNode3D::set_ply_file_path(const String &p_path) {
-    if (ply_file_path == p_path) {
-        return;
-    }
-
-    ply_file_path = p_path;
-
-    if (auto_load && is_inside_tree()) {
-        _load_asset();
-    }
-
-    notify_property_list_changed();
-    update_configuration_warnings();
-}
-
 void GaussianSplatNode3D::set_splat_asset(const Ref<GaussianSplatAsset> &p_asset) {
     if (splat_asset == p_asset) {
         return;
@@ -670,14 +626,6 @@ void GaussianSplatNode3D::set_splat_asset(const Ref<GaussianSplatAsset> &p_asset
 
     notify_property_list_changed();
     update_configuration_warnings();
-}
-
-void GaussianSplatNode3D::set_auto_load(bool p_enabled) {
-    auto_load = p_enabled;
-
-    if (auto_load && is_inside_tree() && !ply_file_path.is_empty() && splat_asset.is_null()) {
-        _load_asset();
-    }
 }
 
 void GaussianSplatNode3D::reload_asset() {
@@ -791,7 +739,6 @@ void GaussianSplatNode3D::_reset_manual_splat_state() {
     }
     splat_asset.unref();
     asset_loading = false;
-    ply_file_path = String();
 }
 
 void GaussianSplatNode3D::_ensure_renderer_data_for_splats(int splat_count, const PackedVector3Array &p_positions) {
@@ -1647,22 +1594,8 @@ void GaussianSplatNode3D::force_update() {
 PackedStringArray GaussianSplatNode3D::get_configuration_warnings() const {
     PackedStringArray warnings = Node3D::get_configuration_warnings();
 
-    if (ply_file_path.is_empty() && splat_asset.is_null() && renderer_data.is_null() && runtime_asset.is_null()) {
-        warnings.push_back("No Gaussian splat file or asset assigned. Set a file path (.ply or .spz) or assign a GaussianSplatAsset.");
-    }
-
-    String asset_source_path;
-    if (_has_inconsistent_dual_source_configuration(&asset_source_path)) {
-        if (asset_source_path.is_empty()) {
-            warnings.push_back("Both splat_asset and ply_file_path are set, but the asset does not record a source path. Clear one property to remove editor ambiguity.");
-        } else {
-            warnings.push_back(vformat("Both splat_asset and ply_file_path are set to different sources. splat_asset source: %s, ply_file_path: %s. Clear one property to remove editor ambiguity.",
-                    asset_source_path, ply_file_path));
-        }
-    }
-
-    if (!ply_file_path.is_empty() && !FileAccess::exists(ply_file_path)) {
-        warnings.push_back(vformat("Gaussian splat file not found: %s", ply_file_path));
+    if (splat_asset.is_null() && renderer_data.is_null() && runtime_asset.is_null()) {
+        warnings.push_back("No Gaussian splat asset or runtime data assigned. Assign a GaussianSplatAsset or call set_splat_data().");
     }
 
     if (max_render_distance <= 0.0f) {
@@ -1702,22 +1635,6 @@ PackedStringArray GaussianSplatNode3D::get_configuration_warnings() const {
     return warnings;
 }
 
-bool GaussianSplatNode3D::_has_inconsistent_dual_source_configuration(String *r_asset_source_path) const {
-    const String asset_source_path = GaussianSplatSourcePath::get_asset_source_path(splat_asset);
-    if (r_asset_source_path) {
-        *r_asset_source_path = asset_source_path;
-    }
-
-    if (splat_asset.is_null() || ply_file_path.is_empty()) {
-        return false;
-    }
-
-    if (asset_source_path.is_empty()) {
-        return true;
-    }
-    return asset_source_path != ply_file_path;
-}
-
 String GaussianSplatNode3D::get_asset_origin_label() const {
     if (splat_asset.is_valid()) {
         PackedStringArray details;
@@ -1732,23 +1649,11 @@ String GaussianSplatNode3D::get_asset_origin_label() const {
             details.push_back("embedded resource");
         }
 
-        if (!ply_file_path.is_empty()) {
-            if (!asset_source_path.is_empty() && asset_source_path == ply_file_path) {
-                details.push_back("ply_file_path also set");
-            } else {
-                details.push_back(vformat("ply_file_path: %s", ply_file_path));
-            }
-        }
-
         String label = "Assigned GaussianSplatAsset";
         if (!details.is_empty()) {
             label += " (" + String("; ").join(details) + ")";
         }
         return label;
-    }
-
-    if (!ply_file_path.is_empty()) {
-        return vformat("Direct file path (%s)", ply_file_path);
     }
 
     if (renderer_data.is_valid() || runtime_asset.is_valid()) {
@@ -1759,11 +1664,72 @@ String GaussianSplatNode3D::get_asset_origin_label() const {
 }
 
 void GaussianSplatNode3D::_load_asset() {
-    if (_is_frame_log_enabled()) {
-        GS_LOG_RENDERER_DEBUG(vformat("[NODE] _load_asset called, ply_file_path=%s auto_load=%s",
-                ply_file_path, auto_load ? "true" : "false"));
+    if (splat_asset.is_null()) {
+        emit_signal("asset_loading_failed", "No GaussianSplatAsset assigned.");
+        return;
     }
-    asset_helper.load_asset();
+
+    const String asset_source_path = GaussianSplatSourcePath::get_asset_source_path(splat_asset);
+    const String asset_resource_path = splat_asset->get_path();
+
+    if (_is_frame_log_enabled()) {
+        GS_LOG_RENDERER_DEBUG(vformat("[NODE] _load_asset called, source=%s resource=%s",
+                asset_source_path, asset_resource_path));
+    }
+
+    asset_loading = true;
+
+    Ref<GaussianSplatAsset> reloaded_asset;
+    String load_error_message;
+
+    if (!asset_resource_path.is_empty()) {
+        // Use the Error* overload because CACHE_MODE_REPLACE's disk-read
+        // failure path returns the previously cached resource (non-null)
+        // with a non-OK error code (core/io/resource_loader.cpp ~471-484).
+        // Without inspecting r_load_error a corrupt/missing .gaussiansplat
+        // would silently look like a successful reload of stale cached data
+        // even when splat_count > 0.
+        Error r_load_error = OK;
+        reloaded_asset = ResourceLoader::load(asset_resource_path, "GaussianSplatAsset",
+                ResourceFormatLoader::CACHE_MODE_REPLACE, &r_load_error);
+        // Three failure cases:
+        //   1. Disk read failure under CACHE_MODE_REPLACE returns the
+        //      previously cached resource with r_load_error != OK.
+        //   2. Null return — generic load failure.
+        //   3. Successfully-parsed but empty asset (splat_count == 0) for
+        //      stale or partially-imported resources.
+        // Treat all as reload failure so the asset_source_path fallback
+        // below can re-import from .ply/.spz instead of silently swapping
+        // the node payload to empty/stale data and emitting `asset_loaded`.
+        if (r_load_error != OK || reloaded_asset.is_null() || reloaded_asset->get_splat_count() == 0) {
+            load_error_message = vformat("Failed to reload GaussianSplatAsset resource: %s (Error %d)",
+                    asset_resource_path, (int)r_load_error);
+            reloaded_asset.unref();
+        }
+    }
+
+    if (reloaded_asset.is_null() && !asset_source_path.is_empty()) {
+        reloaded_asset.instantiate();
+        const Error load_error = reloaded_asset->load_from_file(asset_source_path);
+        if (load_error != OK || reloaded_asset->get_splat_count() == 0) {
+            load_error_message = vformat("Failed to reload GaussianSplatAsset source: %s (Error %d)",
+                    asset_source_path, (int)load_error);
+            reloaded_asset.unref();
+        }
+    }
+
+    if (reloaded_asset.is_null() && asset_resource_path.is_empty() && asset_source_path.is_empty()) {
+        load_error_message = "Assigned GaussianSplatAsset has no resource path or recorded source path to reload.";
+    }
+
+    if (reloaded_asset.is_valid()) {
+        set_splat_asset(reloaded_asset);
+        emit_signal("asset_loaded");
+    } else {
+        emit_signal("asset_loading_failed", load_error_message);
+    }
+
+    asset_loading = false;
 }
 
 void GaussianSplatNode3D::_update_asset() {
@@ -2319,12 +2285,12 @@ void GaussianSplatNode3D::_register_instance_in_director() {
     if (!director) {
         return;
     }
-    // Direct single-asset nodes request the resident backend. The streaming
-    // backend is opt-in via GaussianSplatWorld3D (which publishes its own
-    // streaming hint). Without this, a direct-node-only scene with default
-    // project settings (route_policy=STREAMING) would fall into the streaming
-    // branch and rely on an unintended resident-fallback detour that emits a
-    // WARN_PRINT_ONCE on every cold start.
+    // Direct single-asset nodes are resident-only by contract. The streaming
+    // backend is opt-in via GaussianSplatWorld3D, which is the only surface
+    // that honors `rendering/gaussian_splatting/streaming/route_policy` when
+    // publishing its WorldSubmission residency hint. Direct-node instances
+    // always pin SUBMISSION_RESIDENCY_HINT_RESIDENT; route_policy is
+    // deliberately ignored here to keep backend selection world-scoped.
     director->register_instance(get_instance_id(), asset, get_global_transform(),
             opacity, lod_bias, _get_instance_flags(), cast_shadow,
             _get_instance_wind_intensity(), _get_instance_wind_mode(),
@@ -2414,7 +2380,6 @@ void GaussianSplatNode3D::_register_shared_renderer() {
         return;
     }
     _register_instance_in_director();
-
 }
 
 void GaussianSplatNode3D::_unregister_shared_renderer() {
@@ -2615,13 +2580,9 @@ void GaussianSplatNode3D::_drop_data_fw(const Point2 &p_point, const Variant &p_
             if (dropped_asset.is_null()) {
                 dropped_asset.instantiate();
                 if (dropped_asset->load_from_file(file_path) != OK) {
-                    set_ply_file_path(file_path);
+                    ERR_PRINT(vformat("Failed to load dropped Gaussian splat asset: %s", file_path));
                     return;
                 }
-            }
-
-            if (!ply_file_path.is_empty()) {
-                set_ply_file_path(String());
             }
             set_splat_asset(dropped_asset);
         }

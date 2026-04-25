@@ -1548,46 +1548,9 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 		instance_pipeline_instance_cache = selection.get_instances();
 		consume_visible_lod_selection_for_residency(selection, streaming_system, trace_enabled);
 	}
-	// Some supported callsites (world/static scenes, direct-data renderer tests) can
-	// render primary gaussian data without SceneDirector instances. In those cases we
-	// still need a synthetic instance entry so the instance-pipeline cull/sort/raster
-	// contracts can come up without silently falling back to the resident path.
-	if (p_backend_plan.allow_primary_fallback_instance &&
-			instance_pipeline_instance_cache.is_empty() &&
-			state_view.get_scene_state().gaussian_data.is_valid() &&
-			state_view.get_scene_state().gaussian_data->get_count() > 0) {
-		InstanceDataGPU fallback_instance = {};
-		fallback_instance.rotation[3] = 1.0f;
-		fallback_instance.inv_rotation[3] = 1.0f;
-		fallback_instance.translation_scale[3] = 1.0f;
-		fallback_instance.params[0] = 1.0f;
-		fallback_instance.params[1] = 1.0f;
-		fallback_instance.params[2] = 1.0f;
-		fallback_instance.params[3] = 0.0f;
-		fallback_instance.ids[0] = 0u;
-		fallback_instance.ids[1] = GS_INSTANCE_FLAG_ROTATION_IDENTITY |
-				GS_INSTANCE_FLAG_SCALE_IDENTITY |
-				GS_INSTANCE_FLAG_TRANSLATION_ZERO;
-		fallback_instance.lod[0] = 0;
-		fallback_instance.lod[1] = 0;
-		fallback_instance.wind_params[0] = 0.0f;
-		fallback_instance.wind_params[1] = 0.0f;
-		fallback_instance.wind_params[2] = 0.0f;
-		fallback_instance.wind_params[3] = 1.0f;
-		fallback_instance.effect_params[0] = 1.0f;
-		fallback_instance.effect_params[1] = 1.0f;
-		instance_pipeline_instance_cache.push_back(fallback_instance);
-		if (trace_enabled) {
-			GaussianSplatting::debug_trace_record_event("instance_pipeline",
-					vformat("Injected primary fallback instance for empty-instance streaming path (%s)",
-							p_backend_plan.primary_fallback_instance_reason),
-					false);
-		}
-	}
 	const uint32_t registered_assets_with_data = streaming_system->get_registered_asset_count_with_data();
 	if (!instance_pipeline_instance_cache.is_empty() &&
-			registered_assets_with_data == 0 &&
-			!p_backend_plan.allow_primary_fallback_instance) {
+			registered_assets_with_data == 0) {
 		const StreamingReadinessState readiness_state = StreamingReadinessState::REGISTRATION_PENDING;
 		ERR_PRINT("[GaussianSplatRenderer] Streaming bootstrap produced instances but no registered streaming assets with data; resetting streaming system.");
 		finalize_streaming_frame(readiness_state,
@@ -1838,6 +1801,23 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 			buffers.instance_count_buffer = resource_state_mut.instance_count_buffer;
 		}
 
+		// Propagate the persistent per-renderer instance_grading_buffer RID
+		// into the local `buffers` snapshot before it is handed to
+		// publish_instance_pipeline_contract(). Every other persistent SSBO
+		// above (splat_ref, counter, chunk_dispatch, indirect_count,
+		// instance_count) is forwarded the same way; grading was the only
+		// one whose RID lived only on `instance_pipeline_buffers` via
+		// update_instance_grading_buffer() (gaussian_splat_renderer.cpp:2720),
+		// which runs inside the `upload_changed` branch. When a contract
+		// republish landed with `upload_changed == false` — or when
+		// clear_instance_pipeline_buffers() had zeroed the pipeline buffers
+		// between a prior world teardown and the next world bind — the
+		// grading RID never made it back into instance_pipeline_buffers,
+		// tripping first_raster_violation()'s
+		// RASTER_INSTANCE_GRADING_BUFFER_MISSING check on the next readiness
+		// evaluation even though atlas/cull/sort were valid.
+		buffers.instance_grading_buffer = resource_state_mut.instance_grading_buffer;
+
 		GPUSortingPipeline *sorting_pipeline = state_view.get_subsystem_state_view().sorting_pipeline.ptr();
 		if (sorting_pipeline) {
 			// Instance pipeline may need more sort capacity than the per-instance
@@ -1910,11 +1890,10 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 						director->build_instance_grading_buffer_for_renderer(renderer, gradings,
 								renderer->is_shadow_instance_filter_enabled());
 					}
-					// Fallback: if the director produced no rows but the streaming cache has
-					// synthetic primary-fallback instances injected at line ~1541-1577, seed the
-					// rows from the renderer's legacy color_grading default so worldless /
-					// direct-data renderers keep their grading instead of being forced to
-					// neutral. Mirror the row count of instance_pipeline_instance_cache.
+					// If the instance cache is populated but the director produced no grading
+					// rows, mirror the cache length with the renderer's default grading so the
+					// downstream SSBO contract stays aligned instead of silently forcing every
+					// instance to neutral grading.
 					if (gradings.is_empty() && !instance_pipeline_instance_cache.is_empty()) {
 						const Ref<ColorGradingResource> renderer_default = renderer->get_color_grading();
 						gradings.resize(instance_pipeline_instance_cache.size());

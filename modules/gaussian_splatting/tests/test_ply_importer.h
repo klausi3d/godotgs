@@ -197,7 +197,7 @@ TEST_CASE("[GaussianSplatting][PLYLoader] Cache version mismatch forces re-parse
     DirAccess::remove_absolute(cache_path);
 }
 
-TEST_CASE("[GaussianSplatting][PLYLoader] Legacy gsplatworld cache hits migrate to gsplatcache") {
+TEST_CASE("[GaussianSplatting][PLYLoader] Legacy sibling gsplatworld caches are ignored") {
     const String ply_path = _make_ply_fixture_path("legacy_cache_migration");
 
     {
@@ -229,20 +229,20 @@ TEST_CASE("[GaussianSplatting][PLYLoader] Legacy gsplatworld cache hits migrate 
 
         PLYLoader loader;
         Error err = loader.load_file(ply_path);
-        CHECK_MESSAGE(err == OK, "PLY load through the legacy cache path should succeed");
+        CHECK_MESSAGE(err == OK, "PLY load should re-parse raw data instead of accepting the legacy cache path");
         CHECK(loader.get_splat_count() == 2);
 
         Dictionary stats = loader.get_load_statistics();
         if (stats.has("cache_hit")) {
-            CHECK_MESSAGE((bool)stats["cache_hit"], "Legacy cache fallback should still count as a cache hit");
+            CHECK_MESSAGE(!(bool)stats["cache_hit"], "Legacy sibling .gsplatworld files must not count as a cache hit");
         }
 
         CHECK_MESSAGE(FileAccess::exists(cache_path),
-                "Legacy cache hits should rewrite the migrated .gsplatcache");
-        CHECK_MESSAGE(!FileAccess::exists(legacy_cache_path),
-                "Legacy cache hits should remove the migrated .gsplatworld cache");
+                "Raw re-parse should recreate the canonical .gsplatcache");
+        CHECK_MESSAGE(FileAccess::exists(legacy_cache_path),
+                "Ignoring the legacy sibling cache must not silently delete user-authored .gsplatworld files");
     } else {
-        MESSAGE("Cache file not created (caching may be disabled); skipping legacy cache migration test");
+        MESSAGE("Cache file not created (caching may be disabled); skipping legacy sibling-cache rejection test");
     }
 
     _remove_ply_fixture(ply_path);

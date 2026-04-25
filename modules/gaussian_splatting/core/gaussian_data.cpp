@@ -21,6 +21,7 @@
 #include "core/templates/sort_array.h"
 #include "core/math/math_funcs.h"
 #include "core/templates/span.h"
+#include "core/os/thread.h"
 #include "core/os/time.h"
 #include "servers/rendering/rendering_device.h"
 #include "servers/rendering_server.h"
@@ -126,7 +127,8 @@ void GaussianData::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_animation_state_machine"), &GaussianData::get_animation_state_machine);
     ClassDB::bind_method(D_METHOD("has_animation"), &GaussianData::has_animation);
     ClassDB::bind_method(D_METHOD("update_animation", "delta"), &GaussianData::update_animation);
-    ClassDB::bind_method(D_METHOD("apply_animation_at_time", "time"), &GaussianData::apply_animation_at_time);
+    // apply_animation_at_time() was removed: see header comment. Scripted
+    // callers should sample via get_animated_position/color/opacity/scale/rotation.
     ClassDB::bind_method(D_METHOD("set_animation_enabled", "enabled"), &GaussianData::set_animation_enabled);
     ClassDB::bind_method(D_METHOD("is_animation_enabled"), &GaussianData::is_animation_enabled);
     ClassDB::bind_method(D_METHOD("set_incremental_saver", "saver"), &GaussianData::set_incremental_saver);
@@ -161,6 +163,38 @@ void GaussianData::_bind_methods() {
 void GaussianData::_on_gaussian_storage_changed() {
     RWLockWrite lock(data_rwlock);
     _on_gaussian_storage_changed_locked();
+}
+
+// Lighter invalidation than _on_gaussian_storage_changed_locked(): the gaussian
+// array still holds the same splats (only individual fields were overwritten),
+// so SH counts, runtime overlays, and brush history stay valid. Octree and
+// animation caches are the only derived state that genuinely went stale.
+void GaussianData::_invalidate_derived_caches_locked() {
+    octree.clear();
+    octree_dirty = true;
+    {
+        MutexLock anim_lock(animation_cache_mutex);
+        animation_cache_dirty = true;
+    }
+}
+
+void GaussianData::_debug_check_raw_storage_access(const char *p_method) {
+#ifdef DEV_ENABLED
+    static std::atomic<bool> warned{false};
+    if (!Thread::is_main_thread()) {
+        if (!warned.exchange(true, std::memory_order_relaxed)) {
+            WARN_PRINT(vformat(
+                    "[GaussianData] %s() was called off the main thread. "
+                    "Raw storage access must be on the render/main thread or "
+                    "hold data_rwlock; worker threads should use "
+                    "capture_chunk_snapshot() / capture_indexed_chunk_snapshot(). "
+                    "This diagnostic fires once per process in dev builds.",
+                    p_method));
+        }
+    }
+#else
+    (void)p_method;
+#endif
 }
 
 void GaussianData::_on_gaussian_storage_changed_locked() {
@@ -306,6 +340,7 @@ void GaussianData::set_gaussian_payload(const LocalVector<Gaussian> &p_gaussians
 }
 
 const Gaussian *GaussianData::get_gaussians() const {
+    _debug_check_raw_storage_access("get_gaussians");
     return gaussians.is_empty() ? nullptr : gaussians.ptr();
 }
 
@@ -534,6 +569,7 @@ void GaussianData::set_positions(const PackedVector3Array &p_positions) {
     for (uint32_t i = 0; i < gaussians.size(); i++) {
         gaussians[i].position = p_positions[i];
     }
+    _invalidate_derived_caches_locked();
     _bump_content_revision();
 }
 
@@ -543,6 +579,7 @@ void GaussianData::set_scales(const PackedVector3Array &p_scales) {
     for (uint32_t i = 0; i < gaussians.size(); i++) {
         gaussians[i].scale = p_scales[i];
     }
+    _invalidate_derived_caches_locked();
     _bump_content_revision();
 }
 
@@ -552,6 +589,7 @@ void GaussianData::set_rotations(const TypedArray<Quaternion> &p_rotations) {
     for (uint32_t i = 0; i < gaussians.size(); i++) {
         gaussians[i].rotation = p_rotations[i];
     }
+    _invalidate_derived_caches_locked();
     _bump_content_revision();
 }
 
@@ -561,6 +599,7 @@ void GaussianData::set_opacities(const PackedFloat32Array &p_opacities) {
     for (uint32_t i = 0; i < gaussians.size(); i++) {
         gaussians[i].opacity = p_opacities[i];
     }
+    _invalidate_derived_caches_locked();
     _bump_content_revision();
 }
 
@@ -602,6 +641,7 @@ void GaussianData::set_palette_ids(const PackedInt32Array &p_palette_ids) {
         Gaussian &g = gaussians[i];
         g.painterly_meta = gaussian_set_palette_id(g.painterly_meta, (uint16_t)value);
     }
+    _invalidate_derived_caches_locked();
     _bump_content_revision();
 }
 
@@ -614,6 +654,7 @@ void GaussianData::set_painterly_flags(const PackedInt32Array &p_flags) {
         Gaussian &g = gaussians[i];
         g.painterly_meta = gaussian_set_painterly_flags(g.painterly_meta, (uint16_t)value);
     }
+    _invalidate_derived_caches_locked();
     _bump_content_revision();
 }
 
@@ -810,6 +851,7 @@ void GaussianData::set_brush_axes(const PackedVector2Array &p_brush_axes) {
     for (uint32_t i = 0; i < gaussians.size(); i++) {
         gaussians[i].brush_axes = p_brush_axes[i];
     }
+    _invalidate_derived_caches_locked();
     _bump_content_revision();
 }
 
@@ -819,6 +861,7 @@ void GaussianData::set_stroke_ages(const PackedFloat32Array &p_stroke_ages) {
     for (uint32_t i = 0; i < gaussians.size(); i++) {
         gaussians[i].stroke_age = p_stroke_ages[i];
     }
+    _invalidate_derived_caches_locked();
     _bump_content_revision();
 }
 
@@ -834,6 +877,7 @@ void GaussianData::set_normals(const PackedVector3Array &p_normals) {
     for (uint32_t i = 0; i < gaussians.size(); i++) {
         gaussians[i].normal = p_normals[i];
     }
+    _invalidate_derived_caches_locked();
     _bump_content_revision();
 }
 

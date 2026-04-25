@@ -246,9 +246,11 @@ Error GaussianData::populate_from_asset(const Ref<GaussianSplatAsset> &p_asset) 
         g.painterly_meta = gaussian_pack_painterly_meta(
                 uint16_t(CLAMP(palette_ids[i], 0, 65535)),
                 uint16_t(CLAMP(brush_override_ids[i], 0, 65535)));
+        // _padding2 shrank from float[3] to float[2] when render_meta
+        // claimed the third slot; a stale `_padding2[2] = 0.0f` write here
+        // corrupted the next staged Gaussian and crashed populate_from_asset.
         g._padding2[0] = 0.0f;
         g._padding2[1] = 0.0f;
-        g._padding2[2] = 0.0f;
 
         for (uint32_t high_term = 0; high_term < staged_high_order_count; high_term++) {
             const int coeff_base = i * floats_per_splat + 3 + int(staged_first_order_count + high_term) * 3;

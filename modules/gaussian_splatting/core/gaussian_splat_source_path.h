@@ -25,13 +25,8 @@ static inline String get_asset_source_path(const Ref<GaussianSplatAsset> &p_asse
 	return String();
 }
 
-static inline String resolve_primary_source_path(const Ref<GaussianSplatAsset> &p_asset,
-		const String &p_fallback_file_path = String()) {
-	const String asset_source_path = get_asset_source_path(p_asset);
-	if (!asset_source_path.is_empty()) {
-		return asset_source_path;
-	}
-	return p_fallback_file_path;
+static inline String resolve_primary_source_path(const Ref<GaussianSplatAsset> &p_asset) {
+	return get_asset_source_path(p_asset);
 }
 
 } // namespace GaussianSplatSourcePath

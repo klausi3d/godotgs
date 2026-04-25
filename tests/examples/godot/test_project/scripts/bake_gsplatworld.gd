@@ -88,7 +88,15 @@ func _bake_from_scene(args: Dictionary) -> GaussianSplatWorld:
         return null
 
     _apply_chunk_size(container, args)
-    _ensure_container_assets(container)
+    if not _ensure_container_assets(container):
+        # _ensure_container_assets() prints per-child diagnostics. Aborting
+        # here keeps an incomplete bake (where merge_children silently drops
+        # null-asset children) from producing a half-empty .gsplatworld
+        # with a zero exit code, which would corrupt downstream content/test
+        # pipelines that trust the artifact.
+        printerr("Bake aborted: one or more GaussianSplatNode3D children are missing splat_asset.")
+        scene_root.queue_free()
+        return null
     container.merge_children()
 
     var world := container.export_world_resource()
@@ -154,21 +162,18 @@ func _find_container(scene_root: Node, container_path: String) -> GaussianSplatC
         return null
     return matches[0] as GaussianSplatContainer
 
-func _ensure_container_assets(container: GaussianSplatContainer) -> void:
+func _ensure_container_assets(container: GaussianSplatContainer) -> bool:
+    var ok := true
     var count := container.get_child_count()
     for i in range(count):
         var child := container.get_child(i)
         var splat_node := child as GaussianSplatNode3D
         if splat_node == null:
             continue
-        if splat_node.get_splat_asset() != null:
-            continue
-        var ply_path := splat_node.get_ply_file_path()
-        if ply_path.is_empty():
-            continue
-        var asset := _load_asset(ply_path)
-        if asset != null:
-            splat_node.set_splat_asset(asset)
+        if splat_node.get_splat_asset() == null:
+            printerr("GaussianSplatNode3D is missing splat_asset: %s" % splat_node.get_path())
+            ok = false
+    return ok
 
 func _load_asset(path: String) -> GaussianSplatAsset:
     var ext := path.get_extension().to_lower()

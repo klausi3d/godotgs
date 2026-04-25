@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "../core/gaussian_streaming.h"
 #include "../renderer/gpu_memory_stream.h"
 #include "../renderer/gaussian_splat_renderer.h"
 #include "../core/gaussian_data.h"
@@ -23,6 +24,27 @@
 #include <atomic>
 
 namespace TestGaussianSplatting {
+
+static Ref<::GaussianData> _create_registered_streaming_test_gaussian_data(uint32_t p_count) {
+	Ref<::GaussianData> data;
+	data.instantiate();
+
+	LocalVector<Gaussian> gaussians;
+	gaussians.resize(p_count);
+	for (uint32_t i = 0; i < p_count; i++) {
+		Gaussian &g = gaussians[i];
+		g.position = Vector3(i * 0.1f, i * 0.2f, i * 0.3f);
+		g.scale = Vector3(0.5f, 0.5f, 0.5f);
+		g.rotation = Quaternion();
+		g.opacity = 0.9f;
+		g.sh_dc = Color(1.0f, 0.5f, 0.2f, 0.9f);
+		g.normal = Vector3(0.0f, 1.0f, 0.0f);
+		g.area = 0.25f;
+	}
+
+	data->set_gaussians(gaussians);
+	return data;
+}
 
 struct ConcurrentStreamingAssertionsContext {
 	Ref<GaussianMemoryStream> stream;
@@ -450,6 +472,73 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Stage-B instance depth culling toggl
 	if (manager_owner) {
 		memdelete(manager_owner);
 	}
+}
+
+TEST_CASE("[GaussianSplatting][Streaming] Dense-id remap rejects stale mappings without aliasing to primary") {
+	Ref<GaussianStreamingSystem> system;
+	system.instantiate();
+	system->initialize_empty(nullptr);
+
+	const uint32_t asset_a = 101;
+	const uint32_t asset_b = 202;
+	const uint32_t asset_c = 303;
+	system->register_asset(asset_a, _create_registered_streaming_test_gaussian_data(1024));
+	system->register_asset(asset_b, _create_registered_streaming_test_gaussian_data(1024));
+
+	LocalVector<InstanceDataGPU> mapped_a;
+	mapped_a.resize(1);
+	mapped_a[0] = {};
+	mapped_a[0].ids[0] = asset_a;
+	CHECK(system->remap_instance_asset_ids(mapped_a, false));
+
+	const uint32_t dense_a = mapped_a[0].ids[0];
+	const uint32_t dense_a_generation = mapped_a[0].lod[1];
+	CHECK(dense_a != 0u);
+	CHECK(dense_a_generation != 0u);
+
+	system->unregister_asset(asset_a);
+	system->register_asset(asset_c, _create_registered_streaming_test_gaussian_data(1024));
+
+	LocalVector<InstanceDataGPU> mapped_c;
+	mapped_c.resize(1);
+	mapped_c[0] = {};
+	mapped_c[0].ids[0] = asset_c;
+	CHECK(system->remap_instance_asset_ids(mapped_c, false));
+
+	const uint32_t dense_c = mapped_c[0].ids[0];
+	const uint32_t dense_c_generation = mapped_c[0].lod[1];
+	CHECK(dense_c == dense_a);
+	CHECK(dense_c_generation != dense_a_generation);
+
+	LocalVector<InstanceDataGPU> stale_dense_mapping;
+	stale_dense_mapping.resize(1);
+	stale_dense_mapping[0] = {};
+	stale_dense_mapping[0].ids[0] = dense_a;
+	stale_dense_mapping[0].lod[1] = dense_a_generation;
+
+	CHECK_FALSE(system->remap_instance_asset_ids(stale_dense_mapping, false));
+	CHECK(stale_dense_mapping[0].ids[0] == dense_a);
+	CHECK(stale_dense_mapping[0].lod[1] == dense_a_generation);
+}
+
+TEST_CASE("[GaussianSplatting][Streaming] Dense-id remap rejects unknown asset ids without aliasing to primary") {
+	Ref<GaussianStreamingSystem> system;
+	system.instantiate();
+	system->initialize_empty(nullptr);
+
+	const uint32_t asset_a = 101;
+	const uint32_t missing_asset = 404;
+	system->register_asset(asset_a, _create_registered_streaming_test_gaussian_data(1024));
+
+	LocalVector<InstanceDataGPU> missing_mapping;
+	missing_mapping.resize(1);
+	missing_mapping[0] = {};
+	missing_mapping[0].ids[0] = missing_asset;
+	missing_mapping[0].lod[1] = 77u;
+
+	CHECK_FALSE(system->remap_instance_asset_ids(missing_mapping, false));
+	CHECK(missing_mapping[0].ids[0] == missing_asset);
+	CHECK(missing_mapping[0].lod[1] == 77u);
 }
 
 } // namespace TestGaussianSplatting

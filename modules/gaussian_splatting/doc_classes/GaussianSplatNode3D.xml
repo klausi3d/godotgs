@@ -4,29 +4,16 @@
 		3D scene node for displaying Gaussian splat content in a Godot scene.
 	</brief_description>
 	<description>
-		GaussianSplatNode3D is the primary scene node for integrating Gaussian Splatting into Godot projects. It handles asset-backed loading, compatibility loading from PLY and SPZ file paths, quality preset management, level-of-detail control, painterly brush-stroke effects, wind simulation, color grading, and debug visualization. The node participates in the shared scene renderer registry and supports both editor preview and runtime rendering. Prefer [member splat_asset] for new scene workflows; [member ply_file_path] remains a compatibility path.
+		GaussianSplatNode3D is the primary scene node for integrating Gaussian Splatting into Godot projects. It handles asset-backed loading, quality preset management, level-of-detail control, painterly brush-stroke effects, wind simulation, color grading, and debug visualization. The node participates in the shared scene renderer registry and supports both editor preview and runtime rendering. Use [member splat_asset] for asset-backed workflows or [method set_splat_data] for procedural/runtime data.
 	</description>
 	<tutorials>
 	</tutorials>
 	<methods>
-		<method name="set_ply_file_path">
-			<return type="void" />
-			<param index="0" name="path" type="String" />
-			<description>
-				Sets the file path for loading Gaussian splat data. Accepts both [code].ply[/code] and [code].spz[/code] formats. Triggers an asset reload if [member auto_load] is enabled. This path remains supported for compatibility, but new scene workflows should prefer [member splat_asset].
-			</description>
-		</method>
-		<method name="get_ply_file_path">
-			<return type="String" />
-			<description>
-				Returns the currently configured splat file path.
-			</description>
-		</method>
 		<method name="set_splat_asset">
 			<return type="void" />
 			<param index="0" name="asset" type="GaussianSplatAsset" />
 			<description>
-				Assigns a GaussianSplatAsset resource as the data source. When set, this takes precedence over [member ply_file_path].
+				Assigns a GaussianSplatAsset resource as the data source.
 			</description>
 		</method>
 		<method name="get_splat_asset">
@@ -35,23 +22,10 @@
 				Returns the currently assigned GaussianSplatAsset resource, or [code]null[/code] if none is set.
 			</description>
 		</method>
-		<method name="set_auto_load">
-			<return type="void" />
-			<param index="0" name="enabled" type="bool" />
-			<description>
-				Enables or disables automatic loading of the splat asset when the node enters the scene tree or when the file path changes.
-			</description>
-		</method>
-		<method name="is_auto_load_enabled">
-			<return type="bool" />
-			<description>
-				Returns [code]true[/code] if automatic asset loading is enabled.
-			</description>
-		</method>
 		<method name="reload_asset">
 			<return type="void" />
 			<description>
-				Forces a reload of the splat asset from disk. Useful after external modifications to the source file.
+				Forces a reload of the assigned [member splat_asset] from its resource path or recorded source path. Useful after external modifications to the asset or its raw source file.
 			</description>
 		</method>
 		<method name="is_asset_loading">
@@ -601,14 +575,8 @@
 		</method>
 	</methods>
 	<members>
-		<member name="ply_file_path" type="String" setter="set_ply_file_path" getter="get_ply_file_path" default="&quot;&quot;">
-			Compatibility path to a PLY or SPZ file to load. Accepts [code]*.ply[/code] and [code]*.spz[/code] file formats. Prefer [member splat_asset] for new scene and editor workflows.
-		</member>
 		<member name="splat_asset" type="GaussianSplatAsset" setter="set_splat_asset" getter="get_splat_asset">
-			The GaussianSplatAsset resource providing splat data. Takes precedence over [member ply_file_path] when set.
-		</member>
-		<member name="auto_load" type="bool" setter="set_auto_load" getter="is_auto_load_enabled" default="true">
-			When enabled, the asset is loaded automatically when the node enters the scene tree.
+			The GaussianSplatAsset resource providing splat data.
 		</member>
 		<member name="quality/preset" type="int" setter="set_quality_preset" getter="get_quality_preset" enum="GaussianSplatNode3D.QualityPreset" default="1">
 			The quality preset controlling LOD, distance, and splat count tradeoffs.

@@ -39,10 +39,11 @@ struct StaticChunk;
  * @class IRendererLifecycle
  * @brief Lifecycle and data-binding surface.
  *
- * Consumers that only need low-level setup or data binding (for example tests,
- * focused tools, editor preview helpers, or import/runtime plumbing) depend on
- * this interface alone. High-level scene workflows should prefer the
- * node/director submission paths instead of binding raw data here directly.
+ * Consumers that only need low-level setup or resident direct-data binding
+ * (for example tests, focused tools, editor preview helpers, or
+ * import/runtime plumbing) depend on this interface alone. High-level scene
+ * workflows should prefer the node/director submission paths instead of
+ * binding data here directly.
  */
 class IRendererLifecycle {
 public:
@@ -51,10 +52,11 @@ public:
 	/// Initialize GPU resources. Must be called before rendering.
 	virtual void initialize() = 0;
 
-	/// Bind raw GaussianData directly. Low-level API, not the canonical scene path.
+	/// Bind GaussianData directly through the resident direct-data path.
+	/// Low-level API, not the canonical scene path.
 	virtual Error set_gaussian_data(const Ref<GaussianData> &p_data) = 0;
 
-	/// Get the current Gaussian data.
+	/// Get the current resident direct-data binding.
 	virtual Ref<GaussianData> get_gaussian_data() const = 0;
 
 	/// Set the Gaussian asset (preferred asset-backed alternative to raw data binding).
@@ -224,16 +226,16 @@ public:
  *   - IRendererDebug     for overlays, stats, diagnostics
  *   - IRendererPipeline  for render_for_view / get_final_texture
  *
- * Direct `set_gaussian_data()` binding is the low-level raw-data path used by
- * tests, tools, editor preview, and internal runtime plumbing. Production scene
- * code usually reaches the renderer through nodes, world submissions, and the
- * scene director instead.
+ * Direct `set_gaussian_data()` binding is the low-level resident direct-data
+ * path used by tests, tools, editor preview, and internal runtime plumbing.
+ * Production scene code usually reaches the renderer through nodes, world
+ * submissions, and the scene director instead.
  *
  * ## Usage
  * @code
  * IRenderer *renderer = get_renderer();
  * renderer->initialize();
- * renderer->set_gaussian_data(my_data); // low-level raw-data binding
+ * renderer->set_gaussian_data(my_data); // low-level resident direct-data binding
  * renderer->set_camera_transform(camera_xform);
  * @endcode
  */

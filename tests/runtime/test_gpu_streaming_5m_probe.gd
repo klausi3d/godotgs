@@ -13,6 +13,9 @@ const WARMUP_FRAMES := 3
 const FIRST_VISIBLE_TIMEOUT_FRAMES := 180
 
 var renderer: GaussianSplatRenderer
+var scene_root: Node3D
+var camera: Camera3D
+var world_node: GaussianSplatWorld3D
 var failures: Array[String] = []
 
 func _init() -> void:
@@ -79,6 +82,60 @@ func _build_dataset(size: int) -> GaussianData:
     data.set_spherical_harmonics(sh_dc)
     return data
 
+func _build_world_resource(dataset: GaussianData) -> GaussianSplatWorld:
+    var world := GaussianSplatWorld.new()
+    world.set_gaussian_data(dataset)
+    world.set_bounds(dataset.get_aabb())
+    return world
+
+func _setup_world_scene(dataset: GaussianData) -> bool:
+    scene_root = Node3D.new()
+    scene_root.name = "GpuStreaming5mProbeRoot"
+    get_root().add_child(scene_root)
+
+    camera = Camera3D.new()
+    camera.name = "GpuStreaming5mProbeCamera"
+    camera.position = Vector3(0.0, 0.0, 6.0)
+    camera.look_at(Vector3.ZERO, Vector3.UP)
+    camera.make_current()
+    scene_root.add_child(camera)
+
+    world_node = GaussianSplatWorld3D.new()
+    world_node.name = "GpuStreaming5mProbeWorld"
+    scene_root.add_child(world_node)
+
+    var world := _build_world_resource(dataset)
+    world_node.set_world(world)
+    world_node.apply_world()
+    return true
+
+func _teardown_world_scene() -> void:
+    var pending := scene_root
+    if pending != null:
+        pending.queue_free()
+    scene_root = null
+    camera = null
+    world_node = null
+    renderer = null
+    if pending == null:
+        return
+    # Wait until the queued scene root has actually exited the tree and been
+    # freed before returning. GaussianSplatWorld3D releases its shared-renderer
+    # submission ownership only on NOTIFICATION_EXIT_TREE
+    # (gaussian_splat_world_3d.cpp:113), and the shared renderer is re-bound
+    # whenever a new GaussianSplatWorld3D enters the tree via
+    # `_ensure_renderer()` (line 92). Without this barrier the next probe
+    # tier's `_setup_world_scene()` would run synchronously after
+    # `queue_free()` in the same frame, and the new world would bind the
+    # same shared renderer while the old world's submission was still
+    # resident — causing cross-tier residency / sort metric bleed. Same
+    # pattern as test_gpu_streaming_stress.gd. Bound the wait so a stuck
+    # free cannot hang CI.
+    for _i in range(8):
+        if not is_instance_valid(pending):
+            break
+        await process_frame
+
 func _read_int(stats: Dictionary, keys: Array[String], default_value: int = 0) -> int:
     for key in keys:
         if stats.has(key):
@@ -121,14 +178,25 @@ func _read_optional_bool(stats: Dictionary, keys: Array[String]) -> Variant:
 
 func _run_tier(name: String, size: int) -> Dictionary:
     print("\n[Probe] Running %s (%d splats)" % [name, size])
+    var dataset := _build_dataset(size)
+    if not _setup_world_scene(dataset):
+        _record_failure("world-backed setup failed", {"tier": name, "size": size})
+        return {"name": name, "size": size, "set_error": ERR_CANT_CREATE}
+
+    for _frame in range(3):
+        await process_frame
+        if world_node != null:
+            renderer = world_node.get_renderer()
+        if renderer != null:
+            break
+
+    if renderer == null:
+        _record_failure("renderer unavailable after world apply", {"tier": name, "size": size})
+        await _teardown_world_scene()
+        return {"name": name, "size": size, "set_error": ERR_UNAVAILABLE}
+
     if renderer.get_max_splats() < size:
         renderer.set_max_splats(size)
-
-    var dataset := _build_dataset(size)
-    var set_err := renderer.set_gaussian_data(dataset)
-    if set_err != OK:
-        _record_failure("set_gaussian_data failed", {"tier": name, "size": size, "err": set_err})
-        return {"name": name, "size": size, "set_error": set_err}
 
     for i in range(WARMUP_FRAMES):
         await process_frame
@@ -298,7 +366,7 @@ func _run_tier(name: String, size: int) -> Dictionary:
     var upload_stalls := _read_int(stream_state, ["upload_stall_frames"])
     var sync_fallback_stalls := _read_int(stream_state, ["sync_fallback_stall_frames"])
 
-    return {
+    var result := {
         "name": name,
         "size": size,
         "frame_avg_ms": frame_avg_ms,
@@ -338,6 +406,8 @@ func _run_tier(name: String, size: int) -> Dictionary:
         "last_total_splats": _read_int(last_stats, ["total_splats", "uploaded_splat_count", "buffer_manager_count"]),
         "last_sort_avg_ms": _read_float(last_stats, ["gpu_sorter_avg_sort_ms", "gpu_sorter_avg_sort_time_ms"])
     }
+    await _teardown_world_scene()
+    return result
 
 func _run() -> void:
     renderer = GaussianSplatRenderer.new()

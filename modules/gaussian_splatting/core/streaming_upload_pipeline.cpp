@@ -561,8 +561,52 @@ bool StreamingUploadPipeline::queue_chunk_load(GaussianStreamingSystem &system, 
         return false;
     }
 
-    if (!system._ensure_atlas_slot_available(asset_id)) {
-        return false;
+    if (!system.atlas_allocator.has_free_slots()) {
+        ResidencyBudgetController::AdmissionPolicy admission_policy;
+        admission_policy.can_replace_without_eviction = false;
+        admission_policy.enforce_vram_regulator_gate = system.budget.vram_regulator.is_valid();
+        admission_policy.vram_regulator_allows_load =
+                !admission_policy.enforce_vram_regulator_gate ||
+                system.budget.vram_regulator->can_load_more_chunks(system.get_loaded_chunks());
+        admission_policy.atlas_slots_full = true;
+
+        const uint32_t max_evictions_per_frame = system.eviction_controller.get_max_evictions_per_frame();
+        const uint32_t chunks_evicted_this_frame = system.eviction_controller.get_chunks_evicted_this_frame();
+        const uint32_t evictions_left = max_evictions_per_frame == 0
+                ? UINT32_MAX
+                : (chunks_evicted_this_frame >= max_evictions_per_frame
+                        ? 0
+                        : max_evictions_per_frame - chunks_evicted_this_frame);
+        const ResidencyBudgetController::AdmissionFrameBudget admission_budget =
+                ResidencyBudgetController::make_frame_budget(
+                        system.get_effective_max_chunks(),
+                        evictions_left,
+                        false);
+        const ResidencyBudgetController::AdmissionGate admission_gate =
+                ResidencyBudgetController::compute_admission_gate(
+                        system.get_loaded_chunks(),
+                        admission_budget,
+                        admission_policy);
+        if (admission_gate.decision != ResidencyBudgetController::AdmissionDecision::EvictThenLoad) {
+            return false;
+        }
+
+        bool visible_fallback_attempted = false;
+        const GaussianStreamingSystem::EvictionResult result =
+                system._evict_for_admission_gate(admission_gate, visible_fallback_attempted);
+        if (visible_fallback_attempted) {
+            system.diagnostics.visible_evict_fallback_attempts++;
+            if (result == GaussianStreamingSystem::EvictionResult::EvictedNonVisible ||
+                    result == GaussianStreamingSystem::EvictionResult::EvictedVisible) {
+                system.diagnostics.visible_evict_fallback_successes++;
+            }
+        }
+        if (result == GaussianStreamingSystem::EvictionResult::EvictedNonVisible ||
+                result == GaussianStreamingSystem::EvictionResult::EvictedVisible) {
+            system.eviction_controller.record_eviction_result(result);
+        } else {
+            return false;
+        }
     }
 
     const uint64_t chunk_key = system._make_chunk_key(asset_id, chunk_idx);

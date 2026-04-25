@@ -210,13 +210,6 @@
 				Advances the animation by [param delta] seconds and updates the internal animation cache. Call this each frame for smooth playback.
 			</description>
 		</method>
-		<method name="apply_animation_at_time">
-			<return type="void" />
-			<param index="0" name="time" type="float" />
-			<description>
-				Seeks the animation to an absolute [param time] in seconds and updates all animated properties. Useful for scrubbing or previewing specific frames.
-			</description>
-		</method>
 		<method name="set_animation_enabled">
 			<return type="void" />
 			<param index="0" name="enabled" type="bool" />

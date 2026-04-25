@@ -206,7 +206,7 @@ func _load_splat_file(file_path: String, position: Vector3):
     if splat_node == null:
         return
 
-    splat_node.ply_file_path = file_path
+    splat_node.set("splat_asset", _load_asset(file_path))
     splat_node.quality_preset = current_quality
     splat_node.position = position
 
@@ -218,6 +218,15 @@ func _clear_all_splats():
     for node in active_splat_nodes:
         node.queue_free()
     active_splat_nodes.clear()
+
+func _load_asset(path: String) -> GaussianSplatAsset:
+    var asset := GaussianSplatAsset.new()
+    var err := asset.load_from_file(path)
+    if err != OK:
+        printerr("Failed to load splat asset: %s (err=%d)" % [path, err])
+        return null
+    asset.set_source_path(path)
+    return asset
 
 ## UI callback to switch to low quality preset.
 func _on_quality_low():

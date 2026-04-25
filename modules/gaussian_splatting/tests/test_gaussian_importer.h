@@ -1630,7 +1630,7 @@ TEST_CASE("[GaussianSplatting][Importer] gsplatworld importer preserves payload 
     Ref<ResourceImporterGSplatWorld> importer;
     importer.instantiate();
     CHECK(importer->get_save_extension() == "gsplatworld");
-    CHECK(importer->get_format_version() == 1);
+    CHECK(importer->get_format_version() == 2);
 
     HashMap<StringName, Variant> options;
     Error import_err = importer->import(ResourceUID::INVALID_ID, source_path, save_base_path, options,
@@ -2286,6 +2286,22 @@ TEST_CASE("[GaussianSplatting][Editor] Hot reload fans one watched source path o
     memdelete(node_c);
     memdelete(node_b);
 	memdelete(node_a);
+	memdelete(plugin);
+}
+
+TEST_CASE("[GaussianSplatting][Editor] Plugin does not handle standalone renderer selections") {
+	GaussianEditorPlugin *plugin = memnew(GaussianEditorPlugin);
+	GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
+	Ref<GaussianSplatAsset> asset;
+	asset.instantiate();
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate();
+
+	CHECK(plugin->handles(node));
+	CHECK(plugin->handles(asset.ptr()));
+	CHECK_FALSE(plugin->handles(renderer.ptr()));
+
+	memdelete(node);
 	memdelete(plugin);
 }
 

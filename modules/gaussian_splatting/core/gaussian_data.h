@@ -349,6 +349,11 @@ private:
     void _subdivide_octree_node(uint32_t node_idx, int max_depth, uint32_t min_gaussians = 32);
     void _on_gaussian_storage_changed();
     void _on_gaussian_storage_changed_locked();
+    // Lighter invalidation for per-property bulk mutators (positions, scales,
+    // rotations, etc.): the underlying gaussian array is reused in place, so
+    // SH layout and runtime overlays are preserved, but octree/animation
+    // caches derived from splat state must be flushed.
+    void _invalidate_derived_caches_locked();
     void _bump_content_revision() { content_revision.fetch_add(1, std::memory_order_relaxed); }
     void _set_spherical_harmonics_locked(int p_index, const float *p_coeffs, int p_count);
     bool _clear_runtime_modifications_locked();
@@ -424,6 +429,12 @@ public:
     /**
      * @brief Returns a pointer to the raw Gaussian array.
      * @return Pointer to contiguous Gaussian storage, or nullptr if empty.
+     *
+     * @warning Raw accessor. Caller must be on the render/main thread OR hold a
+     *          read lock. Async worker threads MUST use
+     *          capture_chunk_snapshot() / capture_indexed_chunk_snapshot()
+     *          instead. This method trips a once-per-process dev-build
+     *          diagnostic if obvious misuse is detected.
      */
     const Gaussian *get_gaussians() const;
 
@@ -575,8 +586,27 @@ public:
     void gather_frustum_indices(const Vector<Plane> &p_planes, LocalVector<uint32_t> &r_indices) const;
 
     /** @brief Direct access to internal storage. Render-thread only.
-     *  Worker threads must use capture_chunk_snapshot() instead. */
-    const LocalVector<Gaussian> &get_gaussian_storage() const { return gaussians; }
+     *  Worker threads must use capture_chunk_snapshot() instead.
+     *
+     *  In dev builds this emits a once-per-process diagnostic if it is
+     *  called from a context that looks like obvious misuse (off main
+     *  thread without an explicit render-thread opt-in). This is a
+     *  tripwire, not a hard block — legitimate render-thread consumers
+     *  remain functional. */
+    const LocalVector<Gaussian> &get_gaussian_storage() const {
+        _debug_check_raw_storage_access("get_gaussian_storage");
+        return gaussians;
+    }
+
+    /**
+     * @brief Debug-only diagnostic for raw storage accessors.
+     *
+     * Fires once per process (in DEV_ENABLED builds) when the caller is
+     * off-main-thread. Intended to surface long-tail worker-thread readers
+     * that should be migrated to capture_chunk_snapshot(). In release
+     * builds this compiles to a no-op.
+     */
+    static void _debug_check_raw_storage_access(const char *p_method);
 
     /**
      * @brief Captures a coherent chunk snapshot for async pack jobs.
@@ -804,11 +834,11 @@ public:
      */
     void update_animation(float p_delta);
 
-    /**
-     * @brief Applies animation state at a specific time.
-     * @param p_time Absolute animation time in seconds.
-     */
-    void apply_animation_at_time(float p_time);
+    // apply_animation_at_time() was removed: it destructively wrote sampled
+    // animation values back into the base Gaussian payload, which collapsed
+    // the distinction between base state and animated view. Animation is now
+    // strictly a non-destructive view; use the get_animated_*() accessors to
+    // sample a pose at a given time without mutating the splat data.
 
     /** @brief Enables or disables animation playback. */
     void set_animation_enabled(bool p_enabled) { animation_enabled = p_enabled; }

@@ -556,6 +556,57 @@ TEST_CASE("[GaussianSplatting][World][SceneTree] World node forwards desired ove
 	}
 }
 
+TEST_CASE("[GaussianSplatting][World][SceneTree] strict identity transform rejects non-identity world submissions") {
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	const bool owns_director = (director == nullptr);
+	if (!director) {
+		director = memnew(GaussianSplatSceneDirector);
+	}
+	REQUIRE(director != nullptr);
+
+	ProjectSettings *project_settings = ProjectSettings::get_singleton();
+	REQUIRE(project_settings != nullptr);
+	ProjectSettingGuard strict_identity_guard(project_settings,
+			"rendering/gaussian_splatting/world/strict_identity_transform");
+	project_settings->set_setting("rendering/gaussian_splatting/world/strict_identity_transform", true);
+
+	Ref<GaussianSplatWorld> world_resource;
+	world_resource.instantiate();
+	world_resource->set_gaussian_data(stage1a_make_submission_test_data(2, 3.0f));
+
+	GaussianSplatWorld3D *node = memnew(GaussianSplatWorld3D);
+	REQUIRE(node != nullptr);
+	node->set_auto_apply_on_ready(false);
+	node->set_world(world_resource);
+	node->set_transform(Transform3D(Basis(), Vector3(1.0f, 0.0f, 0.0f)));
+
+	root->add_child(node);
+	tree->process(0.0);
+
+	GaussianSplatSceneDirector::WorldSubmission submission;
+	node->apply_world();
+	CHECK_FALSE(director->get_world_submission(node->get_instance_id(), &submission));
+
+	node->set_transform(Transform3D());
+	node->apply_world();
+	CHECK(director->get_world_submission(node->get_instance_id(), &submission));
+
+	node->clear_world();
+	root->remove_child(node);
+	memdelete(node);
+	tree->process(0.0);
+
+	if (owns_director) {
+		memdelete(director);
+	}
+}
+
 TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Zero-splat submissions do not surface residency authority") {
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
 	const bool owns_director = (director == nullptr);
@@ -631,7 +682,7 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Zero-splat submis
 	}
 }
 
-TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Staged world submissions do not synthesize a primary fallback instance") {
+TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Staged world submissions mark streaming path ownership in the backend plan") {
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
 	const bool owns_director = (director == nullptr);
 	if (!director) {
@@ -663,7 +714,7 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Staged world subm
 
 	Ref<GaussianSplatRenderer> renderer = director->get_shared_renderer(world.ptr());
 	if (!renderer.is_valid()) {
-		MESSAGE("Skipping staged world fallback test - shared renderer unavailable");
+		MESSAGE("Skipping staged world backend-plan test - shared renderer unavailable");
 		root->remove_child(owner);
 		memdelete(owner);
 		tree->process(0.0);
@@ -692,7 +743,7 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Staged world subm
 
 	const GaussianSplatRenderer::FrameBackendPlan backend_plan = renderer->build_frame_backend_plan(false);
 	CHECK(backend_plan.streaming_requested);
-	CHECK_FALSE(backend_plan.allow_primary_fallback_instance);
+	CHECK(backend_plan.has_active_world_submission);
 
 	director->release_world_submission(owner->get_instance_id());
 
@@ -790,7 +841,7 @@ TEST_CASE("[GaussianSplatting][World][SceneTree][RequiresGPU] World submission r
 	tree->process(0.0);
 }
 
-TEST_CASE("[GaussianSplatting][World][SceneTree][RequiresGPU] Resident rejection preserves chained streaming fallback diagnostics") {
+TEST_CASE("[GaussianSplatting][World][SceneTree][RequiresGPU] Resident rejection preserves resident diagnostics and skips streaming pivot") {
 	RenderingServer *rs = RenderingServer::get_singleton();
 	if (rs == nullptr) {
 		MESSAGE("Skipping test - Rendering server unavailable");
@@ -858,19 +909,24 @@ TEST_CASE("[GaussianSplatting][World][SceneTree][RequiresGPU] Resident rejection
 
 	renderer->render_scene_instance(&render_data);
 
-	CHECK(renderer->test_has_current_streaming_system());
+	CHECK_FALSE(renderer->test_has_current_streaming_system());
+	CHECK_FALSE(renderer->has_instance_pipeline_buffers());
+	CHECK_FALSE(renderer->has_instance_asset_remap());
+	CHECK_FALSE(renderer->is_instance_contract_ready());
+	CHECK_FALSE(renderer->has_rendered_content());
 	const Dictionary stats = renderer->get_render_stats();
-	CHECK(stats.get("route_uid", String()) == String("INSTANCE.STREAMING"));
+	const String route_uid = stats.get("route_uid", String());
+	CHECK(route_uid.begins_with(String(RenderRouteUID::COMMON_SKIP_RESIDENT_NOT_FEASIBLE)));
 	CHECK(stats.get("requested_route_policy", String()) == String("streaming"));
-	CHECK(stats.get("instance_backend_policy", String()) == String("streaming"));
+	CHECK(stats.get("instance_backend_policy", String()) == String("resident"));
 	CHECK(stats.get("backend_selection_reason", String()) ==
-			String("submission_hint_resident:world_submission_not_feasible:resident_quantization_unsupported -> streaming_contract_published"));
+			String("submission_hint_resident:world_submission_not_feasible:resident_quantization_unsupported"));
+	CHECK(stats.get("cull_route_uid", String()) == route_uid);
+	CHECK(stats.get("cull_route_reason", String()) == String("resident_not_feasible_resident_quantization_unsupported"));
 	CHECK(String(stats.get("backend_selection_reason_label", String())).find(
 			"Resident was requested by the world submission") != -1);
 	CHECK(String(stats.get("backend_selection_reason_label", String())).find(
 			"quantized resident data cannot publish the resident instance contract") != -1);
-	CHECK(String(stats.get("backend_selection_reason_label", String())).find(
-			"published the streaming instance contract") != -1);
 
 	root->remove_child(node);
 	memdelete(node);

@@ -174,21 +174,6 @@ static bool _renderer_requests_conservative_full_fidelity_runtime(const Gaussian
     return true;
 }
 
-static void _apply_resident_rejection_to_backend_plan(GaussianSplatRenderer::FrameBackendPlan &r_plan,
-        const String &p_resident_attempt_reason) {
-    const String resident_rejection_reason =
-            vformat("%s_not_feasible:%s", r_plan.resident_backend_reason, p_resident_attempt_reason);
-    r_plan.prefer_resident_backend = false;
-    r_plan.should_attempt_streaming_bootstrap = r_plan.streaming_requested && !r_plan.streaming_ready;
-    r_plan.resident_rejection_reason = resident_rejection_reason;
-    r_plan.streaming_backend_reason = resident_rejection_reason;
-    r_plan.streaming_contract_ready_reason = vformat("%s -> streaming_contract_published", resident_rejection_reason);
-    r_plan.streaming_not_ready_fallback_reason = vformat("%s -> streaming_frame_not_ready_fallback",
-            resident_rejection_reason);
-    r_plan.streaming_unavailable_fallback_reason = vformat("%s -> streaming_unavailable_fallback",
-            resident_rejection_reason);
-}
-
 // Convert SH band level (0-3) to coefficient count limit
 static uint8_t _sh_band_to_coeff_limit(int p_band) {
     // SH bands: 0 -> 1 coeff (DC only), 1 -> 4, 2 -> 9, 3 -> 16
@@ -345,6 +330,15 @@ static void _trace_render_path(bool p_enabled, uint64_t p_frame, bool p_streamin
 
 static String _streaming_not_ready_route_uid(const char *p_state_token) {
     return String("COMMON.SKIP.STREAMING_NOT_READY.") + String(p_state_token ? p_state_token : "UNKNOWN");
+}
+
+static String _resident_not_feasible_route_uid(const String &p_reason) {
+    String suffix = p_reason.strip_edges();
+    if (suffix.is_empty()) {
+        suffix = "unknown";
+    }
+    suffix = suffix.to_upper().replace(" ", "_").replace(":", "_");
+    return String("COMMON.SKIP.RESIDENT_NOT_FEASIBLE.") + suffix;
 }
 
 static bool _is_typed_streaming_not_ready_route(const String &p_route_uid) {
@@ -1391,16 +1385,14 @@ GaussianSplatRenderer::FrameBackendPlan GaussianSplatRenderer::build_frame_backe
     plan.streaming_ready = p_streaming_ready;
     plan.should_attempt_streaming_bootstrap =
             plan.streaming_requested && !plan.prefer_resident_backend && !plan.streaming_ready;
-    // Allow the streaming path to inject a synthetic identity instance when
-    // the SceneDirector has no instances and no world submission is active.
     // World submissions (gsplatworld) own the streaming cull/sort/raster
-    // contract directly, so a synthetic primary fallback would re-route the
-    // staged-world data back through the resident-style primary path and
-    // contradict the active submission.  Suppressing the fallback here keeps
-    // staged worlds on the streamed-world path; the contract-active flag
-    // comes from apply_world_submission_contract(), and the director-side
-    // probe catches the case where the contract has not yet been observed
-    // by this renderer but a submission is already published.
+    // contract directly. Carry that ownership bit in the backend plan so
+    // the streaming path can reject empty-instance bootstrap instead of
+    // inventing a synthetic primary-data instance on the fly. The
+    // contract-active flag comes from apply_world_submission_contract(),
+    // and the director-side probe catches the case where the contract has
+    // not yet been observed by this renderer but a submission is already
+    // published.
     const bool world_submission_active = world_submission_contract_active;
     bool director_has_submission = false;
     if (!world_submission_active) {
@@ -1410,19 +1402,27 @@ GaussianSplatRenderer::FrameBackendPlan GaussianSplatRenderer::build_frame_backe
     }
     const bool any_world_submission = world_submission_active || director_has_submission;
     plan.has_active_world_submission = any_world_submission;
-    plan.allow_primary_fallback_instance =
-            !any_world_submission &&
-            get_scene_state().gaussian_data.is_valid() &&
-            get_scene_state().gaussian_data->get_count() > 0;
-    if (any_world_submission) {
-        plan.primary_fallback_instance_reason = String("world_submission_owns_streaming_path");
-    } else if (plan.allow_primary_fallback_instance) {
-        plan.primary_fallback_instance_reason = String("primary_gaussian_data_available");
-    } else {
-        plan.primary_fallback_instance_reason = String("primary_gaussian_data_unavailable");
-    }
     plan.resident_backend_reason = plan.runtime_policy.backend_preference_reason;
     plan.streaming_backend_reason = plan.runtime_policy.backend_preference_reason;
+
+    // Direct-data callers (`set_gaussian_data()` on a standalone renderer
+    // without any SceneDirector / world submission, e.g. tests, tools,
+    // editor preview) have no instance to populate
+    // `instance_pipeline_instance_cache`. Under the default streaming route
+    // policy the streaming backend would then run with an empty instance
+    // cache and emit zero splats — the fallback bootstrap instance that
+    // used to cover this case was removed when the synthetic-instance shim
+    // was pruned (commit de71685b08). Force resident here when we observe
+    // direct data on the renderer with no submission, so callers don't
+    // need to manually pin `route_policy=resident`.
+    if (!plan.prefer_resident_backend && !any_world_submission) {
+        const Ref<::GaussianData> &direct_data = get_scene_state().gaussian_data;
+        if (direct_data.is_valid() && direct_data->get_count() > 0) {
+            plan.prefer_resident_backend = true;
+            plan.resident_backend_reason = "direct_data_no_submission";
+            plan.should_attempt_streaming_bootstrap = false;
+        }
+    }
     return plan;
 }
 
@@ -2016,8 +2016,7 @@ bool GaussianSplatRenderer::_try_render_resident_frame(RenderDataRD *p_render_da
     }
 
     String resident_contract_reason = "resident_contract_published";
-    const bool resident_contract_ready = _publish_resident_instance_pipeline_contract(has_gaussian_dataset,
-            &resident_contract_reason);
+    const bool resident_contract_ready = _publish_resident_direct_data_contract(&resident_contract_reason);
     _set_instance_backend_diagnostics(InstanceBackendPolicy::RESIDENT,
             resident_contract_ready ? String("resident_contract_published") : resident_contract_reason,
             resident_contract_ready,
@@ -2225,18 +2224,21 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
             return;
         }
 
-        // Preserve the rejected resident reason when we pivot into the streaming backend so
-        // stats/HUD surfaces can explain both "why resident was rejected" and "what won next".
-        _apply_resident_rejection_to_backend_plan(backend_plan, resident_attempt_reason);
-        _set_instance_backend_diagnostics(InstanceBackendPolicy::STREAMING,
-                backend_plan.streaming_backend_reason,
+        const String resident_rejection_reason =
+                vformat("%s_not_feasible:%s", backend_plan.resident_backend_reason, resident_attempt_reason);
+        const String resident_rejection_route_uid = _resident_not_feasible_route_uid(resident_attempt_reason);
+        get_performance_state().metrics.cull_route_uid = resident_rejection_route_uid;
+        get_performance_state().metrics.cull_route_reason = String("resident_not_feasible_") + resident_attempt_reason;
+        if (debug_state_orchestrator) {
+            get_debug_state().route_uid = resident_rejection_route_uid;
+        }
+        _set_instance_backend_diagnostics(InstanceBackendPolicy::RESIDENT,
+                resident_rejection_reason,
                 false,
                 "atlas_emulation");
-        if (backend_plan.streaming_requested && !backend_plan.streaming_ready && streaming_orchestrator) {
-            if (streaming_orchestrator->ensure_instance_streaming_system(backend_plan)) {
-                backend_plan.streaming_ready = get_streaming_state().current_streaming_system.is_valid();
-            }
-        }
+        WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Resident route rejected (reason=%s); frame skipped to preserve single-route-per-frame contract.",
+                resident_rejection_reason));
+        return;
     }
     if (backend_plan.streaming_requested && backend_plan.streaming_ready) {
         _set_instance_backend_diagnostics(InstanceBackendPolicy::STREAMING,
@@ -2582,9 +2584,8 @@ void GaussianSplatRenderer::_set_instance_backend_diagnostics(InstanceBackendPol
     debug_state.instance_contract_ready = p_contract_ready;
 }
 
-bool GaussianSplatRenderer::_publish_resident_instance_pipeline_contract(bool p_allow_primary_fallback_instance,
-        String *r_reason) {
-    return ResidentInstanceContractPublisher::publish(this, p_allow_primary_fallback_instance, r_reason);
+bool GaussianSplatRenderer::_publish_resident_direct_data_contract(String *r_reason) {
+    return ResidentInstanceContractPublisher::publish_resident_direct_data_contract(this, r_reason);
 }
 
 void GaussianSplatRenderer::publish_instance_pipeline_contract(const InstancePipelineBuffers &p_buffers,

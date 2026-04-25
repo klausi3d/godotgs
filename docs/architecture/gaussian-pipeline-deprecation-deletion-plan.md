@@ -51,7 +51,6 @@ That means the remaining cleanup work is concentrated in compatibility seams, no
 | `upsert_world_submission()` / `unregister_world_submission()` | Removed scaffolding-only storage helpers | Removed in follow-up cleanup | Runtime world submission now goes through `submit_world_submission()` / `release_world_submission()` only | Complete |
 | Editor preview direct `renderer->set_gaussian_data()` | Editor-only bypass of canonical submission path | Editor compatibility route | Keep as the single accepted editor-only preview exception | Bucket A |
 | `GaussianSplatNode3D::ply_file_path` | Raw file load, auto-load, drag/drop, validation | Runtime and editor compatibility route | Demote from editor-primary path first; later decide whether runtime raw-load survives | Bucket C |
-| `GaussianSplatDynamicInstance3D::ply_file_path` | Raw file to `GaussianData` bypass | Runtime compatibility route | Deprecate earlier than normal node path; require `splat_asset` or explicit `GaussianData` later | Bucket B/C |
 | `GaussianSplatRenderer::set_gaussian_data()` | Low-level renderer/test/tool hook | Public low-level API | Keep for now, narrow usage contract, remove only after replacements exist | Bucket C |
 | `GaussianSplatContainer::apply_to_renderer()` | Container-level direct renderer bypass | Removed in Wave 1 cleanup | Delete outright; keep `apply_to_node()` / export workflows only | Complete |
 | Duplicated source-path resolution helpers | Same logic in node/editor code | Internal duplication | Consolidate into one shared helper | Bucket A |
@@ -74,7 +73,6 @@ These changes are structurally safe but require test and project migration.
 
 - Remove legacy `streaming/enabled` compatibility once projects/tests stop depending on it. Completed in Bucket B.
 - Remove world-submission scaffolding APIs once tests stop relying on them.
-- Deprecate `GaussianSplatDynamicInstance3D::ply_file_path`.
 
 ### Bucket C: Product Workflow Deprecation
 
@@ -161,27 +159,8 @@ Future reconsideration:
 
 ### 4. `GaussianSplatDynamicInstance3D::ply_file_path`
 
-Canonical files:
-
-- [gaussian_splat_dynamic_instance_3d.h](../../modules/gaussian_splatting/nodes/gaussian_splat_dynamic_instance_3d.h)
-- [gaussian_splat_dynamic_instance_3d.cpp](../../modules/gaussian_splatting/nodes/gaussian_splat_dynamic_instance_3d.cpp)
-
-Current state:
-
-- This class can still load raw file data directly into `GaussianData`.
-- It then converges on instance registration, but it bypasses imported assets entirely.
-- Bucket B marks the path as deprecated in runtime/docs while keeping it functional.
-
-Why it is a better early deprecation target than the normal node path:
-
-- It is less editor-facing.
-- It already supports `splat_asset` and explicit `gaussian_data`.
-- It is a stronger bypass of the canonical asset model than the main node.
-
-Blockers:
-
-- Public API and class docs still expose `ply_file_path`.
-- Tests still cover direct data / direct file behavior.
+Wave 3 removed `GaussianSplatDynamicInstance3D` outright. This compatibility
+path no longer exists and should not be reintroduced.
 
 Removal plan:
 
@@ -374,11 +353,9 @@ This is useful: it tells us exactly what must migrate before deletion is honest 
 - remove legacy `streaming/enabled` after settings/test migration
 - update docs and diagnostics labels accordingly
 - narrow world scaffolding to test-only compilation
-- deprecate `GaussianSplatDynamicInstance3D::ply_file_path`
 
 ### Pass 3: Product Workflow Deprecation
 
-- deprecate `GaussianSplatDynamicInstance3D::ply_file_path`
 - demote `GaussianSplatNode3D::ply_file_path` from editor-primary path
 - remove raw drag-and-drop to `ply_file_path`
 - decide whether runtime raw loading remains supported or is replaced

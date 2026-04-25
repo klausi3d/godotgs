@@ -1674,10 +1674,6 @@ uint32_t GaussianStreamingSystem::get_dense_asset_id(uint32_t asset_id) const {
 
 bool GaussianStreamingSystem::remap_instance_asset_ids(LocalVector<InstanceDataGPU> &p_instances, bool p_warn_on_missing) const {
     bool ok = true;
-    uint32_t primary_dense_generation = _get_dense_generation(PRIMARY_ASSET_ID);
-    if (primary_dense_generation == 0) {
-        primary_dense_generation = 1;
-    }
     for (uint32_t i = 0; i < p_instances.size(); i++) {
         const uint32_t incoming_asset_id = p_instances[i].ids[0];
         const uint32_t incoming_dense_generation = p_instances[i].lod[1];
@@ -1698,20 +1694,19 @@ bool GaussianStreamingSystem::remap_instance_asset_ids(LocalVector<InstanceDataG
             } else {
                 ok = false;
                 if (p_warn_on_missing) {
-                    WARN_PRINT_ONCE(vformat("[Streaming] Stale dense asset mapping detected (dense_id=%u, generation=%u); using primary asset.",
+                    WARN_PRINT_ONCE(vformat("[Streaming] Stale dense asset mapping detected (dense_id=%u, generation=%u); rejecting instance mapping.",
                             incoming_asset_id, incoming_dense_generation));
                 }
             }
         } else {
             ok = false;
             if (p_warn_on_missing) {
-                WARN_PRINT_ONCE(vformat("[Streaming] Instance asset_id %u is not registered; using primary asset.", incoming_asset_id));
+                WARN_PRINT_ONCE(vformat("[Streaming] Instance asset_id %u is not registered; rejecting instance mapping.", incoming_asset_id));
             }
         }
 
         if (dense_id == INVALID_ASSET_ID || dense_generation == 0) {
-            dense_id = PRIMARY_ASSET_ID;
-            dense_generation = primary_dense_generation;
+            continue;
         }
 
         p_instances[i].ids[0] = dense_id;
@@ -2687,6 +2682,23 @@ void GaussianStreamingSystem::_evict_for_vram_budget(uint32_t &evictions_left, b
     }
 }
 
+// Shared helper for chunk-load admission and atlas-slot scarcity only.
+// VRAM-budget eviction stays on _evict_for_vram_budget() because it has
+// separate budget accounting and fallback semantics.
+GaussianStreamingSystem::EvictionResult GaussianStreamingSystem::_evict_for_admission_gate(
+        const ResidencyBudgetController::AdmissionGate &p_admission_gate, bool &r_visible_fallback_attempted) {
+    r_visible_fallback_attempted = false;
+
+    EvictionResult result = _evict_least_recently_used(false);
+    if (result == EvictionResult::SkippedAllVisible &&
+            ResidencyBudgetController::should_attempt_visible_evict_fallback(p_admission_gate)) {
+        r_visible_fallback_attempted = true;
+        result = _evict_least_recently_used(true);
+    }
+
+    return result;
+}
+
 void GaussianStreamingSystem::_load_visible_chunks(uint32_t effective_max, uint32_t &evictions_left, bool &eviction_blocked) {
     const uint32_t runtime_capacity_max = _compute_runtime_chunk_capacity_limit();
     const bool persistent_buffer_valid = persistent_buffer.is_valid() && persistent_buffer_size > 0;
@@ -2813,6 +2825,7 @@ void GaussianStreamingSystem::_load_visible_chunks(uint32_t effective_max, uint3
         admission_policy.vram_regulator_allows_load =
                 !admission_policy.enforce_vram_regulator_gate ||
                 budget.vram_regulator->can_load_more_chunks(budget.loaded_chunks_count);
+        admission_policy.atlas_slots_full = !atlas_allocator.has_free_slots();
 
         const ResidencyBudgetController::AdmissionGate admission_gate =
                 ResidencyBudgetController::compute_admission_gate(
@@ -2830,12 +2843,10 @@ void GaussianStreamingSystem::_load_visible_chunks(uint32_t effective_max, uint3
         }
         if (decision == ResidencyBudgetController::AdmissionDecision::EvictThenLoad) {
             blocked_by_chunk_cap = true;
-            EvictionResult result = _evict_least_recently_used(false);
-            if (result == EvictionResult::SkippedAllVisible &&
-                    ResidencyBudgetController::should_attempt_visible_evict_fallback(admission_gate)) {
-                // Preserve forward progress when admission requires eviction under cap/regulator pressure.
+            bool visible_fallback_attempted = false;
+            EvictionResult result = _evict_for_admission_gate(admission_gate, visible_fallback_attempted);
+            if (visible_fallback_attempted) {
                 diagnostics.visible_evict_fallback_attempts++;
-                result = _evict_least_recently_used(true);
                 if (result == EvictionResult::EvictedNonVisible || result == EvictionResult::EvictedVisible) {
                     diagnostics.visible_evict_fallback_successes++;
                 }
@@ -3191,7 +3202,7 @@ Error GaussianStreamingSystem::_load_chunk(uint32_t asset_id, uint32_t chunk_idx
     if (!persistent_buffer.is_valid()) {
         return ERR_UNAVAILABLE;
     }
-    if (!_ensure_atlas_slot_available(asset_id)) {
+    if (!atlas_allocator.has_free_slots()) {
         return ERR_BUSY;
     }
 
@@ -3506,10 +3517,6 @@ GaussianStreamingSystem::EvictionResult GaussianStreamingSystem::_evict_least_re
 
 bool GaussianStreamingSystem::_evict_non_primary_lru() {
     return eviction_controller.evict_non_primary_lru(*this);
-}
-
-bool GaussianStreamingSystem::_ensure_atlas_slot_available(uint32_t requesting_asset_id) {
-    return eviction_controller.ensure_atlas_slot_available(*this, requesting_asset_id);
 }
 
 void GaussianStreamingSystem::begin_frame() {
@@ -4615,6 +4622,7 @@ uint32_t GaussianStreamingSystem::_drain_sync_fallback_chunk_loads(
         admission_policy.vram_regulator_allows_load =
                 !admission_policy.enforce_vram_regulator_gate ||
                 budget.vram_regulator->can_load_more_chunks(budget.loaded_chunks_count);
+        admission_policy.atlas_slots_full = !atlas_allocator.has_free_slots();
 
         const ResidencyBudgetController::AdmissionGate admission_gate =
                 ResidencyBudgetController::compute_admission_gate(
@@ -4632,12 +4640,10 @@ uint32_t GaussianStreamingSystem::_drain_sync_fallback_chunk_loads(
             continue;
         }
         if (decision == ResidencyBudgetController::AdmissionDecision::EvictThenLoad) {
-            EvictionResult result = _evict_least_recently_used(false);
-            if (result == EvictionResult::SkippedAllVisible &&
-                    ResidencyBudgetController::should_attempt_visible_evict_fallback(admission_gate)) {
-                // Preserve forward progress when admission requires eviction under cap/regulator pressure.
+            bool visible_fallback_attempted = false;
+            EvictionResult result = _evict_for_admission_gate(admission_gate, visible_fallback_attempted);
+            if (visible_fallback_attempted) {
                 diagnostics.visible_evict_fallback_attempts++;
-                result = _evict_least_recently_used(true);
                 if (result == EvictionResult::EvictedNonVisible || result == EvictionResult::EvictedVisible) {
                     diagnostics.visible_evict_fallback_successes++;
                 }

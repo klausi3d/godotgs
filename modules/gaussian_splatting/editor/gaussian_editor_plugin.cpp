@@ -75,26 +75,12 @@ static double _hot_reload_poll_interval_seconds() {
     return CLAMP(configured, 0.1, 10.0);
 }
 
-static Ref<::GaussianData> convert_asset_to_gaussian_data(const Ref<GaussianSplatAsset> &p_asset) {
-    if (p_asset.is_null()) {
-        return Ref<::GaussianData>();
-    }
-
-    Ref<::GaussianData> data;
-    if (!p_asset->populate_gaussian_data(data)) {
-        return Ref<::GaussianData>();
-    }
-
-    return data;
-}
-
 static String _get_node_source_path(GaussianSplatNode3D *p_node) {
     if (!p_node) {
         return String();
     }
 
-    return GaussianSplatSourcePath::resolve_primary_source_path(
-            p_node->get_splat_asset(), p_node->get_ply_file_path());
+    return GaussianSplatSourcePath::resolve_primary_source_path(p_node->get_splat_asset());
 }
 
 static Ref<GaussianSplatAsset> _load_gaussian_splat_asset(const String &p_path, bool p_force_reload) {
@@ -318,8 +304,6 @@ void GaussianEditorPlugin::edit(Object *p_object) {
         current_renderer = node->get_renderer();
         active_asset = node->get_splat_asset();
         current_source_path = _get_node_source_path(node);
-    } else if (GaussianSplatRenderer *renderer = Object::cast_to<GaussianSplatRenderer>(p_object)) {
-        current_renderer = Ref<GaussianSplatRenderer>(renderer);
     } else if (GaussianSplatAsset *asset_obj = Object::cast_to<GaussianSplatAsset>(p_object)) {
         Ref<GaussianSplatAsset> asset(asset_obj);
         active_asset = asset;
@@ -335,8 +319,7 @@ void GaussianEditorPlugin::edit(Object *p_object) {
 }
 
 bool GaussianEditorPlugin::handles(Object *p_object) const {
-    return Object::cast_to<GaussianSplatRenderer>(p_object) != nullptr ||
-           Object::cast_to<::GaussianData>(p_object) != nullptr ||
+    return Object::cast_to<::GaussianData>(p_object) != nullptr ||
            Object::cast_to<GaussianSplatNode3D>(p_object) != nullptr ||
            Object::cast_to<GaussianSplatAsset>(p_object) != nullptr;
 }
@@ -429,17 +412,6 @@ Error GaussianEditorPlugin::_import_from_path(const String &p_path, const Dictio
 
     if (!current_renderer.is_valid() && current_node) {
         current_renderer = current_node->get_renderer();
-    }
-
-    if (current_renderer.is_valid() && !current_node) {
-        // Bucket A decision: editor preview keeps the direct bare-renderer upload as the
-        // single supported preview exception. Runtime scene paths still go through the
-        // director-owned instance/world submission flow.
-        Ref<::GaussianData> splat_data = convert_asset_to_gaussian_data(asset);
-        Error upload_err = current_renderer->set_gaussian_data(splat_data);
-        if (upload_err != OK) {
-            GS_LOG_RENDERER_ERROR(vformat("[GaussianEditor] Failed to upload gaussian data for '%s': %d", p_path, upload_err));
-        }
     }
 
     last_import_options = effective_options;

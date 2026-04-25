@@ -59,6 +59,15 @@ private:
     mutable Ref<ImageTexture> preview_texture_cache;
     bool has_sh_dc_coefficients = false;
     mutable Ref<::GaussianData> gaussian_data_cache;
+    // Once the asset has been "handed out" as runtime authority (via
+    // get_gaussian_data() or populate_from_gaussian_data()), the packed
+    // arrays become read-only from external callers. Public setters,
+    // including set_splat_count(), hard-fail while sealed so a live
+    // GaussianData can never diverge from rewritten asset arrays.
+    // Freshly loaded / newly instantiated assets start unsealed, so
+    // normal import and deserialization paths still populate through
+    // the public property setters before first runtime promotion.
+    mutable bool payload_sealed = false;
 
     static std::atomic<uint32_t> instance_count;
 
@@ -66,6 +75,10 @@ private:
     void _ensure_buffer_sizes();
     void _invalidate_gaussian_data_cache();
     void _invalidate_bounds_metadata();
+    // Returns true when runtime mutation of the packed payload is still
+    // allowed. Emits a loud diagnostic when the payload is sealed and the
+    // caller is not the internal persistence path.
+    bool _runtime_mutation_permitted(const char *p_method) const;
 
 protected:
     static void _bind_methods();
@@ -79,6 +92,15 @@ public:
 
     // Returns true when the asset has been populated with splat data (splat_count > 0).
     bool is_loaded() const { return splat_count > 0; }
+
+    // Override Resource::copy_from so engine-driven hot-reload via
+    // ResourceLoader::load(..., CACHE_MODE_REPLACE) can repopulate a sealed
+    // asset. The base implementation iterates storage properties and writes
+    // them back through set(...) (core/io/resource.cpp:225-252); without
+    // this override, a sealed GaussianSplatAsset would silently drop every
+    // data/* setter and reload would appear to succeed while leaving stale
+    // arrays in place.
+    virtual Error copy_from(const Ref<Resource> &p_resource) override;
 
     void set_asset_type(AssetType p_type);
     AssetType get_asset_type() const { return asset_type; }

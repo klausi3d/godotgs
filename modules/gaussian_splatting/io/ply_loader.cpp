@@ -225,14 +225,9 @@ bool PLYLoader::try_load_cache(const String &p_source_path, uint64_t p_source_si
     }
 
     // Use .gsplatcache (not .gsplatworld) so Godot's filesystem scanner does
-    // not treat PLY caches as standalone importable resources.  User-created
-    // .gsplatworld files from the bake script remain importable.
+    // not treat PLY caches as standalone importable resources.
     const String cache_path = p_source_path.get_basename() + ".gsplatcache";
-    // Fall back to legacy .gsplatworld caches written before the rename.
-    const String legacy_cache_path = p_source_path.get_basename() + ".gsplatworld";
-    const bool legacy_fallback = !FileAccess::exists(cache_path) && FileAccess::exists(legacy_cache_path);
-    const String effective_cache_path = legacy_fallback ? legacy_cache_path : cache_path;
-    if (!FileAccess::exists(effective_cache_path)) {
+    if (!FileAccess::exists(cache_path)) {
         return false;
     }
 
@@ -242,7 +237,7 @@ bool PLYLoader::try_load_cache(const String &p_source_path, uint64_t p_source_si
     // has been rewritten during the same editor session.
     ResourceFormatLoaderGaussianSplatWorld format_loader;
     Error load_err = OK;
-    Ref<Resource> resource = format_loader.load(effective_cache_path, effective_cache_path,
+    Ref<Resource> resource = format_loader.load(cache_path, cache_path,
             &load_err, false, nullptr, ResourceFormatLoader::CACHE_MODE_IGNORE);
     Ref<GaussianSplatWorld> world = resource;
     if (world.is_null()) {
@@ -279,17 +274,6 @@ bool PLYLoader::try_load_cache(const String &p_source_path, uint64_t p_source_si
     }
 
     gaussian_data = cached_data;
-
-    if (legacy_fallback) {
-        write_cache(p_source_path, p_source_size, p_source_mtime);
-        if (FileAccess::exists(cache_path)) {
-            const Error remove_err = DirAccess::remove_absolute(legacy_cache_path);
-            if (remove_err != OK && GaussianSplattingIO::is_data_log_enabled()) {
-                GS_LOG_STREAMING_DEBUG(vformat("Failed to remove migrated legacy PLY cache: %s (error %d)",
-                        legacy_cache_path, remove_err));
-            }
-        }
-    }
 
     return true;
 }

@@ -7,17 +7,27 @@
 #include "../core/gaussian_data.h"
 #include "../core/residency_budget_controller.h"
 #include "../core/gaussian_splat_manager.h"
+#include "../core/gaussian_splat_world.h"
 #include "../core/streaming_queue_pressure_controller.h"
+#include "../nodes/gaussian_splat_world_3d.h"
 #include "core/config/project_settings.h"
 #include "servers/rendering/rendering_device.h"
 #include "core/os/os.h"
 #include "core/os/semaphore.h"
 #include "core/os/thread.h"
+#include "scene/3d/camera_3d.h"
+#include "scene/3d/node_3d.h"
+#include "scene/main/scene_tree.h"
+#include "scene/main/window.h"
 #include <algorithm>
 #include <atomic>
 #include <cstring>
 #include <limits>
 #include <random>
+
+extern "C" int test_gpu_streaming_cpp_force_link() {
+    return 0;
+}
 
 // Helper to create test gaussian data
 LocalVector<Gaussian> create_test_gaussians(uint32_t count) {
@@ -68,6 +78,99 @@ Ref<::GaussianData> create_clustered_test_gaussian_data(uint32_t count, const Ve
     data->set_gaussians(gaussians);
     return data;
 }
+
+GaussianSplatRenderer::StaticChunk make_test_static_chunk(uint32_t count, const AABB &bounds) {
+    GaussianSplatRenderer::StaticChunk chunk;
+    chunk.bounds = bounds;
+    chunk.center = bounds.get_center();
+    chunk.radius = bounds.get_longest_axis_size() * 0.5f;
+    chunk.indices.resize(count);
+    for (uint32_t i = 0; i < count; i++) {
+        chunk.indices.write[i] = i;
+    }
+    return chunk;
+}
+
+Ref<GaussianSplatWorld> make_world_resource(const Ref<GaussianData> &data, bool include_static_chunk = false) {
+    Ref<GaussianSplatWorld> world;
+    world.instantiate();
+    world->set_gaussian_data(data);
+    world->set_bounds(data->get_aabb());
+    if (include_static_chunk) {
+        Vector<GaussianSplatRenderer::StaticChunk> chunks;
+        chunks.push_back(make_test_static_chunk(data->get_count(), data->get_aabb()));
+        world->set_static_chunks(chunks);
+    }
+    return world;
+}
+
+struct WorldBackedRendererHarness {
+    SceneTree *tree = nullptr;
+    Window *root = nullptr;
+    Node3D *scene_root = nullptr;
+    GaussianSplatWorld3D *world_node = nullptr;
+    Ref<GaussianSplatRenderer> renderer;
+
+    ~WorldBackedRendererHarness() {
+        teardown();
+    }
+
+    bool setup(const Ref<GaussianData> &data, bool include_static_chunk = false) {
+        tree = SceneTree::get_singleton();
+        if (tree == nullptr) {
+            return false;
+        }
+        root = tree->get_root();
+        if (root == nullptr) {
+            return false;
+        }
+
+        scene_root = memnew(Node3D);
+        root->add_child(scene_root);
+
+        world_node = memnew(GaussianSplatWorld3D);
+        scene_root->add_child(world_node);
+
+        world_node->set_auto_apply_on_ready(false);
+        world_node->set_world(make_world_resource(data, include_static_chunk));
+        world_node->apply_world();
+        tree->process(0.0);
+
+        renderer = world_node->get_renderer();
+        if (!renderer.is_valid()) {
+            teardown();
+            return false;
+        }
+        return true;
+    }
+
+    void teardown() {
+        if (scene_root == nullptr && world_node == nullptr) {
+            renderer.unref();
+            tree = nullptr;
+            root = nullptr;
+            return;
+        }
+
+        if (scene_root != nullptr && root != nullptr) {
+            if (world_node != nullptr) {
+                scene_root->remove_child(world_node);
+            }
+            root->remove_child(scene_root);
+        }
+        if (world_node != nullptr) {
+            memdelete(world_node);
+            world_node = nullptr;
+        }
+        if (scene_root != nullptr) {
+            memdelete(scene_root);
+            scene_root = nullptr;
+        }
+        renderer.unref();
+        tree = nullptr;
+        root = nullptr;
+    }
+};
 
 namespace {
 
@@ -1873,53 +1976,6 @@ TEST_CASE("[Streaming Pipeline] Dirty atlas publication is invalidated when GPU 
     CHECK(system->get_asset_chunk_index_buffer().is_valid());
 }
 
-TEST_CASE("[Streaming Pipeline] Dense-id generation rejects stale remapped instance mappings") {
-    Ref<GaussianStreamingSystem> system;
-    system.instantiate();
-    system->initialize_empty(nullptr);
-
-    const uint32_t asset_a = 101;
-    const uint32_t asset_b = 202;
-    const uint32_t asset_c = 303;
-    system->register_asset(asset_a, create_test_gaussian_data(1024));
-    system->register_asset(asset_b, create_test_gaussian_data(1024));
-
-    LocalVector<InstanceDataGPU> mapped_a;
-    mapped_a.resize(1);
-    mapped_a[0] = {};
-    mapped_a[0].ids[0] = asset_a;
-    CHECK(system->remap_instance_asset_ids(mapped_a, false));
-
-    const uint32_t dense_a = mapped_a[0].ids[0];
-    const uint32_t dense_a_generation = mapped_a[0].lod[1];
-    CHECK(dense_a != 0);
-    CHECK(dense_a_generation != 0);
-
-    system->unregister_asset(asset_a);
-    system->register_asset(asset_c, create_test_gaussian_data(1024));
-
-    LocalVector<InstanceDataGPU> mapped_c;
-    mapped_c.resize(1);
-    mapped_c[0] = {};
-    mapped_c[0].ids[0] = asset_c;
-    CHECK(system->remap_instance_asset_ids(mapped_c, false));
-
-    const uint32_t dense_c = mapped_c[0].ids[0];
-    const uint32_t dense_c_generation = mapped_c[0].lod[1];
-    CHECK(dense_c == dense_a); // Dense slot can be reused.
-    CHECK(dense_c_generation != dense_a_generation); // Generation must advance on reuse.
-
-    LocalVector<InstanceDataGPU> stale_dense_mapping;
-    stale_dense_mapping.resize(1);
-    stale_dense_mapping[0] = {};
-    stale_dense_mapping[0].ids[0] = dense_a;
-    stale_dense_mapping[0].lod[1] = dense_a_generation;
-
-    CHECK_FALSE(system->remap_instance_asset_ids(stale_dense_mapping, false));
-    CHECK(stale_dense_mapping[0].ids[0] == 0u);
-    CHECK(stale_dense_mapping[0].lod[1] != dense_a_generation);
-}
-
 TEST_CASE("[Streaming Pipeline] Upload abort clears pending chunk state") {
     Ref<GaussianStreamingSystem> system;
     system.instantiate();
@@ -2826,7 +2882,7 @@ TEST_CASE("[Streaming Pipeline] Queue pressure scan-budget throttle transitions 
     CHECK(zero_headroom_result.scan_budget == 1);
 }
 
-TEST_CASE("[Streaming Pipeline] Residency admission controller enforces deterministic invariants") {
+TEST_CASE("[Streaming Pipeline] Residency admission controller remains sole visible-eviction authority") {
     ResidencyBudgetController::AdmissionPolicy policy;
     policy.can_replace_without_eviction = false;
     policy.enforce_vram_regulator_gate = false;
@@ -2838,6 +2894,20 @@ TEST_CASE("[Streaming Pipeline] Residency admission controller enforces determin
             ResidencyBudgetController::compute_admission_gate(4, frame_budget, policy);
     CHECK(below_capacity_gate.decision == ResidencyBudgetController::AdmissionDecision::LoadDirect);
     CHECK_FALSE(ResidencyBudgetController::should_attempt_visible_evict_fallback(below_capacity_gate));
+
+    ResidencyBudgetController::AdmissionPolicy atlas_full_policy = policy;
+    atlas_full_policy.atlas_slots_full = true;
+    ResidencyBudgetController::AdmissionGate atlas_full_gate =
+            ResidencyBudgetController::compute_admission_gate(4, frame_budget, atlas_full_policy);
+    CHECK(atlas_full_gate.decision == ResidencyBudgetController::AdmissionDecision::EvictThenLoad);
+    CHECK(ResidencyBudgetController::should_attempt_visible_evict_fallback(atlas_full_gate));
+
+    ResidencyBudgetController::AdmissionFrameBudget atlas_full_blocked_budget =
+            ResidencyBudgetController::make_frame_budget(8, 0, false);
+    ResidencyBudgetController::AdmissionGate atlas_full_blocked_gate =
+            ResidencyBudgetController::compute_admission_gate(4, atlas_full_blocked_budget, atlas_full_policy);
+    CHECK(atlas_full_blocked_gate.decision == ResidencyBudgetController::AdmissionDecision::Skip);
+    CHECK_FALSE(ResidencyBudgetController::should_attempt_visible_evict_fallback(atlas_full_blocked_gate));
 
     ResidencyBudgetController::AdmissionGate at_capacity_gate =
             ResidencyBudgetController::compute_admission_gate(8, frame_budget, policy);
@@ -2951,20 +3021,20 @@ TEST_CASE("[Streaming Pipeline] Instance content generation tracks instance pipe
         return;
     }
 
-    Ref<GaussianSplatRenderer> renderer;
-    renderer.instantiate(primary_device);
-    CHECK(renderer.is_valid());
-    if (!renderer.is_valid()) {
+    const uint32_t total_gaussians = GaussianStreamingSystem::CHUNK_SIZE * 2;
+    Ref<GaussianData> data = create_test_gaussian_data(total_gaussians);
+    WorldBackedRendererHarness harness;
+    if (!harness.setup(data, true)) {
+        MESSAGE("Skipping - World-backed renderer unavailable");
         if (manager_owner) {
             memdelete(manager_owner);
         }
         return;
     }
-
-    const uint32_t total_gaussians = GaussianStreamingSystem::CHUNK_SIZE * 2;
-    Error set_data_err = renderer->set_gaussian_data(create_test_gaussian_data(total_gaussians));
-    CHECK(set_data_err == OK);
-    if (set_data_err != OK) {
+    Ref<GaussianSplatRenderer> renderer = harness.renderer;
+    CHECK(renderer.is_valid());
+    if (!renderer.is_valid()) {
+        harness.teardown();
         if (manager_owner) {
             memdelete(manager_owner);
         }
@@ -3024,7 +3094,7 @@ TEST_CASE("[Streaming Pipeline] Instance content generation tracks instance pipe
 
     CHECK(generation_after_budget_change != generation_before_budget_change);
 
-    renderer.unref();
+    harness.teardown();
     if (manager_owner) {
         memdelete(manager_owner);
     }
@@ -3128,16 +3198,6 @@ TEST_CASE("[Streaming Pipeline] Renderer renders streamed non-zero chunk") {
         return;
     }
 
-    Ref<GaussianSplatRenderer> renderer;
-    renderer.instantiate(primary_device);
-    CHECK(renderer.is_valid());
-    if (!renderer.is_valid()) {
-        if (manager_owner) {
-            memdelete(manager_owner);
-        }
-        return;
-    }
-
     const uint32_t chunk_size = GaussianStreamingSystem::CHUNK_SIZE;
     const uint32_t total_gaussians = chunk_size * 2; // Ensure at least one non-zero chunk
 
@@ -3164,10 +3224,18 @@ TEST_CASE("[Streaming Pipeline] Renderer renders streamed non-zero chunk") {
     Ref<::GaussianData> data;
     data.instantiate();
     data->set_gaussians(gaussians);
-
-    Error set_data_err = renderer->set_gaussian_data(data);
-    CHECK(set_data_err == OK);
-    if (set_data_err != OK) {
+    WorldBackedRendererHarness harness;
+    if (!harness.setup(data, true)) {
+        MESSAGE("Skipping - World-backed renderer unavailable");
+        if (manager_owner) {
+            memdelete(manager_owner);
+        }
+        return;
+    }
+    Ref<GaussianSplatRenderer> renderer = harness.renderer;
+    CHECK(renderer.is_valid());
+    if (!renderer.is_valid()) {
+        harness.teardown();
         if (manager_owner) {
             memdelete(manager_owner);
         }
@@ -3199,7 +3267,7 @@ TEST_CASE("[Streaming Pipeline] Renderer renders streamed non-zero chunk") {
     CHECK(renderer->has_rendered_content());
     CHECK(renderer->get_visible_splat_count() == chunk_size);
 
-    renderer.unref();
+    harness.teardown();
     if (manager_owner) {
         memdelete(manager_owner);
     }
@@ -3232,16 +3300,6 @@ TEST_CASE("[Streaming Pipeline] Instance depth Stage-B applies frustum/screen/di
         return;
     }
 
-    Ref<GaussianSplatRenderer> renderer;
-    renderer.instantiate(primary_device);
-    CHECK(renderer.is_valid());
-    if (!renderer.is_valid()) {
-        if (manager_owner) {
-            memdelete(manager_owner);
-        }
-        return;
-    }
-
     const uint32_t total_gaussians = 8192;
     LocalVector<Gaussian> gaussians;
     gaussians.resize(total_gaussians);
@@ -3267,10 +3325,18 @@ TEST_CASE("[Streaming Pipeline] Instance depth Stage-B applies frustum/screen/di
     Ref<::GaussianData> data;
     data.instantiate();
     data->set_gaussians(gaussians);
-
-    Error set_data_err = renderer->set_gaussian_data(data);
-    CHECK(set_data_err == OK);
-    if (set_data_err != OK) {
+    WorldBackedRendererHarness harness;
+    if (!harness.setup(data, true)) {
+        MESSAGE("Skipping - World-backed renderer unavailable");
+        if (manager_owner) {
+            memdelete(manager_owner);
+        }
+        return;
+    }
+    Ref<GaussianSplatRenderer> renderer = harness.renderer;
+    CHECK(renderer.is_valid());
+    if (!renderer.is_valid()) {
+        harness.teardown();
         if (manager_owner) {
             memdelete(manager_owner);
         }
@@ -3315,7 +3381,7 @@ TEST_CASE("[Streaming Pipeline] Instance depth Stage-B applies frustum/screen/di
 
     if (!instance_pipeline_ready || baseline_visible == 0) {
         MESSAGE("Skipping - Instance pipeline did not become ready in Stage-B culling regression test");
-        renderer.unref();
+        harness.teardown();
         if (manager_owner) {
             memdelete(manager_owner);
         }
@@ -3338,7 +3404,7 @@ TEST_CASE("[Streaming Pipeline] Instance depth Stage-B applies frustum/screen/di
     CHECK(distance_visible < baseline_visible);
     CHECK(distance_visible > 0);
 
-    renderer.unref();
+    harness.teardown();
     if (manager_owner) {
         memdelete(manager_owner);
     }

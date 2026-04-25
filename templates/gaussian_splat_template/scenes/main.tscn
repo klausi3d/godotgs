@@ -1,8 +1,9 @@
-[gd_scene load_steps=6 format=3 uid="uid://gaussian_template_main"]
+[gd_scene load_steps=7 format=3 uid="uid://gaussian_template_main"]
 
 [ext_resource type="Script" path="res://scripts/main_scene.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/camera/orbit_camera_rig.gd" id="2"]
 [ext_resource type="PackedScene" path="res://scenes/ui/performance_overlay.tscn" id="3"]
+[ext_resource type="GaussianSplatAsset" path="res://assets/template_splats.ply" id="4"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_1"]
 size = Vector3(20, 0.25, 20)
@@ -16,8 +17,7 @@ metallic = 0.0
 
 [node name="GaussianSplatNode3D" type="GaussianSplatNode3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
-ply_file_path = "res://assets/template_splats.ply"
-auto_load = true
+splat_asset = ExtResource("4")
 quality/preset = 1
 quality/lod_bias = 1.0
 quality/max_render_distance = 150.0
