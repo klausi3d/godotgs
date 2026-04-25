@@ -153,6 +153,23 @@ StreamingEvictionController::EvictionResult StreamingEvictionController::evict_n
                 if (!chunk.is_loaded) {
                     continue;
                 }
+                // Match the hysteresis filter primary LRU enforces. Without it,
+                // a sync-fallback drain that just loaded a non-primary chunk in
+                // this same frame can immediately re-evict it as the next
+                // admission victim — load-then-evict churn instead of forward
+                // progress.
+                if (eviction_hysteresis_frames > 0 &&
+                        system.total_frame_count - chunk.last_loaded_frame < eviction_hysteresis_frames) {
+                    continue;
+                }
+                // Skip explicitly-requested chunks. _unload_chunk() does not
+                // downgrade request status, so evicting one would leave the
+                // caller observing "requested = satisfied" while the chunk is
+                // already gone — breaking requested-residency semantics under
+                // multi-asset atlas pressure.
+                if (system._is_requested_chunk_in_current_generation(*asset, chunk_id)) {
+                    continue;
+                }
                 NonPrimaryEvictionCandidate candidate;
                 candidate.asset_id = asset_id;
                 candidate.chunk_id = chunk_id;
