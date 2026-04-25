@@ -81,8 +81,8 @@
     {
       "deletion_commit": null,
       "display_path": "editor/docks/scene_tree_dock.cpp",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "lines_added": 75,
+      "last_touch_commit": "27035f2d9868a044b2fcc074414b68a57cc7fc1c",
+      "lines_added": 83,
       "lines_deleted": 1,
       "new_path": "editor/docks/scene_tree_dock.cpp",
       "old_path": "editor/docks/scene_tree_dock.cpp",
@@ -120,8 +120,8 @@
     {
       "deletion_commit": null,
       "display_path": "editor/scene/3d/node_3d_editor_plugin.cpp",
-      "last_touch_commit": "ec491bb7aa325e596a1813b77b454f4963097ab2",
-      "lines_added": 90,
+      "last_touch_commit": "27035f2d9868a044b2fcc074414b68a57cc7fc1c",
+      "lines_added": 71,
       "lines_deleted": 1,
       "new_path": "editor/scene/3d/node_3d_editor_plugin.cpp",
       "old_path": "editor/scene/3d/node_3d_editor_plugin.cpp",
@@ -1090,8 +1090,8 @@
     {
       "deletion_commit": null,
       "display_path": "editor/docks/scene_tree_dock.cpp",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "lines_added": 75,
+      "last_touch_commit": "27035f2d9868a044b2fcc074414b68a57cc7fc1c",
+      "lines_added": 83,
       "lines_deleted": 1,
       "new_path": "editor/docks/scene_tree_dock.cpp",
       "old_path": "editor/docks/scene_tree_dock.cpp",
@@ -1129,8 +1129,8 @@
     {
       "deletion_commit": null,
       "display_path": "editor/scene/3d/node_3d_editor_plugin.cpp",
-      "last_touch_commit": "ec491bb7aa325e596a1813b77b454f4963097ab2",
-      "lines_added": 90,
+      "last_touch_commit": "27035f2d9868a044b2fcc074414b68a57cc7fc1c",
+      "lines_added": 71,
       "lines_deleted": 1,
       "new_path": "editor/scene/3d/node_3d_editor_plugin.cpp",
       "old_path": "editor/scene/3d/node_3d_editor_plugin.cpp",
@@ -2339,7 +2339,7 @@
       ]
     },
     "fork_base_commit": "876b290332ec6f2e6d173d08162a02aa7e6ca46d",
-    "head_commit": "61af553128cfc9e4b57ce485fe7ee24eca588549",
+    "head_commit": "27035f2d9868a044b2fcc074414b68a57cc7fc1c",
     "head_ref": "HEAD",
     "label": "Godot 4.5 stable fork-point commit",
     "rename_threshold": "70%",
