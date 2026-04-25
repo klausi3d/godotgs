@@ -280,11 +280,22 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 	}
 
 	LocalVector<InstanceDataGPU> instances;
+	// Director "owns" this renderer's instance set when there's a world
+	// submission for it. In that case an empty `instances` result is
+	// intentional — e.g. a shadow-filtered pass that legitimately produced
+	// no shadow casters, or a frame where every instance was visibility-
+	// culled — and we must NOT fabricate a primary identity instance.
+	// Doing so would draw the entire submission asset into shadow maps or
+	// resurrect culled scenes. The bootstrap below is only for standalone
+	// direct-data renderers (tests, tools, editor preview that bind raw
+	// `set_gaussian_data()` with no world submission).
+	const bool director_owns_instance_set = director != nullptr &&
+			director->has_world_submission_for_renderer(p_renderer);
 	if (director != nullptr) {
 		director->build_instance_buffer_for_renderer(p_renderer, instances,
 				p_renderer->is_shadow_instance_filter_enabled());
 	}
-	if (instances.is_empty() && has_primary_data) {
+	if (instances.is_empty() && has_primary_data && !director_owns_instance_set) {
 		InstanceDataGPU bootstrap_instance = {};
 		bootstrap_instance.rotation[3] = 1.0f;
 		bootstrap_instance.inv_rotation[3] = 1.0f;
