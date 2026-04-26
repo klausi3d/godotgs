@@ -147,6 +147,12 @@ Error PLYLoader::parse_header(Ref<FileAccess> file) {
 
     String current_element = ""; // Track current element type being parsed
     int vertex_property_offset = 0;
+    bool found_end_header = false;
+
+    // Practical upper bound for splat counts: 2^30 entries.  At ~248 bytes per
+    // raw vertex this already exceeds 256 GiB on disk, so anything larger is a
+    // header that overflows int sizing in resize() / chunked parsing below.
+    static constexpr int64_t PLY_MAX_VERTEX_COUNT = 1ll << 30;
 
     while (!file->eof_reached()) {
         line = file->get_line().strip_edges();
@@ -169,7 +175,14 @@ Error PLYLoader::parse_header(Ref<FileAccess> file) {
             if (parts.size() >= 2) {
                 current_element = parts[1]; // Could be "vertex", "face", etc.
                 if (current_element == "vertex" && parts.size() >= 3) {
-                    header.vertex_count = parts[2].to_int();
+                    const int64_t parsed_count = parts[2].to_int();
+                    if (parsed_count < 1 || parsed_count > PLY_MAX_VERTEX_COUNT) {
+                        GS_LOG_ERROR_DEFAULT(vformat(
+                                "[PLY] vertex count out of range: %d (must be 1..%d)",
+                                parsed_count, PLY_MAX_VERTEX_COUNT));
+                        return ERR_FILE_CORRUPT;
+                    }
+                    header.vertex_count = static_cast<int>(parsed_count);
                     vertex_property_offset = 0; // Reset offset for vertex properties
                     header.properties.clear();
                 }
@@ -199,6 +212,15 @@ Error PLYLoader::parse_header(Ref<FileAccess> file) {
                     prop.size = 4;
                 } else if (prop.type == "short" || prop.type == "int16") {
                     prop.size = 2;
+                } else if (prop.type == "uint" || prop.type == "uint32") {
+                    prop.size = 4;
+                } else if (prop.type == "char" || prop.type == "int8") {
+                    prop.size = 1;
+                } else {
+                    GS_LOG_ERROR_DEFAULT(vformat(
+                            "[PLY] unknown property type '%s' for property '%s'",
+                            prop.type, prop.name));
+                    return ERR_FILE_CORRUPT;
                 }
 
                 prop.offset = vertex_property_offset;
@@ -208,8 +230,14 @@ Error PLYLoader::parse_header(Ref<FileAccess> file) {
             }
         } else if (line == "end_header") {
             header.header_size = file->get_position();
+            found_end_header = true;
             break;
         }
+    }
+
+    if (!found_end_header) {
+        GS_LOG_ERROR_DEFAULT("[PLY] header truncated: missing end_header sentinel");
+        return ERR_FILE_CORRUPT;
     }
 
     if (header.vertex_count == 0) {
@@ -868,32 +896,22 @@ int PLYLoader::find_property_index(const String &name) const {
 
 float PLYLoader::read_float_property(const uint8_t *data, const PLYProperty &prop) const {
     if (prop.type == "float" || prop.type == "float32") {
-        float value;
-        memcpy(&value, data + prop.offset, sizeof(float));
+        uint32_t bits;
+        memcpy(&bits, data + prop.offset, sizeof(uint32_t));
         if (!header.is_little_endian) {
-            // Swap bytes for big endian
-            uint32_t *int_val = (uint32_t*)&value;
-            *int_val = ((*int_val & 0xFF000000) >> 24) |
-                      ((*int_val & 0x00FF0000) >> 8) |
-                      ((*int_val & 0x0000FF00) << 8) |
-                      ((*int_val & 0x000000FF) << 24);
+            bits = BSWAP32(bits);
         }
+        float value;
+        memcpy(&value, &bits, sizeof(float));
         return value;
     } else if (prop.type == "double" || prop.type == "float64") {
-        double value;
-        memcpy(&value, data + prop.offset, sizeof(double));
+        uint64_t bits;
+        memcpy(&bits, data + prop.offset, sizeof(uint64_t));
         if (!header.is_little_endian) {
-            // Swap bytes for big endian (64-bit)
-            uint64_t *int_val = (uint64_t*)&value;
-            *int_val = ((*int_val & 0xFF00000000000000ULL) >> 56) |
-                      ((*int_val & 0x00FF000000000000ULL) >> 40) |
-                      ((*int_val & 0x0000FF0000000000ULL) >> 24) |
-                      ((*int_val & 0x000000FF00000000ULL) >> 8) |
-                      ((*int_val & 0x00000000FF000000ULL) << 8) |
-                      ((*int_val & 0x0000000000FF0000ULL) << 24) |
-                      ((*int_val & 0x000000000000FF00ULL) << 40) |
-                      ((*int_val & 0x00000000000000FFULL) << 56);
+            bits = BSWAP64(bits);
         }
+        double value;
+        memcpy(&value, &bits, sizeof(double));
         return (float)value;
     }
     return 0.0f;
@@ -920,7 +938,8 @@ uint32_t PLYLoader::read_uint_property(const uint8_t *data, const PLYProperty &p
         }
         return value;
     } else if (prop.type == "char" || prop.type == "int8") {
-        int8_t value = *(int8_t*)(data + prop.offset);
+        int8_t value;
+        memcpy(&value, data + prop.offset, sizeof(int8_t));
         return (uint32_t)MAX(value, (int8_t)0);
     } else if (prop.type == "short" || prop.type == "int16") {
         int16_t value;
@@ -930,15 +949,13 @@ uint32_t PLYLoader::read_uint_property(const uint8_t *data, const PLYProperty &p
         }
         return (uint32_t)MAX(value, (int16_t)0);
     } else if (prop.type == "int" || prop.type == "int32") {
-        int32_t value;
-        memcpy(&value, data + prop.offset, sizeof(int32_t));
+        uint32_t bits;
+        memcpy(&bits, data + prop.offset, sizeof(uint32_t));
         if (!header.is_little_endian) {
-            uint32_t *int_val = (uint32_t*)&value;
-            *int_val = ((*int_val & 0xFF000000) >> 24) |
-                      ((*int_val & 0x00FF0000) >> 8) |
-                      ((*int_val & 0x0000FF00) << 8) |
-                      ((*int_val & 0x000000FF) << 24);
+            bits = BSWAP32(bits);
         }
+        int32_t value;
+        memcpy(&value, &bits, sizeof(int32_t));
         return (uint32_t)MAX(value, 0);
     }
     return 0;

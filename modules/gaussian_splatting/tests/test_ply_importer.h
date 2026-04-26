@@ -249,3 +249,154 @@ TEST_CASE("[GaussianSplatting][PLYLoader] Legacy sibling gsplatworld caches are 
     DirAccess::remove_absolute(cache_path);
     DirAccess::remove_absolute(legacy_cache_path);
 }
+
+TEST_CASE("[GaussianSplatting][PLY] reject vertex_count out of int range") {
+    const String path = _make_ply_fixture_path("oversized_count");
+
+    const char *oversized_ply = R"(ply
+format binary_little_endian 1.0
+element vertex 9999999999
+property float x
+property float y
+property float z
+end_header
+)";
+
+    Ref<FileAccess> f = FileAccess::open(path, FileAccess::WRITE);
+    REQUIRE_MESSAGE(f.is_valid(), "Should create oversized PLY fixture");
+    f->store_string(oversized_ply);
+    f.unref();
+
+    PLYLoader loader;
+    Error err = loader.load_file(path);
+    CHECK_MESSAGE(err == ERR_FILE_CORRUPT,
+            "PLY with vertex_count beyond int range should be rejected");
+
+    _remove_ply_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][PLY] reject header missing end_header sentinel") {
+    const String path = _make_ply_fixture_path("missing_end_header");
+
+    // Smoke test for F4 — exercise the load path end-to-end with a header
+    // that lacks the `end_header` sentinel. Old code without the new
+    // `found_end_header` guard would consume input until EOF in the header
+    // loop and then fail later on a short binary read, ending in
+    // ERR_FILE_CORRUPT at a different stage; the new guard catches the
+    // problem at parse_header() before binary read begins. Through the
+    // public load_file() API the two stages are not separately
+    // distinguishable, so this case asserts the outcome (corrupt file
+    // refused) rather than pinning the specific stage. A precise
+    // stage-level pin would need a parse_header() seam.
+    const char *truncated_ply = R"(ply
+format binary_little_endian 1.0
+element vertex 4
+property float x
+property float y
+property float z
+)";
+
+    Ref<FileAccess> f = FileAccess::open(path, FileAccess::WRITE);
+    REQUIRE_MESSAGE(f.is_valid(), "Should create truncated PLY fixture");
+    f->store_string(truncated_ply);
+    f.unref();
+
+    PLYLoader loader;
+    Error err = loader.load_file(path);
+    CHECK_MESSAGE(err == ERR_FILE_CORRUPT,
+            "PLY without end_header sentinel should be rejected");
+
+    _remove_ply_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][PLY] reject unknown property type token") {
+    const String path = _make_ply_fixture_path("unknown_property_type");
+
+    // Payload bytes follow so old code (which would set unknown
+    // type's size=0 and then read garbage at the wrong offsets) could
+    // otherwise complete parsing without ERR_FILE_CORRUPT. The new
+    // guard must reject at the header stage.
+    const char *unknown_type_ply = R"(ply
+format binary_little_endian 1.0
+element vertex 4
+property float x
+property custom_type y
+property float z
+end_header
+)";
+
+    Ref<FileAccess> f = FileAccess::open(path, FileAccess::WRITE);
+    REQUIRE_MESSAGE(f.is_valid(), "Should create unknown-type PLY fixture");
+    f->store_string(unknown_type_ply);
+    for (int i = 0; i < 4 * 3; i++) {
+        f->store_float(0.0f);
+    }
+    f.unref();
+
+    PLYLoader loader;
+    Error err = loader.load_file(path);
+    CHECK_MESSAGE(err == ERR_FILE_CORRUPT,
+            "PLY with unknown property type should be rejected");
+
+    _remove_ply_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][PLY] big-endian binary round-trip") {
+    const String path = _make_ply_fixture_path("big_endian");
+
+    const char *big_endian_header = R"(ply
+format binary_big_endian 1.0
+element vertex 1
+property float x
+property float y
+property float z
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+property float opacity
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+end_header
+)";
+
+    Ref<FileAccess> f = FileAccess::open(path, FileAccess::WRITE);
+    REQUIRE_MESSAGE(f.is_valid(), "Should create big-endian PLY fixture");
+    f->store_string(big_endian_header);
+
+    // Native little-endian floats; we manually byte-swap each one to produce
+    // a canonical big-endian payload that the loader must un-swap.
+    const float native_values[14] = {
+        2.5f, -3.25f, 7.75f, // position
+        1.0f, 1.0f, 1.0f, // scales
+        1.0f, 0.0f, 0.0f, 0.0f, // rotation (w,x,y,z)
+        0.5f, // opacity
+        0.25f, 0.5f, 0.75f // dc
+    };
+    for (float native : native_values) {
+        uint32_t bits;
+        memcpy(&bits, &native, sizeof(uint32_t));
+        bits = BSWAP32(bits);
+        uint8_t bytes[4];
+        memcpy(bytes, &bits, sizeof(bytes));
+        f->store_buffer(bytes, sizeof(bytes));
+    }
+    f.unref();
+
+    PLYLoader loader;
+    Error err = loader.load_file(path);
+    CHECK_MESSAGE(err == OK, "Big-endian PLY load should succeed");
+
+    Ref<GaussianData> data = loader.get_gaussian_data();
+    REQUIRE(data.is_valid());
+    REQUIRE(data->get_count() == 1);
+    const Gaussian g = data->get_gaussian(0);
+    CHECK(g.position.is_equal_approx(Vector3(2.5f, -3.25f, 7.75f)));
+
+    _remove_ply_fixture(path);
+    DirAccess::remove_absolute(path.get_basename() + ".gsplatcache");
+}
