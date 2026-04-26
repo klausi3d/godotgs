@@ -207,7 +207,7 @@ void main() {
         for (uint i = 0u; i < dir_count; ++i) {
             if (directional_lights.data[i].shadow_opacity > 0.001) {
                 has_dir = true;
-                float receiver_bias = params.shadow_bias_config.x;
+                float receiver_bias = gs_compute_receiver_bias(0.0);
                 float s = gs_directional_shadow(i, view_pos, normal, scene_data_block.data.taa_frame_count, receiver_bias);
                 dir_shadow = min(dir_shadow, s);
             }
@@ -330,10 +330,7 @@ void main() {
         hvec3 specular_light = hvec3(0.0);
         half alpha = half(color.a);
         hvec3 energy_compensation = hvec3(1.0);
-        float receiver_bias = params.shadow_bias_config.y;
-        if (params.shadow_bias_config.z > 0.0) {
-            receiver_bias = min(receiver_bias, params.shadow_bias_config.z);
-        }
+        float receiver_bias = gs_compute_receiver_bias(0.0);
 
         uint light_mask = params.light_counts.w;
         gs_accumulate_directional_lights(view_pos, normal, receiver_bias, shadow_sampling_enabled,

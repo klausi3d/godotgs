@@ -22,6 +22,23 @@ bool gs_use_clustered_lights() {
     return (params.light_counts.z != 0u) && (params.cluster_config.z != 0u);
 }
 
+// Computes the canonical receiver bias for shadow sampling.
+// Per the contract documented in gs_render_params.glsl:77-80 and
+// gaussian_gpu_layout.h:456-459: shadow_bias_config.x is the
+// scale-by-radius multiplier, .y is the minimum bias, .z is the
+// optional maximum clamp (>0.0 enables it).
+//
+// Pass representative_radius = max(g.scale.x, g.scale.y, g.scale.z)
+// from the per-splat path. Pass 0.0 from paths without a radius
+// source — the result collapses to the .y minimum, clamped by .z.
+float gs_compute_receiver_bias(float representative_radius) {
+    float bias = max(params.shadow_bias_config.y, params.shadow_bias_config.x * representative_radius);
+    if (params.shadow_bias_config.z > 0.0) {
+        bias = min(bias, params.shadow_bias_config.z);
+    }
+    return bias;
+}
+
 void gs_get_cluster_params(vec2 pixel_pos, vec3 view_pos, out uint cluster_offset, out uint cluster_z,
         out uint cluster_type_size, out uint max_cluster_element_count_div_32) {
     uint cluster_shift = params.cluster_config.x;
