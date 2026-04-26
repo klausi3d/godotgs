@@ -10,8 +10,8 @@ Use this page as the bridge between the historical reports and the current publi
 
 ## Historical Reports
 
-- [Documentation Assessment Report - 2026-03-29](docs_assessment_2026-03-29.md)
-- [Documentation Assessment Report — 2026-03-19](docs_assessment_2026-03-19.md)
+- [Documentation Assessment Report - 2026-03-29](archive/docs_assessment_2026-03-29.md)
+- [Documentation Assessment Report — 2026-03-19](archive/docs_assessment_2026-03-19.md)
 - [Documentation Remediation Summary — 2026-03-20](docs_remediation_summary.md)
 
 ## Reading These Reports

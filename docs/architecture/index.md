@@ -6,6 +6,7 @@ Use this folder for architecture-level documentation and deep technical referenc
 
 - [Architecture overview](overview.md)
 - [Render pipeline architecture](render-pipeline.md)
+- [Culling and hierarchy](culling-and-hierarchy.md)
 - [Lighting system architecture](lighting-system.md)
 - [Unified Gaussian pipeline refactor plan](gaussian-pipeline-unification-plan.md)
 - [Resident-instanced renderer contract](gaussian-resident-instanced-contract.md)

@@ -1,7 +1,7 @@
 # Documentation Remediation Summary
 
 **Date:** 2026-03-20
-**Baseline assessment:** docs/reports/docs_assessment_2026-03-19.md (score: 2.41/5.00)
+**Baseline assessment:** docs/reports/archive/docs_assessment_2026-03-19.md (score: 2.41/5.00)
 **Scope:** All findings F1-F16 from the baseline assessment
 
 ---
@@ -9,7 +9,7 @@
 !!! info "Historical snapshot"
     This summary captures the remediation pass as of 2026-03-20. Some items referenced here were later reworked as the docs IA and landing pages changed.
 
-    See the [baseline assessment](docs_assessment_2026-03-19.md).
+    See the [baseline assessment](archive/docs_assessment_2026-03-19.md).
 
     See the [latest assessment](latest-assessment.md).
 

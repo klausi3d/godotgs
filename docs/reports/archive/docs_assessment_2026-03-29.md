@@ -10,7 +10,7 @@
 !!! info "Historical snapshot"
     This report captures the post-PR180 docs state on 2026-03-29.
 
-    See the [latest assessment](latest-assessment.md) for the current public status pages and the report bridge.
+    See the [latest assessment](../latest-assessment.md) for the current public status pages and the report bridge.
 
 ## Executive Summary
 
