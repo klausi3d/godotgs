@@ -1140,10 +1140,7 @@ void main() {
 
     // Per-splat receiver bias to reduce self-shadowing (scaled by splat radius).
     float splat_radius = max(g.scale.x, max(g.scale.y, g.scale.z));
-    float receiver_bias = max(params.shadow_bias_config.y, params.shadow_bias_config.x * splat_radius);
-    if (params.shadow_bias_config.z > 0.0) {
-        receiver_bias = min(receiver_bias, params.shadow_bias_config.z);
-    }
+    float receiver_bias = gs_compute_receiver_bias(splat_radius);
 
     uint lighting_mode = params.lighting_mode.x;
     float sh_base_scale = (lighting_mode == 0u) ? 1.0 : params.lighting_config.y;

@@ -10,6 +10,7 @@
 #include "test_ply_importer.h"
 #include "test_animation_interpolation.h"
 #include "test_deformation_math.h"
+#include "test_lighting_bias.h"
 #include "test_persistence_roundtrip.h"
 #include "synthetic_splat_generators.h"
 
