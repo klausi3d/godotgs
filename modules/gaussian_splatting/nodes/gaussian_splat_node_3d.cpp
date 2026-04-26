@@ -1715,20 +1715,29 @@ void GaussianSplatNode3D::_load_asset() {
     String load_error_message;
 
     if (!asset_resource_path.is_empty()) {
+        // Use the Error* overload because CACHE_MODE_REPLACE's disk-read
+        // failure path can return the previously cached resource (non-null)
+        // with a non-OK error code. Without inspecting r_load_error, a
+        // corrupt or missing .gaussiansplat would look like a successful
+        // reload of stale cached data.
+        Error r_load_error = OK;
         reloaded_asset = ResourceLoader::load(asset_resource_path, "GaussianSplatAsset",
-                ResourceFormatLoader::CACHE_MODE_REPLACE);
-        // Two failure cases the engine returns as "non-null but useless":
+                ResourceFormatLoader::CACHE_MODE_REPLACE, &r_load_error);
+        // Three failure cases the engine returns as "non-null but useless":
         //   1. Disk read failure under CACHE_MODE_REPLACE returns the
         //      previously cached resource (core/io/resource_loader.cpp
         //      ~471-484), so a corrupt/missing .gaussiansplat looks like
         //      a successful reload of stale cached data.
-        //   2. A successfully-parsed but empty asset (splat_count == 0)
+        //   2. The load itself reports non-OK even though the resource
+        //      object is non-null.
+        //   3. A successfully-parsed but empty asset (splat_count == 0)
         //      can happen for stale or partially-imported resources.
         // Treat both as reload failure so the asset_source_path fallback
         // below can re-import from .ply/.spz instead of silently swapping
         // the node payload to empty/stale data and emitting `asset_loaded`.
-        if (reloaded_asset.is_null() || reloaded_asset->get_splat_count() == 0) {
-            load_error_message = vformat("Failed to reload GaussianSplatAsset resource: %s", asset_resource_path);
+        if (reloaded_asset.is_null() || r_load_error != OK || reloaded_asset->get_splat_count() == 0) {
+            load_error_message = vformat("Failed to reload GaussianSplatAsset resource: %s (Error %d)",
+                    asset_resource_path, (int)r_load_error);
             reloaded_asset.unref();
         }
     }

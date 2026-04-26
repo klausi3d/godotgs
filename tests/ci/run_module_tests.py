@@ -100,7 +100,7 @@ MODULE_TEST_FILTERS: tuple[tuple[str, tuple[str, ...], tuple[str, ...], bool], .
     ("GaussianSplatting [Renderer]", ("*GaussianSplatting*][Renderer]*",), ("*][RequiresGPU]*",), False),
     ("TileRenderer", ("*Shader compilation on local device*",), (), False),
     ("GPU Memory Stream", ("*Triple Buffering*",), (), False),
-    ("Streaming Pipeline", ("*Concurrent LOD and visibility updates*",), (), False),
+    ("Streaming Pipeline", ("*[Streaming Pipeline]*",), (), False),
 )
 # Renderer-dependent (requires-RD) doctest lane.  Under Godot's --test mode
 # every test here will skip because no RenderingDevice is available.  This lane
