@@ -21,12 +21,34 @@ namespace {
 static constexpr uint32_t kWorldMagic = 0x57505347; // 'GSPW' little-endian.
 static constexpr uint32_t kWorldVersion = 1;
 static constexpr uint32_t kMaxShDegree = 3;
+// Gaussian.sh_1[3] holds at most 3 first-order coefficients on disk, and
+// GaussianData::set_gaussian_payload() clamps p_sh_first_order_count to 3, so
+// a value above 3 cannot have been produced by the in-tree saver. sh_high_order
+// has no equivalent ceiling — set_gaussian_payload accepts arbitrary counts and
+// the saver writes them verbatim — so it is bounded only by the structural
+// `fits_within` + `_checked_mul_u64` checks below, not by a magnitude cap.
+static constexpr uint32_t kMaxShFirstOrder = 3u;
 static constexpr uint32_t kFlagHasMetadata = 1u << 0u;
 static constexpr uint32_t kFlagIs2D = 1u << 1u;
 static constexpr uint32_t kFlagHasChunks = 1u << 2u;
 static constexpr uint32_t kFlagHasHighSh = 1u << 3u;
 static constexpr uint32_t kFlagCompressed = 1u << 4u;
 static constexpr uint64_t kHeaderSizeBytes = 104u;
+
+static bool fits_within(uint64_t p_offset, uint64_t p_size, uint64_t p_file_len) {
+	if (p_offset > p_file_len) {
+		return false;
+	}
+	return p_size <= (p_file_len - p_offset);
+}
+
+static bool checked_mul_u64(uint64_t p_a, uint64_t p_b, uint64_t &r_result) {
+	if (p_a != 0u && p_b > (UINT64_MAX / p_a)) {
+		return false;
+	}
+	r_result = p_a * p_b;
+	return true;
+}
 
 struct ChunkRecord {
 	Vector3 bounds_pos;
@@ -187,6 +209,19 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 	}
 	const uint32_t sh_first_order = file->get_32();
 	const uint32_t sh_high_order = file->get_32();
+	// Cap sh_first_order at the on-disk struct slot count. The saver clamps
+	// here too. Do NOT cap sh_high_order with a magnitude limit and do NOT
+	// enforce a canonical (degree+1)^2 mapping: GaussianData::set_gaussian_payload
+	// accepts arbitrary high-order counts and arbitrary (degree, first_order,
+	// high_order) triples, and ResourceFormatSaverGaussianSplatWorld writes
+	// them verbatim. Magnitude is bounded structurally by `fits_within` plus
+	// `_checked_mul_u64` on the SH payload range below.
+	if (sh_first_order > kMaxShFirstOrder) {
+		if (r_error) {
+			*r_error = ERR_FILE_CORRUPT;
+		}
+		return Ref<Resource>();
+	}
 	const Vector3 bounds_pos = _read_vec3(file);
 	const Vector3 bounds_size = _read_vec3(file);
 	const uint32_t chunk_count = file->get_32();
@@ -207,7 +242,7 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 	const uint64_t gaussian_bytes = uint64_t(splat_count) * sizeof(Gaussian);
 	const bool gaussian_data_compressed = (flags & kFlagCompressed) != 0;
 	if (gaussian_data_compressed) {
-		if (gaussian_offset > file_len || gaussian_offset > file_len - sizeof(uint64_t)) {
+		if (!fits_within(gaussian_offset, sizeof(uint64_t), file_len)) {
 			if (r_error) {
 				*r_error = ERR_FILE_CORRUPT;
 			}
@@ -227,7 +262,7 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 			return Ref<Resource>();
 		}
 	} else {
-		if (gaussian_bytes > file_len - gaussian_offset) {
+		if (!fits_within(gaussian_offset, gaussian_bytes, file_len)) {
 			if (r_error) {
 				*r_error = ERR_FILE_CORRUPT;
 			}
@@ -236,9 +271,16 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 	}
 
 	if ((flags & kFlagHasHighSh) != 0 && sh_high_order > 0) {
-		const uint64_t sh_count = uint64_t(splat_count) * uint64_t(sh_high_order);
-		const uint64_t sh_bytes = sh_count * sizeof(Vector3);
-		if (sh_offset + sh_bytes > file_len) {
+		uint64_t sh_count = 0;
+		uint64_t sh_bytes = 0;
+		if (!checked_mul_u64(uint64_t(splat_count), uint64_t(sh_high_order), sh_count) ||
+				!checked_mul_u64(sh_count, uint64_t(sizeof(Vector3)), sh_bytes)) {
+			if (r_error) {
+				*r_error = ERR_FILE_CORRUPT;
+			}
+			return Ref<Resource>();
+		}
+		if (!fits_within(sh_offset, sh_bytes, file_len)) {
 			if (r_error) {
 				*r_error = ERR_FILE_CORRUPT;
 			}
@@ -248,7 +290,7 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 
 	if ((flags & kFlagHasChunks) != 0 && chunk_count > 0) {
 		const uint64_t chunk_table_bytes = uint64_t(chunk_count) * 56u;
-		if (chunk_table_offset + chunk_table_bytes > file_len) {
+		if (!fits_within(chunk_table_offset, chunk_table_bytes, file_len)) {
 			if (r_error) {
 				*r_error = ERR_FILE_CORRUPT;
 			}
@@ -263,7 +305,7 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 	}
 
 	if ((flags & kFlagHasMetadata) != 0 && metadata_size > 0) {
-		if (metadata_offset + metadata_size > file_len) {
+		if (!fits_within(metadata_offset, metadata_size, file_len)) {
 			if (r_error) {
 				*r_error = ERR_FILE_CORRUPT;
 			}
@@ -279,8 +321,7 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 		// Compressed format: [8 bytes compressed_size][compressed_data]
 		const uint64_t compressed_size = file->get_64();
 		const uint64_t compressed_data_offset = file->get_position();
-		if (compressed_data_offset > file_len ||
-				compressed_size > (file_len - compressed_data_offset)) {
+		if (!fits_within(compressed_data_offset, compressed_size, file_len)) {
 			if (r_error) {
 				*r_error = ERR_FILE_CORRUPT;
 			}
@@ -317,10 +358,17 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 
 	LocalVector<Vector3> sh_high_coeffs;
 	if ((flags & kFlagHasHighSh) != 0 && sh_high_order > 0) {
-		const uint64_t sh_count = uint64_t(splat_count) * uint64_t(sh_high_order);
+		uint64_t sh_count = 0;
+		uint64_t sh_bytes = 0;
+		if (!checked_mul_u64(uint64_t(splat_count), uint64_t(sh_high_order), sh_count) ||
+				!checked_mul_u64(sh_count, uint64_t(sizeof(Vector3)), sh_bytes)) {
+			if (r_error) {
+				*r_error = ERR_FILE_CORRUPT;
+			}
+			return Ref<Resource>();
+		}
 		sh_high_coeffs.resize(sh_count);
 		file->seek(sh_offset);
-		const uint64_t sh_bytes = sh_count * sizeof(Vector3);
 		if (!_read_exact(file, sh_high_coeffs.ptr(), sh_bytes)) {
 			if (r_error) {
 				*r_error = ERR_FILE_CORRUPT;
@@ -354,9 +402,21 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 			total_indices = MAX<uint64_t>(total_indices, record.indices_offset + uint64_t(record.index_count));
 		}
 		if (total_indices > 0) {
+			uint64_t bytes = 0;
+			if (!checked_mul_u64(total_indices, uint64_t(sizeof(uint32_t)), bytes)) {
+				if (r_error) {
+					*r_error = ERR_FILE_CORRUPT;
+				}
+				return Ref<Resource>();
+			}
+			if (!fits_within(indices_offset, bytes, file_len)) {
+				if (r_error) {
+					*r_error = ERR_FILE_CORRUPT;
+				}
+				return Ref<Resource>();
+			}
 			all_indices.resize(total_indices);
 			file->seek(indices_offset);
-			const uint64_t bytes = total_indices * sizeof(uint32_t);
 			if (!_read_exact(file, all_indices.ptrw(), bytes)) {
 				if (r_error) {
 					*r_error = ERR_FILE_CORRUPT;
