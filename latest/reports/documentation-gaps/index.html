@@ -3985,17 +3985,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingnodesgaussian_splat_node_3dcpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingcorestreaming_eviction_controllerh" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4044,6 +4033,17 @@
     <span class="md-ellipsis">
       
         tests/examples/godot/test_project/scripts/bake_gsplatworld.gd
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingnodesgaussian_splat_node_3dcpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp
       
     </span>
   </a>
@@ -9373,6 +9373,51 @@
 <li>line 779: void PerformanceProfiler::clear() {...</li>
 <li>line 784: Dictionary PerformanceProfiler::get_summary() const {...</li>
 </ul>
+<h2 id="modulesgaussian_splattingcorestreaming_eviction_controllerh">modules/gaussian_splatting/core/streaming_eviction_controller.h<a class="headerlink" href="#modulesgaussian_splattingcorestreaming_eviction_controllerh" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 31: uint32_t get_max_evictions_per_frame() const { return max_ev...</li>
+<li>line 32: uint32_t get_chunks_evicted_this_frame() const { return chun...</li>
+<li>line 33: uint32_t get_visible_chunks_evicted_this_frame() const { ret...</li>
+</ul>
+<h2 id="modulesgaussian_splattingrenderertile_render_async_readbackcpp">modules/gaussian_splatting/renderer/tile_render_async_readback.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderertile_render_async_readbackcpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 7: void TileRenderer::TileAsyncReadback::on_overflow_flag_readb...</li>
+<li>line 26: void TileRenderer::TileAsyncReadback::on_tile_counts_readbac...</li>
+</ul>
+<h2 id="testsruntimetest_gpu_streaming_stressgd">tests/runtime/test_gpu_streaming_stress.gd<a class="headerlink" href="#testsruntimetest_gpu_streaming_stressgd" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 195: func _average(values: Array) -&gt; float:...</li>
+<li>line 203: func _percentile(values: Array, percentile: float) -&gt; float:...</li>
+<li>line 212: func _evaluate_sort_evidence(stats: Dictionary, history: Arr...</li>
+<li>line 226: func _evaluate_tier_budget(tier: Dictionary, tier_result: Di...</li>
+<li>line 761: func _build_world_resource(dataset: GaussianData) -&gt; Gaussia...</li>
+<li>line 767: func _setup_world_scene(dataset: GaussianData) -&gt; bool:...</li>
+<li>line 788: func _teardown_world_scene() -&gt; void:...</li>
+</ul>
+<h2 id="modulesgaussian_splattinginterfacesdebug_overlay_systemh">modules/gaussian_splatting/interfaces/debug_overlay_system.h<a class="headerlink" href="#modulesgaussian_splattinginterfacesdebug_overlay_systemh" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 109: bool get_show_white_albedo() const { return options.show_whi...</li>
+<li>line 149: DebugOverlayQueryView get_query_view(const GaussianSplatRend...</li>
+<li>line 150: DebugOverlayCommandSink get_command_sink(GaussianSplatRender...</li>
+<li>line 182: uint32_t get_tile_density_peak() const { return tile_density...</li>
+<li>line 183: float get_tile_density_average() const { return tile_density...</li>
+<li>line 185: int get_tile_density_width() const { return tile_density_wid...</li>
+<li>line 186: int get_tile_density_height() const { return tile_density_he...</li>
+</ul>
+<h2 id="testsexamplesgodottest_projectscriptsbake_gsplatworldgd">tests/examples/godot/test_project/scripts/bake_gsplatworld.gd<a class="headerlink" href="#testsexamplesgodottest_projectscriptsbake_gsplatworldgd" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 12: func _init():...</li>
+<li>line 16: func _run_bake():...</li>
+<li>line 66: func _bake_from_scene(args: Dictionary) -&gt; GaussianSplatWorl...</li>
+<li>line 108: func _bake_from_inputs(args: Dictionary) -&gt; GaussianSplatWor...</li>
+<li>line 145: func _find_container(scene_root: Node, container_path: Strin...</li>
+<li>line 165: func _ensure_container_assets(container: GaussianSplatContai...</li>
+<li>line 178: func _load_asset(path: String) -&gt; GaussianSplatAsset:...</li>
+<li>line 199: func _apply_chunk_size(container: GaussianSplatContainer, ar...</li>
+<li>line 206: func _split_list(value: String) -&gt; PackedStringArray:...</li>
+<li>line 215: func _parse_args() -&gt; Dictionary:...</li>
+<li>line 227: func _print_usage() -&gt; void:...</li>
+</ul>
 <h2 id="modulesgaussian_splattingnodesgaussian_splat_node_3dcpp">modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp<a class="headerlink" href="#modulesgaussian_splattingnodesgaussian_splat_node_3dcpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 38: static bool _is_frame_log_enabled() { return gs::settings::i...</li>
@@ -9452,116 +9497,71 @@
 <li>line 1626: PackedStringArray GaussianSplatNode3D::get_configuration_war...</li>
 <li>line 1670: String GaussianSplatNode3D::get_asset_origin_label() const {...</li>
 <li>line 1698: void GaussianSplatNode3D::_load_asset() {...</li>
-<li>line 1760: void GaussianSplatNode3D::_update_asset() {...</li>
-<li>line 1766: bool GaussianSplatNode3D::_has_local_source_data() const {...</li>
-<li>line 1770: bool GaussianSplatNode3D::_can_push_color_grading_to_rendere...</li>
-<li>line 1774: bool GaussianSplatNode3D::_push_color_grading_to_renderer(bo...</li>
-<li>line 1804: void GaussianSplatNode3D::_replay_color_grading_if_pending()...</li>
-<li>line 1845: void GaussianSplatNode3D::_clear_asset() {...</li>
-<li>line 1852: void GaussianSplatNode3D::_update_bounds() {...</li>
-<li>line 1864: void GaussianSplatNode3D::_update_visibility() {...</li>
-<li>line 1937: void GaussianSplatNode3D::_update_quality_settings() {...</li>
-<li>line 1967: void GaussianSplatNode3D::_apply_painterly_settings() {...</li>
-<li>line 1983: void GaussianSplatNode3D::_ensure_renderer() {...</li>
-<li>line 1987: void GaussianSplatNode3D::_ensure_debug_hud_control() {...</li>
-<li>line 2008: void GaussianSplatNode3D::_update_debug_hud_visibility() {...</li>
-<li>line 2032: void GaussianSplatNode3D::_apply_renderer_settings() {...</li>
-<li>line 2036: void GaussianSplatNode3D::_update_render_instance() {...</li>
-<li>line 2067: void GaussianSplatNode3D::_ensure_gaussian_base() {...</li>
-<li>line 2087: void GaussianSplatNode3D::_release_gaussian_base() {...</li>
-<li>line 2107: void GaussianSplatNode3D::_sync_gaussian_storage() {...</li>
-<li>line 2128: void GaussianSplatNode3D::_update_cached_render_target(Viewp...</li>
-<li>line 2132: bool GaussianSplatNode3D::_acquire_viewport_render_target(Vi...</li>
-<li>line 2136: void GaussianSplatNode3D::_connect_viewport_observers(Viewpo...</li>
-<li>line 2140: void GaussianSplatNode3D::_disconnect_viewport_observers() {...</li>
-<li>line 2144: void GaussianSplatNode3D::_ensure_viewport_texture_binding(V...</li>
-<li>line 2148: void GaussianSplatNode3D::_queue_viewport_bootstrap() {...</li>
-<li>line 2152: void GaussianSplatNode3D::_deferred_viewport_bootstrap() {...</li>
-<li>line 2156: void GaussianSplatNode3D::_queue_first_frame_render() {...</li>
-<li>line 2165: void GaussianSplatNode3D::_dispatch_first_frame_render() {...</li>
-<li>line 2181: void GaussianSplatNode3D::_on_viewport_texture_ready() {...</li>
-<li>line 2185: void GaussianSplatNode3D::_on_viewport_size_changed() {...</li>
-<li>line 2189: void GaussianSplatNode3D::_on_observed_viewport_exited() {...</li>
-<li>line 2193: void GaussianSplatNode3D::_set_instance_base(const RID &amp;p_ba...</li>
-<li>line 2206: void GaussianSplatNode3D::_upload_asset_to_renderer() {...</li>
-<li>line 2210: void GaussianSplatNode3D::_mark_render_state_dirty() {...</li>
-<li>line 2214: bool GaussianSplatNode3D::_resolve_is_2d_mode() const {...</li>
-<li>line 2227: uint32_t GaussianSplatNode3D::_get_instance_flags() const {...</li>
-<li>line 2231: float GaussianSplatNode3D::_get_instance_wind_intensity() co...</li>
-<li>line 2238: uint32_t GaussianSplatNode3D::_get_instance_wind_mode() cons...</li>
-<li>line 2247: Vector3 GaussianSplatNode3D::_get_instance_wind_direction() ...</li>
-<li>line 2254: float GaussianSplatNode3D::_get_instance_wind_frequency() co...</li>
-<li>line 2275: void GaussianSplatNode3D::_register_instance_in_director() {...</li>
-<li>line 2346: void GaussianSplatNode3D::_unregister_instance_in_director()...</li>
-<li>line 2352: void GaussianSplatNode3D::_update_instance_transform_in_dire...</li>
-<li>line 2361: void GaussianSplatNode3D::_update_instance_params_in_directo...</li>
-<li>line 2392: void GaussianSplatNode3D::_register_shared_renderer() {...</li>
-<li>line 2410: void GaussianSplatNode3D::_unregister_shared_renderer() {...</li>
-<li>line 2414: void GaussianSplatNode3D::_update_shared_transform() {...</li>
-<li>line 2418: void GaussianSplatNode3D::_on_asset_changed() {...</li>
-<li>line 2425: void GaussianSplatNode3D::_on_color_grading_changed() {...</li>
-<li>line 2441: void GaussianSplatNode3D::_on_transform_changed() {...</li>
-<li>line 2448: void GaussianSplatNode3D::_clear_parent_visibility_tracking(...</li>
-<li>line 2452: void GaussianSplatNode3D::_update_parent_visibility_tracking...</li>
-<li>line 2456: void GaussianSplatNode3D::_update_parent_visibility_state() ...</li>
-<li>line 2460: void GaussianSplatNode3D::_on_parent_visibility_changed_with...</li>
-<li>line 2464: void GaussianSplatNode3D::_on_parent_visibility_changed() {...</li>
-<li>line 2468: void GaussianSplatNode3D::_apply_quality_preset() {...</li>
-<li>line 2472: Dictionary GaussianSplatNode3D::_get_preset_config(QualityPr...</li>
-<li>line 2480: void GaussianSplatNode3D::_fill_preset_config(QualityPreset ...</li>
-<li>line 2484: Ref<gaussiansplatrenderer> GaussianSplatNode3D::get_renderer...</gaussiansplatrenderer></li>
-<li>line 2493: void GaussianSplatNode3D::set_color_grading(const Ref&lt;ColorG...</li>
-<li>line 2522: Error GaussianSplatNode3D::bake_color_grading() {...</li>
-<li>line 2526: Error GaussianSplatNode3D::bake_color_grading_snapshot(const...</li>
-<li>line 2553: void GaussianSplatNode3D::restore_color_grading() {...</li>
-<li>line 2569: bool GaussianSplatNode3D::is_color_grading_baked() const {...</li>
-<li>line 2577: bool GaussianSplatNode3D::<em>can_drop_data_fw(const Point2 &amp;p</em>...</li>
-<li>line 2596: void GaussianSplatNode3D::_drop_data_fw(const Point2 &amp;p_poin...</li>
-</ul>
-<h2 id="modulesgaussian_splattingcorestreaming_eviction_controllerh">modules/gaussian_splatting/core/streaming_eviction_controller.h<a class="headerlink" href="#modulesgaussian_splattingcorestreaming_eviction_controllerh" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 31: uint32_t get_max_evictions_per_frame() const { return max_ev...</li>
-<li>line 32: uint32_t get_chunks_evicted_this_frame() const { return chun...</li>
-<li>line 33: uint32_t get_visible_chunks_evicted_this_frame() const { ret...</li>
-</ul>
-<h2 id="modulesgaussian_splattingrenderertile_render_async_readbackcpp">modules/gaussian_splatting/renderer/tile_render_async_readback.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderertile_render_async_readbackcpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 7: void TileRenderer::TileAsyncReadback::on_overflow_flag_readb...</li>
-<li>line 26: void TileRenderer::TileAsyncReadback::on_tile_counts_readbac...</li>
-</ul>
-<h2 id="testsruntimetest_gpu_streaming_stressgd">tests/runtime/test_gpu_streaming_stress.gd<a class="headerlink" href="#testsruntimetest_gpu_streaming_stressgd" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 195: func _average(values: Array) -&gt; float:...</li>
-<li>line 203: func _percentile(values: Array, percentile: float) -&gt; float:...</li>
-<li>line 212: func _evaluate_sort_evidence(stats: Dictionary, history: Arr...</li>
-<li>line 226: func _evaluate_tier_budget(tier: Dictionary, tier_result: Di...</li>
-<li>line 761: func _build_world_resource(dataset: GaussianData) -&gt; Gaussia...</li>
-<li>line 767: func _setup_world_scene(dataset: GaussianData) -&gt; bool:...</li>
-<li>line 788: func _teardown_world_scene() -&gt; void:...</li>
-</ul>
-<h2 id="modulesgaussian_splattinginterfacesdebug_overlay_systemh">modules/gaussian_splatting/interfaces/debug_overlay_system.h<a class="headerlink" href="#modulesgaussian_splattinginterfacesdebug_overlay_systemh" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 109: bool get_show_white_albedo() const { return options.show_whi...</li>
-<li>line 149: DebugOverlayQueryView get_query_view(const GaussianSplatRend...</li>
-<li>line 150: DebugOverlayCommandSink get_command_sink(GaussianSplatRender...</li>
-<li>line 182: uint32_t get_tile_density_peak() const { return tile_density...</li>
-<li>line 183: float get_tile_density_average() const { return tile_density...</li>
-<li>line 185: int get_tile_density_width() const { return tile_density_wid...</li>
-<li>line 186: int get_tile_density_height() const { return tile_density_he...</li>
-</ul>
-<h2 id="testsexamplesgodottest_projectscriptsbake_gsplatworldgd">tests/examples/godot/test_project/scripts/bake_gsplatworld.gd<a class="headerlink" href="#testsexamplesgodottest_projectscriptsbake_gsplatworldgd" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 12: func _init():...</li>
-<li>line 16: func _run_bake():...</li>
-<li>line 66: func _bake_from_scene(args: Dictionary) -&gt; GaussianSplatWorl...</li>
-<li>line 108: func _bake_from_inputs(args: Dictionary) -&gt; GaussianSplatWor...</li>
-<li>line 145: func _find_container(scene_root: Node, container_path: Strin...</li>
-<li>line 165: func _ensure_container_assets(container: GaussianSplatContai...</li>
-<li>line 178: func _load_asset(path: String) -&gt; GaussianSplatAsset:...</li>
-<li>line 199: func _apply_chunk_size(container: GaussianSplatContainer, ar...</li>
-<li>line 206: func _split_list(value: String) -&gt; PackedStringArray:...</li>
-<li>line 215: func _parse_args() -&gt; Dictionary:...</li>
-<li>line 227: func _print_usage() -&gt; void:...</li>
+<li>line 1769: void GaussianSplatNode3D::_update_asset() {...</li>
+<li>line 1775: bool GaussianSplatNode3D::_has_local_source_data() const {...</li>
+<li>line 1779: bool GaussianSplatNode3D::_can_push_color_grading_to_rendere...</li>
+<li>line 1783: bool GaussianSplatNode3D::_push_color_grading_to_renderer(bo...</li>
+<li>line 1813: void GaussianSplatNode3D::_replay_color_grading_if_pending()...</li>
+<li>line 1854: void GaussianSplatNode3D::_clear_asset() {...</li>
+<li>line 1861: void GaussianSplatNode3D::_update_bounds() {...</li>
+<li>line 1873: void GaussianSplatNode3D::_update_visibility() {...</li>
+<li>line 1946: void GaussianSplatNode3D::_update_quality_settings() {...</li>
+<li>line 1976: void GaussianSplatNode3D::_apply_painterly_settings() {...</li>
+<li>line 1992: void GaussianSplatNode3D::_ensure_renderer() {...</li>
+<li>line 1996: void GaussianSplatNode3D::_ensure_debug_hud_control() {...</li>
+<li>line 2017: void GaussianSplatNode3D::_update_debug_hud_visibility() {...</li>
+<li>line 2041: void GaussianSplatNode3D::_apply_renderer_settings() {...</li>
+<li>line 2045: void GaussianSplatNode3D::_update_render_instance() {...</li>
+<li>line 2076: void GaussianSplatNode3D::_ensure_gaussian_base() {...</li>
+<li>line 2096: void GaussianSplatNode3D::_release_gaussian_base() {...</li>
+<li>line 2116: void GaussianSplatNode3D::_sync_gaussian_storage() {...</li>
+<li>line 2137: void GaussianSplatNode3D::_update_cached_render_target(Viewp...</li>
+<li>line 2141: bool GaussianSplatNode3D::_acquire_viewport_render_target(Vi...</li>
+<li>line 2145: void GaussianSplatNode3D::_connect_viewport_observers(Viewpo...</li>
+<li>line 2149: void GaussianSplatNode3D::_disconnect_viewport_observers() {...</li>
+<li>line 2153: void GaussianSplatNode3D::_ensure_viewport_texture_binding(V...</li>
+<li>line 2157: void GaussianSplatNode3D::_queue_viewport_bootstrap() {...</li>
+<li>line 2161: void GaussianSplatNode3D::_deferred_viewport_bootstrap() {...</li>
+<li>line 2165: void GaussianSplatNode3D::_queue_first_frame_render() {...</li>
+<li>line 2174: void GaussianSplatNode3D::_dispatch_first_frame_render() {...</li>
+<li>line 2190: void GaussianSplatNode3D::_on_viewport_texture_ready() {...</li>
+<li>line 2194: void GaussianSplatNode3D::_on_viewport_size_changed() {...</li>
+<li>line 2198: void GaussianSplatNode3D::_on_observed_viewport_exited() {...</li>
+<li>line 2202: void GaussianSplatNode3D::_set_instance_base(const RID &amp;p_ba...</li>
+<li>line 2215: void GaussianSplatNode3D::_upload_asset_to_renderer() {...</li>
+<li>line 2219: void GaussianSplatNode3D::_mark_render_state_dirty() {...</li>
+<li>line 2223: bool GaussianSplatNode3D::_resolve_is_2d_mode() const {...</li>
+<li>line 2236: uint32_t GaussianSplatNode3D::_get_instance_flags() const {...</li>
+<li>line 2240: float GaussianSplatNode3D::_get_instance_wind_intensity() co...</li>
+<li>line 2247: uint32_t GaussianSplatNode3D::_get_instance_wind_mode() cons...</li>
+<li>line 2256: Vector3 GaussianSplatNode3D::_get_instance_wind_direction() ...</li>
+<li>line 2263: float GaussianSplatNode3D::_get_instance_wind_frequency() co...</li>
+<li>line 2284: void GaussianSplatNode3D::_register_instance_in_director() {...</li>
+<li>line 2355: void GaussianSplatNode3D::_unregister_instance_in_director()...</li>
+<li>line 2361: void GaussianSplatNode3D::_update_instance_transform_in_dire...</li>
+<li>line 2370: void GaussianSplatNode3D::_update_instance_params_in_directo...</li>
+<li>line 2401: void GaussianSplatNode3D::_register_shared_renderer() {...</li>
+<li>line 2419: void GaussianSplatNode3D::_unregister_shared_renderer() {...</li>
+<li>line 2423: void GaussianSplatNode3D::_update_shared_transform() {...</li>
+<li>line 2427: void GaussianSplatNode3D::_on_asset_changed() {...</li>
+<li>line 2434: void GaussianSplatNode3D::_on_color_grading_changed() {...</li>
+<li>line 2450: void GaussianSplatNode3D::_on_transform_changed() {...</li>
+<li>line 2457: void GaussianSplatNode3D::_clear_parent_visibility_tracking(...</li>
+<li>line 2461: void GaussianSplatNode3D::_update_parent_visibility_tracking...</li>
+<li>line 2465: void GaussianSplatNode3D::_update_parent_visibility_state() ...</li>
+<li>line 2469: void GaussianSplatNode3D::_on_parent_visibility_changed_with...</li>
+<li>line 2473: void GaussianSplatNode3D::_on_parent_visibility_changed() {...</li>
+<li>line 2477: void GaussianSplatNode3D::_apply_quality_preset() {...</li>
+<li>line 2481: Dictionary GaussianSplatNode3D::_get_preset_config(QualityPr...</li>
+<li>line 2489: void GaussianSplatNode3D::_fill_preset_config(QualityPreset ...</li>
+<li>line 2493: Ref<gaussiansplatrenderer> GaussianSplatNode3D::get_renderer...</gaussiansplatrenderer></li>
+<li>line 2502: void GaussianSplatNode3D::set_color_grading(const Ref&lt;ColorG...</li>
+<li>line 2531: Error GaussianSplatNode3D::bake_color_grading() {...</li>
+<li>line 2535: Error GaussianSplatNode3D::bake_color_grading_snapshot(const...</li>
+<li>line 2562: void GaussianSplatNode3D::restore_color_grading() {...</li>
+<li>line 2578: bool GaussianSplatNode3D::is_color_grading_baked() const {...</li>
+<li>line 2586: bool GaussianSplatNode3D::<em>can_drop_data_fw(const Point2 &amp;p</em>...</li>
+<li>line 2605: void GaussianSplatNode3D::_drop_data_fw(const Point2 &amp;p_poin...</li>
 </ul>
 <h2 id="modulesgaussian_splattingcoregaussian_splat_managercpp">modules/gaussian_splatting/core/gaussian_splat_manager.cpp<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_splat_managercpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -10765,7 +10765,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 25, 2026 20:32:04 UTC">April 25, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 26, 2026 07:55:59 UTC">April 26, 2026</span>
   </span>
 
     
