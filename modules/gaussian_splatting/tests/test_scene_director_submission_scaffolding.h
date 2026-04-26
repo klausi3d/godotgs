@@ -1685,4 +1685,74 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] World submission with z
 	}
 }
 
+// Regression: PR #280 ("Wave 1 fallback cleanup") removed the legacy resident fallback inside
+// _try_render_resident_frame(), making the early "no_render_data" gate fatal whenever
+// scene_state.gaussian_data was null. Asset-backed GaussianSplatNode3D scenes hit that gate
+// because they hand their data to the director (instance assets) but never call
+// renderer->set_gaussian_data(). The frame skipped before the resident contract publisher could
+// pick the asset up from the director, so node_visible_splats_max stayed at 0 even though every
+// splat was registered and ready to render. This test pins the canonical asset-backed path.
+TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree][RequiresGPU] Asset-backed GaussianSplatNode3D renders without direct set_gaussian_data") {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (rs == nullptr) {
+		MESSAGE("Skipping test - Rendering server unavailable");
+		return;
+	}
+
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	Ref<GaussianSplatAsset> asset = stage1a_make_submission_test_asset(0.0f);
+	REQUIRE(asset.is_valid());
+
+	GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
+	REQUIRE(node != nullptr);
+	node->set_splat_asset(asset);
+	root->add_child(node);
+	tree->process(0.0);
+
+	Ref<GaussianSplatRenderer> renderer = node->get_renderer();
+	if (!renderer.is_valid()) {
+		MESSAGE("Skipping test - renderer unavailable");
+		root->remove_child(node);
+		memdelete(node);
+		tree->process(0.0);
+		return;
+	}
+
+	// Sanity: the canonical asset-backed path must NOT have populated scene_state.gaussian_data
+	// directly. If this ever flips true, the regression we're guarding here has been masked by
+	// some other pathway and this test is no longer testing what it claims to test.
+	CHECK_FALSE(renderer->get_scene_state().gaussian_data.is_valid());
+
+	RenderSceneDataRD scene_data;
+	scene_data.cam_transform = Transform3D(Basis(), Vector3(0.0f, 0.0f, 5.0f));
+	scene_data.cam_projection.set_perspective(70.0f, 1.0f, 0.1f, 100.0f);
+
+	RenderDataRD render_data;
+	render_data.scene_data = &scene_data;
+	render_data.render_buffers = Ref<RenderSceneBuffersRD>();
+
+	renderer->render_scene_instance(&render_data);
+
+	// Pre-fix behavior was: route_uid begins with COMMON_SKIP_RESIDENT_NOT_FEASIBLE,
+	// instance_contract_ready=false, has_instance_pipeline_buffers()=false.
+	// With the fix the publisher runs, builds the atlas from director-stored asset records, and
+	// the resident contract becomes ready.
+	const Dictionary stats = renderer->get_render_stats();
+	const String route_uid = stats.get("route_uid", String());
+	CHECK_FALSE_MESSAGE(route_uid.begins_with(String(RenderRouteUID::COMMON_SKIP_RESIDENT_NOT_FEASIBLE)),
+			vformat("Asset-backed node was rejected with no_render_data; route_uid=%s", route_uid));
+	CHECK(stats.get("instance_backend_policy", String()) == String("resident"));
+	CHECK(bool(stats.get("instance_contract_ready", false)));
+	CHECK(renderer->has_instance_pipeline_buffers());
+
+	root->remove_child(node);
+	memdelete(node);
+	tree->process(0.0);
+}
+
 #endif // TESTS_ENABLED || TOOLS_ENABLED

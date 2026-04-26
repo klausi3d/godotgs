@@ -2009,10 +2009,20 @@ bool GaussianSplatRenderer::_try_render_resident_frame(RenderDataRD *p_render_da
 #endif
 
     if (!has_gaussian_dataset && !has_buffer_manager_data) {
-        if (r_reason) {
-            *r_reason = "no_render_data";
+        // The resident contract publisher below builds the atlas from director-registered
+        // InstanceRecords even when scene_state has no primary gaussian_data. Asset-backed
+        // GaussianSplatNode3D scenes hit this path: they register their asset with the director
+        // but never call renderer->set_gaussian_data(). Only skip when the director also has
+        // nothing registered for this renderer.
+        const GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+        const bool has_director_instances = director != nullptr &&
+                director->get_instance_count_for_renderer(this) > 0;
+        if (!has_director_instances) {
+            if (r_reason) {
+                *r_reason = "no_render_data";
+            }
+            return false;
         }
-        return false;
     }
 
     String resident_contract_reason = "resident_contract_published";
