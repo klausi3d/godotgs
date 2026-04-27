@@ -22,17 +22,15 @@ Validates Level-of-Detail functionality:
 - **Node Quality Presets**: Neutral node-facing quality and streaming configs stay coherent
 - **Hierarchy Scalability**: Large hierarchy builds and queries stay on the accepted live path
 
-### 3. Performance Benchmarks (`performance_benchmark.cpp`)
-Stress tests with varying splat counts:
-- **100K Splats**: Target 400+ FPS on RTX 3090
-- **1M Splats**: Target 150+ FPS on RTX 3090
-- **10M Splats**: Target 45+ FPS on RTX 3090
-- **Metrics Tracked**:
-  - Frame time percentiles (P50, P95, P99)
-  - GPU memory usage (peak and average)
-  - Sort time with/without async compute
-  - Bandwidth utilization
-  - Stall percentages
+### 3. Performance Benchmarks (`run_integration_tests.py --benchmarks`)
+Stress runs driven from GDScript via the Python harness — the legacy C++
+`PerformanceBenchmark` class was removed in issue #289 (it never linked and was
+not registered as a Godot class). Coverage now lives in:
+- `run_integration_tests.py::_run_single_benchmark` — populates `GaussianData`,
+  builds the spatial hierarchy, and records timings for 100K / 1M / 10M splat
+  configurations (heavy tiers gated behind `--heavy`).
+- GDScript benchmark scenes under
+  `tests/examples/godot/test_project/scenes/benchmark_*.gd`.
 
 ### 4. Headless Build Tests (`test_headless_build.py`)
 Validates module without GUI:

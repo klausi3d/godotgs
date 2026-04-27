@@ -186,79 +186,21 @@ func _ready():
         return exit_code == 0
 
     def run_performance_benchmarks(self) -> bool:
-        """Run performance benchmarks."""
-        print("\n=== Running Performance Benchmarks ===")
+        """Run performance benchmarks.
 
-        benchmark_configs = [
-            {"splat_count": 1000, "frames": 100},
-            {"splat_count": 10000, "frames": 100},
-            {"splat_count": 100000, "frames": 100},
-            {"splat_count": 500000, "frames": 50}
-        ]
+        The legacy C++ ``PerformanceBenchmark`` harness was removed (issue #289)
+        because it never linked: ``GaussianMemoryStream::get_sort_keys_buffer``
+        was declared but never defined, and the previous loader tried to
+        ``preload`` a header file as if it were a script.  Performance is now
+        covered by ``run_integration_tests.py`` and the GDScript benchmark
+        scenes under ``tests/examples/godot/test_project/scenes``.
+        """
+        print("\n=== Performance Benchmarks ===")
+        print("  Skipped: legacy C++ PerformanceBenchmark harness removed (issue #289).")
+        print("  Use run_integration_tests.py --benchmarks for performance coverage.")
 
-        benchmark_results = []
-
-        for config in benchmark_configs:
-            print(f"\nBenchmarking {config['splat_count']} splats...")
-
-            benchmark_script = f"""
-extends Node
-
-func _ready():
-    var benchmark = preload("res://modules/gaussian_splatting/tests/performance_benchmark.h")
-    var runner = benchmark.PerformanceBenchmark.new()
-
-    var config = benchmark.BenchmarkConfig.new()
-    config.splat_count = {config['splat_count']}
-    config.frame_count = {config['frames']}
-
-    var result = runner.run_benchmark(config)
-    print(result.to_json())
-
-    get_tree().quit(0)
-"""
-
-            # Write temporary benchmark script
-            bench_script_path = self.test_output_dir / f"benchmark_{config['splat_count']}.gd"
-            bench_script_path.write_text(benchmark_script)
-
-            cmd = [
-                str(self.godot_path / "bin" / self._get_godot_binary()),
-                "--script",
-                str(bench_script_path),
-                "--headless"
-            ]
-
-            exit_code, stdout, stderr = self.run_command(cmd)
-
-            # Parse benchmark results
-            try:
-                # Extract JSON from output
-                json_start = stdout.find('{')
-                json_end = stdout.rfind('}') + 1
-                if json_start >= 0 and json_end > json_start:
-                    result_json = stdout[json_start:json_end]
-                    result = json.loads(result_json)
-                    benchmark_results.append(result)
-
-                    # Check performance targets
-                    if config['splat_count'] <= 100000:
-                        fps = result.get('metrics', {}).get('avg_fps', 0)
-                        if fps < 60:
-                            print(f"  WARNING: Failed to meet 60 FPS target ({fps:.1f} FPS)")
-            except json.JSONDecodeError:
-                print(f"  Failed to parse benchmark results")
-
-        self.results["tests"]["benchmarks"] = benchmark_results
-
-        # Check if performance targets were met
-        targets_met = all(
-            r.get('metrics', {}).get('avg_fps', 0) >= 60
-            for r in benchmark_results
-            if r.get('config', {}).get('splat_count', 0) <= 100000
-        )
-
-        return targets_met
+        self.results["tests"]["benchmarks"] = []
+        return True
 
     def run_memory_validation(self) -> bool:
         """Run memory leak detection tests."""
