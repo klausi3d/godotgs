@@ -7,7 +7,7 @@
       
       
       
-        <link rel="canonical" href="https://klausi3d.github.io/godotGS/latest/reports/editor_startup_investigation_2026-04-16/">
+        <link rel="canonical" href="https://klausi3d.github.io/godotGS/latest/architecture/culling-and-hierarchy/">
       
       
       
@@ -20,7 +20,7 @@
     
     
       
-        <title>Editor Startup Investigation (2026-04-16) - Godot Gaussian Splatting Docs</title>
+        <title>Culling and Hierarchy - Godot Gaussian Splatting Docs</title>
       
     
     
@@ -81,7 +81,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#editor-startup-investigation-2026-04-16" class="md-skip">
+        <a href="#culling-and-hierarchy" class="md-skip">
           Skip to content
         </a>
       
@@ -120,7 +120,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Editor Startup Investigation (2026-04-16)
+              Culling and Hierarchy
             
           </span>
         </div>
@@ -1503,7 +1503,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/overview/" class="md-nav__link">
+      <a href="../overview/" class="md-nav__link">
         
   
   
@@ -1642,65 +1642,88 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
-  <a href="#summary" class="md-nav__link">
+  <a href="#current-active-coarse-culling-path" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Summary
+        Current active coarse culling path
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Current active coarse culling path">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inputs
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#benchmark-data" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#outputs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Benchmark data
+        Outputs
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#where-the-21s-cold-window-actually-goes" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#renderer-integration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Where the 21s cold window actually goes
+        Renderer integration
       
     </span>
   </a>
   
 </li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
         <li class="md-nav__item">
-  <a href="#what-does-not-appear-to-be-happening" class="md-nav__link">
+  <a href="#dormant-experimental-legacy-cluster-stack" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What does not appear to be happening
+        Dormant experimental / legacy cluster stack
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dormant experimental / legacy cluster stack">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#note-on-gaussiandataoctree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Note on GaussianData::octree
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#why-the-user-may-perceive-a-recent-slowdown" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Why the user may perceive a recent slowdown
-      
-    </span>
-  </a>
+        
+      </ul>
+    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-was-changed-in-this-commit" class="md-nav__link">
+  <a href="#future-tier-2-cluster-culling-rewrite-if-pursued" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What was changed in this commit
+        Future tier-2 cluster-culling rewrite, if pursued
       
     </span>
   </a>
@@ -1733,217 +1756,109 @@
   
 
 
-<h1 id="editor-startup-investigation-2026-04-16">Editor Startup Investigation (2026-04-16)<a class="headerlink" href="#editor-startup-investigation-2026-04-16" title="Permanent link">¶</a></h1>
-<h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">¶</a></h2>
-<p>Investigated a reported regression where the Godot editor in this fork
-became "slow to start up and noticeably laggy/unresponsive in the last
-1-2 days." Working from the benchmark snapshot captured at
-<code>.tmp-editor-bench.json</code> (cold run: <code>[Servers] Rendering = 21.30s</code>,
-<code>Main::Setup2 = 24.85s</code>), measured master HEAD (<code>b93ba6ef92</code>) against
-the suspected baseline <code>7c9a815f03</code> (streaming tier 2 / #229) on
-Windows, dev_build, debug_symbols, with a full rebuild for each.</p>
-<p><strong>No startup regression was found between the two commits.</strong> Cold
-startup cost is essentially identical (within &lt;1%), and the dominant
-cost is shader compilation during Godot's <code>rendering_server-&gt;init()</code> —
-engine-internal work that the Gaussian Splatting module does not
-contribute to.</p>
-<h2 id="benchmark-data">Benchmark data<a class="headerlink" href="#benchmark-data" title="Permanent link">¶</a></h2>
-<p>Measurements taken with:</p>
-<div class="highlight"><pre><span></span><code>bin/godot.windows.editor.dev.x86_64.console.exe \
-  --path tests/examples/godot/test_project \
-  --benchmark --quit-after 1
-</code></pre></div>
-<table>
-<thead>
-<tr>
-<th>Phase</th>
-<th>#229 cold</th>
-<th>HEAD cold</th>
-<th>HEAD warm (2nd run)</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>[Servers] Rendering</code></td>
-<td>21.44s</td>
-<td>20.72s</td>
-<td>3.10s</td>
-</tr>
-<tr>
-<td><code>[Servers]</code> (total)</td>
-<td>23.35s</td>
-<td>22.57s</td>
-<td>5.03s</td>
-</tr>
-<tr>
-<td><code>[Startup] Main::Setup2</code></td>
-<td>24.67s</td>
-<td>24.30s</td>
-<td>6.32s</td>
-</tr>
-</tbody>
-</table>
-<p>Cold / warm distinction: "cold" = shader cache (<code>AppData\Roaming\Godot\
-app_userdata\GaussianSplattingTest\shader_cache</code>) wiped before run;
-"warm" = cache from a prior successful run present.</p>
-<p>The user's bench file (<code>.tmp-editor-bench.json</code>) at 21.30s rendering
-matches the cold profile almost exactly. HEAD is actually very slightly
-faster than #229 on both cold and warm runs, so the observation that
-the editor became <em>slower</em> in the last 1-2 days is not supported by
-measurement on the two reference commits.</p>
-<h2 id="where-the-21s-cold-window-actually-goes">Where the 21s cold window actually goes<a class="headerlink" href="#where-the-21s-cold-window-actually-goes" title="Permanent link">¶</a></h2>
-<p>With <code>--verbose --benchmark</code> against a wiped cache, every shader
-emits a <code>Shader '&lt;name&gt;' ... SHA256: ...</code> / <code>Shader cache miss for
-&lt;name&gt;/...</code> line in order of compilation. Cross-referencing the
-benchmark closing line (<code>- Rendering: 20626.087 msec.</code>) with the
-shader log shows that the following shaders compile <strong>before</strong> the
-Rendering benchmark closes (all engine-internal Godot shaders, not
-ours):</p>
+<h1 id="culling-and-hierarchy">Culling and Hierarchy<a class="headerlink" href="#culling-and-hierarchy" title="Permanent link">¶</a></h1>
+<p>This page documents the <strong>truthful</strong> state of coarse culling and spatial hierarchy in the Gaussian
+Splatting module. It exists because several project settings, code symbols, and earlier docs imply
+that a cluster-culling stage is part of the live render path. As of 2026-04-26 it is not.</p>
+<p>Read this page before assuming any cluster-culling project setting reaches a live code branch.</p>
+<h2 id="current-active-coarse-culling-path">Current active coarse culling path<a class="headerlink" href="#current-active-coarse-culling-path" title="Permanent link">¶</a></h2>
+<p>The live coarse culling path is the LOD-driven octree query inside <code>GPUCuller</code>.</p>
 <ul>
-<li>Canvas: <code>CanvasSdfShaderRD</code>, <code>CanvasShaderRD</code>, <code>CanvasOcclusionShaderRD</code></li>
-<li>Scene skeleton/particles: <code>SkeletonShaderRD</code>, <code>SortShaderRD</code>,
-  <code>ParticlesShaderRD</code>, <code>ParticlesCopyShaderRD</code></li>
-<li>Forward+ core: <code>ClusterRenderShaderRD</code>, <code>ClusterStoreShaderRD</code>,
-  <code>ClusterDebugShaderRD</code>, <code>SceneForwardClusteredShaderRD</code> (4 groups,
-  3 variants each on the hot path)</li>
-<li>PBR/Normals: <code>BestFitNormalShaderRD</code>, <code>IntegrateDfgShaderRD</code></li>
-<li>Resolve/TAA/FSR2/FSR: <code>ResolveShaderRD</code>, <code>TaaResolveShaderRD</code>,
-  <code>Fsr2*ShaderRD</code> (8 stages), <code>FsrUpscaleShaderRD</code></li>
-<li>Screen-space effects: <code>SsEffectsDownsampleShaderRD</code>, <code>Ssil*ShaderRD</code>
-  (4), <code>Ssao*ShaderRD</code> (4), <code>ScreenSpaceReflection*ShaderRD</code> (3)</li>
-<li>SSS/Sky/GI: <code>SubsurfaceScatteringShaderRD</code>, <code>SkyShaderRD</code>,
-  <code>VoxelGi*ShaderRD</code> (2), <code>Sdfgi*ShaderRD</code> (5), <code>GiShaderRD</code></li>
-<li>Volumetric: <code>VolumetricFog*ShaderRD</code> (2 × 4 groups)</li>
-<li>Post: <code>BokehDofShaderRD</code>, <code>Copy*ShaderRD</code> (2), <code>Cubemap*ShaderRD</code>
-  (3), <code>SpecularMergeShaderRD</code>, <code>ShadowFrustumShaderRD</code>,
-  <code>MotionVectorsShaderRD</code>, <code>LuminanceReduceShaderRD</code>, <code>Smaa*ShaderRD</code>
-  (3), <code>TonemapShaderRD</code>, <code>VrsShaderRD</code>, <code>BlitShaderRD</code></li>
+<li>Entry point: <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/interfaces/gpu_culler.cpp">../../modules/gaussian_splatting/interfaces/gpu_culler.cpp</a>
+  — <code>GPUCuller::cull_for_view()</code> and the helper <code>GPUCuller::ensure_hierarchical_structure()</code>.</li>
+<li>Hierarchy implementation: <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/lod/hierarchical_splat_structure.h">../../modules/gaussian_splatting/lod/hierarchical_splat_structure.h</a>
+  / <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/lod/hierarchical_splat_structure.cpp">.cpp</a> —
+  <code>GaussianSplatting::HierarchicalSplatStructure</code>, an octree built from the loaded
+  <code>GaussianData</code> storage and queried with <code>query_visible_splats(frustum, camera, lod_bias, max_query)</code>.</li>
+<li>Owning state: <code>GPUCuller::CullingState::hierarchical_structure</code> in <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/interfaces/gpu_culler.h">../../modules/gaussian_splatting/interfaces/gpu_culler.h</a>.</li>
+<li>LOD config feeding the query: <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/lod/lod_config.h">../../modules/gaussian_splatting/lod/lod_config.h</a>
+  / <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/lod/lod_config.cpp">.cpp</a>, with <code>LOD_CONFIG_*</code> settings under
+  <code>rendering/gaussian_splatting/lod/</code>.</li>
 </ul>
-<p>That is ~50 engine shaders compiling serially under dev_build with
-debug_symbols, which is the known-slow mode for shader compilation
-because the GLSL compiler runs at low optimization inside an
-unoptimized Godot. At roughly 300-500 ms per shader on cold cache,
-20-21s is consistent.</p>
-<p><strong>Our module's shaders compile <em>after</em> the Rendering benchmark
-closes</strong>, during scene load / first render_scene_instance — the
-verbose output confirms <code>SobelOutlineShaderRD</code>, <code>BrushAccumulateShaderRD</code>,
-<code>GaussianSplatShaderRD</code>, <code>TileBinningShaderRD</code>, <code>TileRasterizerShaderRD</code>,
-<code>TileRasterizerComputeShaderRD</code>, <code>TilePrefixScanShaderRD</code>,
-<code>TileResolveShaderRD</code>, <code>FrustumCullShaderRD</code>, <code>DepthComputeShaderRD</code>,
-<code>InstanceCountClampShaderRD</code>, <code>InstanceChunkDispatchShaderRD</code> all
-print after <code>- Rendering: 20626.087 msec.</code>. These compiles land in
-<code>[Startup] Load Game</code> / <code>Main::Start</code>, not in <code>[Servers] Rendering</code>.</p>
-<h2 id="what-does-not-appear-to-be-happening">What does not appear to be happening<a class="headerlink" href="#what-does-not-appear-to-be-happening" title="Permanent link">¶</a></h2>
+<h3 id="inputs">Inputs<a class="headerlink" href="#inputs" title="Permanent link">¶</a></h3>
 <ul>
-<li>No heavy work in <code>register_types.cpp</code> at <code>MODULE_INITIALIZATION_LEVEL_SERVERS</code>
-  (the module doesn't hook that level at all — only SCENE and EDITOR).</li>
-<li>No filesystem scans, no eager RID allocation, no forced shader
-  precompile in our <code>GaussianSplatManager::initialize_module()</code> — it's
-  just <code>GLOBAL_DEF</code> calls and a <code>gs::sorting_settings::*</code> registration.</li>
-<li>No static constructors / <code>__attribute__((constructor))</code> in the module
-  that would fire before <code>main()</code> and block rendering server init.</li>
-<li><code>servers/rendering/renderer_rd/</code> has had <strong>zero</strong> non-trivial changes
-  from us in the last 30 days (one <code>WARN_PRINT_ONCE</code> and an
-  include-hook style fix). The <code>GaussianSplatStorage</code> ctor is
-  trivial.</li>
+<li><code>GaussianData</code> storage (positions, scales, opacity, importance) from the loaded splat asset.</li>
+<li>Camera position, frustum planes, and viewport extracted by <code>GPUCuller</code> from the active view.</li>
+<li><code>culling_state.culling_octree_max_depth</code> (default <code>8</code>) and
+  <code>culling_state.culling_min_gaussians</code> (default <code>32</code>).</li>
+<li><code>culling_config.lod_bias</code> (effective bias from <code>lod_config.h</code>).</li>
 </ul>
-<h2 id="why-the-user-may-perceive-a-recent-slowdown">Why the user may perceive a recent slowdown<a class="headerlink" href="#why-the-user-may-perceive-a-recent-slowdown" title="Permanent link">¶</a></h2>
-<p>Three plausible explanations, none a code regression in the last 1-2
-days:</p>
-<ol>
-<li>
-<p><strong>Shader cache thrash from commit-switching.</strong> Godot keys shader
-   caches by source SHA256 + driver id. If the user has been switching
-   between branches with shader-source churn
-   (<code>shaders/includes/gs_render_params.glsl</code>, <code>tile_binning.glsl</code>,
-   <code>tile_rasterizer_compute.glsl</code>, <code>tile_resolve.glsl</code>,
-   <code>gs_directional_shadow.glsl</code>, <code>gs_culling_utils.glsl</code> all changed
-   between #229 and HEAD), each switch forces a cold window on our
-   shaders. Godot engine shaders stay cached across our switches, but
-   ~12 of our custom shaders recompile per switch.</p>
-</li>
-<li>
-<p><strong>Stuck headless-import zombies.</strong> When I landed on this worktree,
-   two <code>bin/godot.windows.editor.dev.x86_64(.console).exe --headless
-   --import --path tests/examples/godot/test_project</code> processes
-   (PIDs 42020 and 63672) were still running and were holding a lock
-   on the editor binary (<code>Zugriff verweigert</code> on <code>scons</code> link step).
-   A stuck headless import on the same project blocks later editor
-   launches from acquiring the project or completes the import on top
-   of the new run, each of which looks like "the editor is frozen"
-   from the user's side. Killing both unlocked the build and editor
-   launch. Worth checking <code>Task-Manager</code> for leftover
-   <code>godot.windows.editor.dev.x86_64*.exe</code> processes next time this
-   gets reported.</p>
-</li>
-<li>
-<p><strong>dev_build overhead amplified by project state.</strong> With an empty
-   <code>.godot/imported/</code> (which this worktree's test project had), the
-   first editor open has to import every resource under the project —
-   and PRs #229 and #240 introduced 8 synthetic <code>.ply</code> fixtures under
-   <code>tests/examples/godot/test_project/tests/fixtures/</code> (sizes up to
-   1.6 MB). Those imports are the first thing
-   <code>EditorFileSystem</code> will do after startup benchmarks close,
-   contributing to a laggy-feeling post-splash experience. The
-   benchmark file does not capture this because import happens after
-   <code>Main::Setup2</code>. If this is the observed slowness, it's one-time
-   per fresh worktree, not a progressive regression.</p>
-</li>
-</ol>
-<h2 id="what-was-changed-in-this-commit">What was changed in this commit<a class="headerlink" href="#what-was-changed-in-this-commit" title="Permanent link">¶</a></h2>
-<p>Removed leftover <code>[DIAG-*]</code> <code>print_line</code> blocks that were introduced
-under the "corridor black screen investigation" (added as part of PR</p>
-<h1 id="229-at-a7e950de79-these-use-a-static-int-_diag_n-0-if">229, at <code>a7e950de79</code>). These use a `static int _diag_N = 0; if<a class="headerlink" href="#229-at-a7e950de79-these-use-a-static-int-_diag_n-0-if" title="Permanent link">¶</a></h1>
-<p>(++... &lt;= N || ... % 60 == 0) print_line(...)<code>pattern — classic
-temporary-debug style — and fire on the per-frame render path
-(</code>render_scene_instance<code>,</code>_select_backend_plan<code>,</code>_record_raster_metrics<code>,</code>_dispatch_raster`, etc.). They are <em>not</em>
-the cause of the 21s cold startup, but they make the stdout of a
-running editor noisy forever (one line per second roughly, per
-diagnostic) and they survived past the investigation they were
-created for.</p>
-<p>Files touched:</p>
+<h3 id="outputs">Outputs<a class="headerlink" href="#outputs" title="Permanent link">¶</a></h3>
 <ul>
-<li><code>modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp</code> —
-  removed <code>[DIAG-RESIDENT]</code>, <code>[DIAG-RSI]</code>, <code>[DIAG-ROUTE]</code>.</li>
-<li><code>modules/gaussian_splatting/renderer/render_pipeline_stages.cpp</code> —
-  removed <code>[DIAG-RASTER]</code>, <code>[DIAG-DISPATCH]</code>, <code>[DIAG-RRESULT]</code>.</li>
-<li><code>modules/gaussian_splatting/interfaces/output_compositor.cpp</code> —
-  removed <code>[DIAG-COPY-DEVICE]</code>, <code>[DIAG-COMPOSITOR]</code>,
-  <code>[DIAG-COMPOSITOR2]</code>; also the now-unused <code>godot_rd</code> local.</li>
-<li><code>modules/gaussian_splatting/core/gaussian_streaming.cpp</code> — removed
-  <code>[DIAG-SYNC-LOAD]</code> (pack/success variants) and <code>[DIAG-UPLOAD]</code>.</li>
+<li><code>QueryResult { visible_indices, lod_weights }</code> from the octree query, fed into
+  <code>culling_state.culled_indices</code> / <code>culled_importance_weights</code>.</li>
+<li>Down the pipe these flow into the GPU sort and tile raster stages described in
+  <a href="../render-pipeline/">render-pipeline.md</a>.</li>
 </ul>
-<p>The module already has a gated debug infrastructure
-(<code>enable_pipeline_trace</code>, <code>enable_frame_logging</code>, 38+ instrumentation
-points via <code>render_debug_state_orchestrator</code>, and a <code>gs_debug_trace</code>
-data-flow system). All of it is off by default and is the
-supported way to reproduce what the DIAG prints were giving. See
-<code>CLAUDE.md#Debugging Rendering Issues</code> for how to enable.</p>
-<h2 id="what-is-still-open">What is still open<a class="headerlink" href="#what-is-still-open" title="Permanent link">¶</a></h2>
+<h3 id="renderer-integration">Renderer integration<a class="headerlink" href="#renderer-integration" title="Permanent link">¶</a></h3>
+<p>The active call chain is:</p>
+<p><code>GaussianSplatRenderer::render_scene_instance</code> -&gt; <code>RenderPipelineStages::execute_cull_stage</code> -&gt;
+<code>GPUCuller::cull_for_view</code> -&gt; <code>ensure_hierarchical_structure</code> -&gt;
+<code>HierarchicalSplatStructure::query_visible_splats</code> -&gt; sort/raster stages.</p>
+<p>The cluster-cull stack below is <strong>not</strong> part of this chain.</p>
+<h2 id="dormant-experimental-legacy-cluster-stack">Dormant experimental / legacy cluster stack<a class="headerlink" href="#dormant-experimental-legacy-cluster-stack" title="Permanent link">¶</a></h2>
+<p>The following code is registered and compiles, but is never instantiated or invoked from the
+production render path. It is dead weight on the surface: do not assume project settings flow
+through it.</p>
 <ul>
-<li>
-<p>The <strong>warm</strong> <code>[Servers] Rendering = 3.1s</code> is higher than a vanilla
-  Godot editor on the same hardware (expected &lt;1s). Roughly 2s of
-  overhead is attributable to having the Gaussian Splatting module
-  linked in — I did not nail down whether this is shader-cache IO,
-  <code>RendererCompositorRD</code> storage setup, or something the dev_build
-  asserts amplify. For normal use this is fine and it's not a
-  recent regression, but if the user wants startup tighter, the next
-  thing to profile is the <code>RendererCompositorRD::RendererCompositorRD()</code>
-  ctor and <code>scene-&gt;init()</code> call.</p>
-</li>
-<li>
-<p><strong>Editor-time FPS floor</strong>. During <code>--quit-after 300</code> I observed
-  the editor running at 7-9 FPS while previewing
-  <code>public_evaluator.tscn</code>. This is a dev_build symptom (scene
-  previews with a <code>GaussianSplatWorld3D</code> ride the full pipeline even
-  when just 5 splats are visible); it is not a new regression to my
-  knowledge but is worth flagging if the user considers 8 FPS in the
-  editor to be the "laggy/unresponsive" symptom. Next steps if it is:
-  capture a frame with RenderDoc while the editor is idle on that
-  scene and look at the per-dispatch cost.</p>
-</li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/interfaces/cluster_culler.h">../../modules/gaussian_splatting/interfaces/cluster_culler.h</a>
+  / <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/interfaces/cluster_culler.cpp">.cpp</a> — <code>ClusterCuller</code>
+  resource. Reads <code>rendering/gaussian_splatting/culling/cluster_culling_enabled</code> and
+  <code>cluster_target_size</code> (see <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/interfaces/cluster_culler.cpp">../../modules/gaussian_splatting/interfaces/cluster_culler.cpp</a>,
+  <code>:104-108</code>). The third related key, <code>cluster_frustum_slack</code>, is registered in
+  <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/core/gaussian_splat_manager.cpp">../../modules/gaussian_splatting/core/gaussian_splat_manager.cpp</a>
+  (<code>:1035</code>) and consumed only as pipeline-state hash input in
+  <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/renderer/render_pipeline_stages.cpp">../../modules/gaussian_splatting/renderer/render_pipeline_stages.cpp</a>
+  (<code>:587</code>); <code>ClusterCuller</code> itself does not read it. No production call site constructs
+  <code>ClusterCuller</code>.</li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/lod/cluster_builder.h">../../modules/gaussian_splatting/lod/cluster_builder.h</a>
+  / <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/lod/cluster_builder.cpp">.cpp</a> — CPU Morton clustering helper.
+  Only referenced by <code>cluster_culler.{h,cpp}</code>; not used by <code>GPUCuller</code> or any pipeline stage.</li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/compute/cluster_cull.glsl">../../modules/gaussian_splatting/compute/cluster_cull.glsl</a>
+  (and its build-time-generated <code>cluster_cull.glsl.gen.h</code> header — produced by SCons,
+  not source-controlled) — coarse-pass GPU shader. Loaded only by the dormant
+  <code>ClusterCuller</code>; not bound by <code>RenderPipelineStages</code> or <code>GPUSortingPipeline</code>.</li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/interfaces/gpu_culler.h">../../modules/gaussian_splatting/interfaces/gpu_culler.h</a>
+  (<code>:318</code>) — <code>Ref&lt;ClusterCuller&gt; cluster_culler;</code> field on <code>GPUCuller</code>. <strong>Never assigned anywhere
+  in the module</strong> (verified 2026-04-26 via full-tree grep for <code>cluster_culler =</code>,
+  <code>cluster_culler.instantiate</code>, <code>memnew(ClusterCuller</code>, <code>new ClusterCuller</code>).</li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/renderer/pipeline_io_contracts.h">../../modules/gaussian_splatting/renderer/pipeline_io_contracts.h</a>
+  (<code>:34-49</code>) — <code>ClusterCullIndirectDispatchLayout</code> struct and its <code>static_assert</code> size checks. The
+  layout exists for the dormant shader; no production producer or consumer fills it.</li>
 </ul>
+<p>The class is registered at <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/register_types.cpp">../../modules/gaussian_splatting/register_types.cpp</a>
+(<code>:142</code>, <code>GDREGISTER_CLASS(ClusterCuller);</code>) but never instantiated in production C++. Do not
+assume project settings reach this path.</p>
+<p>The <code>culling_config.cluster_culling_enabled</code>, <code>cluster_target_size</code>, <code>cluster_frustum_slack</code>,
+<code>cluster_use_morton_order</code>, and <code>cluster_use_indirect_dispatch</code> fields on
+<code>GPUCuller::CullingConfig</code> (see <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/interfaces/gpu_culler.h">../../modules/gaussian_splatting/interfaces/gpu_culler.h</a>,
+<code>:51-57</code>) are only consumed by pipeline-state hashing in
+<a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/renderer/render_pipeline_stages.cpp">../../modules/gaussian_splatting/renderer/render_pipeline_stages.cpp</a>
+(<code>:585-589</code>). They influence cache keys but do not gate any live cull work.</p>
+<h3 id="note-on-gaussiandataoctree">Note on <code>GaussianData::octree</code><a class="headerlink" href="#note-on-gaussiandataoctree" title="Permanent link">¶</a></h3>
+<p><code>GaussianData</code> carries its own octree (see <a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/core/gaussian_data.h">../../modules/gaussian_splatting/core/gaussian_data.h</a>,
+<code>build_octree(...)</code> / <code>query_octree(AABB)</code>). This is a <strong>separate query utility</strong> for asset-side
+spatial lookups (asset queries, debug tooling, importer paths). It is <strong>not</strong> the active culler
+and not the same structure as <code>HierarchicalSplatStructure</code>. Do not conflate the two.</p>
+<h2 id="future-tier-2-cluster-culling-rewrite-if-pursued">Future tier-2 cluster-culling rewrite, if pursued<a class="headerlink" href="#future-tier-2-cluster-culling-rewrite-if-pursued" title="Permanent link">¶</a></h2>
+<p>If cluster culling is revived, the design target is the tier-2 spec, not the dormant code above:</p>
+<ul>
+<li>Spec: <a href="../tier2_cluster_culling_spec/">tier2_cluster_culling_spec.md</a>.</li>
+<li>Landed in PR
+  <a href="https://github.com/klausi3D/godotGS/pull/246">#246 — docs: design specs for cluster culling and resolve-mode lighting</a>
+  (merge commit <code>0e38870268e7f108065a4f381a60ff4fabf06c1d</code>).</li>
+</ul>
+<p>The spec is explicit (Section 2, Section 3) that the existing <code>ClusterCuller</code> / <code>ClusterBuilder</code>
+operate on whole-scene <code>GaussianData</code> and pack legacy AABB data, not tier-2 chunk-local instance
+metadata. Any reuse must be a rewrite, not a revival: cluster records become chunk-local, the
+data flow runs through <code>visible_chunk_buffer</code> and <code>splat_ref_buffer</code>, and new shader sources
+(<code>instance_cluster_dispatch.glsl</code>, <code>cluster_cull_instance.glsl</code>,
+<code>cluster_range_dispatch.glsl</code>, <code>cluster_depth_compute.glsl</code>) would replace the legacy shader at
+<a href="https://github.com/klausi3D/godotGS/blob/c13de60245e3a53989f176d044636753df90c155/modules/gaussian_splatting/compute/cluster_cull.glsl">../../modules/gaussian_splatting/compute/cluster_cull.glsl</a>.
+The current names and project settings may be reused, but the implementation must be redone
+from the tier-2 instance contract.</p>
+<p>Until that work lands, the live coarse culling path is the LOD/octree path described in section
+1 above.</p>
 
 
 
@@ -1964,7 +1879,7 @@ supported way to reproduce what the DIAG prints were giving. See
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 27, 2026 09:15:52 UTC">April 27, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 27, 2026 09:15:42 UTC">April 27, 2026</span>
   </span>
 
     
