@@ -10,9 +10,9 @@
 !!! info "Historical snapshot"
     This report captures the docs state on 2026-03-19 and should not be read as the current public status page.
 
-    See the [remediation summary](docs_remediation_summary.md).
+    See the [remediation summary](../docs_remediation_summary.md).
 
-    See the [latest assessment](latest-assessment.md).
+    See the [latest assessment](../latest-assessment.md).
 
 ## 1. Executive Summary
 
