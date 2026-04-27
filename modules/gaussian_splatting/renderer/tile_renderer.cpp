@@ -412,6 +412,12 @@ private:
 		renderer.render_settings.allow_compute_raster = _resolve_compute_raster_policy(params.compute_raster_policy);
 		bool packed_stage_requested = params.request_packed_stage_data;
 		uint32_t packed_stage_count = resolved_total_gaussians > 0 ? resolved_total_gaussians : effective_splat_floor;
+		// 65535 is the structural ceiling: GS_PACKED_STAGE_DATA truncates global_idx to
+		// 16 bits in gs_pack_conic_y_and_index() (shaders/includes/tile_projection_common.glsl),
+		// and the rasterizer's stored_global_idx == sorted_idx equality check will silently
+		// reject any visible splat whose true global_idx exceeds UINT16_MAX. PipelineFeatureSet
+		// (renderer/pipeline_feature_set.cpp:173-180, header constant PACKED_STAGE_MAX_TOTAL_SPLATS)
+		// rejects the request earlier; this is the last-line runtime guard.
 		if (packed_stage_requested && packed_stage_count > UINT16_MAX) {
 			WARN_PRINT_ONCE("[TileRenderer] Packed stage data requires <= 65535 total splats; disabling packed projection payloads.");
 			packed_stage_requested = false;
@@ -1817,6 +1823,13 @@ Vector<String> TileRenderer::_build_common_shader_defines(bool p_include_dispatc
 		defines.push_back("#define GS_DEBUG_COUNTERS_DISABLED 1\n");
 	}
 	if (render_settings.enable_packed_stage_data) {
+		// Reaching this branch requires `enable_packed_stage_data` to have survived
+		// the runtime gate at TileRenderer::_apply_render_params (~ line 415), which
+		// flips it false whenever the packed-stage payload count exceeds UINT16_MAX.
+		// The shader's gs_pack_conic_y_and_index() truncates global_idx to 16 bits
+		// (shaders/includes/tile_projection_common.glsl), and the rasterizer rejects
+		// stored_global_idx != sorted_idx silently — so this define must never be
+		// emitted with a payload size above 65535.
 		defines.push_back("#define GS_PACKED_STAGE_DATA 1\n");
 	}
 	if (render_settings.enable_tighter_bounds) {
