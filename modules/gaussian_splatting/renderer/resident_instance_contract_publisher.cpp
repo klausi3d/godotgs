@@ -345,14 +345,52 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 	// flips, transform tweens on interactables, wind animation, opacity changes, color grading
 	// edits) cost ~1ms instead of repacking the whole resident atlas (which used to cost
 	// hundreds of ms on dense scenes).
+	//
+	// Atlas buffer ownership must also match the current RenderingDevice. After a device
+	// migration/reset the cached atlas RIDs would still pass the generation check but reference
+	// freed resources from the previous device, and the contract would publish dead RIDs. The
+	// cull/sort/raster buffers below have their own ensure_owner() remediation; the atlas
+	// buffers do not, so we force a full repack here when any atlas RID has been re-owned.
+	auto atlas_owner_ok = [&](const RID &p_rid) {
+		return !p_rid.is_valid() || p_renderer->get_resource_owner(p_rid, rd) == rd;
+	};
+	const bool atlas_buffers_owned = atlas_owner_ok(resource_state.resident_atlas_gaussian_buffer) &&
+			atlas_owner_ok(resource_state.resident_asset_meta_buffer) &&
+			atlas_owner_ok(resource_state.resident_chunk_meta_buffer) &&
+			atlas_owner_ok(resource_state.resident_asset_chunk_index_buffer);
 	const bool atlas_changed = resource_state.instance_pipeline_atlas_generation != atlas_generation ||
-			!p_renderer->has_instance_pipeline_buffers();
+			!p_renderer->has_instance_pipeline_buffers() ||
+			!atlas_buffers_owned;
 
 	uint32_t atlas_gaussian_count = 0;
 	uint32_t atlas_max_chunk_count_per_asset = 0;
 	uint32_t atlas_max_chunk_splats = 0;
 
 	if (atlas_changed) {
+		// If the atlas RIDs survived a device migration their cached values still pass the size
+		// check inside _upload_typed_storage_buffer(), which would then call buffer_update() on
+		// a RID that belongs to the old RenderingDevice. Drop our references to any foreign-
+		// owned atlas RIDs first so the upload path recreates them on the current device. We do
+		// not call free_owned_resource() because the previous device owns them and is responsible
+		// for its own teardown -- mirrors the ensure_owner() pattern used for the cull/sort
+		// buffers further down.
+		if (!atlas_buffers_owned) {
+			auto reset_foreign_atlas_rid = [&](RID &r_buffer, uint32_t &r_size) {
+				if (r_buffer.is_valid() && p_renderer->get_resource_owner(r_buffer, rd) != rd) {
+					r_buffer = RID();
+					r_size = 0;
+				}
+			};
+			reset_foreign_atlas_rid(resource_state.resident_atlas_gaussian_buffer,
+					resource_state.resident_atlas_gaussian_buffer_size);
+			reset_foreign_atlas_rid(resource_state.resident_asset_meta_buffer,
+					resource_state.resident_asset_meta_buffer_size);
+			reset_foreign_atlas_rid(resource_state.resident_chunk_meta_buffer,
+					resource_state.resident_chunk_meta_buffer_size);
+			reset_foreign_atlas_rid(resource_state.resident_asset_chunk_index_buffer,
+					resource_state.resident_asset_chunk_index_buffer_size);
+		}
+
 		// Early-out: estimate total packed size across all assets.  If it would
 		// exceed the staging limit, skip the expensive per-chunk packing loop
 		// entirely.  The streaming path should handle datasets this large.
