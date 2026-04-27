@@ -31,6 +31,7 @@ static Error _validate_gsplatworld_header(const String &p_source_file) {
 	constexpr uint32_t world_magic = 0x57505347u; // 'GSPW' little-endian.
 	constexpr uint32_t world_version = 1u;
 	constexpr uint32_t max_sh_degree = 3u;
+	constexpr uint32_t max_sh_first_order = 3u;
 	constexpr uint32_t flag_has_metadata = 1u << 0u;
 	constexpr uint32_t flag_has_chunks = 1u << 2u;
 	constexpr uint32_t flag_has_high_sh = 1u << 3u;
@@ -67,8 +68,17 @@ static Error _validate_gsplatworld_header(const String &p_source_file) {
 		return ERR_FILE_CORRUPT;
 	}
 
-	(void)file->get_32(); // sh_first_order
+	const uint32_t sh_first_order = file->get_32();
 	const uint32_t sh_high_order = file->get_32();
+	// Mirror the loader: cap sh_first_order at the on-disk struct slot count
+	// (the saver clamps to 3 too). Do not cap sh_high_order with a magnitude
+	// limit — set_gaussian_payload accepts arbitrary counts and the saver
+	// writes them verbatim, so a hard cap rejects valid round-trip files.
+	// Structural safety is provided by the SH payload range/multiply checks
+	// further down.
+	if (sh_first_order > max_sh_first_order) {
+		return ERR_FILE_CORRUPT;
+	}
 
 	file->seek(file->get_position() + 12u); // bounds_pos
 	file->seek(file->get_position() + 12u); // bounds_size

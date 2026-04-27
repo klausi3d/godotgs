@@ -275,3 +275,156 @@ TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld save/load round-trip") {
     // Cleanup
     _remove_world_io_fixture(path);
 }
+
+namespace {
+
+struct MalformedWorldHeader {
+    uint32_t magic = 0x57505347u; // 'GSPW'
+    uint32_t version = 1u;
+    uint32_t flags = 0u;
+    uint32_t splat_count = 0u;
+    uint32_t sh_degree = 0u;
+    uint32_t sh_first_order = 0u;
+    uint32_t sh_high_order = 0u;
+    Vector3 bounds_pos;
+    Vector3 bounds_size;
+    uint32_t chunk_count = 0u;
+    uint64_t gaussian_offset = 104u;
+    uint64_t sh_offset = 0u;
+    uint64_t chunk_table_offset = 0u;
+    uint64_t indices_offset = 0u;
+    uint64_t metadata_offset = 0u;
+    uint64_t metadata_size = 0u;
+};
+
+bool _write_malformed_world(const String &p_path, const MalformedWorldHeader &p_header, uint64_t p_pad_bytes = 0) {
+    Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::WRITE);
+    if (f.is_null()) {
+        return false;
+    }
+    f->store_32(p_header.magic);
+    f->store_32(p_header.version);
+    f->store_32(p_header.flags);
+    f->store_32(p_header.splat_count);
+    f->store_32(p_header.sh_degree);
+    f->store_32(p_header.sh_first_order);
+    f->store_32(p_header.sh_high_order);
+    f->store_float(p_header.bounds_pos.x);
+    f->store_float(p_header.bounds_pos.y);
+    f->store_float(p_header.bounds_pos.z);
+    f->store_float(p_header.bounds_size.x);
+    f->store_float(p_header.bounds_size.y);
+    f->store_float(p_header.bounds_size.z);
+    f->store_32(p_header.chunk_count);
+    f->store_64(p_header.gaussian_offset);
+    f->store_64(p_header.sh_offset);
+    f->store_64(p_header.chunk_table_offset);
+    f->store_64(p_header.indices_offset);
+    f->store_64(p_header.metadata_offset);
+    f->store_64(p_header.metadata_size);
+    for (uint64_t i = 0; i < p_pad_bytes; i++) {
+        f->store_8(0);
+    }
+    f.unref();
+    return true;
+}
+
+} // namespace
+
+TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld rejects metadata range overflow via fits_within") {
+    // Exercises the F5 fits_within helper on the metadata range. The OLD code
+    // computed `metadata_offset + metadata_size > file_len`, which wraps when
+    // metadata_size is near UINT64_MAX, producing a small sum that slips past
+    // the comparison. The new helper rejects via the offset/size split.
+    const String path = _make_world_io_fixture_path("malformed_fits_within");
+
+    const uint64_t pad = 256u;
+    const uint64_t file_len = 104u + pad;
+
+    MalformedWorldHeader hdr;
+    hdr.flags = 1u << 0u; // kFlagHasMetadata
+    hdr.splat_count = 0u;
+    hdr.gaussian_offset = 104u;
+    hdr.metadata_offset = file_len - 4u;
+    hdr.metadata_size = UINT64_MAX - 8u;
+    REQUIRE(_write_malformed_world(path, hdr, pad));
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error err = OK;
+    Ref<Resource> result = loader.load(path, "", &err);
+    CHECK_EQ(err, ERR_FILE_CORRUPT);
+    CHECK_FALSE(result.is_valid());
+
+    _remove_world_io_fixture(path);
+}
+
+// F6 (checked_mul_u64 on splat_count * sh_high_order * sizeof(Vector3)) is
+// defense-in-depth and not reachable through the public header inputs: the
+// sh_high_order <= 12 cap caps sh_bytes at splat_count * 144, which fits in
+// uint64 for any uint32 splat_count. No standalone test is added — the path
+// would require directly invoking the helper.
+
+TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld rejects chunk-index byte-count overflow") {
+    // Crafts a chunk record whose indices_offset+index_count produces a
+    // total_indices near UINT64_MAX/4, so total_indices * sizeof(uint32_t)
+    // wraps. The new checked_mul_u64 + fits_within guards the read.
+    const String path = _make_world_io_fixture_path("malformed_chunk_indices_overflow");
+
+    Ref<FileAccess> f = FileAccess::open(path, FileAccess::WRITE);
+    REQUIRE(f.is_valid());
+
+    const uint32_t flags = 1u << 2u; // kFlagHasChunks
+    const uint32_t chunk_count = 1u;
+    const uint64_t header_size = 104u;
+    const uint64_t chunk_table_offset = header_size;
+    const uint64_t chunk_table_bytes = uint64_t(chunk_count) * 56u;
+    const uint64_t indices_offset_field = chunk_table_offset + chunk_table_bytes;
+    const uint64_t pad_after_chunk_table = 64u;
+    const uint64_t file_len = chunk_table_offset + chunk_table_bytes + pad_after_chunk_table;
+
+    f->store_32(0x57505347u); // magic
+    f->store_32(1u); // version
+    f->store_32(flags);
+    f->store_32(0u); // splat_count
+    f->store_32(0u); // sh_degree
+    f->store_32(0u); // sh_first_order
+    f->store_32(0u); // sh_high_order
+    for (int i = 0; i < 6; i++) {
+        f->store_float(0.0f); // bounds pos+size
+    }
+    f->store_32(chunk_count);
+    f->store_64(header_size); // gaussian_offset
+    f->store_64(0u); // sh_offset
+    f->store_64(chunk_table_offset);
+    f->store_64(indices_offset_field);
+    f->store_64(0u); // metadata_offset
+    f->store_64(0u); // metadata_size
+
+    // Chunk record: indices_offset + index_count = UINT64_MAX/4 + 5, so
+    // total_indices * 4 wraps past UINT64_MAX.
+    const uint64_t bogus_indices_offset = (UINT64_MAX / 4u) - 5u;
+    const uint32_t bogus_index_count = 10u;
+    for (int i = 0; i < 9; i++) {
+        f->store_float(0.0f); // bounds_pos, bounds_size, center
+    }
+    f->store_float(0.0f); // radius
+    f->store_64(bogus_indices_offset);
+    f->store_32(bogus_index_count);
+    f->store_32(0u); // reserved
+
+    for (uint64_t i = 0; i < pad_after_chunk_table; i++) {
+        f->store_8(0);
+    }
+    f.unref();
+
+    REQUIRE(FileAccess::exists(path));
+    REQUIRE(FileAccess::get_size(path) == file_len);
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error err = OK;
+    Ref<Resource> result = loader.load(path, "", &err);
+    CHECK_EQ(err, ERR_FILE_CORRUPT);
+    CHECK_FALSE(result.is_valid());
+
+    _remove_world_io_fixture(path);
+}
