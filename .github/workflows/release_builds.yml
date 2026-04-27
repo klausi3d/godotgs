@@ -211,7 +211,7 @@ jobs:
           if [[ "${{ needs.release_metadata.outputs.channel }}" == "stable" ]]; then
             scons platform=linuxbsd target=editor cache_path=.scons_cache cache_limit=10 -j"$(nproc)"
           else
-            scons platform=linuxbsd target=editor dev_build=yes cache_path=.scons_cache cache_limit=10 -j"$(nproc)"
+            scons platform=linuxbsd target=editor dev_build=yes tests=yes cache_path=.scons_cache cache_limit=10 -j"$(nproc)"
           fi
 
       - name: Resolve built binary
