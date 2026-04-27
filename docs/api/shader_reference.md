@@ -1881,59 +1881,6 @@ modules/gaussian_splatting/shaders/viewport_blit.glsl
 ## Shader
 
 ```
-modules/gaussian_splatting/compute/cluster_cull.glsl
-```
-
-### Functions
-
-<table>
-  <thead>
-    <tr>
-      <th>Function</th>
-      <th>Description</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><pre><code>aabb_frustum_visible(vec3 aabb_min, vec3 aabb_max)</code></pre></td>
-      <td>AABB-frustum intersection test (conservative)</td>
-    </tr>
-    <tr>
-      <td><pre><code>main()</code></pre></td>
-      <td>Cluster culling entry point; writes visibility decisions for the active workgroup.</td>
-    </tr>
-  </tbody>
-</table>
-
-### Uniform Blocks
-
-#### Block
-
-```
-ClusterCullParams (params)
-```
-
-<table>
-  <thead>
-    <tr>
-      <th>Field</th>
-      <th>Type</th>
-      <th>Description</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><pre><code>fine_cull_workgroup_size</code></pre></td>
-      <td><pre><code>uint</code></pre></td>
-      <td>Typically 256</td>
-    </tr>
-  </tbody>
-</table>
-
-
-## Shader
-
-```
 modules/gaussian_splatting/compute/depth_compute.glsl
 ```
 

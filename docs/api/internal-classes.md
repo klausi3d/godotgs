@@ -32,12 +32,6 @@ methods, or are abstract base types. Each entry notes the registration site in
 | **RadixSort** | Radix sort implementation of `IGPUSorter`, offering linear-time performance for large splat counts. | `register_types.cpp:127` |
 | **OneSweepSort** | Single-pass radix sort (OneSweep algorithm) implementation of `IGPUSorter`, providing high throughput with reduced synchronization barriers. | `register_types.cpp:128` |
 
-## Culling
-
-| Class | Description | Registration |
-|-------|-------------|-------------|
-| **ClusterCuller** | GPU-accelerated two-level hierarchical culler implementing LiteGS-style coarse culling with cluster bounding spheres and per-cluster visibility testing. | `register_types.cpp:131` |
-
 ## IO Abstractions
 
 | Class | Description | Registration |

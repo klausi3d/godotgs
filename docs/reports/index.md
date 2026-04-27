@@ -9,8 +9,9 @@ Use these pages as supporting records, not as the primary entry point for the cu
 
 ## Architecture truthfulness pages
 
-- [Culling and hierarchy](../architecture/culling-and-hierarchy.md) — live LOD/octree path vs.
-  the dormant `ClusterCuller`/`ClusterBuilder`/`cluster_cull.glsl` stack.
+- [Culling and hierarchy](../architecture/culling-and-hierarchy.md) — live LOD/octree path;
+  documents the dormant cluster stack that was deleted per
+  [#293](https://github.com/klausi3D/godotGS/issues/293).
 
 ## Archived (pre-PR-#281 snapshots)
 

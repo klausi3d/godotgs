@@ -56,6 +56,12 @@ struct AnimationClip {
     const AnimationTrack* get_track(AnimationProperty property) const;
 };
 
+// GaussianAnimationStateMachine is an opt-in feature surface. The engine runtime never
+// auto-instantiates it; production code paths that read GaussianData::animation_state_machine
+// pass `nullptr` when no scripted resource is assigned. To activate per-splat animation, a
+// project must explicitly construct a GaussianAnimationStateMachine via GDScript (or via the
+// public C++ API) and attach it through GaussianData::set_animation_state_machine(). See
+// docs/features/animation.md for the user-facing introduction and worked examples.
 class GaussianAnimationStateMachine : public Resource {
     GDCLASS(GaussianAnimationStateMachine, Resource);
 

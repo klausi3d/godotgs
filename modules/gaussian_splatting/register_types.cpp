@@ -28,7 +28,6 @@
 #include "nodes/gaussian_splat_dynamic_instance_3d.h"
 #include "nodes/gaussian_splat_world_3d.h"
 #include "nodes/sphere_effector_3d.h"
-#include "interfaces/cluster_culler.h"
 
 // Animation and Persistence (v0.6.0)
 #include "animation/animation_state_machine.h"
@@ -137,9 +136,6 @@ void initialize_gaussian_splatting_module(ModuleInitializationLevel p_level) {
             GDREGISTER_CLASS(BitonicSort);
             GDREGISTER_CLASS(RadixSort);
             GDREGISTER_CLASS(OneSweepSort);
-
-            // Cluster-level coarse culling (LiteGS-style)
-            GDREGISTER_CLASS(ClusterCuller);
 
             // Animation and Persistence (v0.6.0)
             GDREGISTER_CLASS(GaussianSplatting::GaussianAnimationStateMachine);

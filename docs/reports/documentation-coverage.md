@@ -291,7 +291,6 @@
 | modules/gaussian_splatting/tests/memory_validator.cpp | 0.08 | 82 | 1015 |
 | modules/gaussian_splatting/core/gaussian_splat_manager.cpp | 0.08 | 81 | 986 |
 | modules/gaussian_splatting/tests/run_gpu_validation.cpp | 0.09 | 26 | 303 |
-| modules/gaussian_splatting/interfaces/cluster_culler.cpp | 0.09 | 38 | 435 |
 | modules/gaussian_splatting/tests/performance_benchmark.cpp | 0.09 | 56 | 630 |
 | modules/gaussian_splatting/renderer/tile_render_async_readback.cpp | 0.09 | 3 | 33 |
 | modules/gaussian_splatting/tests/test_synthetic_splat_generators.h | 0.09 | 4 | 44 |
@@ -353,7 +352,6 @@
 | modules/gaussian_splatting/tests/test_phase1_integration.cpp | 0.17 | 26 | 156 |
 | modules/gaussian_splatting/lod/hierarchical_splat_structure.cpp | 0.17 | 70 | 419 |
 | modules/gaussian_splatting/shaders/includes/gaussian_splat_common_inc.glsl | 0.17 | 52 | 306 |
-| modules/gaussian_splatting/lod/cluster_builder.cpp | 0.17 | 39 | 228 |
 | modules/gaussian_splatting/interfaces/gpu_sorting_pipeline.h | 0.17 | 30 | 174 |
 | modules/gaussian_splatting/interfaces/output_compositor.h | 0.17 | 27 | 156 |
 | modules/gaussian_splatting/renderer/gpu_memory_stream.h | 0.18 | 38 | 214 |
@@ -400,7 +398,6 @@
 | modules/gaussian_splatting/interfaces/rasterizer_interfaces.h | 0.24 | 39 | 164 |
 | modules/gaussian_splatting/shaders/painterly_resolve.glsl.gen.h | 0.24 | 30 | 126 |
 | modules/gaussian_splatting/nodes/gaussian_splat_dynamic_instance_3d.h | 0.24 | 11 | 45 |
-| modules/gaussian_splatting/compute/cluster_cull.glsl.gen.h | 0.25 | 30 | 122 |
 | modules/gaussian_splatting/interfaces/painterly_renderer_interfaces.h | 0.25 | 26 | 104 |
 | tests/runtime/test_interactive_state.gd | 0.25 | 28 | 110 |
 | modules/gaussian_splatting/renderer/gpu_sorter.h | 0.26 | 84 | 321 |
@@ -412,7 +409,6 @@
 | modules/gaussian_splatting/shaders/includes/tile_projection_common.glsl.gen.h | 0.27 | 35 | 128 |
 | modules/gaussian_splatting/interfaces/culler_interfaces.h | 0.28 | 22 | 78 |
 | modules/gaussian_splatting/shaders/includes/painterly_common.glsl.gen.h | 0.28 | 30 | 106 |
-| modules/gaussian_splatting/compute/cluster_cull.glsl | 0.30 | 33 | 109 |
 | test_data/demo_controller.gd | 0.30 | 61 | 200 |
 | modules/gaussian_splatting/shaders/painterly_composite.glsl.gen.h | 0.32 | 30 | 95 |
 | modules/gaussian_splatting/shaders/includes/gs_sh_binning.glsl | 0.33 | 40 | 121 |
@@ -458,8 +454,6 @@
 | modules/gaussian_splatting/renderer/sh_config.h | 0.97 | 34 | 35 |
 | modules/gaussian_splatting/renderer/quantization_config.h | 1.00 | 36 | 36 |
 | modules/gaussian_splatting/core/streaming_quantization.h | 1.02 | 41 | 40 |
-| modules/gaussian_splatting/interfaces/cluster_culler.h | 1.03 | 95 | 92 |
-| modules/gaussian_splatting/lod/cluster_builder.h | 1.04 | 70 | 67 |
 | modules/gaussian_splatting/shaders/includes/color_grading_binning.glsl.gen.h | 1.08 | 52 | 48 |
 | modules/gaussian_splatting/shaders/painterly_composite.vert.glsl.gen.h | 1.11 | 30 | 27 |
 | modules/gaussian_splatting/core/streaming_atlas.h | 1.13 | 34 | 30 |
