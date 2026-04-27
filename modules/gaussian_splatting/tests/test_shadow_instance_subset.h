@@ -134,3 +134,68 @@ TEST_CASE("[GaussianSplatting][SceneTree] Shared renderer shadow subset follows 
 	memdelete(node_b);
 	memdelete(node_a);
 }
+
+// Pins the stable-superset semantics of collect_registered_assets_for_renderer(): it must
+// return every retained asset regardless of visibility or cast_shadow flips, so the resident
+// publisher's atlas membership stays stable while the player walks around. The instance
+// buffer + the visibility-pruned collect_instance_assets_for_renderer() above keep handling
+// per-frame visibility filtering.
+TEST_CASE("[GaussianSplatting][SceneTree] collect_registered_assets_for_renderer is stable across visibility and cast_shadow flips") {
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree must exist (provided by [SceneTree] tag)");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window must exist");
+
+	GaussianSplatNode3D *node_a = memnew(GaussianSplatNode3D);
+	GaussianSplatNode3D *node_b = memnew(GaussianSplatNode3D);
+	node_a->set_splat_asset(_make_shadow_subset_test_asset(0.0f));
+	node_b->set_splat_asset(_make_shadow_subset_test_asset(10.0f));
+	node_b->set_cast_shadow(true);
+
+	root->add_child(node_a);
+	root->add_child(node_b);
+	tree->process(0.0);
+
+	Ref<GaussianSplatRenderer> renderer = node_a->get_renderer();
+	if (!renderer.is_valid()) {
+		MESSAGE("Shared renderer unavailable (headless/no RenderingDevice) — skipping registered-asset stability checks");
+		root->remove_child(node_b);
+		root->remove_child(node_a);
+		memdelete(node_b);
+		memdelete(node_a);
+		return;
+	}
+	REQUIRE(node_a->get_renderer() == node_b->get_renderer());
+
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	REQUIRE(director != nullptr);
+
+	LocalVector<InstanceAssetRegistration> registered;
+	director->collect_registered_assets_for_renderer(renderer.ptr(), registered);
+	CHECK_EQ(registered.size(), 2);
+
+	// Flip cast_shadow off on the only shadow caster — collect_registered must still see both.
+	node_b->set_cast_shadow(false);
+	tree->process(0.0);
+	director->collect_registered_assets_for_renderer(renderer.ptr(), registered);
+	CHECK_EQ(registered.size(), 2);
+
+	// Hide one node entirely — collect_registered must still see both, because the asset
+	// stays retained in the shared world's asset_records map.
+	node_a->set_visible(false);
+	tree->process(0.0);
+	director->collect_registered_assets_for_renderer(renderer.ptr(), registered);
+	CHECK_EQ(registered.size(), 2);
+
+	// And the visibility-pruned helper must still drop the invisible instance — the two
+	// collection methods serve different consumers and must keep their distinct semantics.
+	LocalVector<InstanceAssetRegistration> visible_only;
+	director->collect_instance_assets_for_renderer(renderer.ptr(), visible_only);
+	CHECK_EQ(visible_only.size(), 1);
+
+	root->remove_child(node_b);
+	root->remove_child(node_a);
+	memdelete(node_b);
+	memdelete(node_a);
+}

@@ -232,6 +232,14 @@ public:
 
 	void collect_instance_assets_for_renderer(const GaussianSplatRenderer *p_renderer, LocalVector<InstanceAssetRegistration> &out,
 			bool p_shadow_casters_only = false) const;
+	// Like collect_instance_assets_for_renderer(), but returns every asset retained by this
+	// renderer's shared world regardless of any instance's current visibility or shadow-casting
+	// state. Used by the resident contract publisher so the resident atlas is a stable superset
+	// of registered content -- visibility/casts_shadow flips never mutate atlas membership and
+	// therefore never trigger a full atlas repack. Streaming and renderer-quality callers that
+	// must react to per-frame visibility keep using collect_instance_assets_for_renderer().
+	void collect_registered_assets_for_renderer(const GaussianSplatRenderer *p_renderer,
+			LocalVector<InstanceAssetRegistration> &out) const;
     // Runtime world-submission path. Applies the submitted payload to the shared renderer and
     // becomes the authoritative active world-backed source for the scenario.
     bool submit_world_submission(const WorldSubmission &p_submission);

@@ -1755,4 +1755,97 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree][RequiresGPU] Asset-back
 	tree->process(0.0);
 }
 
+// Regression: the resident contract publisher used to mix per-instance state (visibility,
+// transform, opacity, wind, color grading) into the same generation hash that gated the
+// atlas pack. Any per-frame mutation -- common in gameplay (player walking, interactable
+// rotation tweens, wind animation) -- forced a full repack of every registered asset's
+// gaussian arrays, costing hundreds of ms of CPU time on dense scenes.
+//
+// The fix splits the publisher's source_generation into atlas_generation (asset list +
+// per-asset content_revision) and instance_generation (everything else), and uses
+// collect_registered_assets_for_renderer for atlas membership so visibility flips never
+// mutate the asset set. This test pins the new contract: per-instance churn must NOT
+// cause the publisher to re-run the atlas pack loop.
+TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree][RequiresGPU] Resident publisher does not repack atlas on per-instance state changes") {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (rs == nullptr) {
+		MESSAGE("Skipping test - Rendering server unavailable");
+		return;
+	}
+
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	Ref<GaussianSplatAsset> asset_a = stage1a_make_submission_test_asset(0.0f);
+	Ref<GaussianSplatAsset> asset_b = stage1a_make_submission_test_asset(5.0f);
+	REQUIRE(asset_a.is_valid());
+	REQUIRE(asset_b.is_valid());
+
+	GaussianSplatNode3D *node_a = memnew(GaussianSplatNode3D);
+	GaussianSplatNode3D *node_b = memnew(GaussianSplatNode3D);
+	node_a->set_splat_asset(asset_a);
+	node_b->set_splat_asset(asset_b);
+	root->add_child(node_a);
+	root->add_child(node_b);
+	tree->process(0.0);
+
+	Ref<GaussianSplatRenderer> renderer = node_a->get_renderer();
+	if (!renderer.is_valid()) {
+		MESSAGE("Skipping test - renderer unavailable");
+		root->remove_child(node_b);
+		root->remove_child(node_a);
+		memdelete(node_b);
+		memdelete(node_a);
+		tree->process(0.0);
+		return;
+	}
+	REQUIRE(node_a->get_renderer() == node_b->get_renderer());
+
+	RenderSceneDataRD scene_data;
+	scene_data.cam_transform = Transform3D(Basis(), Vector3(0.0f, 0.0f, 5.0f));
+	scene_data.cam_projection.set_perspective(70.0f, 1.0f, 0.1f, 100.0f);
+
+	RenderDataRD render_data;
+	render_data.scene_data = &scene_data;
+	render_data.render_buffers = Ref<RenderSceneBuffersRD>();
+
+	// First render: this is the slow path, should pack the atlas exactly once.
+	renderer->render_scene_instance(&render_data);
+	const uint64_t pack_count_after_first = renderer->get_resource_state().resident_atlas_pack_count;
+	CHECK_GE(pack_count_after_first, uint64_t(1));
+
+	// Second render with no state change: full early-out, no repack.
+	renderer->render_scene_instance(&render_data);
+	CHECK_EQ(renderer->get_resource_state().resident_atlas_pack_count, pack_count_after_first);
+
+	// Hammer per-instance state — none of these touch atlas content (asset list, content
+	// revisions are stable), so the publisher must take the fast path on every frame.
+	node_a->set_opacity(0.5f);
+	node_a->set_lod_bias(1.5f);
+	node_a->set_visible(false);
+	node_a->set_transform(Transform3D(Basis(Vector3(0.0f, 1.0f, 0.0f), 0.5f), Vector3(1.0f, 0.0f, 0.0f)));
+	tree->process(0.0);
+	renderer->render_scene_instance(&render_data);
+	node_a->set_visible(true);
+	node_a->set_transform(Transform3D(Basis(Vector3(0.0f, 1.0f, 0.0f), 1.0f), Vector3(2.0f, 0.0f, 0.0f)));
+	tree->process(0.0);
+	renderer->render_scene_instance(&render_data);
+	node_b->set_cast_shadow(true);
+	tree->process(0.0);
+	renderer->render_scene_instance(&render_data);
+
+	CHECK_MESSAGE(renderer->get_resource_state().resident_atlas_pack_count == pack_count_after_first,
+			"Per-instance state changes (opacity, lod_bias, visibility, transform, cast_shadow) "
+			"must NOT trigger a resident atlas repack — that was the dream_memory stutter regression.");
+
+	root->remove_child(node_b);
+	root->remove_child(node_a);
+	memdelete(node_b);
+	memdelete(node_a);
+	tree->process(0.0);
+}
+
 #endif // TESTS_ENABLED || TOOLS_ENABLED

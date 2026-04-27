@@ -146,8 +146,11 @@ static bool _renderer_requests_conservative_full_fidelity_runtime(const Gaussian
     }
 
     LocalVector<InstanceAssetRegistration> instance_assets;
-    director->collect_instance_assets_for_renderer(p_renderer, instance_assets,
-            p_renderer->is_shadow_instance_filter_enabled());
+    // Use the stable-superset collection: a quality decision over "any registered asset wants
+    // full fidelity?" should not flicker as nodes pass in/out of the frustum, and the helper
+    // doesn't care about per-frame visibility -- it only looks at the requests_full_fidelity_runtime
+    // flag of each asset.
+    director->collect_registered_assets_for_renderer(p_renderer, instance_assets);
     if (instance_assets.is_empty()) {
         return false;
     }

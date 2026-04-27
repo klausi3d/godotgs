@@ -92,6 +92,23 @@ struct ResourceState {
 	uint64_t instance_pipeline_contract_fingerprint = 0;
 	uint64_t instance_pipeline_upload_generation = 0;
 	uint64_t instance_pipeline_upload_fingerprint = 0;
+	// Atlas-only sub-generation. The resident publisher splits its source_generation into a
+	// per-asset atlas hash (asset list + per-asset content_revision) and a per-frame instance
+	// hash (visibility, transform, opacity, wind, grading, etc). When this matches the cached
+	// value the publisher skips the expensive pack_gaussians_range loop and the four atlas
+	// storage-buffer uploads, going straight to the cheap instance-buffer + grading-buffer
+	// refresh. Bumped on the slow path; never bumped on instance-only updates.
+	uint64_t instance_pipeline_atlas_generation = 0;
+	// Cached on the slow path so the fast (instance-only) path can re-publish the contract
+	// without re-running the atlas pack loop. These are derived from atlas content and stay
+	// stable as long as instance_pipeline_atlas_generation matches.
+	uint32_t resident_atlas_gaussian_count = 0;
+	uint32_t resident_dispatch_chunk_count = 0;
+	uint32_t resident_max_chunk_splats = 0;
+	// Test instrumentation: increments every time the publisher actually re-runs the atlas
+	// pack loop. Lets regression tests assert that per-instance state changes (visibility,
+	// transform, opacity, etc) do NOT trigger an atlas repack.
+	uint64_t resident_atlas_pack_count = 0;
 };
 
 struct TestDataState {
