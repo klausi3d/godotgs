@@ -270,14 +270,23 @@ layout(set = 0, binding = 11, std430) buffer SHColorCache {
 #endif
 
 #ifdef GS_TILE_GLOBAL_SORT_EMIT_PASS
+// `global_idx` is mixed into the low 16 bits of the depth half so coplanar
+// splats with bit-equal depth resolve to a stable order across frames instead
+// of reshuffling with the non-deterministic atomic-counter completion order
+// that produced the input to the radix sort. The 16-bit precision sacrifice
+// on depth is ~0.78% relative within a depth bucket; fine for within-tile
+// ordering whose sole purpose is to break ties for alpha-over compositing.
 #if GS_SORT_KEY_BITS == 32
-// Pack tile index and depth into a global sort key.
-uint gs_pack_sort_key(uint tile_idx, float linear_depth) {
+uint gs_pack_sort_key(uint tile_idx, float linear_depth, uint global_idx) {
     float clamped_depth = clamp(linear_depth, 0.0, 0.999999);
 #if GS_SORT_DEPTH_BITS >= 32
-    uint depth_key = floatBitsToUint(clamped_depth);
-    return depth_key;
+    uint depth_key = floatBitsToUint(clamped_depth) & 0xFFFF0000u;
+    uint tie_key = global_idx & 0x0000FFFFu;
+    return depth_key | tie_key;
 #else
+    // Quantized-depth path: keep the existing tile-prefix layout. Tie-break
+    // is implicit because depth quantization already groups equal-depth splats
+    // and the radix sort is stable within input order.
     uint depth_mask = (1u << GS_SORT_DEPTH_BITS) - 1u;
     uint depth_key = uint(clamped_depth * float(depth_mask));
 #if GS_SORT_TILE_BITS >= 32
@@ -290,9 +299,10 @@ uint gs_pack_sort_key(uint tile_idx, float linear_depth) {
 #endif
 }
 #else
-// Pack tile index and depth into a global sort key.
-uvec2 gs_pack_sort_key(uint tile_idx, float linear_depth) {
-    return uvec2(floatBitsToUint(linear_depth), tile_idx);
+uvec2 gs_pack_sort_key(uint tile_idx, float linear_depth, uint global_idx) {
+    uint depth_bits = floatBitsToUint(linear_depth) & 0xFFFF0000u;
+    uint tie_bits = global_idx & 0x0000FFFFu;
+    return uvec2(depth_bits | tie_bits, tile_idx);
 }
 #endif
 #endif
@@ -1276,7 +1286,7 @@ void main() {
                 atomicAdd(overflow_stats.overflow_splats_clamped, 1u);
                 continue;
             }
-            global_sort_keys.keys[record_idx] = gs_pack_sort_key(tile_idx, linear_depth);
+            global_sort_keys.keys[record_idx] = gs_pack_sort_key(tile_idx, linear_depth, global_idx);
             global_sort_values.values[record_idx] = global_idx;
         }
     }
