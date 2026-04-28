@@ -84,11 +84,11 @@ static bool _validate_asset_buffer_size(const char *p_label, int p_actual_size, 
 static GaussianDCEncoding _resolve_dc_encoding_from_metadata(const Dictionary &p_import_metadata) {
     if (p_import_metadata.has(StringName("dc_encoding"))) {
         const String dc_encoding = String(p_import_metadata[StringName("dc_encoding")]).to_lower();
-        if (dc_encoding == "linear_rgb") {
-            return GAUSSIAN_DC_ENCODING_LINEAR_RGB;
+        if (dc_encoding == "legacy_bias") {
+            return GAUSSIAN_DC_ENCODING_LEGACY_BIAS;
         }
     }
-    return GAUSSIAN_DC_ENCODING_LEGACY_BIAS;
+    return GAUSSIAN_DC_ENCODING_LINEAR_RGB;
 }
 
 } // namespace

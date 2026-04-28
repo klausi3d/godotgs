@@ -1256,9 +1256,9 @@ bool GaussianSplatAsset::populate_gaussian_data(Ref<::GaussianData> &r_data) con
     }
     if (asset_metadata.has(StringName("dc_encoding"))) {
         const String dc_encoding = String(asset_metadata[StringName("dc_encoding")]).to_lower();
-        GaussianDCEncoding staged_dc_encoding = GAUSSIAN_DC_ENCODING_LEGACY_BIAS;
-        if (dc_encoding == "linear_rgb") {
-            staged_dc_encoding = GAUSSIAN_DC_ENCODING_LINEAR_RGB;
+        GaussianDCEncoding staged_dc_encoding = GAUSSIAN_DC_ENCODING_LINEAR_RGB;
+        if (dc_encoding == "legacy_bias") {
+            staged_dc_encoding = GAUSSIAN_DC_ENCODING_LEGACY_BIAS;
         }
         for (int i = 0; i < r_data->get_count(); i++) {
             Gaussian g = r_data->get_gaussian(i);
@@ -1333,7 +1333,7 @@ Error GaussianSplatAsset::populate_from_gaussian_data(const Ref<::GaussianData> 
     bool bounds_initialized = false;
     Vector3 min_pos;
     Vector3 max_pos;
-    GaussianDCEncoding asset_dc_encoding = GAUSSIAN_DC_ENCODING_LEGACY_BIAS;
+    GaussianDCEncoding asset_dc_encoding = GAUSSIAN_DC_ENCODING_LINEAR_RGB;
     bool asset_dc_encoding_initialized = false;
     bool mixed_dc_encoding = false;
 

@@ -42,7 +42,12 @@ public:
     //   v3: preview thumbnails now serialize as Image resources instead of
     //       ImageTexture to avoid threaded importer deadlocks under
     //       `--headless --import`.
-    virtual int get_format_version() const override { return 3; }
+    //   v4: PLY DC-encoding default flipped from `legacy_bias` (sigmoid
+    //       compression `1.5*sigmoid(x) - 0.25`) to `linear_rgb` (canonical
+    //       Inria `sh*C0 + 0.5`). Caches written by v1-v3 carry the wrong
+    //       `dc_encoding` tag and must be reimported to render with full
+    //       contrast / saturation.
+    virtual int get_format_version() const override { return 4; }
 
     // Validation helpers
     Error validate_ply_properties(const Ref<class PLYLoader> &p_loader) const;

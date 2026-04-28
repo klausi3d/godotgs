@@ -41,7 +41,7 @@ void _clear_dirty_flags(LocalVector<uint8_t> &flags) {
 
 GaussianDCEncoding _resolve_data_dc_encoding(const Ref<GaussianData> &p_data) {
 	if (p_data.is_null() || p_data->get_count() <= 0) {
-		return GAUSSIAN_DC_ENCODING_LEGACY_BIAS;
+		return GAUSSIAN_DC_ENCODING_LINEAR_RGB;
 	}
 	return gaussian_get_dc_encoding(p_data->get_gaussian(0).render_meta);
 }

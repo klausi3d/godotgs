@@ -133,15 +133,16 @@ void compute_sh_basis_1st_order(vec3 dir, out float basis[4]) {
 // Evaluate SH color with configurable band level
 // sh_band_level: 0=DC only, 1=1st order, 2=2nd order, 3=3rd order
 vec3 evaluate_sh_with_bands(Gaussian g, vec3 view_dir, uint sh_band_level) {
-    // Decode DC term. Some datasets store DC in logit space (original 3DGS),
-    // others store linear coefficients (SPZ/converted assets).
+    // Decode DC term. The default path matches the Inria 3DGS convention
+    // (`SH2RGB(sh) = sh * C0 + 0.5`), with the C0 factor pre-baked at load.
+    // The legacy sigmoid path is retained only for assets explicitly tagged
+    // `legacy_bias`; new imports default to `linear_rgb`.
     bool dc_logit = !gaussian_get_dc_is_linear_rgb(g.sh_metadata);
     vec3 color;
     if (dc_logit) {
         vec3 dc_logit_val = g.sh_dc.rgb;
         color = 1.5 * (1.0 / (1.0 + exp(-dc_logit_val))) - 0.25;
     } else {
-        // Standard 3DGS: DC already linear (scaled by SH_C0 in source).
         color = g.sh_dc.rgb + 0.5;
     }
 
