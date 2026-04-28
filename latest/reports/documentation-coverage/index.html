@@ -1708,12 +1708,6 @@
 <td>67</td>
 </tr>
 <tr>
-<td>modules/gaussian_splatting/tests/test_shadow_instance_subset.h</td>
-<td>0.00</td>
-<td>0</td>
-<td>113</td>
-</tr>
-<tr>
 <td>modules/gaussian_splatting/tests/test_gaussian_streaming_lifecycle.cpp</td>
 <td>0.00</td>
 <td>0</td>
@@ -2404,12 +2398,6 @@
 <td>299</td>
 </tr>
 <tr>
-<td>modules/gaussian_splatting/tests/test_scene_director_submission_scaffolding.h</td>
-<td>0.01</td>
-<td>20</td>
-<td>1463</td>
-</tr>
-<tr>
 <td>tests/examples/godot/test_project/scenes/qa/qa_static_fast_path.gd</td>
 <td>0.01</td>
 <td>1</td>
@@ -2612,6 +2600,12 @@
 <td>0.02</td>
 <td>4</td>
 <td>178</td>
+</tr>
+<tr>
+<td>modules/gaussian_splatting/tests/test_scene_director_submission_scaffolding.h</td>
+<td>0.02</td>
+<td>35</td>
+<td>1528</td>
 </tr>
 <tr>
 <td>modules/gaussian_splatting/tests/test_animation_interpolation.h</td>
@@ -2986,12 +2980,6 @@
 <td>259</td>
 </tr>
 <tr>
-<td>modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp</td>
-<td>0.05</td>
-<td>115</td>
-<td>2478</td>
-</tr>
-<tr>
 <td>tests/examples/godot/test_project/scenes/qa/qa_performance_budget.gd</td>
 <td>0.05</td>
 <td>3</td>
@@ -3014,6 +3002,12 @@
 <td>0.05</td>
 <td>5</td>
 <td>105</td>
+</tr>
+<tr>
+<td>modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp</td>
+<td>0.05</td>
+<td>119</td>
+<td>2477</td>
 </tr>
 <tr>
 <td>modules/gaussian_splatting/animation/keyframe_interpolator.cpp</td>
@@ -3226,16 +3220,22 @@
 <td>335</td>
 </tr>
 <tr>
+<td>modules/gaussian_splatting/core/gaussian_splat_scene_director.cpp</td>
+<td>0.06</td>
+<td>156</td>
+<td>2473</td>
+</tr>
+<tr>
 <td>tests/examples/godot/test_project/scenes/phase66d_validation.gd</td>
 <td>0.06</td>
 <td>9</td>
 <td>142</td>
 </tr>
 <tr>
-<td>modules/gaussian_splatting/core/gaussian_splat_scene_director.cpp</td>
+<td>modules/gaussian_splatting/tests/test_shadow_instance_subset.h</td>
 <td>0.06</td>
-<td>156</td>
-<td>2452</td>
+<td>10</td>
+<td>157</td>
 </tr>
 <tr>
 <td>modules/gaussian_splatting/editor/gaussian_import_settings_dialog.h</td>
@@ -3622,12 +3622,6 @@
 <td>303</td>
 </tr>
 <tr>
-<td>modules/gaussian_splatting/renderer/resident_instance_contract_publisher.cpp</td>
-<td>0.12</td>
-<td>70</td>
-<td>602</td>
-</tr>
-<tr>
 <td>modules/gaussian_splatting/renderer/gpu_performance_monitor.cpp</td>
 <td>0.12</td>
 <td>21</td>
@@ -3868,6 +3862,12 @@
 <td>85</td>
 </tr>
 <tr>
+<td>modules/gaussian_splatting/renderer/resident_instance_contract_publisher.cpp</td>
+<td>0.17</td>
+<td>107</td>
+<td>646</td>
+</tr>
+<tr>
 <td>modules/gaussian_splatting/tests/test_lod_system.h</td>
 <td>0.17</td>
 <td>2</td>
@@ -3878,12 +3878,6 @@
 <td>0.17</td>
 <td>26</td>
 <td>156</td>
-</tr>
-<tr>
-<td>modules/gaussian_splatting/renderer/render_types/render_facade_state_types.h</td>
-<td>0.17</td>
-<td>19</td>
-<td>113</td>
 </tr>
 <tr>
 <td>modules/gaussian_splatting/interfaces/output_compositor.h</td>
@@ -3962,12 +3956,6 @@
 <td>0.18</td>
 <td>31</td>
 <td>170</td>
-</tr>
-<tr>
-<td>modules/gaussian_splatting/core/gaussian_splat_scene_director.h</td>
-<td>0.18</td>
-<td>56</td>
-<td>307</td>
 </tr>
 <tr>
 <td>tests/ci/test_ply_pipeline_ci.gd</td>
@@ -4052,6 +4040,12 @@
 <td>0.20</td>
 <td>1</td>
 <td>5</td>
+</tr>
+<tr>
+<td>modules/gaussian_splatting/core/gaussian_splat_scene_director.h</td>
+<td>0.20</td>
+<td>62</td>
+<td>309</td>
 </tr>
 <tr>
 <td>modules/gaussian_splatting/core/gaussian_data_octree.cpp</td>
@@ -4202,6 +4196,12 @@
 <td>0.26</td>
 <td>84</td>
 <td>325</td>
+</tr>
+<tr>
+<td>modules/gaussian_splatting/renderer/render_types/render_facade_state_types.h</td>
+<td>0.26</td>
+<td>31</td>
+<td>118</td>
 </tr>
 <tr>
 <td>modules/gaussian_splatting/tests/test_data_authority_hardening.h</td>
@@ -4622,7 +4622,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 27, 2026 10:19:30 UTC">April 27, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 28, 2026 10:13:21 UTC">April 28, 2026</span>
   </span>
 
     
