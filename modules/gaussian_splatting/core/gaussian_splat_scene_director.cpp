@@ -2833,7 +2833,29 @@ void GaussianSplatSceneDirector::collect_instance_assets_for_renderer(const Gaus
 	}
 }
 
+void GaussianSplatSceneDirector::collect_registered_assets_for_renderer(const GaussianSplatRenderer *p_renderer,
+		LocalVector<InstanceAssetRegistration> &out) const {
+	MutexLock lock(world_mutex);
+	out.clear();
 
+	const SharedWorld *world = _find_world_for_renderer(p_renderer);
+	if (!world || world->asset_records.is_empty()) {
+		return;
+	}
+
+	out.reserve(world->asset_records.size());
+	for (const KeyValue<uint32_t, SharedWorld::AssetRecord> &E : world->asset_records) {
+		if (E.key == 0 || E.value.data.is_null()) {
+			continue;
+		}
+		InstanceAssetRegistration entry;
+		entry.asset_id = E.key;
+		entry.data = E.value.data;
+		entry.edited_version = E.value.edited_version;
+		entry.requests_full_fidelity_runtime = _asset_requests_full_fidelity_runtime(E.value.asset);
+		out.push_back(entry);
+	}
+}
 
 
 

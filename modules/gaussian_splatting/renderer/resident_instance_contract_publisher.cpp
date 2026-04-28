@@ -207,8 +207,13 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
 	LocalVector<InstanceAssetRegistration> instance_assets;
 	if (director != nullptr) {
-		director->collect_instance_assets_for_renderer(p_renderer, instance_assets,
-				p_renderer->is_shadow_instance_filter_enabled());
+		// Stable-superset collection: include every registered asset regardless of any
+		// instance's current visibility or shadow-casting state. Visibility/casts_shadow
+		// flips therefore never mutate atlas membership and never trigger a full atlas
+		// repack via the atlas_generation gate below. The per-instance shadow filter is
+		// still applied later by build_instance_buffer_for_renderer when populating the
+		// instance buffer rows.
+		director->collect_registered_assets_for_renderer(p_renderer, instance_assets);
 	}
 	std::sort(instance_assets.ptr(), instance_assets.ptr() + instance_assets.size(),
 			[](const InstanceAssetRegistration &a, const InstanceAssetRegistration &b) {
@@ -227,15 +232,29 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 		assets.push_back(asset);
 	}
 
-	uint64_t source_generation = 0x6a09e667f3bcc909ULL;
-	source_generation = _mix_generation(source_generation, has_primary_data ? uint64_t(primary_data->get_instance_id()) : 0ULL);
-	source_generation = _mix_generation(source_generation, has_primary_data ? primary_data->get_content_revision() : 0ULL);
+	// Generation split: atlas_generation hashes only inputs that affect packed atlas content
+	// (asset list + per-asset content_revision + primary data + static chunk topology +
+	// quantization config). instance_generation hashes everything else (per-instance state,
+	// effectors, grading defaults, shadow filter, max_splats). The full early-out below
+	// requires both to match the cached source_generation; if only instance_generation
+	// changed, we skip the expensive atlas pack/upload and re-run only the cheap
+	// per-instance buffer + grading buffer paths.
+	uint64_t atlas_generation = 0x6a09e667f3bcc909ULL;
+	atlas_generation = _mix_generation(atlas_generation, has_primary_data ? uint64_t(primary_data->get_instance_id()) : 0ULL);
+	atlas_generation = _mix_generation(atlas_generation, has_primary_data ? primary_data->get_content_revision() : 0ULL);
 	const Ref<GPUCuller> &gpu_culler = p_renderer->get_subsystem_state().gpu_culler;
-	source_generation = _mix_generation(source_generation,
+	atlas_generation = _mix_generation(atlas_generation,
 			gpu_culler.is_valid() ? gpu_culler->get_state().static_chunks_revision : 0ULL);
+	for (const ResidentAssetDescriptor &asset : assets) {
+		atlas_generation = _mix_generation(atlas_generation, asset.submission_asset_id);
+		atlas_generation = _mix_generation(atlas_generation, asset.data.is_valid() ? uint64_t(asset.data->get_instance_id()) : 0ULL);
+		atlas_generation = _mix_generation(atlas_generation, asset.data.is_valid() ? asset.data->get_content_revision() : 0ULL);
+	}
+
+	uint64_t instance_generation = 0xbb67ae8584caa73bULL;
 	if (director != nullptr) {
-		source_generation = _mix_generation(source_generation, director->get_instance_generation_for_renderer(p_renderer));
-		source_generation = _mix_generation(source_generation, director->get_sphere_effector_generation_for_renderer(p_renderer));
+		instance_generation = _mix_generation(instance_generation, director->get_instance_generation_for_renderer(p_renderer));
+		instance_generation = _mix_generation(instance_generation, director->get_sphere_effector_generation_for_renderer(p_renderer));
 	}
 	// Mix the renderer-wide grading-defaults counter so resident direct-data
 	// grading rows (rows with no per-instance grading ref in director-less
@@ -244,15 +263,12 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 	// orchestrator already consumes this atomic in its fingerprint; the
 	// resident publisher must do the same or these grading rows stay stale
 	// until an unrelated content/topology change lands.
-	source_generation = _mix_generation(source_generation,
+	instance_generation = _mix_generation(instance_generation,
 			p_renderer->get_resource_state().instance_grading_defaults_generation.load(std::memory_order_relaxed));
-	source_generation = _mix_generation(source_generation, p_renderer->is_shadow_instance_filter_enabled() ? 1ULL : 0ULL);
-	source_generation = _mix_generation(source_generation, uint64_t(p_renderer->get_performance_settings().max_splats));
-	for (const ResidentAssetDescriptor &asset : assets) {
-		source_generation = _mix_generation(source_generation, asset.submission_asset_id);
-		source_generation = _mix_generation(source_generation, asset.data.is_valid() ? uint64_t(asset.data->get_instance_id()) : 0ULL);
-		source_generation = _mix_generation(source_generation, asset.data.is_valid() ? asset.data->get_content_revision() : 0ULL);
-	}
+	instance_generation = _mix_generation(instance_generation, p_renderer->is_shadow_instance_filter_enabled() ? 1ULL : 0ULL);
+	instance_generation = _mix_generation(instance_generation, uint64_t(p_renderer->get_performance_settings().max_splats));
+
+	const uint64_t source_generation = _mix_generation(atlas_generation, instance_generation);
 
 	{
 		const GaussianSplatRenderer::ResourceState &resource_state = p_renderer->get_resource_state();
@@ -321,165 +337,237 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 		return false;
 	}
 
-	// Early-out: estimate total packed size across all assets.  If it would
-	// exceed the staging limit, skip the expensive per-chunk packing loop
-	// entirely.  The streaming path should handle datasets this large.
-	{
-		static constexpr uint64_t kMaxResidentUploadBytes = uint64_t(2) * 1024 * 1024 * 1024;
-		uint64_t total_gaussians = 0;
-		for (const ResidentAssetDescriptor &asset : assets) {
-			if (asset.data.is_valid()) {
-				total_gaussians += uint64_t(asset.data->get_count());
-			}
-		}
-		if (total_gaussians * sizeof(PackedGaussian) > kMaxResidentUploadBytes) {
-			if (r_reason) {
-				*r_reason = "resident_dataset_exceeds_staging_limit";
-			}
-			// Do NOT clear instance pipeline buffers here — the streaming
-			// orchestrator may have already published its own atlas/cull
-			// buffers.  Clearing them would force MISSING_CULL_INPUTS on
-			// every subsequent frame, preventing the streaming path from
-			// ever becoming valid.
-			return false;
-		}
-	}
+	GaussianSplatRenderer::ResourceState &resource_state = p_renderer->get_resource_state();
 
-	Vector<AssetMetaGPU> asset_meta_cpu;
-	asset_meta_cpu.resize(next_dense_id);
-	Vector<AssetChunkIndexGPU> asset_chunk_index_cpu;
-	Vector<ChunkMetaGPU> chunk_meta_cpu;
-	Vector<PackedGaussian> atlas_gaussian_cpu;
+	// Fast path: when atlas content is unchanged we skip the expensive pack_gaussians_range
+	// loop and the four atlas storage-buffer uploads, falling through to the cheap per-instance
+	// buffer + grading buffer refresh below. This is what makes per-instance churn (visibility
+	// flips, transform tweens on interactables, wind animation, opacity changes, color grading
+	// edits) cost ~1ms instead of repacking the whole resident atlas (which used to cost
+	// hundreds of ms on dense scenes).
+	//
+	// Atlas buffer ownership must also match the current RenderingDevice. After a device
+	// migration/reset the cached atlas RIDs would still pass the generation check but reference
+	// freed resources from the previous device, and the contract would publish dead RIDs. The
+	// cull/sort/raster buffers below have their own ensure_owner() remediation; the atlas
+	// buffers do not, so we force a full repack here when any atlas RID has been re-owned.
+	auto atlas_owner_ok = [&](const RID &p_rid) {
+		return !p_rid.is_valid() || p_renderer->get_resource_owner(p_rid, rd) == rd;
+	};
+	const bool atlas_buffers_owned = atlas_owner_ok(resource_state.resident_atlas_gaussian_buffer) &&
+			atlas_owner_ok(resource_state.resident_asset_meta_buffer) &&
+			atlas_owner_ok(resource_state.resident_chunk_meta_buffer) &&
+			atlas_owner_ok(resource_state.resident_asset_chunk_index_buffer);
+	const bool atlas_changed = resource_state.instance_pipeline_atlas_generation != atlas_generation ||
+			!p_renderer->has_instance_pipeline_buffers() ||
+			!atlas_buffers_owned;
 
-	uint32_t max_chunk_count_per_asset = 0;
-	uint32_t max_chunk_splats = 0;
+	uint32_t atlas_gaussian_count = 0;
+	uint32_t atlas_max_chunk_count_per_asset = 0;
+	uint32_t atlas_max_chunk_splats = 0;
 
-	for (uint32_t asset_index = 0; asset_index < assets.size(); asset_index++) {
-		const ResidentAssetDescriptor &asset = assets[asset_index];
-		asset_meta_cpu.write[asset.dense_asset_id] = AssetMetaGPU();
-
-		if (asset.data.is_null() || asset.data->get_count() <= 0) {
-			continue;
-		}
-
-		LocalVector<ResidentChunkDescriptor> chunk_descriptors;
-		_append_chunk_descriptors_for_asset(asset, chunk_descriptors);
-		if (chunk_descriptors.is_empty()) {
-			continue;
-		}
-
-		AssetMetaGPU asset_meta = {};
-		asset_meta.lod_count = 1;
-		asset_meta.sh_degree = asset.data->get_sh_degree();
-		asset_meta.flags = gs_pack_asset_gpu_flags(asset.data->get_2d_mode(), _resolve_data_dc_encoding(asset.data));
-		const AABB asset_bounds = asset.data->get_aabb();
-		const Vector3 asset_center = asset_bounds.get_center();
-		const Vector3 asset_half = asset_bounds.size * 0.5f;
-		asset_meta.bounds_center_local[0] = asset_center.x;
-		asset_meta.bounds_center_local[1] = asset_center.y;
-		asset_meta.bounds_center_local[2] = asset_center.z;
-		asset_meta.bounds_radius_local = asset_half.length();
-		asset_meta.chunk_index_base = asset_chunk_index_cpu.size();
-		asset_meta.chunk_index_count = chunk_descriptors.size();
-		asset_meta.lod_ranges[0].base = asset_meta.chunk_index_base;
-		asset_meta.lod_ranges[0].count = asset_meta.chunk_index_count;
-
-		max_chunk_count_per_asset = MAX<uint32_t>(max_chunk_count_per_asset, chunk_descriptors.size());
-
-		for (uint32_t chunk_index = 0; chunk_index < chunk_descriptors.size(); chunk_index++) {
-			const ResidentChunkDescriptor &descriptor = chunk_descriptors[chunk_index];
-			LocalVector<Gaussian> gaussian_snapshot;
-			LocalVector<Vector3> sh_high_order_snapshot;
-			uint32_t sh_first_order = 0;
-			uint32_t sh_high_order = 0;
-			bool captured = false;
-			if (descriptor.source_index_remapped) {
-				captured = asset.data->capture_indexed_chunk_snapshot(descriptor.source_indices.ptr(), descriptor.count,
-						gaussian_snapshot, sh_high_order_snapshot, sh_first_order, sh_high_order);
-			} else {
-				captured = asset.data->capture_chunk_snapshot(descriptor.start_idx, descriptor.count,
-						gaussian_snapshot, sh_high_order_snapshot, sh_first_order, sh_high_order);
-			}
-			if (!captured || gaussian_snapshot.size() != descriptor.count) {
-				if (r_reason) {
-					*r_reason = "resident_chunk_snapshot_failed";
+	if (atlas_changed) {
+		// If the atlas RIDs survived a device migration their cached values still pass the size
+		// check inside _upload_typed_storage_buffer(), which would then call buffer_update() on
+		// a RID that belongs to the old RenderingDevice. Drop our references to any foreign-
+		// owned atlas RIDs first so the upload path recreates them on the current device. We do
+		// not call free_owned_resource() because the previous device owns them and is responsible
+		// for its own teardown -- mirrors the ensure_owner() pattern used for the cull/sort
+		// buffers further down.
+		if (!atlas_buffers_owned) {
+			auto reset_foreign_atlas_rid = [&](RID &r_buffer, uint32_t &r_size) {
+				if (r_buffer.is_valid() && p_renderer->get_resource_owner(r_buffer, rd) != rd) {
+					r_buffer = RID();
+					r_size = 0;
 				}
-				p_renderer->clear_instance_pipeline_buffers();
+			};
+			reset_foreign_atlas_rid(resource_state.resident_atlas_gaussian_buffer,
+					resource_state.resident_atlas_gaussian_buffer_size);
+			reset_foreign_atlas_rid(resource_state.resident_asset_meta_buffer,
+					resource_state.resident_asset_meta_buffer_size);
+			reset_foreign_atlas_rid(resource_state.resident_chunk_meta_buffer,
+					resource_state.resident_chunk_meta_buffer_size);
+			reset_foreign_atlas_rid(resource_state.resident_asset_chunk_index_buffer,
+					resource_state.resident_asset_chunk_index_buffer_size);
+		}
+
+		// Early-out: estimate total packed size across all assets.  If it would
+		// exceed the staging limit, skip the expensive per-chunk packing loop
+		// entirely.  The streaming path should handle datasets this large.
+		{
+			static constexpr uint64_t kMaxResidentUploadBytes = uint64_t(2) * 1024 * 1024 * 1024;
+			uint64_t total_gaussians = 0;
+			for (const ResidentAssetDescriptor &asset : assets) {
+				if (asset.data.is_valid()) {
+					total_gaussians += uint64_t(asset.data->get_count());
+				}
+			}
+			if (total_gaussians * sizeof(PackedGaussian) > kMaxResidentUploadBytes) {
+				if (r_reason) {
+					*r_reason = "resident_dataset_exceeds_staging_limit";
+				}
+				// Do NOT clear instance pipeline buffers here — the streaming
+				// orchestrator may have already published its own atlas/cull
+				// buffers.  Clearing them would force MISSING_CULL_INPUTS on
+				// every subsequent frame, preventing the streaming path from
+				// ever becoming valid.
 				return false;
 			}
+		}
 
-			SHCompressionMetrics sh_metrics;
-			Vector<PackedGaussian> packed_chunk;
-			const Vector3 *sh_coeffs = sh_high_order_snapshot.is_empty() ? nullptr : sh_high_order_snapshot.ptr();
-			pack_gaussians_range(gaussian_snapshot, 0, descriptor.count, packed_chunk, sh_metrics, sh_coeffs,
-					sh_first_order, sh_high_order);
+		Vector<AssetMetaGPU> asset_meta_cpu;
+		asset_meta_cpu.resize(next_dense_id);
+		Vector<AssetChunkIndexGPU> asset_chunk_index_cpu;
+		Vector<ChunkMetaGPU> chunk_meta_cpu;
+		Vector<PackedGaussian> atlas_gaussian_cpu;
 
-			const uint32_t atlas_base = atlas_gaussian_cpu.size();
-			for (int i = 0; i < packed_chunk.size(); i++) {
-				atlas_gaussian_cpu.push_back(packed_chunk[i]);
+		uint32_t max_chunk_count_per_asset = 0;
+		uint32_t max_chunk_splats = 0;
+
+		for (uint32_t asset_index = 0; asset_index < assets.size(); asset_index++) {
+			const ResidentAssetDescriptor &asset = assets[asset_index];
+			asset_meta_cpu.write[asset.dense_asset_id] = AssetMetaGPU();
+
+			if (asset.data.is_null() || asset.data->get_count() <= 0) {
+				continue;
 			}
 
-			ChunkMetaGPU chunk_meta = {};
-			chunk_meta.atlas_base = atlas_base;
-			chunk_meta.splat_count = descriptor.count;
-			const Vector3 chunk_center = descriptor.bounds.get_center();
-			const Vector3 chunk_half = descriptor.bounds.size * 0.5f;
-			chunk_meta.bounds_center_local[0] = chunk_center.x;
-			chunk_meta.bounds_center_local[1] = chunk_center.y;
-			chunk_meta.bounds_center_local[2] = chunk_center.z;
-			chunk_meta.bounds_radius_local = chunk_half.length();
-			chunk_meta.asset_id = asset.dense_asset_id;
-			chunk_meta.lod_level = 0;
-			chunk_meta.flags = asset_meta.flags;
-			chunk_meta.sh_limit = CLAMP(asset.data->get_sh_degree(), 0u, 3u);
-			chunk_meta_cpu.push_back(chunk_meta);
+			LocalVector<ResidentChunkDescriptor> chunk_descriptors;
+			_append_chunk_descriptors_for_asset(asset, chunk_descriptors);
+			if (chunk_descriptors.is_empty()) {
+				continue;
+			}
 
-			AssetChunkIndexGPU chunk_index_gpu = {};
-			chunk_index_gpu.chunk_id = chunk_meta_cpu.size() - 1;
-			asset_chunk_index_cpu.push_back(chunk_index_gpu);
-			max_chunk_splats = MAX(max_chunk_splats, descriptor.count);
+			AssetMetaGPU asset_meta = {};
+			asset_meta.lod_count = 1;
+			asset_meta.sh_degree = asset.data->get_sh_degree();
+			asset_meta.flags = gs_pack_asset_gpu_flags(asset.data->get_2d_mode(), _resolve_data_dc_encoding(asset.data));
+			const AABB asset_bounds = asset.data->get_aabb();
+			const Vector3 asset_center = asset_bounds.get_center();
+			const Vector3 asset_half = asset_bounds.size * 0.5f;
+			asset_meta.bounds_center_local[0] = asset_center.x;
+			asset_meta.bounds_center_local[1] = asset_center.y;
+			asset_meta.bounds_center_local[2] = asset_center.z;
+			asset_meta.bounds_radius_local = asset_half.length();
+			asset_meta.chunk_index_base = asset_chunk_index_cpu.size();
+			asset_meta.chunk_index_count = chunk_descriptors.size();
+			asset_meta.lod_ranges[0].base = asset_meta.chunk_index_base;
+			asset_meta.lod_ranges[0].count = asset_meta.chunk_index_count;
+
+			max_chunk_count_per_asset = MAX<uint32_t>(max_chunk_count_per_asset, chunk_descriptors.size());
+
+			for (uint32_t chunk_index = 0; chunk_index < chunk_descriptors.size(); chunk_index++) {
+				const ResidentChunkDescriptor &descriptor = chunk_descriptors[chunk_index];
+				LocalVector<Gaussian> gaussian_snapshot;
+				LocalVector<Vector3> sh_high_order_snapshot;
+				uint32_t sh_first_order = 0;
+				uint32_t sh_high_order = 0;
+				bool captured = false;
+				if (descriptor.source_index_remapped) {
+					captured = asset.data->capture_indexed_chunk_snapshot(descriptor.source_indices.ptr(), descriptor.count,
+							gaussian_snapshot, sh_high_order_snapshot, sh_first_order, sh_high_order);
+				} else {
+					captured = asset.data->capture_chunk_snapshot(descriptor.start_idx, descriptor.count,
+							gaussian_snapshot, sh_high_order_snapshot, sh_first_order, sh_high_order);
+				}
+				if (!captured || gaussian_snapshot.size() != descriptor.count) {
+					if (r_reason) {
+						*r_reason = "resident_chunk_snapshot_failed";
+					}
+					p_renderer->clear_instance_pipeline_buffers();
+					return false;
+				}
+
+				SHCompressionMetrics sh_metrics;
+				Vector<PackedGaussian> packed_chunk;
+				const Vector3 *sh_coeffs = sh_high_order_snapshot.is_empty() ? nullptr : sh_high_order_snapshot.ptr();
+				pack_gaussians_range(gaussian_snapshot, 0, descriptor.count, packed_chunk, sh_metrics, sh_coeffs,
+						sh_first_order, sh_high_order);
+
+				const uint32_t atlas_base = atlas_gaussian_cpu.size();
+				for (int i = 0; i < packed_chunk.size(); i++) {
+					atlas_gaussian_cpu.push_back(packed_chunk[i]);
+				}
+
+				ChunkMetaGPU chunk_meta = {};
+				chunk_meta.atlas_base = atlas_base;
+				chunk_meta.splat_count = descriptor.count;
+				const Vector3 chunk_center = descriptor.bounds.get_center();
+				const Vector3 chunk_half = descriptor.bounds.size * 0.5f;
+				chunk_meta.bounds_center_local[0] = chunk_center.x;
+				chunk_meta.bounds_center_local[1] = chunk_center.y;
+				chunk_meta.bounds_center_local[2] = chunk_center.z;
+				chunk_meta.bounds_radius_local = chunk_half.length();
+				chunk_meta.asset_id = asset.dense_asset_id;
+				chunk_meta.lod_level = 0;
+				chunk_meta.flags = asset_meta.flags;
+				chunk_meta.sh_limit = CLAMP(asset.data->get_sh_degree(), 0u, 3u);
+				chunk_meta_cpu.push_back(chunk_meta);
+
+				AssetChunkIndexGPU chunk_index_gpu = {};
+				chunk_index_gpu.chunk_id = chunk_meta_cpu.size() - 1;
+				asset_chunk_index_cpu.push_back(chunk_index_gpu);
+				max_chunk_splats = MAX(max_chunk_splats, descriptor.count);
+			}
+
+			asset_meta_cpu.write[asset.dense_asset_id] = asset_meta;
 		}
 
-		asset_meta_cpu.write[asset.dense_asset_id] = asset_meta;
-	}
-
-	if (atlas_gaussian_cpu.is_empty()) {
-		if (r_reason) {
-			*r_reason = "resident_atlas_empty";
+		if (atlas_gaussian_cpu.is_empty()) {
+			if (r_reason) {
+				*r_reason = "resident_atlas_empty";
+			}
+			p_renderer->clear_instance_pipeline_buffers();
+			return false;
 		}
-		p_renderer->clear_instance_pipeline_buffers();
-		return false;
-	}
 
-	GaussianSplatRenderer::ResourceState &resource_state = p_renderer->get_resource_state();
-	if (!_upload_typed_storage_buffer(p_renderer, rd, resource_state.resident_atlas_gaussian_buffer,
-				resource_state.resident_atlas_gaussian_buffer_size, "GS_ResidentAtlasGaussians", atlas_gaussian_cpu) ||
-			!_upload_typed_storage_buffer(p_renderer, rd, resource_state.resident_asset_meta_buffer,
-				resource_state.resident_asset_meta_buffer_size, "GS_ResidentAssetMeta", asset_meta_cpu) ||
-			!_upload_typed_storage_buffer(p_renderer, rd, resource_state.resident_chunk_meta_buffer,
-				resource_state.resident_chunk_meta_buffer_size, "GS_ResidentChunkMeta", chunk_meta_cpu) ||
-			!_upload_typed_storage_buffer(p_renderer, rd, resource_state.resident_asset_chunk_index_buffer,
-				resource_state.resident_asset_chunk_index_buffer_size, "GS_ResidentAssetChunkIndex", asset_chunk_index_cpu)) {
-		if (r_reason) {
-			*r_reason = "resident_dataset_upload_failed";
+		if (!_upload_typed_storage_buffer(p_renderer, rd, resource_state.resident_atlas_gaussian_buffer,
+					resource_state.resident_atlas_gaussian_buffer_size, "GS_ResidentAtlasGaussians", atlas_gaussian_cpu) ||
+				!_upload_typed_storage_buffer(p_renderer, rd, resource_state.resident_asset_meta_buffer,
+					resource_state.resident_asset_meta_buffer_size, "GS_ResidentAssetMeta", asset_meta_cpu) ||
+				!_upload_typed_storage_buffer(p_renderer, rd, resource_state.resident_chunk_meta_buffer,
+					resource_state.resident_chunk_meta_buffer_size, "GS_ResidentChunkMeta", chunk_meta_cpu) ||
+				!_upload_typed_storage_buffer(p_renderer, rd, resource_state.resident_asset_chunk_index_buffer,
+					resource_state.resident_asset_chunk_index_buffer_size, "GS_ResidentAssetChunkIndex", asset_chunk_index_cpu)) {
+			if (r_reason) {
+				*r_reason = "resident_dataset_upload_failed";
+			}
+			p_renderer->clear_instance_pipeline_buffers();
+			return false;
 		}
-		p_renderer->clear_instance_pipeline_buffers();
-		return false;
+
+		atlas_gaussian_count = atlas_gaussian_cpu.size();
+		atlas_max_chunk_count_per_asset = max_chunk_count_per_asset;
+		atlas_max_chunk_splats = max_chunk_splats;
+
+		// Cache derived sizes so the next instance-only update can re-publish the contract
+		// without re-running the pack loop.
+		resource_state.resident_atlas_gaussian_count = atlas_gaussian_count;
+		resource_state.resident_dispatch_chunk_count = atlas_max_chunk_count_per_asset;
+		resource_state.resident_max_chunk_splats = atlas_max_chunk_splats;
+		resource_state.resident_atlas_pack_count++;
+	} else {
+		// Atlas unchanged. Reuse the cached size metrics from the last slow-path publish.
+		// Atlas storage buffers (resident_atlas_gaussian_buffer etc.) keep their current
+		// contents and RIDs.
+		atlas_gaussian_count = resource_state.resident_atlas_gaussian_count;
+		atlas_max_chunk_count_per_asset = resource_state.resident_dispatch_chunk_count;
+		atlas_max_chunk_splats = resource_state.resident_max_chunk_splats;
 	}
 
 	const uint32_t instance_count = instances.size();
 	GaussianRenderPipeline::InstancePipelineBuffers buffers;
 	buffers.atlas_gaussian_buffer = resource_state.resident_atlas_gaussian_buffer;
-	buffers.atlas_gaussian_count = atlas_gaussian_cpu.size();
+	buffers.atlas_gaussian_count = atlas_gaussian_count;
 	buffers.asset_meta_buffer = resource_state.resident_asset_meta_buffer;
 	buffers.chunk_meta_buffer = resource_state.resident_chunk_meta_buffer;
 	buffers.asset_chunk_index_buffer = resource_state.resident_asset_chunk_index_buffer;
 	buffers.quantization_required = false;
 	buffers.quantization_buffer = RID();
-	buffers.dispatch_chunk_count = MAX<uint32_t>(1u, max_chunk_count_per_asset);
-	buffers.max_chunk_splats = MAX<uint32_t>(1u, max_chunk_splats);
+	buffers.dispatch_chunk_count = MAX<uint32_t>(1u, atlas_max_chunk_count_per_asset);
+	buffers.max_chunk_splats = MAX<uint32_t>(1u, atlas_max_chunk_splats);
 
-	uint64_t max_visible_splats_u64 = atlas_gaussian_cpu.size();
+	uint64_t max_visible_splats_u64 = atlas_gaussian_count;
 	const int configured_max_splats = p_renderer->get_performance_settings().max_splats;
 	if (configured_max_splats > 0) {
 		max_visible_splats_u64 = MIN<uint64_t>(max_visible_splats_u64, uint64_t(configured_max_splats));
@@ -655,6 +743,7 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 	p_renderer->publish_instance_pipeline_contract(buffers, remap,
 			GaussianRenderPipeline::InstanceBackendPolicy::RESIDENT, source_generation, "atlas_emulation");
 	resource_state.instance_pipeline_contract_generation = source_generation;
+	resource_state.instance_pipeline_atlas_generation = atlas_generation;
 	resource_state.instance_pipeline_content_generation = source_generation;
 	resource_state.instance_pipeline_contract_fingerprint = 0;
 	resource_state.instance_pipeline_upload_generation = source_generation;
