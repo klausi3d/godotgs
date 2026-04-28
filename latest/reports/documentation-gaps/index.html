@@ -4051,17 +4051,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingcoregaussian_splat_managercpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/core/gaussian_splat_manager.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingrenderergpu_sortercpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4099,6 +4088,17 @@
     <span class="md-ellipsis">
       
         tests/examples/godot/test_project/scenes/diagnostic_distance_artifacts.gd
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingcoregaussian_splat_managercpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/core/gaussian_splat_manager.cpp
       
     </span>
   </a>
@@ -9577,48 +9577,6 @@
 <li>line 2586: bool GaussianSplatNode3D::<em>can_drop_data_fw(const Point2 &amp;p</em>...</li>
 <li>line 2605: void GaussianSplatNode3D::_drop_data_fw(const Point2 &amp;p_poin...</li>
 </ul>
-<h2 id="modulesgaussian_splattingcoregaussian_splat_managercpp">modules/gaussian_splatting/core/gaussian_splat_manager.cpp<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_splat_managercpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 28: static uint32_t _get_uint_setting(ProjectSettings *ps, const...</li>
-<li>line 31: static float _get_float_setting(ProjectSettings *ps, const S...</li>
-<li>line 34: static bool _get_bool_setting(ProjectSettings *ps, const Str...</li>
-<li>line 37: static int _get_int_setting(ProjectSettings *ps, const Strin...</li>
-<li>line 40: static bool _is_data_log_enabled() {...</li>
-<li>line 105: bool GaussianSplatManager::_detect_renderdoc() {...</li>
-<li>line 203: void GaussianSplatManager::ScopedSubmissionLock::_release() ...</li>
-<li>line 287: void GaussianSplatManager::_release_registered_resources() {...</li>
-<li>line 361: bool GaussianSplatManager::_dispatch_local_device_destroy_on...</li>
-<li>line 391: void GaussianSplatManager::_destroy_local_devices_immediate(...</li>
-<li>line 402: void GaussianSplatManager::<em>destroy_local_devices_on_render</em>...</li>
-<li>line 417: void GaussianSplatManager::_destroy_local_devices() {...</li>
-<li>line 433: void GaussianSplatManager::_ensure_render_thread_binding(Ren...</li>
-<li>line 447: void GaussianSplatManager::_connect_frame_callbacks() {...</li>
-<li>line 464: void GaussianSplatManager::_disconnect_frame_callbacks() {...</li>
-<li>line 480: void GaussianSplatManager::_request_primary_local_device() {...</li>
-<li>line 504: void GaussianSplatManager::_request_shared_local_device() {...</li>
-<li>line 528: void GaussianSplatManager::_create_local_device_on_render_th...</li>
-<li>line 586: void GaussianSplatManager::_on_frame_pre_draw() {...</li>
-<li>line 603: void GaussianSplatManager::_process_active_nodes_main_thread...</li>
-<li>line 673: void GaussianSplatManager::_bind_methods() {...</li>
-<li>line 688: void GaussianSplatManager::_recalculate_totals() {...</li>
-<li>line 694: void GaussianSplatManager::_recalculate_totals_unlocked() {...</li>
-<li>line 709: RID GaussianSplatManager::register_gaussian_buffer(const Ref...</li>
-<li>line 757: void GaussianSplatManager::unregister_gaussian_buffer(RID p_...</li>
-<li>line 801: RID GaussianSplatManager::get_gpu_buffer(RID p_gaussian_data...</li>
-<li>line 887: void GaussianSplatManager::release_dynamic_asset(const Share...</li>
-<li>line 923: void GaussianSplatManager::update_stats(uint64_t p_gaussian_...</li>
-<li>line 931: Dictionary GaussianSplatManager::get_global_stats() const {...</li>
-<li>line 947: void GaussianSplatManager::set_gpu_sorting_enabled(bool p_en...</li>
-<li>line 951: void GaussianSplatManager::set_shared_submission_device_enab...</li>
-<li>line 955: Dictionary GaussianSplatManager::get_sorting_config() const ...</li>
-<li>line 971: void GaussianSplatManager::initialize_module() {...</li>
-<li>line 1163: void GaussianSplatManager::finalize_module() {...</li>
-<li>line 1231: GaussianSplatManager::ScopedSubmissionLock GaussianSplatMana...</li>
-<li>line 1253: bool GaussianSplatManager::is_shared_submission_device(Rende...</li>
-<li>line 1257: void GaussianSplatManager::ensure_render_thread_local_device...</li>
-<li>line 1274: void GaussianSplatManager::register_node(GaussianSplatNode3D...</li>
-<li>line 1295: void GaussianSplatManager::unregister_node(GaussianSplatNode...</li>
-</ul>
 <h2 id="modulesgaussian_splattingrenderergpu_sortercpp">modules/gaussian_splatting/renderer/gpu_sorter.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderergpu_sortercpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 95: static void _free_uniform_sets(RenderingDevice *p_owner, Loc...</li>
@@ -9722,6 +9680,48 @@
 <li>line 206: func _report_distance_summary(stats: Dictionary) -&gt; void:...</li>
 <li>line 233: func _report_final_summary() -&gt; void:...</li>
 <li>line 295: func _input(event: InputEvent) -&gt; void:...</li>
+</ul>
+<h2 id="modulesgaussian_splattingcoregaussian_splat_managercpp">modules/gaussian_splatting/core/gaussian_splat_manager.cpp<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_splat_managercpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 28: static uint32_t _get_uint_setting(ProjectSettings *ps, const...</li>
+<li>line 31: static float _get_float_setting(ProjectSettings *ps, const S...</li>
+<li>line 34: static bool _get_bool_setting(ProjectSettings *ps, const Str...</li>
+<li>line 37: static int _get_int_setting(ProjectSettings *ps, const Strin...</li>
+<li>line 40: static bool _is_data_log_enabled() {...</li>
+<li>line 105: bool GaussianSplatManager::_detect_renderdoc() {...</li>
+<li>line 203: void GaussianSplatManager::ScopedSubmissionLock::_release() ...</li>
+<li>line 287: void GaussianSplatManager::_release_registered_resources() {...</li>
+<li>line 361: bool GaussianSplatManager::_dispatch_local_device_destroy_on...</li>
+<li>line 391: void GaussianSplatManager::_destroy_local_devices_immediate(...</li>
+<li>line 402: void GaussianSplatManager::<em>destroy_local_devices_on_render</em>...</li>
+<li>line 417: void GaussianSplatManager::_destroy_local_devices() {...</li>
+<li>line 433: void GaussianSplatManager::_ensure_render_thread_binding(Ren...</li>
+<li>line 447: void GaussianSplatManager::_connect_frame_callbacks() {...</li>
+<li>line 464: void GaussianSplatManager::_disconnect_frame_callbacks() {...</li>
+<li>line 480: void GaussianSplatManager::_request_primary_local_device() {...</li>
+<li>line 504: void GaussianSplatManager::_request_shared_local_device() {...</li>
+<li>line 528: void GaussianSplatManager::_create_local_device_on_render_th...</li>
+<li>line 586: void GaussianSplatManager::_on_frame_pre_draw() {...</li>
+<li>line 603: void GaussianSplatManager::_process_active_nodes_main_thread...</li>
+<li>line 673: void GaussianSplatManager::_bind_methods() {...</li>
+<li>line 688: void GaussianSplatManager::_recalculate_totals() {...</li>
+<li>line 694: void GaussianSplatManager::_recalculate_totals_unlocked() {...</li>
+<li>line 709: RID GaussianSplatManager::register_gaussian_buffer(const Ref...</li>
+<li>line 757: void GaussianSplatManager::unregister_gaussian_buffer(RID p_...</li>
+<li>line 801: RID GaussianSplatManager::get_gpu_buffer(RID p_gaussian_data...</li>
+<li>line 887: void GaussianSplatManager::release_dynamic_asset(const Share...</li>
+<li>line 923: void GaussianSplatManager::update_stats(uint64_t p_gaussian_...</li>
+<li>line 931: Dictionary GaussianSplatManager::get_global_stats() const {...</li>
+<li>line 947: void GaussianSplatManager::set_gpu_sorting_enabled(bool p_en...</li>
+<li>line 951: void GaussianSplatManager::set_shared_submission_device_enab...</li>
+<li>line 955: Dictionary GaussianSplatManager::get_sorting_config() const ...</li>
+<li>line 971: void GaussianSplatManager::initialize_module() {...</li>
+<li>line 1175: void GaussianSplatManager::finalize_module() {...</li>
+<li>line 1243: GaussianSplatManager::ScopedSubmissionLock GaussianSplatMana...</li>
+<li>line 1265: bool GaussianSplatManager::is_shared_submission_device(Rende...</li>
+<li>line 1269: void GaussianSplatManager::ensure_render_thread_local_device...</li>
+<li>line 1286: void GaussianSplatManager::register_node(GaussianSplatNode3D...</li>
+<li>line 1307: void GaussianSplatManager::unregister_node(GaussianSplatNode...</li>
 </ul>
 <h2 id="testsexamplesgodottest_projectscenesqaqa_visual_diffgd">tests/examples/godot/test_project/scenes/qa/qa_visual_diff.gd<a class="headerlink" href="#testsexamplesgodottest_projectscenesqaqa_visual_diffgd" title="Permanent link">¶</a></h2>
 <ul>
@@ -10783,7 +10783,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 28, 2026 13:24:31 UTC">April 28, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 28, 2026 13:27:24 UTC">April 28, 2026</span>
   </span>
 
     
