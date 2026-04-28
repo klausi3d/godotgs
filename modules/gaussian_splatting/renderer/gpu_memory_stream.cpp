@@ -906,8 +906,6 @@ void GaussianMemoryStream::end_frame() {
                 current_mb, stats.peak_memory_mb, get_memory_efficiency() * 100.0f));
         GS_LOG_GPU_MEMORY_DEBUG(vformat("Upload submit: %.1f MB/s (CPU target: >10000 MB/s), Buffer switches: %d",
                 avg_bandwidth_mbps, stats.buffer_switches));
-        GS_LOG_GPU_MEMORY_DEBUG(vformat("Defragmentation: %d operations, GPU utilization target: >85%%",
-                stats.defrag_count));
         GS_LOG_GPU_MEMORY_DEBUG("==============================================================");
 
         bool performance_good = true;
