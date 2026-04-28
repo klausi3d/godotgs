@@ -200,7 +200,7 @@ static void _gaussian_shadow_submit(const LocalVector<Ref<GaussianSplatRenderer>
 	for (int renderer_index = 0; renderer_index < p_renderers.size(); renderer_index++) {
 		const Ref<GaussianSplatRenderer> &renderer = p_renderers[renderer_index];
 		if (renderer.is_valid()) {
-			renderer->render_directional_shadow_map(p_dispatch.projection, p_dispatch.transform, p_dispatch.rect, p_dispatch.framebuffer, p_dispatch.flip_y);
+			renderer->render_shadow_depth_map(p_dispatch.projection, p_dispatch.transform, p_dispatch.rect, p_dispatch.framebuffer, p_dispatch.flip_y);
 		}
 	}
 }

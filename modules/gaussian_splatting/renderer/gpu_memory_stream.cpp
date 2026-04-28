@@ -265,6 +265,8 @@ void GaussianMemoryStream::_destroy_buffer(StreamBuffer &buffer) {
             allocation_device->free(buffer.gpu_buffer);
             buffer.gpu_buffer = RID();
         } else {
+            WARN_PRINT_ONCE(vformat("[MemoryStream] _destroy_buffer: GPU buffer RID %s exists but neither device_manager nor allocation_device is resolvable; dropping stale RID handle.",
+                    String::num_uint64(static_cast<uint64_t>(buffer.gpu_buffer.get_id()))));
             buffer.gpu_buffer = RID();
         }
     }

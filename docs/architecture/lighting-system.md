@@ -77,7 +77,7 @@ Shadow factors are computed per light type in [../../modules/gaussian_splatting/
 
 Directional shadow maps are rendered and blitted through:
 
-- `GaussianSplatRenderer::render_directional_shadow_map`
+- `GaussianSplatRenderer::render_shadow_depth_map`
 - shadow output compositor setup
 - shadow blit pipeline resources
 
