@@ -455,59 +455,7 @@ func _ready():
         with open(baseline_file, 'r') as f:
             baseline = json.load(f)
 
-        # Compare current results with baseline
-        regressions = []
-
-        # Check benchmark regressions
-        if "benchmarks" in self.results.get("tests", {}):
-            for current in self.results["tests"]["benchmarks"]:
-                config = current.get("config", {})
-                splat_count = config.get("splat_count", 0)
-
-                # Find matching baseline
-                for base in baseline.get("tests", {}).get("benchmarks", []):
-                    if base.get("config", {}).get("splat_count") == splat_count:
-                        current_metrics = current.get("metrics", {})
-                        base_metrics = base.get("metrics", {})
-                        comparable_metrics = False
-
-                        current_fps = current_metrics.get("avg_fps", 0)
-                        base_fps = base_metrics.get("avg_fps", 0)
-                        if base_fps > 0 and current_fps > 0:
-                            comparable_metrics = True
-                            regression = (base_fps - current_fps) / base_fps
-                            if regression > 0.1:  # 10% regression threshold
-                                regressions.append({
-                                    "test": f"benchmark_{splat_count}",
-                                    "metric": "avg_fps",
-                                    "baseline": base_fps,
-                                    "current": current_fps,
-                                    "regression_percent": regression * 100
-                                })
-
-                        for metric_name in ("populate_time_ms", "octree_build_time_ms"):
-                            current_value = current_metrics.get(metric_name, 0)
-                            base_value = base_metrics.get(metric_name, 0)
-                            if base_value > 0 and current_value > 0:
-                                comparable_metrics = True
-                                regression = (current_value - base_value) / base_value
-                                if regression > 0.1:  # 10% regression threshold
-                                    regressions.append({
-                                        "test": f"benchmark_{splat_count}",
-                                        "metric": metric_name,
-                                        "baseline": base_value,
-                                        "current": current_value,
-                                        "regression_percent": regression * 100
-                                    })
-
-                        if not comparable_metrics:
-                            regressions.append({
-                                "test": f"benchmark_{splat_count}",
-                                "metric": "benchmark_metrics",
-                                "baseline": "present",
-                                "current": "not comparable",
-                                "regression_percent": 100.0
-                            })
+        regressions = self._collect_benchmark_regressions(baseline)
 
         self.results["regression"] = {
             "has_regression": len(regressions) > 0,
@@ -522,6 +470,101 @@ func _ready():
         else:
             print("No regressions detected")
             return True
+
+    def _collect_benchmark_regressions(self, baseline: dict) -> List[dict]:
+        """Compare benchmark results against baseline benchmark entries."""
+        current_benchmarks = self.results.get("tests", {}).get("benchmarks", [])
+        baseline_benchmarks = baseline.get("tests", {}).get("benchmarks", [])
+        regressions = []
+
+        for current in current_benchmarks:
+            splat_count = current.get("config", {}).get("splat_count", 0)
+            base = self._find_baseline_benchmark(baseline_benchmarks, splat_count)
+            if base is not None:
+                regressions.extend(self._compare_benchmark_metrics(current, base, splat_count))
+
+        return regressions
+
+    def _find_baseline_benchmark(self, benchmarks: List[dict], splat_count: int) -> Optional[dict]:
+        """Find the baseline entry matching a benchmark splat count."""
+        for benchmark in benchmarks:
+            if benchmark.get("config", {}).get("splat_count") == splat_count:
+                return benchmark
+        return None
+
+    def _compare_benchmark_metrics(self, current: dict, base: dict, splat_count: int) -> List[dict]:
+        """Return regression records for comparable benchmark metrics."""
+        regressions = []
+        comparable_metrics = False
+        current_metrics = current.get("metrics", {})
+        base_metrics = base.get("metrics", {})
+
+        comparable_metrics |= self._append_fps_regression(
+            regressions, current_metrics, base_metrics, splat_count)
+
+        for metric_name in ("populate_time_ms", "octree_build_time_ms"):
+            comparable_metrics |= self._append_timing_regression(
+                regressions, current_metrics, base_metrics, splat_count, metric_name)
+
+        if not comparable_metrics:
+            regressions.append({
+                "test": f"benchmark_{splat_count}",
+                "metric": "benchmark_metrics",
+                "baseline": "present",
+                "current": "not comparable",
+                "regression_percent": 100.0
+            })
+
+        return regressions
+
+    def _append_fps_regression(
+        self,
+        regressions: List[dict],
+        current_metrics: dict,
+        base_metrics: dict,
+        splat_count: int,
+    ) -> bool:
+        """Append an FPS regression if both benchmark entries are comparable."""
+        current_fps = current_metrics.get("avg_fps", 0)
+        base_fps = base_metrics.get("avg_fps", 0)
+        if base_fps <= 0 or current_fps <= 0:
+            return False
+
+        regression = (base_fps - current_fps) / base_fps
+        if regression > 0.1:
+            regressions.append({
+                "test": f"benchmark_{splat_count}",
+                "metric": "avg_fps",
+                "baseline": base_fps,
+                "current": current_fps,
+                "regression_percent": regression * 100
+            })
+        return True
+
+    def _append_timing_regression(
+        self,
+        regressions: List[dict],
+        current_metrics: dict,
+        base_metrics: dict,
+        splat_count: int,
+        metric_name: str,
+    ) -> bool:
+        """Append a timing regression if both benchmark entries are comparable."""
+        current_value = current_metrics.get(metric_name, 0)
+        base_value = base_metrics.get(metric_name, 0)
+        if base_value <= 0 or current_value <= 0:
+            return False
+
+        regression = (current_value - base_value) / base_value
+        if regression > 0.1:
+            regressions.append({
+                "test": f"benchmark_{splat_count}",
+                "metric": metric_name,
+                "baseline": base_value,
+                "current": current_value,
+                "regression_percent": regression * 100
+            })
+        return True
 
     def generate_report(self):
         """Generate test report in multiple formats."""
@@ -550,7 +593,14 @@ func _ready():
         report.append(f"**Platform**: {self.results['platform']}\n")
         report.append(f"**CPU**: {self.results['cpu']} ({self.results['cpu_count']} cores)\n")
 
-        # Build results
+        self._append_markdown_build_results(report)
+        self._append_markdown_test_results(report)
+        self._append_markdown_regression(report)
+
+        return ''.join(report)
+
+    def _append_markdown_build_results(self, report: List[str]) -> None:
+        """Append build results to the markdown report."""
         if "build" in self.results:
             report.append("\n## Build Results\n")
             build = self.results["build"]
@@ -558,65 +608,98 @@ func _ready():
             report.append(f"- **Configuration**: {build['config']}\n")
             report.append(f"- **Time**: {build['time_seconds']:.2f} seconds\n")
 
-        # Test results
-        if "tests" in self.results:
-            report.append("\n## Test Results\n")
+    def _append_markdown_test_results(self, report: List[str]) -> None:
+        """Append test result sections to the markdown report."""
+        tests = self.results.get("tests")
+        if not tests:
+            return
 
-            # Unit tests
-            if "unit_tests" in self.results["tests"]:
-                report.append("\n### Unit Tests\n")
-                for name, result in self.results["tests"]["unit_tests"].items():
-                    status = "✅" if result["passed"] else "❌"
-                    report.append(f"- **{name}**: {status} ")
-                    report.append(f"({result['tests_passed']} passed, {result['tests_failed']} failed, ")
-                    report.append(f"{result['time_seconds']:.2f}s)\n")
+        report.append("\n## Test Results\n")
+        self._append_markdown_unit_tests(report, tests)
+        self._append_markdown_integration(report, tests)
+        self._append_markdown_synthetic_baselines(report, tests)
+        self._append_markdown_benchmarks(report, tests)
+        self._append_markdown_memory(report, tests)
 
-            # Integration tests
-            if "integration" in self.results["tests"]:
-                report.append("\n### Integration Tests\n")
-                result = self.results["tests"]["integration"]
-                status = "✅ PASSED" if result["passed"] else "❌ FAILED"
-                report.append(f"- **Status**: {status}\n")
-                report.append(f"- **Time**: {result['time_seconds']:.2f} seconds\n")
+    def _append_markdown_unit_tests(self, report: List[str], tests: dict) -> None:
+        """Append unit test result rows to the markdown report."""
+        unit_tests = tests.get("unit_tests")
+        if not unit_tests:
+            return
 
-            if "synthetic_baselines" in self.results["tests"]:
-                report.append("\n### Synthetic Baseline Validation\n")
-                synthetic = self.results["tests"]["synthetic_baselines"]
-                status = "✅ PASSED" if synthetic.get("passed") else "❌ FAILED"
-                report.append(f"- **Status**: {status}\n")
-                report.append(f"- **Time**: {synthetic.get('time_seconds', 0.0):.2f} seconds\n")
+        report.append("\n### Unit Tests\n")
+        for name, result in unit_tests.items():
+            status = "✅" if result["passed"] else "❌"
+            report.append(f"- **{name}**: {status} ")
+            report.append(f"({result['tests_passed']} passed, {result['tests_failed']} failed, ")
+            report.append(f"{result['time_seconds']:.2f}s)\n")
 
-            # Benchmarks
-            if "benchmarks" in self.results["tests"]:
-                report.append("\n### Performance Benchmarks\n")
-                report.append("\n| Splat Count | Avg FPS | Frame Time (ms) | GPU Memory (MB) |\n")
-                report.append("|-------------|---------|-----------------|------------------|\n")
+    def _append_markdown_integration(self, report: List[str], tests: dict) -> None:
+        """Append integration test results to the markdown report."""
+        result = tests.get("integration")
+        if not result:
+            return
 
-                for bench in self.results["tests"]["benchmarks"]:
-                    config = bench.get("config", {})
-                    metrics = bench.get("metrics", {})
-                    report.append(f"| {config.get('splat_count', 0):,} | ")
-                    report.append(f"{metrics.get('avg_fps', 0):.1f} | ")
-                    report.append(f"{metrics.get('avg_frame_time_ms', 0):.2f} | ")
-                    report.append(f"{metrics.get('peak_gpu_memory_mb', 0):.1f} |\n")
+        status = "✅ PASSED" if result["passed"] else "❌ FAILED"
+        report.append("\n### Integration Tests\n")
+        report.append(f"- **Status**: {status}\n")
+        report.append(f"- **Time**: {result['time_seconds']:.2f} seconds\n")
 
-            # Memory validation
-            if "memory" in self.results["tests"]:
-                report.append("\n### Memory Validation\n")
-                mem = self.results["tests"]["memory"]
-                status = "✅ PASSED" if mem["passed"] else "❌ FAILED"
-                report.append(f"- **Status**: {status}\n")
+    def _append_markdown_synthetic_baselines(self, report: List[str], tests: dict) -> None:
+        """Append synthetic baseline validation results to the markdown report."""
+        synthetic = tests.get("synthetic_baselines")
+        if not synthetic:
+            return
 
-                if mem.get("report"):
-                    stats = mem["report"].get("stats", {})
-                    report.append(f"- **Peak CPU Memory**: {stats.get('peak_cpu_bytes', 0) / (1024*1024):.2f} MB\n")
-                    report.append(f"- **Peak GPU Memory**: {stats.get('peak_gpu_bytes', 0) / (1024*1024):.2f} MB\n")
+        status = "✅ PASSED" if synthetic.get("passed") else "❌ FAILED"
+        report.append("\n### Synthetic Baseline Validation\n")
+        report.append(f"- **Status**: {status}\n")
+        report.append(f"- **Time**: {synthetic.get('time_seconds', 0.0):.2f} seconds\n")
 
-                    if stats.get('leaked_allocations', 0) > 0:
-                        report.append(f"- **⚠️ Leaks**: {stats['leaked_allocations']} allocations ")
-                        report.append(f"({stats.get('leaked_bytes', 0) / 1024:.2f} KB)\n")
+    def _append_markdown_benchmarks(self, report: List[str], tests: dict) -> None:
+        """Append benchmark table rows to the markdown report."""
+        benchmarks = tests.get("benchmarks")
+        if not benchmarks:
+            return
 
-        # Regression check
+        report.append("\n### Performance Benchmarks\n")
+        report.append("\n| Splat Count | Avg FPS | Frame Time (ms) | GPU Memory (MB) |\n")
+        report.append("|-------------|---------|-----------------|------------------|\n")
+
+        for bench in benchmarks:
+            config = bench.get("config", {})
+            metrics = bench.get("metrics", {})
+            report.append(f"| {config.get('splat_count', 0):,} | ")
+            report.append(f"{metrics.get('avg_fps', 0):.1f} | ")
+            report.append(f"{metrics.get('avg_frame_time_ms', 0):.2f} | ")
+            report.append(f"{metrics.get('peak_gpu_memory_mb', 0):.1f} |\n")
+
+    def _append_markdown_memory(self, report: List[str], tests: dict) -> None:
+        """Append memory validation results to the markdown report."""
+        mem = tests.get("memory")
+        if not mem:
+            return
+
+        status = "✅ PASSED" if mem["passed"] else "❌ FAILED"
+        report.append("\n### Memory Validation\n")
+        report.append(f"- **Status**: {status}\n")
+        self._append_markdown_memory_stats(report, mem.get("report"))
+
+    def _append_markdown_memory_stats(self, report: List[str], memory_report: Optional[dict]) -> None:
+        """Append memory statistics when the memory validation produced a report."""
+        if not memory_report:
+            return
+
+        stats = memory_report.get("stats", {})
+        report.append(f"- **Peak CPU Memory**: {stats.get('peak_cpu_bytes', 0) / (1024*1024):.2f} MB\n")
+        report.append(f"- **Peak GPU Memory**: {stats.get('peak_gpu_bytes', 0) / (1024*1024):.2f} MB\n")
+
+        if stats.get('leaked_allocations', 0) > 0:
+            report.append(f"- **⚠️ Leaks**: {stats['leaked_allocations']} allocations ")
+            report.append(f"({stats.get('leaked_bytes', 0) / 1024:.2f} KB)\n")
+
+    def _append_markdown_regression(self, report: List[str]) -> None:
+        """Append regression analysis to the markdown report."""
         if "regression" in self.results:
             report.append("\n## Regression Analysis\n")
             reg = self.results["regression"]
@@ -629,8 +712,6 @@ func _ready():
                     report.append(f"  - {r['test']}: {r['regression_percent']:.1f}% slower\n")
             else:
                 report.append("- ✅ No regressions detected\n")
-
-        return ''.join(report)
 
     def _print_summary(self):
         """Print test summary to console."""
