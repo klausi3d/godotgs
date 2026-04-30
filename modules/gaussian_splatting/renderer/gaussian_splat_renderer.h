@@ -385,6 +385,9 @@ public:
                 ERR_FAIL_NULL_V_MSG(output_compositor, false, "FrameDeps: output_compositor is null");
                 ERR_FAIL_NULL_V_MSG(gpu_culler, false, "FrameDeps: gpu_culler is null");
                 // frame_plan validated separately (set later in some paths).
+                // NOTE: frame_plan is a borrowed pointer to a stack local owned by the caller
+                // scope (see render_pipeline_stages.cpp / render_instancing_orchestrator.cpp).
+                // Consumers must not store or defer it past the originating scope.
                 // painterly_renderer and jacobian_debug are optional.
                 return true;
             }
@@ -1489,7 +1492,7 @@ public:
      * @param p_flip_y Whether the atlas rect should be sampled with a Y flip.
      * @return True if shadow depth was rendered and blitted.
      */
-    bool render_directional_shadow_map(const Projection &p_light_projection, const Transform3D &p_light_transform,
+    bool render_shadow_depth_map(const Projection &p_light_projection, const Transform3D &p_light_transform,
             const Rect2i &p_atlas_rect, RID p_shadow_framebuffer, bool p_flip_y);
 
     /**

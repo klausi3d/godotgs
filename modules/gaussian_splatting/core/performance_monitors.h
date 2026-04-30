@@ -202,7 +202,6 @@ private:
     int _get_memory_stream_pool_misses() const;
     float _get_memory_stream_pool_hit_rate_pct() const;
     float _get_memory_stream_peak_memory_mb() const;
-    int _get_memory_stream_defrag_count() const;
 
     // Chunk Management Monitors (Phase 3)
     int _get_chunk_prefetch_hits() const;

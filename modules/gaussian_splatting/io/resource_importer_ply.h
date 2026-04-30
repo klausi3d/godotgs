@@ -42,7 +42,12 @@ public:
     //   v3: preview thumbnails now serialize as Image resources instead of
     //       ImageTexture to avoid threaded importer deadlocks under
     //       `--headless --import`.
-    virtual int get_format_version() const override { return 3; }
+    //   v4: SH bands 1-3 are now propagated into the asset. Caches written by
+    //       v1-v3 carry only DC color; the renderer fell back to flat per-splat
+    //       RGB and lost view-dependent specular / fresnel detail. v4 caches
+    //       carry full per-splat sh_first_order / sh_high_order arrays sized
+    //       splat_count * sh_terms * 3.
+    virtual int get_format_version() const override { return 4; }
 
     // Validation helpers
     Error validate_ply_properties(const Ref<class PLYLoader> &p_loader) const;

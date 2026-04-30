@@ -109,6 +109,78 @@ end_header
     return OK;
 }
 
+// PLY fixture with one splat that carries DC plus full Inria SH3 layout
+// (45 f_rest_* properties). The PLY loader (ply_loader.cpp:797-826) treats
+// f_rest_* as channel-major with stride SH_REST_COMPONENTS / 3 = 15, then
+// repacks into coefficient-major RGB triplets. Only band 1 (terms 0/1/2) is
+// populated with non-zero values; bands 2-3 are zero but declared so the
+// `present` map flags them and the loader infers high_order_count = 12.
+//
+// Channel layout in this fixture (45 floats):
+//   R band-1 (terms 0,1,2):  f_rest_0..2  = 0.10 0.20 0.30
+//   R band-2..3:             f_rest_3..14 = 0
+//   G band-1:                f_rest_15..17 = 0.40 0.50 0.60
+//   G band-2..3:             f_rest_18..29 = 0
+//   B band-1:                f_rest_30..32 = 0.70 0.80 0.90
+//   B band-2..3:             f_rest_33..44 = 0
+// After loader repack:
+//   g.sh_1[0] = (0.10, 0.40, 0.70)
+//   g.sh_1[1] = (0.20, 0.50, 0.80)
+//   g.sh_1[2] = (0.30, 0.60, 0.90)
+Error _write_ascii_ply_with_first_order_sh(const String &p_path) {
+    Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::WRITE);
+    if (file.is_null()) {
+        return ERR_CANT_CREATE;
+    }
+
+    String header;
+    header += "ply\n";
+    header += "format ascii 1.0\n";
+    header += "element vertex 1\n";
+    header += "property float x\n";
+    header += "property float y\n";
+    header += "property float z\n";
+    header += "property float scale_0\n";
+    header += "property float scale_1\n";
+    header += "property float scale_2\n";
+    header += "property float rot_0\n";
+    header += "property float rot_1\n";
+    header += "property float rot_2\n";
+    header += "property float rot_3\n";
+    header += "property float opacity\n";
+    header += "property float f_dc_0\n";
+    header += "property float f_dc_1\n";
+    header += "property float f_dc_2\n";
+    for (int i = 0; i < 45; i++) {
+        header += vformat("property float f_rest_%d\n", i);
+    }
+    header += "end_header\n";
+
+    String row = "0 0 0 0 0 0 1 0 0 0 0 0.25 0.5 0.75";
+    for (int i = 0; i < 45; i++) {
+        float value = 0.0f;
+        // R channel band-1 lives at f_rest_0..2.
+        if (i == 0) value = 0.10f;
+        else if (i == 1) value = 0.20f;
+        else if (i == 2) value = 0.30f;
+        // G channel band-1 lives at f_rest_15..17.
+        else if (i == 15) value = 0.40f;
+        else if (i == 16) value = 0.50f;
+        else if (i == 17) value = 0.60f;
+        // B channel band-1 lives at f_rest_30..32.
+        else if (i == 30) value = 0.70f;
+        else if (i == 31) value = 0.80f;
+        else if (i == 32) value = 0.90f;
+        row += " " + String::num(value, 2);
+    }
+    row += "\n";
+
+    file->store_string(header);
+    file->store_string(row);
+    file.unref();
+    return OK;
+}
+
 Error _write_invalid_gsplatworld(const String &p_path) {
     Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::WRITE);
     if (file.is_null()) {
@@ -1194,6 +1266,62 @@ TEST_CASE("[GaussianSplatting][Importer] PLY loader keeps legacy DC encoding") {
     CHECK(gaussian_get_dc_encoding(g.render_meta) == GAUSSIAN_DC_ENCODING_LEGACY_BIAS);
 
     _remove_user_file(source_path);
+}
+
+TEST_CASE("[GaussianSplatting][Importer] PLY importer propagates SH band-1 coefficients into asset") {
+    const String source_path = "user://gaussian_ply_first_order_sh.ply";
+    const String save_base_path = "user://gaussian_ply_first_order_sh_imported";
+    Error write_err = _write_ascii_ply_with_first_order_sh(source_path);
+    REQUIRE_MESSAGE(write_err == OK, "Failed to write band-1 SH PLY fixture");
+
+    Ref<ResourceImporterPLY> importer;
+    importer.instantiate();
+
+    HashMap<StringName, Variant> options;
+    options.insert(StringName("quality/preset"), String("ultra"));
+    options.insert(StringName("preview/generate_thumbnail"), false);
+
+    const Error import_err = importer->import(ResourceUID::INVALID_ID, source_path, save_base_path, options,
+            nullptr, nullptr, nullptr);
+    REQUIRE_MESSAGE(import_err == OK, "PLY importer should succeed for band-1 SH fixture");
+
+    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + ".tres");
+    REQUIRE_MESSAGE(asset.is_valid(), "PLY importer should emit a loadable GaussianSplatAsset");
+
+    // Band 1 = 3 first-order terms; layout is per-splat, per-term, RGB triplet.
+    const PackedFloat32Array first_order = asset->get_sh_first_order_coefficients();
+    REQUIRE_MESSAGE(first_order.size() == 1 * 3 * 3,
+            "Asset should carry 9 floats of first-order SH for one splat with 3 terms");
+
+    // Inria channel-major -> coefficient-major repack:
+    //   PLY input: [R0 R1 R2 G0 G1 G2 B0 B1 B2] = [0.10 0.20 0.30 0.40 0.50 0.60 0.70 0.80 0.90]
+    //   Asset out: [R0 G0 B0 R1 G1 B1 R2 G2 B2] = [0.10 0.40 0.70 0.20 0.50 0.80 0.30 0.60 0.90]
+    CHECK(Math::is_equal_approx(first_order[0], 0.10f));
+    CHECK(Math::is_equal_approx(first_order[1], 0.40f));
+    CHECK(Math::is_equal_approx(first_order[2], 0.70f));
+    CHECK(Math::is_equal_approx(first_order[3], 0.20f));
+    CHECK(Math::is_equal_approx(first_order[4], 0.50f));
+    CHECK(Math::is_equal_approx(first_order[5], 0.80f));
+    CHECK(Math::is_equal_approx(first_order[6], 0.30f));
+    CHECK(Math::is_equal_approx(first_order[7], 0.60f));
+    CHECK(Math::is_equal_approx(first_order[8], 0.90f));
+
+    Ref<::GaussianData> data;
+    data.instantiate();
+    REQUIRE_MESSAGE(data->populate_from_asset(asset) == OK,
+            "populate_from_asset should accept SH-enriched PLY asset");
+    REQUIRE_MESSAGE(data->get_count() == 1, "Imported PLY asset should materialize one gaussian");
+    CHECK(data->get_sh_first_order_count() == 3u);
+
+    const Gaussian round_tripped = data->get_gaussian(0);
+    CHECK(Math::is_equal_approx(round_tripped.sh_1[0].x, 0.10f));
+    CHECK(Math::is_equal_approx(round_tripped.sh_1[0].y, 0.40f));
+    CHECK(Math::is_equal_approx(round_tripped.sh_1[0].z, 0.70f));
+    CHECK(Math::is_equal_approx(round_tripped.sh_1[2].x, 0.30f));
+    CHECK(Math::is_equal_approx(round_tripped.sh_1[2].z, 0.90f));
+
+    _remove_user_file(source_path);
+    _remove_user_file(save_base_path + ".tres");
 }
 
 TEST_CASE("[GaussianSplatting][Importer] PLY ASCII loader hard-fails on malformed rows") {

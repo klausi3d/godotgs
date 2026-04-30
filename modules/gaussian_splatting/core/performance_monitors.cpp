@@ -409,8 +409,6 @@ void GaussianSplattingPerformanceMonitors::_register_monitor_definitions(Perform
                 callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_memory_stream_pool_hit_rate_pct) },
         { "gaussian_splatting/memory_stream_peak_memory_mb",
                 callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_memory_stream_peak_memory_mb) },
-        { "gaussian_splatting/memory_stream_defrag_count",
-                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_memory_stream_defrag_count) },
 
         // Chunk Management Monitors (Phase 3)
         { "gaussian_splatting/chunk_prefetch_hits",
@@ -1396,16 +1394,6 @@ float GaussianSplattingPerformanceMonitors::_get_memory_stream_peak_memory_mb() 
     if (!snapshot.memory_stream_valid) return 0.0f;
     const StreamingStats &stats = snapshot.memory_stream_stats;
     return stats.peak_memory_mb;
-}
-
-int GaussianSplattingPerformanceMonitors::_get_memory_stream_defrag_count() const {
-    GaussianSplatRenderer *renderer = _get_active_splat_renderer(true);
-    if (!renderer) return 0;
-    const GaussianSplatRenderer::MonitorStreamingSnapshot snapshot =
-            _streaming_snapshot_for_monitors(renderer);
-    if (!snapshot.memory_stream_valid) return 0;
-    const StreamingStats &stats = snapshot.memory_stream_stats;
-    return (int)stats.defrag_count;
 }
 
 // ============================================================================

@@ -265,6 +265,8 @@ void GaussianMemoryStream::_destroy_buffer(StreamBuffer &buffer) {
             allocation_device->free(buffer.gpu_buffer);
             buffer.gpu_buffer = RID();
         } else {
+            WARN_PRINT_ONCE(vformat("[MemoryStream] _destroy_buffer: GPU buffer RID %s exists but neither device_manager nor allocation_device is resolvable; dropping stale RID handle.",
+                    String::num_uint64(static_cast<uint64_t>(buffer.gpu_buffer.get_id()))));
             buffer.gpu_buffer = RID();
         }
     }
@@ -906,8 +908,6 @@ void GaussianMemoryStream::end_frame() {
                 current_mb, stats.peak_memory_mb, get_memory_efficiency() * 100.0f));
         GS_LOG_GPU_MEMORY_DEBUG(vformat("Upload submit: %.1f MB/s (CPU target: >10000 MB/s), Buffer switches: %d",
                 avg_bandwidth_mbps, stats.buffer_switches));
-        GS_LOG_GPU_MEMORY_DEBUG(vformat("Defragmentation: %d operations, GPU utilization target: >85%%",
-                stats.defrag_count));
         GS_LOG_GPU_MEMORY_DEBUG("==============================================================");
 
         bool performance_good = true;

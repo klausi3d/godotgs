@@ -166,6 +166,10 @@ void RenderInstancingOrchestrator::render_instanced(RenderDataRD *p_render_data,
 				instance_buffers, renderer->get_instance_backend_policy(), frame_state_view.get_resource_state_view(), frame_state_view.get_subsystem_state_view(), frame_state_view.get_pipeline_features(),
 				true, String(), String(), GaussianSplatRenderer::RenderFallbackReason::NONE,
 				GaussianSplatRenderer::RenderFallbackReason::NONE, false, false);
+		// Borrow invariant: `frame_plan` is a stack local; it must outlive every consumer of
+		// `frame_context.deps.frame_plan`. Do not store, defer, or async-pass this pointer --
+		// `RenderFrameDeps::validate()` exempts `frame_plan` (see gaussian_splat_renderer.h:387-389),
+		// so a use-after-scope here will not be caught by the validator.
 		frame_context.deps.frame_plan = &frame_plan;
 		DEV_ASSERT(frame_context.deps.frame_plan);
 		ERR_FAIL_COND(!frame_context.deps.validate());

@@ -100,12 +100,16 @@ static int _compute_final_splat_count(int p_original_count, int p_max_splats, do
 }
 
 static Gaussian _merge_gaussian_range(const Ref<::GaussianData> &p_data, const int *p_indices,
-        int p_start, int p_end, bool p_normalize_opacity) {
+        int p_start, int p_end, bool p_normalize_opacity, int *r_source_index = nullptr) {
     // Density multiplier is a subsampling factor; pick a representative splat
     // instead of averaging to avoid "hole" artifacts from blended positions.
     const int count = MAX(1, p_end - p_start);
     const int sample_index = CLAMP(p_start + (count / 2), p_start, p_end - 1);
-    Gaussian g = p_data->get_gaussian(p_indices[sample_index]);
+    const int source_index = p_indices[sample_index];
+    if (r_source_index) {
+        *r_source_index = source_index;
+    }
+    Gaussian g = p_data->get_gaussian(source_index);
     if (p_normalize_opacity) {
         g.opacity = CLAMP(g.opacity, 0.0f, 1.0f);
     }
@@ -333,18 +337,38 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
     scales.resize(final_count * 3);
     rotations.resize(final_count * 4);
 
+    // View-dependent SH bands. The PLY loader already parsed up to 48 SH floats
+    // per splat into `Gaussian::sh_1[]` and `GaussianData::sh_high_order_coefficients`;
+    // mirror them into the asset so the renderer evaluates beyond the DC term.
+    // Layout per gaussian_splat_asset.cpp:1411-1428: per-splat, per-term, RGB triplet.
+    const uint32_t sh_first_terms = gaussian_data->get_sh_first_order_count();
+    const uint32_t sh_high_terms = gaussian_data->get_sh_high_order_count();
+    const Vector3 *sh_high_src = gaussian_data->get_sh_high_order_coefficients_ptr();
+
+    PackedFloat32Array sh_first_order;
+    PackedFloat32Array sh_high_order;
+    if (sh_first_terms > 0) {
+        sh_first_order.resize(int(final_count) * int(sh_first_terms) * 3);
+    }
+    if (sh_high_terms > 0 && sh_high_src != nullptr) {
+        sh_high_order.resize(int(final_count) * int(sh_high_terms) * 3);
+    }
+
     float *positions_ptr = positions.ptrw();
     Color *colors_ptr = colors.ptrw();
     float *scales_ptr = scales.ptrw();
     float *rotations_ptr = rotations.ptrw();
+    float *sh_first_ptr = sh_first_order.ptrw();
+    float *sh_high_ptr = sh_high_order.ptrw();
 
     for (int i = 0; i < final_count; i++) {
         int start = merge_density ? int(Math::floor(double(i) * merge_stride)) : i;
         int end = merge_density ? int(Math::floor(double(i + 1) * merge_stride)) : i + 1;
         start = CLAMP(start, 0, original_count - 1);
         end = CLAMP(end, start + 1, original_count);
-        Gaussian g = merge_density ? _merge_gaussian_range(gaussian_data, indices_ptr, start, end, normalize_opacity)
-                                   : gaussian_data->get_gaussian(indices_ptr[start]);
+        int source_index = indices_ptr[start];
+        Gaussian g = merge_density ? _merge_gaussian_range(gaussian_data, indices_ptr, start, end, normalize_opacity, &source_index)
+                                   : gaussian_data->get_gaussian(source_index);
         int pos_base = i * 3;
         positions_ptr[pos_base + 0] = g.position.x;
         positions_ptr[pos_base + 1] = g.position.y;
@@ -364,6 +388,29 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
         rotations_ptr[rot_base + 1] = g.rotation.x;
         rotations_ptr[rot_base + 2] = g.rotation.y;
         rotations_ptr[rot_base + 3] = g.rotation.z;
+
+        if (sh_first_terms > 0 && sh_first_ptr != nullptr) {
+            const int first_base = i * int(sh_first_terms) * 3;
+            for (uint32_t term = 0; term < sh_first_terms && term < 3; term++) {
+                const Vector3 &coeff = g.sh_1[term];
+                const int term_base = first_base + int(term) * 3;
+                sh_first_ptr[term_base + 0] = coeff.x;
+                sh_first_ptr[term_base + 1] = coeff.y;
+                sh_first_ptr[term_base + 2] = coeff.z;
+            }
+        }
+
+        if (sh_high_terms > 0 && sh_high_src != nullptr && sh_high_ptr != nullptr) {
+            const int high_base = i * int(sh_high_terms) * 3;
+            const size_t src_row = size_t(source_index) * size_t(sh_high_terms);
+            for (uint32_t term = 0; term < sh_high_terms; term++) {
+                const Vector3 &coeff = sh_high_src[src_row + term];
+                const int term_base = high_base + int(term) * 3;
+                sh_high_ptr[term_base + 0] = coeff.x;
+                sh_high_ptr[term_base + 1] = coeff.y;
+                sh_high_ptr[term_base + 2] = coeff.z;
+            }
+        }
     }
 
     Ref<GaussianSplatAsset> asset;
@@ -373,6 +420,12 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
     asset->set_colors(colors);
     asset->set_scales(scales);
     asset->set_rotations(rotations);
+    if (sh_first_terms > 0) {
+        asset->set_sh_first_order_coefficients(sh_first_order);
+    }
+    if (sh_high_terms > 0) {
+        asset->set_sh_high_order_coefficients(sh_high_order);
+    }
     asset->set_import_quality_preset(preset_name);
 
     uint32_t compression_flags = _build_compression_flags(quantize_positions, quantize_colors, quantize_scales, quantize_rotations);

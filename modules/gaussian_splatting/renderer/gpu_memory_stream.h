@@ -26,7 +26,6 @@ struct StreamingStats {
     uint32_t pool_misses = 0;
     float avg_upload_time_ms = 0.0f;
     float peak_memory_mb = 0.0f;
-    uint32_t defrag_count = 0;
     uint64_t sh_raw_bytes_uploaded = 0;
     uint64_t sh_compressed_bytes_uploaded = 0;
     uint64_t sh_coefficients_streamed = 0;

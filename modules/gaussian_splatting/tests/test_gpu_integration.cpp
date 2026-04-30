@@ -243,7 +243,6 @@ void TestGPUIntegration::test_memory_stream() {
 
     // Report additional metrics from StreamingStats
     print_line(vformat("  Peak memory: %.1f MB", stats.peak_memory_mb));
-    print_line(vformat("  Defragmentation events: %d", stats.defrag_count));
     print_line(vformat("  Avg upload time: %.2f ms", stats.avg_upload_time_ms));
 
     if (stall_rate > 5.0f) {

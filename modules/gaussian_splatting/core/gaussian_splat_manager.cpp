@@ -1029,9 +1029,21 @@ void GaussianSplatManager::initialize_module() {
     GLOBAL_DEF("rendering/gaussian_splatting/culling/octree_max_depth", 8);
     GLOBAL_DEF("rendering/gaussian_splatting/culling/min_gaussians_per_leaf", 32);
 
-    // Projection anti-aliasing floor (adds minimum covariance variance in tile binning).
-    // Lower values are sharper but can re-introduce subpixel holes; 0.35 balances sharpness/stability.
-    GLOBAL_DEF("rendering/gaussian_splatting/rasterization/low_pass_filter", 0.35f);
+    // Projection anti-aliasing floor (added to cov2d diagonal in tile binning).
+    // 0.05 matches the Inria 3DGS reference sharpness. The previous default of
+    // 0.35 was an over-aggressive Mip-Splatting-style dilation we ship without
+    // the matching alpha-rescale companion (alpha *= sqrt(det_orig/det_filtered)),
+    // which fattened thin splats by up to ~6x screen-space radius and produced
+    // a uniform soft / fuzzy halo on edges. The PROPERTY_HINT_RANGE floor
+    // matches the runtime clamp at painterly_renderer.cpp:1776 and
+    // tile_render_stages.cpp:252 so the editor UI cannot expose a value the
+    // runtime would clamp away.
+    GLOBAL_DEF_RST(
+            PropertyInfo(Variant::FLOAT,
+                    "rendering/gaussian_splatting/rasterization/low_pass_filter",
+                    PROPERTY_HINT_RANGE,
+                    "0.05,1.0,0.01"),
+            0.05f);
 
 	// Opacity-aware bounding (FlashGS optimization) - reduces tile-Gaussian pairs by ~94%
 	// When enabled, splat radii are calculated based on opacity: r = sqrt(2 * ln(alpha/tau) * lambda)

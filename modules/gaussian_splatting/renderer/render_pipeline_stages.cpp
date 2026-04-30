@@ -855,6 +855,10 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 			p_clear_cull_state_on_skip);
 
 	// Update deps with the frame_plan BEFORE constructing provider.
+	// Borrow invariant: `frame_plan` is a stack local; it must outlive every consumer of
+	// `frame_context.deps.frame_plan`. Do not store, defer, or async-pass this pointer --
+	// `RenderFrameDeps::validate()` exempts `frame_plan` (see gaussian_splat_renderer.h:387-389),
+	// so a use-after-scope here will not be caught by the validator.
 	frame_context.deps.frame_plan = &frame_plan;
 
 	// This path copies RenderFrameContext before attaching frame_plan, so any incoming

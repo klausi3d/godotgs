@@ -93,6 +93,7 @@ void initialize_gaussian_splatting_module(ModuleInitializationLevel p_level) {
             // Rendering components
             GDREGISTER_CLASS(GaussianSplatRenderer);
             GDREGISTER_CLASS(GaussianMemoryStream);
+            GDREGISTER_CLASS(StreamingPipeline);
             GDREGISTER_CLASS(PainterlyMaterial);
             GDREGISTER_CLASS(GPUBufferManager);
             GDREGISTER_CLASS(GaussianSplatManager);
