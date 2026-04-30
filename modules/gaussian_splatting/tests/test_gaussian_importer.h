@@ -1391,6 +1391,24 @@ TEST_CASE("[GaussianSplatting][Importer] populate_gaussian_data restores DC enco
     CHECK(gaussian_get_dc_encoding(g.render_meta) == GAUSSIAN_DC_ENCODING_LINEAR_RGB);
 }
 
+TEST_CASE("[GaussianSplatting][Importer] populate_gaussian_data defaults missing DC metadata to linear RGB") {
+    Ref<GaussianSplatAsset> asset = _make_thumbnail_fixture_asset(1);
+    REQUIRE_MESSAGE(asset.is_valid(), "Fixture asset must be created");
+    REQUIRE_MESSAGE(!asset->get_import_metadata().has(StringName("dc_encoding")),
+            "Fixture must not carry explicit DC metadata");
+
+    Ref<::GaussianData> data;
+    data.instantiate();
+    REQUIRE_MESSAGE(data.is_valid(), "GaussianData must instantiate");
+
+    const bool ok = asset->populate_gaussian_data(data);
+    REQUIRE_MESSAGE(ok, "populate_gaussian_data should accept fixture asset");
+    REQUIRE_MESSAGE(data->get_count() == 1, "populate_gaussian_data should materialize the fixture");
+
+    const Gaussian g = data->get_gaussian(0);
+    CHECK(gaussian_get_dc_encoding(g.render_meta) == GAUSSIAN_DC_ENCODING_LINEAR_RGB);
+}
+
 TEST_CASE("[GaussianSplatting][Importer] SPZ loader rejects oversized payload sections") {
     const String source_path = "user://gaussian_spz_oversized_payload.spz";
 
