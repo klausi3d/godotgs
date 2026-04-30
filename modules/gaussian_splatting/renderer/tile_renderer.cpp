@@ -1893,11 +1893,13 @@ Vector<String> TileRenderer::_build_binning_shader_defines() const {
 	defines.push_back(vformat("#define GS_SORT_KEY_BITS %d\n", key_config.key_bits));
 	defines.push_back(vformat("#define GS_SORT_TILE_BITS %d\n", key_config.tile_bits));
 	defines.push_back(vformat("#define GS_SORT_DEPTH_BITS %d\n", key_config.depth_bits));
-	// Note: the historical GS_SORT_TIE_BREAKER / GS_SORT_TIE_BITS define block
-	// was unread by any shader. gs_pack_sort_key now applies a 16-bit
-	// per-splat tie-break unconditionally — see tile_binning.glsl:272.
-	// `key_config.enable_tie_breaker` is preserved on the host side as a
-	// pipeline-rebuild signal but no longer influences shader behavior.
+	uint32_t tie_bits = 0;
+	if (key_config.key_bits > 32) {
+		const uint32_t required_tile_bits = MIN<uint32_t>(_required_tile_bits(grid_state.total_tiles), 32u);
+		const uint32_t spare_bits = (required_tile_bits < 32u) ? (32u - required_tile_bits) : 0u;
+		tie_bits = MIN<uint32_t>(16u, spare_bits);
+	}
+	defines.push_back(vformat("#define GS_SORT_TIE_BITS %d\n", tie_bits));
 	if (render_settings.global_sort_enabled) {
 		defines.push_back("#define GS_TILE_GLOBAL_SORT 1\n");
 		defines.push_back("#define GS_TILE_GLOBAL_SORT_EMIT_PASS 1\n");

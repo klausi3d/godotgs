@@ -44,6 +44,10 @@
 #define GS_SORT_DEPTH_BITS 32
 #endif
 
+#ifndef GS_SORT_TIE_BITS
+#define GS_SORT_TIE_BITS 0
+#endif
+
 layout(local_size_x = GS_DISPATCH_LOCAL_SIZE_X, local_size_y = 1, local_size_z = 1) in;
 
 struct Gaussian {
@@ -270,19 +274,14 @@ layout(set = 0, binding = 11, std430) buffer SHColorCache {
 #endif
 
 #ifdef GS_TILE_GLOBAL_SORT_EMIT_PASS
-// `global_idx` is mixed into the low 16 bits of the depth half so coplanar
-// splats with bit-equal depth resolve to a stable order across frames instead
-// of reshuffling with the non-deterministic atomic-counter completion order
-// that produced the input to the radix sort. The 16-bit precision sacrifice
-// on depth is ~0.78% relative within a depth bucket; fine for within-tile
-// ordering whose sole purpose is to break ties for alpha-over compositing.
+// When spare key bits are available, append a small per-splat suffix after the
+// depth key so bit-equal depths resolve deterministically without replacing
+// any depth bits.
 #if GS_SORT_KEY_BITS == 32
 uint gs_pack_sort_key(uint tile_idx, float linear_depth, uint global_idx) {
     float clamped_depth = clamp(linear_depth, 0.0, 0.999999);
 #if GS_SORT_DEPTH_BITS >= 32
-    uint depth_key = floatBitsToUint(clamped_depth) & 0xFFFF0000u;
-    uint tie_key = global_idx & 0x0000FFFFu;
-    return depth_key | tie_key;
+    return floatBitsToUint(clamped_depth);
 #else
     // Quantized-depth path: keep the existing tile-prefix layout. Tie-break
     // is implicit because depth quantization already groups equal-depth splats
@@ -300,9 +299,16 @@ uint gs_pack_sort_key(uint tile_idx, float linear_depth, uint global_idx) {
 }
 #else
 uvec2 gs_pack_sort_key(uint tile_idx, float linear_depth, uint global_idx) {
-    uint depth_bits = floatBitsToUint(linear_depth) & 0xFFFF0000u;
-    uint tie_bits = global_idx & 0x0000FFFFu;
-    return uvec2(depth_bits | tie_bits, tile_idx);
+    uint depth_bits = floatBitsToUint(linear_depth);
+#if GS_SORT_TIE_BITS > 0
+    uint tie_mask = (1u << GS_SORT_TIE_BITS) - 1u;
+    uint tie_bits = global_idx & tie_mask;
+    uint key_lo = (depth_bits << GS_SORT_TIE_BITS) | tie_bits;
+    uint key_hi = (tile_idx << GS_SORT_TIE_BITS) | (depth_bits >> (32u - GS_SORT_TIE_BITS));
+    return uvec2(key_lo, key_hi);
+#else
+    return uvec2(depth_bits, tile_idx);
+#endif
 }
 #endif
 #endif
