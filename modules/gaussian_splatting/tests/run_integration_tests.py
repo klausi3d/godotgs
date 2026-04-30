@@ -335,6 +335,10 @@ script = ExtResource("1")
 """)
 
         try:
+            results_file = test_project_path / ".godot" / "benchmark_results.json"
+            if results_file.exists():
+                results_file.unlink()
+
             cmd = [
                 str(GODOT_BINARY),
                 "--headless",
@@ -349,12 +353,17 @@ script = ExtResource("1")
                 timeout=max(60, config['frames'] * 2)  # Dynamic timeout
             )
 
-            # Read results file
-            results_file = test_project_path / ".godot" / "benchmark_results.json"
             if results_file.exists():
                 with open(results_file, 'r') as f:
                     bench_result["metrics"] = json.load(f)
-                bench_result["completed"] = True
+                total_splats = bench_result["metrics"].get("total_splats")
+                if total_splats == config["count"]:
+                    bench_result["completed"] = True
+                else:
+                    bench_result["error"] = (
+                        f"Benchmark output mismatch: expected {config['count']} splats, "
+                        f"got {total_splats}"
+                    )
             else:
                 bench_result["error"] = "No results file generated"
 
@@ -584,6 +593,10 @@ script = ExtResource("1")
         print("🚀 Gaussian Splatting Integration Test Suite")
         print("=" * 60)
 
+        if self.config.get("benchmark_only", False):
+            self.results["test_suites"]["performance"] = self.run_performance_benchmarks()
+            return self.generate_report()
+
         # Run test suites
         self.results["test_suites"]["cpp_integration"] = self.run_cpp_tests()
         self.results["test_suites"]["lod_system"] = self.run_lod_tests()
@@ -603,6 +616,7 @@ def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Run Gaussian Splatting integration tests")
     parser.add_argument("--benchmarks", action="store_true", help="Run performance benchmarks")
+    parser.add_argument("--benchmarks-only", action="store_true", help="Run only performance benchmarks")
     parser.add_argument("--stress", action="store_true", help="Run stress tests")
     parser.add_argument("--heavy", action="store_true", help="Include heavy benchmarks (10M+ splats)")
     parser.add_argument("--parallel", action="store_true", help="Run tests in parallel")
@@ -610,7 +624,8 @@ def main():
     args = parser.parse_args()
 
     config = {
-        "run_benchmarks": args.benchmarks,
+        "run_benchmarks": args.benchmarks or args.benchmarks_only,
+        "benchmark_only": args.benchmarks_only,
         "run_stress_tests": args.stress,
         "run_heavy_benchmarks": args.heavy,
         "parallel_execution": args.parallel

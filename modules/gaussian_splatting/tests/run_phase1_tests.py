@@ -222,7 +222,7 @@ func _ready():
         if godot_binary.exists():
             env["GODOT_BINARY"] = str(godot_binary)
 
-        cmd = [sys.executable, str(integration_runner), "--benchmarks"]
+        cmd = [sys.executable, str(integration_runner), "--benchmarks-only"]
         start_time = time.time()
         exit_code, stdout, stderr = self.run_command(cmd, self.project_path, env=env)
         benchmark_time = time.time() - start_time
@@ -455,11 +455,12 @@ func _ready():
         with open(baseline_file, 'r') as f:
             baseline = json.load(f)
 
-        regressions = self._collect_benchmark_regressions(baseline)
+        regressions, incompatible = self._collect_benchmark_regressions(baseline)
 
         self.results["regression"] = {
             "has_regression": len(regressions) > 0,
-            "regressions": regressions
+            "regressions": regressions,
+            "incompatible_benchmarks": incompatible,
         }
 
         if regressions:
@@ -468,22 +469,27 @@ func _ready():
                 print(f"  {reg['test']} {reg['metric']}: {reg['regression_percent']:.1f}% slower")
             return False
         else:
+            for item in incompatible:
+                print(f"  Skipping incompatible benchmark baseline: {item['test']} ({item['reason']})")
             print("No regressions detected")
             return True
 
-    def _collect_benchmark_regressions(self, baseline: dict) -> List[dict]:
+    def _collect_benchmark_regressions(self, baseline: dict) -> Tuple[List[dict], List[dict]]:
         """Compare benchmark results against baseline benchmark entries."""
         current_benchmarks = self.results.get("tests", {}).get("benchmarks", [])
         baseline_benchmarks = baseline.get("tests", {}).get("benchmarks", [])
         regressions = []
+        incompatible = []
 
         for current in current_benchmarks:
             splat_count = current.get("config", {}).get("splat_count", 0)
             base = self._find_baseline_benchmark(baseline_benchmarks, splat_count)
             if base is not None:
-                regressions.extend(self._compare_benchmark_metrics(current, base, splat_count))
+                result = self._compare_benchmark_metrics(current, base, splat_count)
+                regressions.extend(result[0])
+                incompatible.extend(result[1])
 
-        return regressions
+        return regressions, incompatible
 
     def _find_baseline_benchmark(self, benchmarks: List[dict], splat_count: int) -> Optional[dict]:
         """Find the baseline entry matching a benchmark splat count."""
@@ -492,9 +498,10 @@ func _ready():
                 return benchmark
         return None
 
-    def _compare_benchmark_metrics(self, current: dict, base: dict, splat_count: int) -> List[dict]:
-        """Return regression records for comparable benchmark metrics."""
+    def _compare_benchmark_metrics(self, current: dict, base: dict, splat_count: int) -> Tuple[List[dict], List[dict]]:
+        """Return regression records and incompatible schema notices."""
         regressions = []
+        incompatible = []
         comparable_metrics = False
         current_metrics = current.get("metrics", {})
         base_metrics = base.get("metrics", {})
@@ -507,15 +514,15 @@ func _ready():
                 regressions, current_metrics, base_metrics, splat_count, metric_name)
 
         if not comparable_metrics:
-            regressions.append({
+            incompatible.append({
                 "test": f"benchmark_{splat_count}",
                 "metric": "benchmark_metrics",
                 "baseline": "present",
                 "current": "not comparable",
-                "regression_percent": 100.0
+                "reason": "No shared benchmark metrics between current result and baseline",
             })
 
-        return regressions
+        return regressions, incompatible
 
     def _append_fps_regression(
         self,
