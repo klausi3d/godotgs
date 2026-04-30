@@ -38,7 +38,8 @@ public:
 
     // See ResourceImporterPLY::get_format_version() for the bump rationale.
     // SPZ assets share the GaussianSplatAsset deserialization path.
-    virtual int get_format_version() const override { return 3; }
+    //   v4: SH bands 1-3 propagated into the asset (same fix applied to PLY at v4).
+    virtual int get_format_version() const override { return 4; }
 
     ResourceImporterSPZ();
 };

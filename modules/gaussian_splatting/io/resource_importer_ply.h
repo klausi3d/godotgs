@@ -47,7 +47,12 @@ public:
     //       Inria `sh*C0 + 0.5`). Caches written by v1-v3 carry the wrong
     //       `dc_encoding` tag and must be reimported to render with full
     //       contrast / saturation.
-    virtual int get_format_version() const override { return 4; }
+    //   v5: SH bands 1-3 are now propagated into the asset. Caches written
+    //       by v1-v4 carry only DC color; the renderer fell back to flat
+    //       per-splat RGB and lost view-dependent specular / fresnel detail.
+    //       v5 caches carry full per-splat sh_first_order / sh_high_order
+    //       arrays sized splat_count * sh_terms * 3.
+    virtual int get_format_version() const override { return 5; }
 
     // Validation helpers
     Error validate_ply_properties(const Ref<class PLYLoader> &p_loader) const;
