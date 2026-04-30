@@ -807,7 +807,6 @@ These registered keys have no additional string-literal references beyond their 
 | Setting | Registered in |
 | --- | --- |
 | `rendering/gaussian_splatting/cull/overflow_autotune_enabled` | `modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1033` |
-| `rendering/gaussian_splatting/culling/cluster_frustum_slack` | `modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1021` |
 | `rendering/gaussian_splatting/culling/opacity_aware_bounds` | `modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1028` |
 | `rendering/gaussian_splatting/culling/visibility_threshold` | `modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1029` |
 | `rendering/gaussian_splatting/debug/enable_mainloop_probes` | `modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1039` |

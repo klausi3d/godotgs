@@ -19,9 +19,9 @@ Cluster culling adds a coarse rejection stage between tier-2 chunk culling and p
 - `modules/gaussian_splatting/renderer/render_pipeline_stages.cpp`: wires instance cull and sort stages together and selects the chunk-domain path.
 - `modules/gaussian_splatting/renderer/render_streaming_orchestrator.cpp`: streaming publisher of atlas, `visible_chunk_buffer`, `splat_ref_buffer`, counters, and sort buffers.
 - `modules/gaussian_splatting/renderer/resident_instance_contract_publisher.cpp`: resident publisher of the same tier-2 contract.
-- `modules/gaussian_splatting/interfaces/cluster_culler.h/.cpp`: existing registered stub; it compiles and allocates buffers, but is not invoked by `GPUCuller::cull_for_view()` or `GPUSortingPipeline`.
-- `modules/gaussian_splatting/lod/cluster_builder.h/.cpp`: existing CPU Morton clustering helper; today it operates on whole `GaussianData` and packs legacy AABB data, not tier-2 chunk-local instance metadata.
-- `modules/gaussian_splatting/compute/cluster_cull.glsl`: legacy standalone coarse-pass shader; not wired into the tier-2 pipeline.
+- `modules/gaussian_splatting/interfaces/cluster_culler.h/.cpp`: deleted legacy registered stub; it allocated buffers, but was not invoked by `GPUCuller::cull_for_view()` or `GPUSortingPipeline`.
+- `modules/gaussian_splatting/lod/cluster_builder.h/.cpp`: deleted CPU Morton clustering helper; it operated on whole `GaussianData` and packed legacy AABB data, not tier-2 chunk-local instance metadata.
+- `modules/gaussian_splatting/compute/cluster_cull.glsl`: deleted legacy standalone coarse-pass shader; not wired into the tier-2 pipeline.
 
 ## 3. Design
 
@@ -36,7 +36,7 @@ Cluster record layout should be `32` bytes, `std430` friendly:
 - `vec4 center_radius` where `xyz` is chunk-local center and `w` is conservative radius.
 - `uvec4 range` where `x = splat_offset_in_chunk`, `y = splat_count`, `z/w = reserved`.
 
-This is sphere-based, not AABB-based, because tier-2 already transforms chunk-local bounds through instance transforms in `frustum_cull.glsl`; cluster cull should reuse that model. Existing `ClusterCuller`/`ClusterBuilder` names and settings may be reused, but their implementation should be rewritten around instance/chunk inputs.
+This is sphere-based, not AABB-based, because tier-2 already transforms chunk-local bounds through instance transforms in `frustum_cull.glsl`; cluster cull should reuse that model. Legacy `ClusterCuller`/`ClusterBuilder` names and settings may be reused, but any new implementation must be rewritten around instance/chunk inputs.
 
 ## 4. Data Flow
 
@@ -123,7 +123,7 @@ Publish them through `PerformanceMetrics.streaming_state` and `GaussianSplatting
 
 1. Add an architecture-neutral `ClusterMetaGPU`/`ChunkClusterRangeGPU` layout and optional cluster fields to `InstancePipelineBuffers`.
 2. Add contract validation helpers for cluster buffers without breaking the current non-cluster path.
-3. Refactor `lod/cluster_builder.*` to build chunk-local sphere clusters and ranges from a chunk snapshot.
+3. Add a cluster builder that produces chunk-local sphere clusters and ranges from a chunk snapshot.
 4. Generate cluster metadata in the streaming upload path and publish GPU buffers/capacities from `render_streaming_orchestrator.cpp`.
 5. Generate the same metadata in `resident_instance_contract_publisher.cpp`.
 6. Add `instance_cluster_dispatch.glsl`, `cluster_cull_instance.glsl`, and `cluster_range_dispatch.glsl`.
