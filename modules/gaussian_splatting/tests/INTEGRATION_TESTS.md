@@ -29,8 +29,8 @@ not registered as a Godot class). Coverage now lives in:
 - `run_integration_tests.py::_run_single_benchmark` — populates `GaussianData`,
   builds the spatial hierarchy, and records timings for 100K / 1M / 10M splat
   configurations (heavy tiers gated behind `--heavy`).
-- GDScript benchmark scenes under
-  `tests/examples/godot/test_project/scenes/benchmark_*.gd`.
+- A generated `tests/benchmark_project/benchmark.gd` scene used by the Python
+  harness for each benchmark configuration.
 
 ### 4. Headless Build Tests (`test_headless_build.py`)
 Validates module without GUI:

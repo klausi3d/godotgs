@@ -35,7 +35,12 @@ class TestRunner:
             "tests": {}
         }
 
-    def run_command(self, cmd: List[str], cwd: Optional[Path] = None) -> Tuple[int, str, str]:
+    def run_command(
+        self,
+        cmd: List[str],
+        cwd: Optional[Path] = None,
+        env: Optional[Dict[str, str]] = None,
+    ) -> Tuple[int, str, str]:
         """Run a command and return exit code, stdout, and stderr."""
         print(f"Running: {' '.join(cmd)}")
 
@@ -44,6 +49,7 @@ class TestRunner:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=cwd or self.project_path,
+            env=env,
             universal_newlines=True
         )
 
@@ -191,15 +197,102 @@ func _ready():
         The legacy C++ ``PerformanceBenchmark`` harness was removed (issue #289)
         because it never linked: ``GaussianMemoryStream::get_sort_keys_buffer``
         was declared but never defined, and the previous loader tried to
-        ``preload`` a header file as if it were a script.  Performance is now
-        covered by ``run_integration_tests.py`` and the GDScript benchmark
-        scenes under ``tests/examples/godot/test_project/scenes``.
+        ``preload`` a header file as if it were a script. Delegate to the live
+        integration benchmark runner so this phase still executes real workload.
         """
         print("\n=== Performance Benchmarks ===")
-        print("  Skipped: legacy C++ PerformanceBenchmark harness removed (issue #289).")
-        print("  Use run_integration_tests.py --benchmarks for performance coverage.")
 
-        self.results["tests"]["benchmarks"] = []
+        integration_runner = self.module_path / "tests" / "run_integration_tests.py"
+        if not integration_runner.exists():
+            self.results["tests"]["benchmarks"] = []
+            self.results["tests"]["benchmarks_runner"] = {
+                "passed": False,
+                "error": f"Benchmark runner missing: {integration_runner}",
+            }
+            print(f"Benchmark runner missing: {integration_runner}")
+            return False
+
+        reports_dir = self.module_path / "tests"
+        reports_before = {
+            path: path.stat().st_mtime_ns
+            for path in reports_dir.glob("integration_report_*.json")
+        }
+        env = os.environ.copy()
+        godot_binary = self.godot_path / "bin" / self._get_godot_binary()
+        if godot_binary.exists():
+            env["GODOT_BINARY"] = str(godot_binary)
+
+        cmd = [sys.executable, str(integration_runner), "--benchmarks"]
+        start_time = time.time()
+        exit_code, stdout, stderr = self.run_command(cmd, self.project_path, env=env)
+        benchmark_time = time.time() - start_time
+
+        latest_report = None
+        candidate_reports = [
+            path
+            for path in reports_dir.glob("integration_report_*.json")
+            if path not in reports_before or path.stat().st_mtime_ns > reports_before[path]
+        ]
+        if candidate_reports:
+            latest_report = max(candidate_reports, key=lambda path: path.stat().st_mtime)
+
+        benchmark_results = []
+        report_error = None
+        try:
+            if latest_report is None:
+                raise FileNotFoundError("No integration benchmark report generated")
+            with open(latest_report, "r") as f:
+                integration_results = json.load(f)
+
+            performance_suite = integration_results.get("test_suites", {}).get("performance", {})
+            for benchmark in performance_suite.get("benchmarks", []):
+                config = benchmark.get("config", {})
+                metrics = benchmark.get("metrics", {})
+                benchmark_results.append({
+                    "name": benchmark.get("name"),
+                    "passed": benchmark.get("completed", False),
+                    "error": benchmark.get("error"),
+                    "config": {
+                        "splat_count": config.get("count", 0),
+                        "frame_count": config.get("frames", 0),
+                    },
+                    "metrics": metrics,
+                })
+        except (OSError, json.JSONDecodeError, KeyError) as exc:
+            report_error = str(exc)
+            print(f"Failed to read benchmark report: {report_error}")
+
+        self.results["tests"]["benchmarks"] = benchmark_results
+        self.results["tests"]["benchmarks_runner"] = {
+            "passed": exit_code == 0 and report_error is None,
+            "time_seconds": benchmark_time,
+            "report": str(latest_report) if latest_report else None,
+            "stdout_tail": stdout.splitlines()[-20:],
+            "stderr_tail": stderr.splitlines()[-20:] if stderr else [],
+            "error": report_error,
+        }
+
+        if exit_code != 0:
+            print("Benchmark runner failed")
+            if stderr:
+                print(stderr.strip())
+            return False
+
+        if report_error:
+            return False
+
+        if not benchmark_results:
+            print("Benchmark runner produced no benchmark results")
+            return False
+
+        failed_benchmarks = [b for b in benchmark_results if not b.get("passed")]
+        if failed_benchmarks:
+            print("Performance benchmarks failed:")
+            for benchmark in failed_benchmarks:
+                print(f"  {benchmark.get('name', 'unknown')}: {benchmark.get('error', 'Unknown error')}")
+            return False
+
+        print(f"Performance benchmarks: PASSED ({len(benchmark_results)} configurations)")
         return True
 
     def run_memory_validation(self) -> bool:
@@ -374,18 +467,47 @@ func _ready():
                 # Find matching baseline
                 for base in baseline.get("tests", {}).get("benchmarks", []):
                     if base.get("config", {}).get("splat_count") == splat_count:
-                        current_fps = current.get("metrics", {}).get("avg_fps", 0)
-                        base_fps = base.get("metrics", {}).get("avg_fps", 0)
+                        current_metrics = current.get("metrics", {})
+                        base_metrics = base.get("metrics", {})
+                        comparable_metrics = False
 
-                        if base_fps > 0:
+                        current_fps = current_metrics.get("avg_fps", 0)
+                        base_fps = base_metrics.get("avg_fps", 0)
+                        if base_fps > 0 and current_fps > 0:
+                            comparable_metrics = True
                             regression = (base_fps - current_fps) / base_fps
                             if regression > 0.1:  # 10% regression threshold
                                 regressions.append({
                                     "test": f"benchmark_{splat_count}",
-                                    "baseline_fps": base_fps,
-                                    "current_fps": current_fps,
+                                    "metric": "avg_fps",
+                                    "baseline": base_fps,
+                                    "current": current_fps,
                                     "regression_percent": regression * 100
                                 })
+
+                        for metric_name in ("populate_time_ms", "octree_build_time_ms"):
+                            current_value = current_metrics.get(metric_name, 0)
+                            base_value = base_metrics.get(metric_name, 0)
+                            if base_value > 0 and current_value > 0:
+                                comparable_metrics = True
+                                regression = (current_value - base_value) / base_value
+                                if regression > 0.1:  # 10% regression threshold
+                                    regressions.append({
+                                        "test": f"benchmark_{splat_count}",
+                                        "metric": metric_name,
+                                        "baseline": base_value,
+                                        "current": current_value,
+                                        "regression_percent": regression * 100
+                                    })
+
+                        if not comparable_metrics:
+                            regressions.append({
+                                "test": f"benchmark_{splat_count}",
+                                "metric": "benchmark_metrics",
+                                "baseline": "present",
+                                "current": "not comparable",
+                                "regression_percent": 100.0
+                            })
 
         self.results["regression"] = {
             "has_regression": len(regressions) > 0,
@@ -395,7 +517,7 @@ func _ready():
         if regressions:
             print("Performance regressions detected:")
             for reg in regressions:
-                print(f"  {reg['test']}: {reg['regression_percent']:.1f}% slower")
+                print(f"  {reg['test']} {reg['metric']}: {reg['regression_percent']:.1f}% slower")
             return False
         else:
             print("No regressions detected")
