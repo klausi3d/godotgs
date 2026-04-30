@@ -291,6 +291,8 @@ func _ready():
         requested_count = config.get("count", 0)
         measured_count = metrics.get("total_splats")
         output_matches_config = measured_count == requested_count
+        meets_absolute_target, target_error = self._benchmark_meets_absolute_targets(
+            requested_count, metrics)
         error = benchmark.get("error")
 
         if benchmark.get("completed", False) and not output_matches_config:
@@ -298,10 +300,12 @@ func _ready():
                 f"Benchmark output mismatch: expected {requested_count} splats, "
                 f"got {measured_count}"
             )
+        elif benchmark.get("completed", False) and not meets_absolute_target:
+            error = target_error
 
         return {
             "name": benchmark.get("name"),
-            "passed": benchmark.get("completed", False) and output_matches_config,
+            "passed": benchmark.get("completed", False) and output_matches_config and meets_absolute_target,
             "error": error,
             "config": {
                 "splat_count": requested_count,
@@ -309,6 +313,27 @@ func _ready():
             },
             "metrics": metrics,
         }
+
+    def _benchmark_meets_absolute_targets(self, splat_count: int, metrics: dict) -> Tuple[bool, Optional[str]]:
+        """Enforce a floor when no baseline is available for small benchmark configs."""
+        if splat_count > 100000:
+            return True, None
+
+        avg_fps = metrics.get("avg_fps", 0)
+        if avg_fps:
+            if avg_fps >= 60:
+                return True, None
+            return False, f"{splat_count} splats only achieved {avg_fps:.1f} FPS; target is 60 FPS"
+
+        populate_ms = metrics.get("populate_time_ms")
+        octree_ms = metrics.get("octree_build_time_ms")
+        if populate_ms is None or octree_ms is None:
+            return False, "Benchmark result lacks FPS or setup timing metrics for absolute target check"
+
+        setup_ms = populate_ms + octree_ms
+        if setup_ms <= 30000:
+            return True, None
+        return False, f"{splat_count} splat setup took {setup_ms:.1f}ms; target is <= 30000ms"
 
     def run_memory_validation(self) -> bool:
         """Run memory leak detection tests."""
