@@ -64,7 +64,7 @@ uint gs_pack_normal_zw(vec3 normal) {
 
 // Legacy function kept for API compatibility.
 //
-// IMPORTANT: this packs `global_idx` into the low 16 bits and the rasterizer
+// IMPORTANT: this packs `global_idx` into the high 16 bits and the rasterizer
 // (tile_raster_common.glsl, `if (stored_global_idx != sorted_idx) continue;`)
 // will silently reject any visible splat whose actual global_idx exceeds
 // UINT16_MAX = 65535. Callers must ensure `enable_packed_stage_data` is only
