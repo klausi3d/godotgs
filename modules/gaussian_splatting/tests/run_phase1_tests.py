@@ -246,18 +246,7 @@ func _ready():
 
             performance_suite = integration_results.get("test_suites", {}).get("performance", {})
             for benchmark in performance_suite.get("benchmarks", []):
-                config = benchmark.get("config", {})
-                metrics = benchmark.get("metrics", {})
-                benchmark_results.append({
-                    "name": benchmark.get("name"),
-                    "passed": benchmark.get("completed", False),
-                    "error": benchmark.get("error"),
-                    "config": {
-                        "splat_count": config.get("count", 0),
-                        "frame_count": config.get("frames", 0),
-                    },
-                    "metrics": metrics,
-                })
+                benchmark_results.append(self._normalize_benchmark_result(benchmark))
         except (OSError, json.JSONDecodeError, KeyError) as exc:
             report_error = str(exc)
             print(f"Failed to read benchmark report: {report_error}")
@@ -294,6 +283,32 @@ func _ready():
 
         print(f"Performance benchmarks: PASSED ({len(benchmark_results)} configurations)")
         return True
+
+    def _normalize_benchmark_result(self, benchmark: dict) -> dict:
+        """Convert integration-runner benchmark output into phase1 result schema."""
+        config = benchmark.get("config", {})
+        metrics = benchmark.get("metrics", {})
+        requested_count = config.get("count", 0)
+        measured_count = metrics.get("total_splats")
+        output_matches_config = measured_count == requested_count
+        error = benchmark.get("error")
+
+        if benchmark.get("completed", False) and not output_matches_config:
+            error = (
+                f"Benchmark output mismatch: expected {requested_count} splats, "
+                f"got {measured_count}"
+            )
+
+        return {
+            "name": benchmark.get("name"),
+            "passed": benchmark.get("completed", False) and output_matches_config,
+            "error": error,
+            "config": {
+                "splat_count": requested_count,
+                "frame_count": config.get("frames", 0),
+            },
+            "metrics": metrics,
+        }
 
     def run_memory_validation(self) -> bool:
         """Run memory leak detection tests."""
