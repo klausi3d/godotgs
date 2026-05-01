@@ -24,19 +24,19 @@ static Quaternion _safe_quaternion_from_asset(const TypedArray<Quaternion> &p_ro
 
 static GaussianDCEncoding _resolve_asset_dc_encoding(const Ref<GaussianSplatAsset> &p_asset) {
     if (p_asset.is_null()) {
-        return GAUSSIAN_DC_ENCODING_LEGACY_BIAS;
+        return GAUSSIAN_DC_ENCODING_LINEAR_RGB;
     }
 
     const Dictionary import_metadata = p_asset->get_import_metadata();
     if (!import_metadata.has(StringName("dc_encoding"))) {
-        return GAUSSIAN_DC_ENCODING_LEGACY_BIAS;
+        return GAUSSIAN_DC_ENCODING_LINEAR_RGB;
     }
 
     const String dc_encoding = String(import_metadata[StringName("dc_encoding")]).to_lower();
-    if (dc_encoding == "linear_rgb") {
-        return GAUSSIAN_DC_ENCODING_LINEAR_RGB;
+    if (dc_encoding == "legacy_bias") {
+        return GAUSSIAN_DC_ENCODING_LEGACY_BIAS;
     }
-    return GAUSSIAN_DC_ENCODING_LEGACY_BIAS;
+    return GAUSSIAN_DC_ENCODING_LINEAR_RGB;
 }
 
 static void _rebuild_chunk_cache(const Ref<GaussianData> &p_data, float p_chunk_size,

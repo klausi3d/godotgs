@@ -20,6 +20,16 @@ static double _elapsed_msec(uint64_t p_start_usec) {
 	return double(now - p_start_usec) / 1000.0;
 }
 
+static GaussianDCEncoding _resolve_dc_encoding_from_metadata(const Dictionary &p_import_metadata) {
+	if (p_import_metadata.has(StringName("dc_encoding"))) {
+		const String dc_encoding = String(p_import_metadata[StringName("dc_encoding")]).to_lower();
+		if (dc_encoding == "legacy_bias") {
+			return GAUSSIAN_DC_ENCODING_LEGACY_BIAS;
+		}
+	}
+	return GAUSSIAN_DC_ENCODING_LINEAR_RGB;
+}
+
 static Dictionary _build_runtime_load_timing(const String &p_stage,
 		bool p_cache_hit,
 		double p_source_ms,
@@ -1254,17 +1264,11 @@ bool GaussianSplatAsset::populate_gaussian_data(Ref<::GaussianData> &r_data) con
     if (asset_metadata.has(StringName("gaussian_2d_mode"))) {
         r_data->set_2d_mode((bool)asset_metadata[StringName("gaussian_2d_mode")]);
     }
-    if (asset_metadata.has(StringName("dc_encoding"))) {
-        const String dc_encoding = String(asset_metadata[StringName("dc_encoding")]).to_lower();
-        GaussianDCEncoding staged_dc_encoding = GAUSSIAN_DC_ENCODING_LEGACY_BIAS;
-        if (dc_encoding == "linear_rgb") {
-            staged_dc_encoding = GAUSSIAN_DC_ENCODING_LINEAR_RGB;
-        }
-        for (int i = 0; i < r_data->get_count(); i++) {
-            Gaussian g = r_data->get_gaussian(i);
-            g.render_meta = gaussian_set_dc_encoding(g.render_meta, staged_dc_encoding);
-            r_data->set_gaussian(i, g);
-        }
+    const GaussianDCEncoding staged_dc_encoding = _resolve_dc_encoding_from_metadata(asset_metadata);
+    for (int i = 0; i < r_data->get_count(); i++) {
+        Gaussian g = r_data->get_gaussian(i);
+        g.render_meta = gaussian_set_dc_encoding(g.render_meta, staged_dc_encoding);
+        r_data->set_gaussian(i, g);
     }
 
     return true;
@@ -1333,7 +1337,7 @@ Error GaussianSplatAsset::populate_from_gaussian_data(const Ref<::GaussianData> 
     bool bounds_initialized = false;
     Vector3 min_pos;
     Vector3 max_pos;
-    GaussianDCEncoding asset_dc_encoding = GAUSSIAN_DC_ENCODING_LEGACY_BIAS;
+    GaussianDCEncoding asset_dc_encoding = GAUSSIAN_DC_ENCODING_LINEAR_RGB;
     bool asset_dc_encoding_initialized = false;
     bool mixed_dc_encoding = false;
 

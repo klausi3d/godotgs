@@ -1248,24 +1248,47 @@ TEST_CASE("[GaussianSplatting][Importer] SPZ importer persists linear DC encodin
     _remove_user_file(save_base_path + ".tres");
 }
 
-TEST_CASE("[GaussianSplatting][Importer] PLY loader keeps legacy DC encoding") {
-    const String source_path = "user://gaussian_ply_legacy_dc.ply";
+TEST_CASE("[GaussianSplatting][Importer] PLY importer tags new assets as linear DC by default") {
+    // Regression guard for the DC-encoding default flip. The PLY loader itself
+    // does not tag render_meta — that tagging only happens when the asset is
+    // built through ResourceImporterPLY (which writes "dc_encoding": "linear_rgb"
+    // into import metadata) and then deserialized via populate_from_asset
+    // (which reads that metadata at gaussian_data_io.cpp:265-268). So this
+    // test must exercise the full importer round-trip rather than
+    // PLYLoader::load_file directly.
+    const String source_path = "user://gaussian_ply_default_dc.ply";
+    const String save_base_path = "user://gaussian_ply_default_dc_imported";
     Error write_err = _write_minimal_ascii_ply(source_path);
     REQUIRE_MESSAGE(write_err == OK, "Failed to write minimal PLY fixture");
 
-    Ref<PLYLoader> loader;
-    loader.instantiate();
-    Error load_err = loader->load_file(source_path);
-    REQUIRE_MESSAGE(load_err == OK, "PLY loader should accept valid minimal ASCII fixture");
+    Ref<ResourceImporterPLY> importer;
+    importer.instantiate();
 
-    Ref<::GaussianData> data = loader->get_gaussian_data();
-    REQUIRE_MESSAGE(data.is_valid(), "PLY loader must produce GaussianData");
-    REQUIRE_MESSAGE(data->get_count() == 1, "PLY loader must load the single-point payload");
+    HashMap<StringName, Variant> options;
+    options.insert(StringName("quality/preset"), String("ultra"));
+    options.insert(StringName("preview/generate_thumbnail"), false);
+
+    const Error import_err = importer->import(ResourceUID::INVALID_ID, source_path, save_base_path, options,
+            nullptr, nullptr, nullptr);
+    REQUIRE_MESSAGE(import_err == OK, "PLY importer should succeed for minimal fixture");
+
+    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + ".tres");
+    REQUIRE_MESSAGE(asset.is_valid(), "PLY importer should emit a loadable GaussianSplatAsset");
+
+    const Dictionary metadata = asset->get_import_metadata();
+    CHECK(String(metadata.get(StringName("dc_encoding"), String())) == String("linear_rgb"));
+
+    Ref<::GaussianData> data;
+    data.instantiate();
+    REQUIRE_MESSAGE(data->populate_from_asset(asset) == OK,
+            "populate_from_asset should accept default-imported PLY asset");
+    REQUIRE_MESSAGE(data->get_count() == 1, "Imported PLY asset should materialize one gaussian");
 
     const Gaussian g = data->get_gaussian(0);
-    CHECK(gaussian_get_dc_encoding(g.render_meta) == GAUSSIAN_DC_ENCODING_LEGACY_BIAS);
+    CHECK(gaussian_get_dc_encoding(g.render_meta) == GAUSSIAN_DC_ENCODING_LINEAR_RGB);
 
     _remove_user_file(source_path);
+    _remove_user_file(save_base_path + ".tres");
 }
 
 TEST_CASE("[GaussianSplatting][Importer] PLY importer propagates SH band-1 coefficients into asset") {
@@ -1483,6 +1506,24 @@ TEST_CASE("[GaussianSplatting][Importer] populate_gaussian_data restores DC enco
     Dictionary metadata = asset->get_import_metadata();
     metadata[StringName("dc_encoding")] = "linear_rgb";
     asset->set_import_metadata(metadata);
+
+    Ref<::GaussianData> data;
+    data.instantiate();
+    REQUIRE_MESSAGE(data.is_valid(), "GaussianData must instantiate");
+
+    const bool ok = asset->populate_gaussian_data(data);
+    REQUIRE_MESSAGE(ok, "populate_gaussian_data should accept fixture asset");
+    REQUIRE_MESSAGE(data->get_count() == 1, "populate_gaussian_data should materialize the fixture");
+
+    const Gaussian g = data->get_gaussian(0);
+    CHECK(gaussian_get_dc_encoding(g.render_meta) == GAUSSIAN_DC_ENCODING_LINEAR_RGB);
+}
+
+TEST_CASE("[GaussianSplatting][Importer] populate_gaussian_data defaults missing DC metadata to linear RGB") {
+    Ref<GaussianSplatAsset> asset = _make_thumbnail_fixture_asset(1);
+    REQUIRE_MESSAGE(asset.is_valid(), "Fixture asset must be created");
+    REQUIRE_MESSAGE(!asset->get_import_metadata().has(StringName("dc_encoding")),
+            "Fixture must not carry explicit DC metadata");
 
     Ref<::GaussianData> data;
     data.instantiate();
