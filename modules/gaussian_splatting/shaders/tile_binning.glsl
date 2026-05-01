@@ -44,6 +44,10 @@
 #define GS_SORT_DEPTH_BITS 32
 #endif
 
+#ifndef GS_SORT_TIE_BITS
+#define GS_SORT_TIE_BITS 0
+#endif
+
 layout(local_size_x = GS_DISPATCH_LOCAL_SIZE_X, local_size_y = 1, local_size_z = 1) in;
 
 struct Gaussian {
@@ -270,14 +274,18 @@ layout(set = 0, binding = 11, std430) buffer SHColorCache {
 #endif
 
 #ifdef GS_TILE_GLOBAL_SORT_EMIT_PASS
+// When spare key bits are available, append a small per-splat suffix after the
+// depth key so bit-equal depths resolve deterministically without replacing
+// any depth bits.
 #if GS_SORT_KEY_BITS == 32
-// Pack tile index and depth into a global sort key.
-uint gs_pack_sort_key(uint tile_idx, float linear_depth) {
+uint gs_pack_sort_key(uint tile_idx, float linear_depth, uint global_idx) {
     float clamped_depth = clamp(linear_depth, 0.0, 0.999999);
 #if GS_SORT_DEPTH_BITS >= 32
-    uint depth_key = floatBitsToUint(clamped_depth);
-    return depth_key;
+    return floatBitsToUint(clamped_depth);
 #else
+    // Quantized-depth path: keep the existing tile-prefix layout. Tie-break
+    // is implicit because depth quantization already groups equal-depth splats
+    // and the radix sort is stable within input order.
     uint depth_mask = (1u << GS_SORT_DEPTH_BITS) - 1u;
     uint depth_key = uint(clamped_depth * float(depth_mask));
 #if GS_SORT_TILE_BITS >= 32
@@ -290,9 +298,17 @@ uint gs_pack_sort_key(uint tile_idx, float linear_depth) {
 #endif
 }
 #else
-// Pack tile index and depth into a global sort key.
-uvec2 gs_pack_sort_key(uint tile_idx, float linear_depth) {
-    return uvec2(floatBitsToUint(linear_depth), tile_idx);
+uvec2 gs_pack_sort_key(uint tile_idx, float linear_depth, uint global_idx) {
+    uint depth_bits = floatBitsToUint(linear_depth);
+#if GS_SORT_TIE_BITS > 0
+    uint tie_mask = (1u << GS_SORT_TIE_BITS) - 1u;
+    uint tie_bits = global_idx & tie_mask;
+    uint key_lo = (depth_bits << GS_SORT_TIE_BITS) | tie_bits;
+    uint key_hi = (tile_idx << GS_SORT_TIE_BITS) | (depth_bits >> (32u - GS_SORT_TIE_BITS));
+    return uvec2(key_lo, key_hi);
+#else
+    return uvec2(depth_bits, tile_idx);
+#endif
 }
 #endif
 #endif
@@ -1276,7 +1292,7 @@ void main() {
                 atomicAdd(overflow_stats.overflow_splats_clamped, 1u);
                 continue;
             }
-            global_sort_keys.keys[record_idx] = gs_pack_sort_key(tile_idx, linear_depth);
+            global_sort_keys.keys[record_idx] = gs_pack_sort_key(tile_idx, linear_depth, global_idx);
             global_sort_values.values[record_idx] = global_idx;
         }
     }
