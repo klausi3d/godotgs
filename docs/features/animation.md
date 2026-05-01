@@ -4,6 +4,8 @@
 
 Animate per-splat properties (position, color, opacity, scale, rotation) over time using `GaussianAnimationStateMachine`. The animation system provides clip-based playback, keyframe interpolation with multiple curve types, and weighted blending between clips.
 
+> **Opt-in feature.** `GaussianAnimationStateMachine` is a scripted `Resource` and is **not** instantiated automatically by the engine. Per-splat animation only runs when a project explicitly creates one (from GDScript or via the public C++ API) and attaches it through `GaussianData.set_animation_state_machine()`. By default `GaussianData.animation_state_machine` is `null` and `GaussianData.has_animation()` returns `false`.
+
 ## Animation system overview
 
 `GaussianAnimationStateMachine` is a `Resource`-derived class that holds animation clips, tracks, and keyframes. Each clip contains one or more tracks, and each track targets a specific `AnimationProperty`. Keyframes store timed values with configurable interpolation.

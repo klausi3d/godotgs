@@ -582,11 +582,6 @@ static uint64_t _compute_cull_config_signature(const GaussianSplatRenderer &p_re
 	seed = _hash_bool(config.frustum_culling, seed);
 	seed = _hash_bool(config.gpu_culling_enabled, seed);
 	seed = _hash_bool(config.temporal_coherence, seed);
-	seed = _hash_bool(config.cluster_culling_enabled, seed);
-	seed = _hash_u64(config.cluster_target_size, seed);
-	seed = _hash_float_bits(config.cluster_frustum_slack, seed);
-	seed = _hash_bool(config.cluster_use_morton_order, seed);
-	seed = _hash_bool(config.cluster_use_indirect_dispatch, seed);
 	seed = _hash_float_bits(config.lod_min_screen_size, seed);
 	seed = _hash_float_bits(config.lod_max_distance, seed);
 	seed = _hash_float_bits(config.importance_cull_threshold, seed);

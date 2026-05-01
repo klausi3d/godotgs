@@ -1029,10 +1029,6 @@ void GaussianSplatManager::initialize_module() {
     GLOBAL_DEF("rendering/gaussian_splatting/culling/octree_max_depth", 8);
     GLOBAL_DEF("rendering/gaussian_splatting/culling/min_gaussians_per_leaf", 32);
 
-    // Cluster-level coarse culling (LiteGS-style) - groups splats into clusters for fast AABB testing
-    GLOBAL_DEF("rendering/gaussian_splatting/culling/cluster_culling_enabled", true);
-    GLOBAL_DEF("rendering/gaussian_splatting/culling/cluster_target_size", 128);       // Splats per cluster (32-256)
-    GLOBAL_DEF("rendering/gaussian_splatting/culling/cluster_frustum_slack", 2.0f);    // AABB expansion factor
     // Projection anti-aliasing floor (added to cov2d diagonal in tile binning).
     // 0.05 matches the Inria 3DGS reference sharpness. The previous default of
     // 0.35 was an over-aggressive Mip-Splatting-style dilation we ship without

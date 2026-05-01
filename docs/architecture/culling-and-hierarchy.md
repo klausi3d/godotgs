@@ -46,47 +46,46 @@ The active call chain is:
 
 The cluster-cull stack below is **not** part of this chain.
 
-## Dormant experimental / legacy cluster stack
+## Removed experimental / legacy cluster stack
 
-The following code is registered and compiles, but is never instantiated or invoked from the
-production render path. It is dead weight on the surface: do not assume project settings flow
-through it.
+The following code was deleted after verification that it was never instantiated or invoked from
+the production render path. It was dead weight on the surface: do not assume historical project
+settings flowed through it.
 
-- [../../modules/gaussian_splatting/interfaces/cluster_culler.h](../../modules/gaussian_splatting/interfaces/cluster_culler.h)
-  / [.cpp](../../modules/gaussian_splatting/interfaces/cluster_culler.cpp) — `ClusterCuller`
-  resource. Reads `rendering/gaussian_splatting/culling/cluster_culling_enabled` and
-  `cluster_target_size` (see [../../modules/gaussian_splatting/interfaces/cluster_culler.cpp](../../modules/gaussian_splatting/interfaces/cluster_culler.cpp),
-  `:104-108`). The third related key, `cluster_frustum_slack`, is registered in
+- `modules/gaussian_splatting/interfaces/cluster_culler.h` / `.cpp` — deleted `ClusterCuller`
+  resource. It read `rendering/gaussian_splatting/culling/cluster_culling_enabled` and
+  `cluster_target_size`. The third related key, `cluster_frustum_slack`, was registered in
   [../../modules/gaussian_splatting/core/gaussian_splat_manager.cpp](../../modules/gaussian_splatting/core/gaussian_splat_manager.cpp)
-  (`:1035`) and consumed only as pipeline-state hash input in
-  [../../modules/gaussian_splatting/renderer/render_pipeline_stages.cpp](../../modules/gaussian_splatting/renderer/render_pipeline_stages.cpp)
-  (`:587`); `ClusterCuller` itself does not read it. No production call site constructs
-  `ClusterCuller`.
-- [../../modules/gaussian_splatting/lod/cluster_builder.h](../../modules/gaussian_splatting/lod/cluster_builder.h)
-  / [.cpp](../../modules/gaussian_splatting/lod/cluster_builder.cpp) — CPU Morton clustering helper.
-  Only referenced by `cluster_culler.{h,cpp}`; not used by `GPUCuller` or any pipeline stage.
-- [../../modules/gaussian_splatting/compute/cluster_cull.glsl](../../modules/gaussian_splatting/compute/cluster_cull.glsl)
-  (and its build-time-generated `cluster_cull.glsl.gen.h` header — produced by SCons,
-  not source-controlled) — coarse-pass GPU shader. Loaded only by the dormant
-  `ClusterCuller`; not bound by `RenderPipelineStages` or `GPUSortingPipeline`.
+  and consumed only as pipeline-state hash input in
+  [../../modules/gaussian_splatting/renderer/render_pipeline_stages.cpp](../../modules/gaussian_splatting/renderer/render_pipeline_stages.cpp);
+  `ClusterCuller` itself did not read it. No production call site constructed `ClusterCuller`.
+- `modules/gaussian_splatting/lod/cluster_builder.h` / `.cpp` — deleted CPU Morton clustering
+  helper. It was only referenced by `cluster_culler.{h,cpp}`, not by `GPUCuller` or any pipeline
+  stage.
+- `modules/gaussian_splatting/compute/cluster_cull.glsl` (and its build-time-generated
+  `cluster_cull.glsl.gen.h` header, produced by SCons, not source-controlled) — deleted coarse-pass
+  GPU shader. It was loaded only by the dormant `ClusterCuller`, not bound by
+  `RenderPipelineStages` or `GPUSortingPipeline`.
 - [../../modules/gaussian_splatting/interfaces/gpu_culler.h](../../modules/gaussian_splatting/interfaces/gpu_culler.h)
-  (`:318`) — `Ref<ClusterCuller> cluster_culler;` field on `GPUCuller`. **Never assigned anywhere
-  in the module** (verified 2026-04-26 via full-tree grep for `cluster_culler =`,
-  `cluster_culler.instantiate`, `memnew(ClusterCuller`, `new ClusterCuller`).
+  previously carried a `Ref<ClusterCuller> cluster_culler;` field on `GPUCuller`. It was **never
+  assigned anywhere in the module** (verified 2026-04-26 via full-tree grep for
+  `cluster_culler =`, `cluster_culler.instantiate`, `memnew(ClusterCuller`, `new ClusterCuller`)
+  and has now been removed.
 - [../../modules/gaussian_splatting/renderer/pipeline_io_contracts.h](../../modules/gaussian_splatting/renderer/pipeline_io_contracts.h)
-  (`:34-49`) — `ClusterCullIndirectDispatchLayout` struct and its `static_assert` size checks. The
-  layout exists for the dormant shader; no production producer or consumer fills it.
+  previously carried the `ClusterCullIndirectDispatchLayout` struct and its `static_assert` size
+  checks. The layout existed for the dormant shader; no production producer or consumer filled it.
 
-The class is registered at [../../modules/gaussian_splatting/register_types.cpp](../../modules/gaussian_splatting/register_types.cpp)
-(`:142`, `GDREGISTER_CLASS(ClusterCuller);`) but never instantiated in production C++. Do not
-assume project settings reach this path.
+The class registration at [../../modules/gaussian_splatting/register_types.cpp](../../modules/gaussian_splatting/register_types.cpp)
+(`GDREGISTER_CLASS(ClusterCuller);`) was removed with the class. Do not assume project settings
+reach this path.
 
 The `culling_config.cluster_culling_enabled`, `cluster_target_size`, `cluster_frustum_slack`,
 `cluster_use_morton_order`, and `cluster_use_indirect_dispatch` fields on
-`GPUCuller::CullingConfig` (see [../../modules/gaussian_splatting/interfaces/gpu_culler.h](../../modules/gaussian_splatting/interfaces/gpu_culler.h),
-`:51-57`) are only consumed by pipeline-state hashing in
+`GPUCuller::CullingConfig` (see [../../modules/gaussian_splatting/interfaces/gpu_culler.h](../../modules/gaussian_splatting/interfaces/gpu_culler.h))
+were only consumed by pipeline-state hashing in
 [../../modules/gaussian_splatting/renderer/render_pipeline_stages.cpp](../../modules/gaussian_splatting/renderer/render_pipeline_stages.cpp)
-(`:585-589`). They influence cache keys but do not gate any live cull work.
+and were removed with that dead hash input. They influenced cache keys but did not gate any live
+cull work.
 
 ### Note on `GaussianData::octree`
 
@@ -109,8 +108,8 @@ operate on whole-scene `GaussianData` and pack legacy AABB data, not tier-2 chun
 metadata. Any reuse must be a rewrite, not a revival: cluster records become chunk-local, the
 data flow runs through `visible_chunk_buffer` and `splat_ref_buffer`, and new shader sources
 (`instance_cluster_dispatch.glsl`, `cluster_cull_instance.glsl`,
-`cluster_range_dispatch.glsl`, `cluster_depth_compute.glsl`) would replace the legacy shader at
-[../../modules/gaussian_splatting/compute/cluster_cull.glsl](../../modules/gaussian_splatting/compute/cluster_cull.glsl).
+`cluster_range_dispatch.glsl`, `cluster_depth_compute.glsl`) would replace the deleted legacy
+`modules/gaussian_splatting/compute/cluster_cull.glsl` shader.
 The current names and project settings may be reused, but the implementation must be redone
 from the tier-2 instance contract.
 

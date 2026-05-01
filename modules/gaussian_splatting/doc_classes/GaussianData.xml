@@ -188,19 +188,19 @@
 			<return type="void" />
 			<param index="0" name="animation" type="GaussianAnimationStateMachine" />
 			<description>
-				Assigns an animation state machine resource that drives per-splat animation of position, color, opacity, scale, and rotation over time.
+				Assigns an animation state machine resource that drives per-splat animation of position, color, opacity, scale, and rotation over time. [b]Opt-in:[/b] [GaussianAnimationStateMachine] is a scripted resource and is never auto-instantiated by the engine runtime. Construct one explicitly (typically from GDScript) and assign it here to activate animation. See the [code]docs/features/animation.md[/code] guide for a worked example.
 			</description>
 		</method>
 		<method name="get_animation_state_machine">
 			<return type="GaussianAnimationStateMachine" />
 			<description>
-				Returns the animation state machine resource, or [code]null[/code] if none is assigned.
+				Returns the animation state machine resource, or [code]null[/code] if none is assigned. The default is [code]null[/code]; the engine never creates one implicitly.
 			</description>
 		</method>
 		<method name="has_animation">
 			<return type="bool" />
 			<description>
-				Returns [code]true[/code] if an animation state machine resource is assigned and valid.
+				Returns [code]true[/code] if an animation state machine resource has been explicitly assigned (via [method set_animation_state_machine]) and is valid.
 			</description>
 		</method>
 		<method name="update_animation">

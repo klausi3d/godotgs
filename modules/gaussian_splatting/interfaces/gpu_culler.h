@@ -11,14 +11,12 @@
 #include "core/templates/vector.h"
 #include "servers/rendering/rendering_device.h"
 #include "../lod/hierarchical_splat_structure.h"
-#include "cluster_culler.h"
 #include "../renderer/batched_async_readback.h"
 #include <cstdint>
 #include <memory>
 
 // Forward declarations
 class GaussianSplatManager;
-class ClusterCuller;
 class GaussianData;
 class IOverflowAutoTuner;
 struct RasterOverflowStats;
@@ -48,13 +46,6 @@ public:
         bool gpu_culling_readback_enabled = true; // enable GPU readback so GPU cull can drive visibility
         bool temporal_coherence = true;
 
-        // Cluster-level coarse culling (LiteGS-style)
-        // Groups splats into clusters of 32-256 and tests cluster AABBs first
-        bool cluster_culling_enabled = true;         // Enable two-level cluster culling
-        uint32_t cluster_target_size = 128;          // Target splats per cluster (32-256)
-        float cluster_frustum_slack = 2.0f;          // Slack factor for cluster AABB tests
-        bool cluster_use_morton_order = true;        // Use Morton (Z-order) curve for spatial locality
-        bool cluster_use_indirect_dispatch = true;   // Use indirect dispatch for fine pass
         float lod_min_screen_size = 1.5f;
         float lod_max_distance = 150.0f;
         bool lod_bias_override = false;
@@ -171,14 +162,6 @@ public:
         bool used_instance_pipeline = false;
         bool used_hierarchical_culling = false;
         float culling_time_ms = 0.0f;
-
-        // Cluster-level culling stats
-        bool used_cluster_culling = false;
-        uint32_t total_clusters = 0;
-        uint32_t visible_clusters = 0;
-        uint32_t culled_clusters = 0;
-        float cluster_cull_time_ms = 0.0f;
-        float cluster_cull_ratio = 0.0f;  // Percentage of splats skipped via cluster cull
     };
 
     GPUCuller();
@@ -313,10 +296,6 @@ private:
     InstancePipelineInputs instance_inputs;
     bool instance_inputs_valid = false;
     uint32_t last_instance_visible_chunk_count = 0;
-
-    // Cluster-level coarse culling
-    Ref<ClusterCuller> cluster_culler;
-    bool clusters_need_rebuild = true;
 
     // PERF (#634): Batched async readback to reduce CPU/GPU sync points
     Ref<BatchedAsyncReadback> batched_readback;

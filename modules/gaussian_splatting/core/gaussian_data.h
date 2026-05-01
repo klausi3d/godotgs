@@ -308,7 +308,13 @@ private:
     static Dictionary _brush_stroke_to_dict(const BrushStroke &p_stroke);
     static BrushStroke _brush_stroke_from_dict(const Dictionary &p_dict);
 
-    // Animation system integration (v0.6.0)
+    // Animation system integration (v0.6.0).
+    //
+    // Opt-in feature surface: the engine runtime never auto-instantiates a
+    // GaussianAnimationStateMachine here. This Ref defaults to null and only becomes active
+    // when a project explicitly assigns one through set_animation_state_machine() (typically
+    // from GDScript) or the public C++ API. See docs/features/animation.md for the
+    // user-facing introduction.
     Ref<GaussianSplatting::GaussianAnimationStateMachine> animation_state_machine;
     Ref<GaussianSplatting::GaussianIncrementalSaver> incremental_saver;
     bool animation_enabled = true;

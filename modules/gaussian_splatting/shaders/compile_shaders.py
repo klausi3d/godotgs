@@ -384,13 +384,6 @@ RUNTIME_SHADER_MATRIX: tuple[ShaderMatrixEntry, ...] = (
         ),
     ),
     ShaderMatrixEntry(
-        key="cluster_cull",
-        source=COMPUTE_DIR / "cluster_cull.glsl",
-        stages=("compute",),
-        issue_ids=("#1267", "#1318", "#1320", "#1322"),
-        variants=(Variant("default", (), ("#1267", "#1320", "#1322")),),
-    ),
-    ShaderMatrixEntry(
         key="frustum_cull",
         source=COMPUTE_DIR / "frustum_cull.glsl",
         stages=("compute",),
@@ -486,28 +479,6 @@ ABI_CONTRACTS: tuple[ValidationContract, ...] = (
         ),
     ),
     ValidationContract(
-        key="cluster_cull_params",
-        issue_id=ISSUE_ABI,
-        description="Cluster cull parameter block size is validated on host and shader sides.",
-        files=(
-            FilePatternSet(
-                path=MODULE_DIR / "interfaces" / "cluster_culler.cpp",
-                patterns=(
-                    r"struct ClusterCullParamsGPU",
-                    r"static_assert\(sizeof\(ClusterCullParamsGPU\) == 256",
-                ),
-            ),
-            FilePatternSet(
-                path=COMPUTE_DIR / "cluster_cull.glsl",
-                patterns=(
-                    r"layout\(set = 0, binding = 4, std140\) uniform ClusterCullParams",
-                    r"uint total_clusters;",
-                    r"uint fine_cull_workgroup_size;",
-                ),
-            ),
-        ),
-    ),
-    ValidationContract(
         key="tile_projection_payload",
         issue_id=ISSUE_ABI,
         description="Tile projection payload ABI remains explicitly asserted.",
@@ -557,22 +528,6 @@ COUNTER_INIT_CONTRACTS: tuple[ValidationContract, ...] = (
                 patterns=(
                     r"static const uint32_t zero_instance_counters\[2\] = \{ 0u, 0u \};",
                     r"buffer_update\(p_inputs\.counter_buffer, 0, sizeof\(zero_instance_counters\), zero_instance_counters\);",
-                ),
-            ),
-        ),
-    ),
-    ValidationContract(
-        key="cluster_culler_dispatch_reset",
-        issue_id=ISSUE_COUNTER_INIT,
-        description="Cluster cull dispatch arguments/visibility buffers are cleared per dispatch.",
-        files=(
-            FilePatternSet(
-                path=MODULE_DIR / "interfaces" / "cluster_culler.cpp",
-                patterns=(
-                    r"Clear indirect dispatch buffer",
-                    r"clear_args\.dispatch_z = 0;",
-                    r"buffer_update\(indirect_dispatch_buffer, 0, sizeof\((?:IndirectDispatchArgs|GaussianSplatting::ClusterCullIndirectDispatchLayout)\), &clear_args\);",
-                    r"buffer_clear\(cluster_visibility_buffer, 0, visibility_bytes\);",
                 ),
             ),
         ),

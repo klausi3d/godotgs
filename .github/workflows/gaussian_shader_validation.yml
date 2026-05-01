@@ -11,7 +11,6 @@ on:
       - "modules/gaussian_splatting/renderer/tile_render_types.h"
       - "modules/gaussian_splatting/renderer/tile_renderer.cpp"
       - "modules/gaussian_splatting/interfaces/gpu_culler.cpp"
-      - "modules/gaussian_splatting/interfaces/cluster_culler.cpp"
       - ".github/workflows/gaussian_shader_validation.yml"
   push:
     branches: [master, develop]
@@ -23,7 +22,6 @@ on:
       - "modules/gaussian_splatting/renderer/tile_render_types.h"
       - "modules/gaussian_splatting/renderer/tile_renderer.cpp"
       - "modules/gaussian_splatting/interfaces/gpu_culler.cpp"
-      - "modules/gaussian_splatting/interfaces/cluster_culler.cpp"
       - ".github/workflows/gaussian_shader_validation.yml"
   workflow_dispatch:
   merge_group:
