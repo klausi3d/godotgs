@@ -1805,9 +1805,9 @@ Audience: renderer, streaming, and GPU-pipeline engineers</p>
 <li><code>modules/gaussian_splatting/renderer/render_pipeline_stages.cpp</code>: wires instance cull and sort stages together and selects the chunk-domain path.</li>
 <li><code>modules/gaussian_splatting/renderer/render_streaming_orchestrator.cpp</code>: streaming publisher of atlas, <code>visible_chunk_buffer</code>, <code>splat_ref_buffer</code>, counters, and sort buffers.</li>
 <li><code>modules/gaussian_splatting/renderer/resident_instance_contract_publisher.cpp</code>: resident publisher of the same tier-2 contract.</li>
-<li><code>modules/gaussian_splatting/interfaces/cluster_culler.h/.cpp</code>: existing registered stub; it compiles and allocates buffers, but is not invoked by <code>GPUCuller::cull_for_view()</code> or <code>GPUSortingPipeline</code>.</li>
-<li><code>modules/gaussian_splatting/lod/cluster_builder.h/.cpp</code>: existing CPU Morton clustering helper; today it operates on whole <code>GaussianData</code> and packs legacy AABB data, not tier-2 chunk-local instance metadata.</li>
-<li><code>modules/gaussian_splatting/compute/cluster_cull.glsl</code>: legacy standalone coarse-pass shader; not wired into the tier-2 pipeline.</li>
+<li><code>modules/gaussian_splatting/interfaces/cluster_culler.h/.cpp</code>: deleted legacy registered stub; it allocated buffers, but was not invoked by <code>GPUCuller::cull_for_view()</code> or <code>GPUSortingPipeline</code>.</li>
+<li><code>modules/gaussian_splatting/lod/cluster_builder.h/.cpp</code>: deleted CPU Morton clustering helper; it operated on whole <code>GaussianData</code> and packed legacy AABB data, not tier-2 chunk-local instance metadata.</li>
+<li><code>modules/gaussian_splatting/compute/cluster_cull.glsl</code>: deleted legacy standalone coarse-pass shader; not wired into the tier-2 pipeline.</li>
 </ul>
 <h2 id="3-design">3. Design<a class="headerlink" href="#3-design" title="Permanent link">¶</a></h2>
 <p>Clusters are chunk-local and are generated at runtime when chunk payloads are already being read on CPU for atlas publication. Do not extend the active renderer around legacy <code>GaussianData</code> global clustering. Instead, publish cluster metadata as part of the tier-2 instance contract so the active flow becomes:</p>
@@ -1818,7 +1818,7 @@ Audience: renderer, streaming, and GPU-pipeline engineers</p>
 <li><code>vec4 center_radius</code> where <code>xyz</code> is chunk-local center and <code>w</code> is conservative radius.</li>
 <li><code>uvec4 range</code> where <code>x = splat_offset_in_chunk</code>, <code>y = splat_count</code>, <code>z/w = reserved</code>.</li>
 </ul>
-<p>This is sphere-based, not AABB-based, because tier-2 already transforms chunk-local bounds through instance transforms in <code>frustum_cull.glsl</code>; cluster cull should reuse that model. Existing <code>ClusterCuller</code>/<code>ClusterBuilder</code> names and settings may be reused, but their implementation should be rewritten around instance/chunk inputs.</p>
+<p>This is sphere-based, not AABB-based, because tier-2 already transforms chunk-local bounds through instance transforms in <code>frustum_cull.glsl</code>; cluster cull should reuse that model. Legacy <code>ClusterCuller</code>/<code>ClusterBuilder</code> names and settings may be reused, but any new implementation must be rewritten around instance/chunk inputs.</p>
 <h2 id="4-data-flow">4. Data Flow<a class="headerlink" href="#4-data-flow" title="Permanent link">¶</a></h2>
 <ol>
 <li>Streaming/resident publication allocates and fills:</li>
@@ -1900,7 +1900,7 @@ Audience: renderer, streaming, and GPU-pipeline engineers</p>
 <ol>
 <li>Add an architecture-neutral <code>ClusterMetaGPU</code>/<code>ChunkClusterRangeGPU</code> layout and optional cluster fields to <code>InstancePipelineBuffers</code>.</li>
 <li>Add contract validation helpers for cluster buffers without breaking the current non-cluster path.</li>
-<li>Refactor <code>lod/cluster_builder.*</code> to build chunk-local sphere clusters and ranges from a chunk snapshot.</li>
+<li>Add a cluster builder that produces chunk-local sphere clusters and ranges from a chunk snapshot.</li>
 <li>Generate cluster metadata in the streaming upload path and publish GPU buffers/capacities from <code>render_streaming_orchestrator.cpp</code>.</li>
 <li>Generate the same metadata in <code>resident_instance_contract_publisher.cpp</code>.</li>
 <li>Add <code>instance_cluster_dispatch.glsl</code>, <code>cluster_cull_instance.glsl</code>, and <code>cluster_range_dispatch.glsl</code>.</li>
@@ -1929,7 +1929,7 @@ Audience: renderer, streaming, and GPU-pipeline engineers</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 28, 2026 13:27:17 UTC">April 28, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 1, 2026 07:39:23 UTC">May 1, 2026</span>
   </span>
 
     

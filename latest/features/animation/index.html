@@ -1814,6 +1814,9 @@
 <h1 id="animation">Animation<a class="headerlink" href="#animation" title="Permanent link">¶</a></h1>
 <h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">¶</a></h2>
 <p>Animate per-splat properties (position, color, opacity, scale, rotation) over time using <code>GaussianAnimationStateMachine</code>. The animation system provides clip-based playback, keyframe interpolation with multiple curve types, and weighted blending between clips.</p>
+<blockquote>
+<p><strong>Opt-in feature.</strong> <code>GaussianAnimationStateMachine</code> is a scripted <code>Resource</code> and is <strong>not</strong> instantiated automatically by the engine. Per-splat animation only runs when a project explicitly creates one (from GDScript or via the public C++ API) and attaches it through <code>GaussianData.set_animation_state_machine()</code>. By default <code>GaussianData.animation_state_machine</code> is <code>null</code> and <code>GaussianData.has_animation()</code> returns <code>false</code>.</p>
+</blockquote>
 <h2 id="animation-system-overview">Animation system overview<a class="headerlink" href="#animation-system-overview" title="Permanent link">¶</a></h2>
 <p><code>GaussianAnimationStateMachine</code> is a <code>Resource</code>-derived class that holds animation clips, tracks, and keyframes. Each clip contains one or more tracks, and each track targets a specific <code>AnimationProperty</code>. Keyframes store timed values with configurable interpolation.</p>
 <table>
@@ -2222,7 +2225,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="April 28, 2026 13:27:19 UTC">April 28, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 1, 2026 07:39:25 UTC">May 1, 2026</span>
   </span>
 
     
