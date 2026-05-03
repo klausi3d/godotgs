@@ -4,32 +4,6 @@
 #include "core/os/os.h"
 #include "../logger/gs_logger.h"
 
-namespace {
-
-static void _apply_instance_pipeline_overrides(GPUSortingConfig &config) {
-    bool needs_override = config.key_bits != 64;
-    if (needs_override) {
-        config.key_bits = 64;
-        if (config.tile_bits > config.key_bits) {
-            config.tile_bits = config.key_bits;
-        }
-        if (config.depth_bits > config.key_bits) {
-            config.depth_bits = config.key_bits;
-        }
-        if (config.tile_bits + config.depth_bits > config.key_bits) {
-            if (config.tile_bits >= config.key_bits) {
-                config.tile_bits = config.key_bits;
-                config.depth_bits = 0;
-            } else {
-                config.depth_bits = config.key_bits - config.tile_bits;
-            }
-        }
-        GS_LOG_GPU_SORT_INFO("[GPUSortingConfig] Instance pipeline requires 64-bit sort keys; overriding settings.");
-    }
-}
-
-} // namespace
-
 // Project settings paths
 const String GPUSortingConfig::SECTION_PATH = "rendering/gaussian_splatting/gpu_sorting/";
 const String GPUSortingConfig::TARGET_TIME_PATH = "rendering/gaussian_splatting/sorting/target_sort_time_ms";
@@ -78,12 +52,14 @@ void GPUSortingConfig::load_from_project_settings() {
             profiling_preserve_gpu_timestamps = ps->get_setting(PROFILING_PRESERVE_TIMESTAMPS_PATH, profiling_preserve_gpu_timestamps);
             enable_compute_raster = ps->get_setting(ENABLE_COMPUTE_RASTER_PATH, enable_compute_raster);
             max_raster_splats_per_tile = ps->get_setting(MAX_RASTER_SPLATS_PER_TILE_PATH, max_raster_splats_per_tile);
+            key_bits = ps->get_setting(KEY_BITS_PATH, key_bits);
+            tile_bits = ps->get_setting(TILE_BITS_PATH, tile_bits);
+            depth_bits = ps->get_setting(DEPTH_BITS_PATH, depth_bits);
+            enable_tie_breaker = ps->get_setting(ENABLE_TIE_BREAKER_PATH, enable_tie_breaker);
             strict_global_sort = ps->get_setting(STRICT_GLOBAL_SORT_PATH, strict_global_sort);
             validate_sorted_output = ps->get_setting(VALIDATE_SORTED_OUTPUT_PATH, validate_sorted_output);
             enable_stage_timestamps = ps->get_setting(ENABLE_STAGE_TIMESTAMPS_PATH, enable_stage_timestamps);
             subgroup_prefix_mode = static_cast<uint8_t>(ps->get_setting(SUBGROUP_PREFIX_MODE_PATH, int(subgroup_prefix_mode)));
-            _apply_instance_pipeline_overrides(*this);
-
             if (enable_performance_logging) {
                 print_config_summary();
             }
@@ -98,7 +74,7 @@ void GPUSortingConfig::load_from_project_settings() {
     bool has_overlap = ps->has_setting(MAX_OVERLAP_RECORDS_PATH);
     max_sort_elements = ps->get_setting(MAX_ELEMENTS_PATH, 50000000);
     max_overlap_records = ps->get_setting(MAX_OVERLAP_RECORDS_PATH, 100000000);
-    max_raster_splats_per_tile = ps->get_setting(MAX_RASTER_SPLATS_PER_TILE_PATH, 8192);
+    max_raster_splats_per_tile = ps->get_setting(MAX_RASTER_SPLATS_PER_TILE_PATH, 65536);
     GS_LOG_GPU_SORT_INFO(vformat("[GPUSortingConfig] LOADED: max_sort_elements=%d max_overlap_records=%d (has_elements=%d has_overlap=%d)",
             max_sort_elements, max_overlap_records, int(has_elements), int(has_overlap)));
 
@@ -120,8 +96,6 @@ void GPUSortingConfig::load_from_project_settings() {
     validate_sorted_output = ps->get_setting(VALIDATE_SORTED_OUTPUT_PATH, false);
     enable_stage_timestamps = ps->get_setting(ENABLE_STAGE_TIMESTAMPS_PATH, true);
     subgroup_prefix_mode = static_cast<uint8_t>(ps->get_setting(SUBGROUP_PREFIX_MODE_PATH, int(SUBGROUP_PREFIX_AUTO)));
-
-    _apply_instance_pipeline_overrides(*this);
 
     if (enable_performance_logging) {
         print_config_summary();
@@ -170,7 +144,7 @@ void GPUSortingConfig::reset_to_defaults() {
     target_sort_time_ms = 2.0f;
     max_sort_elements = 50000000;
     max_overlap_records = 100000000;
-    max_raster_splats_per_tile = 8192;
+    max_raster_splats_per_tile = 65536;
     radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS;
     workgroup_size = GPUSortingConstants::DEFAULT_WORKGROUP_SIZE;
     key_bits = 32;  // Default 32-bit for 8 passes instead of 16
@@ -549,7 +523,7 @@ void initialize_gpu_sorting_config() {
 	gs::sorting_settings::register_canonical_target_sort_time_setting(ps, 2.0f);
 	GLOBAL_DEF(GPUSortingConfig::MAX_ELEMENTS_PATH, 50000000);
     GLOBAL_DEF(GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH, 100000000);
-    GLOBAL_DEF(GPUSortingConfig::MAX_RASTER_SPLATS_PER_TILE_PATH, 8192);
+    GLOBAL_DEF(GPUSortingConfig::MAX_RASTER_SPLATS_PER_TILE_PATH, 65536);
     GLOBAL_DEF(GPUSortingConfig::RADIX_BITS_PATH, GPUSortingConstants::DEFAULT_RADIX_BITS);
     GLOBAL_DEF(GPUSortingConfig::WORKGROUP_SIZE_PATH, GPUSortingConstants::DEFAULT_WORKGROUP_SIZE);
     GLOBAL_DEF(GPUSortingConfig::KEY_BITS_PATH, 64);

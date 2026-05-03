@@ -30,7 +30,7 @@ public:
         if (had_previous_value) {
             settings->set_setting(setting_path, previous_value);
             settings->set_order(setting_path, previous_order);
-        } else {
+        } else if (settings->has_setting(setting_path)) {
             settings->clear(setting_path);
         }
 

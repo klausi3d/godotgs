@@ -2,6 +2,7 @@
 #define GS_TILE_RASTER_COMMON_GLSL
 
 #include "gs_instance_layout.glsl"
+#include "gs_alpha_threshold.glsl"
 
 const uint GS_DEBUG_SPLAT_AUDIT_MAX_SAMPLES = 64u;
 const uint GS_DEBUG_SPLAT_AUDIT_MATCHES_MAX = 4u;
@@ -37,8 +38,6 @@ layout(set = 0, binding = 15, std430) readonly buffer InstanceIndirectDispatch {
 // For R8G8B8A8_UNORM (8-bit per channel), 1 LSB = 1/255
 // Use slightly more than 1 LSB for effective banding reduction
 const float GS_DITHER_AMPLITUDE = 1.0 / 255.0;
-const float GS_RASTER_ALPHA_REJECT_Q = 18.41;
-
 // Simple hash-based noise for dithering (spatially varying)
 // Uses fragment position to generate pseudo-random value in [-0.5, 0.5]
 float gs_dither_noise(vec2 frag_coord) {
@@ -130,13 +129,99 @@ uint gs_get_visible_gaussian_count() {
 // gs_shared_projected_gaussians) which are not available in fragment shaders.
 #if GS_TILE_RASTER_USE_SHARED
 
+#ifdef GS_COLLECT_RASTER_STATS
+struct GSRasterStatsCounters {
+    uint iterated;
+    uint contributed;
+    uint reject_sorted;
+    uint reject_gaussian;
+    uint reject_base_opacity;
+    uint reject_nan_inf;
+    uint reject_weight;
+    uint reject_alpha;
+    uint reject_index_mismatch;
+    // Previously-uninstrumented continue paths in the inner loop. Without
+    // these, perf-capture lumped them all into "iterated but neither
+    // contributed nor rejected", which made it impossible to tell whether
+    // the wasted work was alpha-blend math (worth chasing) or early conic
+    // rejection (cheap and already happening).
+    uint reject_quadratic;
+    uint reject_lod_opacity;
+    uint reject_blend_alpha;
+    bool break_remaining;
+    bool break_final_alpha;
+    bool break_subgroup_early_exit;
+};
+
+void gs_reset_raster_stats(out GSRasterStatsCounters stats) {
+    stats.iterated = 0u;
+    stats.contributed = 0u;
+    stats.reject_sorted = 0u;
+    stats.reject_gaussian = 0u;
+    stats.reject_base_opacity = 0u;
+    stats.reject_nan_inf = 0u;
+    stats.reject_weight = 0u;
+    stats.reject_alpha = 0u;
+    stats.reject_index_mismatch = 0u;
+    stats.reject_quadratic = 0u;
+    stats.reject_lod_opacity = 0u;
+    stats.reject_blend_alpha = 0u;
+    stats.break_remaining = false;
+    stats.break_final_alpha = false;
+    stats.break_subgroup_early_exit = false;
+}
+
+bool gs_should_sample_raster_stats(vec2 frag_coord) {
+    bool collect_raster_stats = params.debug_flags.y > 0.5;
+    if (!collect_raster_stats) {
+        return false;
+    }
+    ivec2 pixel_i = ivec2(frag_coord);
+    int local_x = pixel_i.x % int(TILE_SIZE);
+    int local_y = pixel_i.y % int(TILE_SIZE);
+    return (local_x == (int(TILE_SIZE) >> 1)) && (local_y == (int(TILE_SIZE) >> 1));
+}
+
+void gs_flush_raster_stats(bool sample_raster_stats, GSRasterStatsCounters stats, bool has_depth, float alpha) {
+    if (!sample_raster_stats) {
+        return;
+    }
+    atomicAdd(overflow_stats.raster_sample_count, 1u);
+    atomicAdd(overflow_stats.raster_splats_iterated, stats.iterated);
+    atomicAdd(overflow_stats.raster_splats_contributed, stats.contributed);
+    atomicAdd(overflow_stats.raster_reject_sorted_idx_oob, stats.reject_sorted);
+    atomicAdd(overflow_stats.raster_reject_gaussian_idx_oob, stats.reject_gaussian);
+    atomicAdd(overflow_stats.raster_reject_base_opacity, stats.reject_base_opacity);
+    atomicAdd(overflow_stats.raster_reject_nan_inf, stats.reject_nan_inf);
+    atomicAdd(overflow_stats.raster_reject_weight, stats.reject_weight);
+    atomicAdd(overflow_stats.raster_reject_alpha, stats.reject_alpha);
+    atomicAdd(overflow_stats.raster_reject_index_mismatch, stats.reject_index_mismatch);
+    atomicAdd(overflow_stats.raster_reject_quadratic, stats.reject_quadratic);
+    atomicAdd(overflow_stats.raster_reject_lod_opacity, stats.reject_lod_opacity);
+    atomicAdd(overflow_stats.raster_reject_blend_alpha, stats.reject_blend_alpha);
+    if (stats.break_remaining) {
+        atomicAdd(overflow_stats.raster_break_remaining_alpha, 1u);
+    }
+    if (stats.break_final_alpha) {
+        atomicAdd(overflow_stats.raster_break_final_alpha, 1u);
+    }
+    if (stats.break_subgroup_early_exit) {
+        atomicAdd(overflow_stats.raster_break_subgroup_early_exit, 1u);
+    }
+    if (has_depth) {
+        atomicAdd(overflow_stats.raster_has_depth, 1u);
+    }
+    uint alpha_q10 = uint(clamp(alpha, 0.0, 1.0) * 1024.0 + 0.5);
+    atomicAdd(overflow_stats.raster_alpha_sum_q10, alpha_q10);
+}
+#endif
+
 // Processes a batch of splats that are ALL in shared memory (indices 0..batch_size-1).
 // Per-pixel state (final_color, final_depth, final_normal, has_depth) is carried
 // across batches by the caller.  Returns true if the pixel is alpha-saturated.
 //
 // This function contains the core blending loop extracted from gs_rasterize_pixel.
-// It omits debug audit tracking and raster stats for simplicity; those are only
-// available in the single-pass path.
+// It omits debug audit tracking; raster stats are supported in perf-capture builds.
 bool gs_rasterize_splat_batch(
         vec2 pixel_center,
         uint batch_size,
@@ -149,10 +234,26 @@ bool gs_rasterize_splat_batch(
         inout float final_depth,
         inout float weighted_depth,
         inout vec3 final_normal,
-        inout bool has_depth) {
+        inout bool has_depth
+#ifdef GS_COLLECT_RASTER_STATS
+        ,
+        bool sample_raster_stats,
+        inout GSRasterStatsCounters stats
+#endif
+        ) {
     for (uint i = 0u; i < batch_size; ++i) {
+#ifdef GS_COLLECT_RASTER_STATS
+        if (sample_raster_stats) {
+            stats.iterated++;
+        }
+#endif
         uint sorted_idx = gs_shared_sorted_values[i];
         if (sorted_idx >= gs_get_visible_gaussian_count()) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                stats.reject_sorted++;
+            }
+#endif
             continue;
         }
 
@@ -172,12 +273,27 @@ bool gs_rasterize_splat_batch(
         gs_unpack_projected_gaussian(payload, screen_px, linear_depth, base_opacity, unpacked_color, unpacked_normal, conic, stored_global_idx);
 
         if (stored_global_idx != sorted_idx) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                stats.reject_index_mismatch++;
+            }
+#endif
             continue;
         }
         if (base_opacity <= 0.0) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                stats.reject_base_opacity++;
+            }
+#endif
             continue;
         }
-        if (base_opacity * lod_blend <= 1e-4) {
+        if (base_opacity * lod_blend <= GS_RASTER_ALPHA_THRESHOLD) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                stats.reject_lod_opacity++;
+            }
+#endif
             continue;
         }
 
@@ -185,16 +301,31 @@ bool gs_rasterize_splat_batch(
         float quadratic = conic.x * diff.x * diff.x + 2.0 * conic.y * diff.x * diff.y + conic.z * diff.y * diff.y;
         quadratic = max(quadratic, 0.0);
         if (quadratic > GS_RASTER_ALPHA_REJECT_Q) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                stats.reject_quadratic++;
+            }
+#endif
             continue;
         }
         float weight = gs_exp_fast(-0.5 * quadratic);
         if (weight <= 0.0) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                stats.reject_weight++;
+            }
+#endif
             continue;
         }
 
         float alpha = clamp(base_opacity * weight, 0.0, 0.99);
         alpha *= lod_blend;
-        if (alpha <= 1e-4) {
+        if (alpha <= GS_RASTER_ALPHA_THRESHOLD) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                stats.reject_alpha++;
+            }
+#endif
             continue;
         }
 
@@ -214,14 +345,29 @@ bool gs_rasterize_splat_batch(
 
         float remaining_alpha = 1.0 - final_color.a;
         if (remaining_alpha <= 1e-3) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                stats.break_remaining = true;
+            }
+#endif
             return true;
         }
 
         float blend_alpha = alpha * remaining_alpha;
         if (blend_alpha <= 0.0) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                stats.reject_blend_alpha++;
+            }
+#endif
             continue;
         }
 
+#ifdef GS_COLLECT_RASTER_STATS
+        if (sample_raster_stats) {
+            stats.contributed++;
+        }
+#endif
         final_color.rgb += base_color * blend_alpha;
         final_color.a = clamp(final_color.a + blend_alpha, 0.0, 1.0);
         final_normal += unpacked_normal * blend_alpha;
@@ -230,6 +376,11 @@ bool gs_rasterize_splat_batch(
         has_depth = true;
 
         if (final_color.a >= 0.995) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                stats.break_final_alpha = true;
+            }
+#endif
             return true;
         }
 
@@ -238,6 +389,11 @@ bool gs_rasterize_splat_batch(
         bool all_saturated;
         GS_SUBGROUP_EARLY_EXIT_IF_ALL_SATURATED(pixel_near_saturated, all_saturated);
         if (all_saturated) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                stats.break_subgroup_early_exit = true;
+            }
+#endif
             return true;
         }
 #endif
@@ -293,6 +449,9 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
     uint local_reject_nan_inf = 0u;
     uint local_reject_weight = 0u;
     uint local_reject_alpha = 0u;
+    uint local_reject_quadratic = 0u;
+    uint local_reject_lod_opacity = 0u;
+    uint local_reject_blend_alpha = 0u;
     bool local_break_remaining = false;
     bool local_break_final_alpha = false;
     bool local_break_subgroup_early_exit = false;
@@ -397,7 +556,12 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
             }
             continue;
         }
-        if (base_opacity * lod_blend <= 1e-4) {
+        if (base_opacity * lod_blend <= GS_RASTER_ALPHA_THRESHOLD) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                local_reject_lod_opacity++;
+            }
+#endif
             continue;
         }
 
@@ -422,6 +586,11 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
         float quadratic = conic.x * dx * dx + 2.0 * conic.y * dx * dy + conic.z * dy * dy;
         quadratic = max(quadratic, 0.0);
         if (quadratic > GS_RASTER_ALPHA_REJECT_Q) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                local_reject_quadratic++;
+            }
+#endif
             continue;
         }
 
@@ -445,7 +614,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
         // Note: lod_blend is hoisted outside loop since it only depends on uniforms
         alpha *= lod_blend;
 
-        if (alpha <= 1e-4) {
+        if (alpha <= GS_RASTER_ALPHA_THRESHOLD) {
 #ifdef GS_COLLECT_RASTER_STATS
             if (sample_raster_stats) {
                 local_reject_alpha++;
@@ -491,6 +660,11 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
 
         float blend_alpha = alpha * remaining_alpha;
         if (blend_alpha <= 0.0) {
+#ifdef GS_COLLECT_RASTER_STATS
+            if (sample_raster_stats) {
+                local_reject_blend_alpha++;
+            }
+#endif
             continue;
         }
 
@@ -554,6 +728,9 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
         atomicAdd(overflow_stats.raster_reject_nan_inf, local_reject_nan_inf);
         atomicAdd(overflow_stats.raster_reject_weight, local_reject_weight);
         atomicAdd(overflow_stats.raster_reject_alpha, local_reject_alpha);
+        atomicAdd(overflow_stats.raster_reject_quadratic, local_reject_quadratic);
+        atomicAdd(overflow_stats.raster_reject_lod_opacity, local_reject_lod_opacity);
+        atomicAdd(overflow_stats.raster_reject_blend_alpha, local_reject_blend_alpha);
         if (local_break_remaining) {
             atomicAdd(overflow_stats.raster_break_remaining_alpha, 1u);
         }

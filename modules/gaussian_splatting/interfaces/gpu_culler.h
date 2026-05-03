@@ -69,7 +69,11 @@ public:
         // Opacity-aware bounding (FlashGS optimization)
         // When enabled, reduces tile-Gaussian pairs by ~94% using opacity-based radius
         bool opacity_aware_culling = true;
-        float visibility_threshold = 0.01f; // tau: minimum visible contribution
+        float visibility_threshold = 1.0f / 255.0f; // tau: minimum visible contribution
+        // Per-splat hard cull at projection — matches PlayCanvas alphaClip default.
+        // Splats with opacity <= alpha_clip are rejected BEFORE binning. Separate
+        // knob from visibility_threshold (which is the radius-bound tau).
+        float alpha_clip = 0.3f;
 
         // Distance-based probabilistic culling (tile binning)
         bool distance_cull_enabled = true;

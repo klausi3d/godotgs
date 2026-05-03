@@ -2344,13 +2344,35 @@ void RenderStreamingOrchestrator::tick_streaming_only(const Transform3D &p_camer
 	streaming_metrics["frame_render_time_ms"] = frame_state.render_time_ms;
 
 	streaming_metrics["gpu_frame_time_ms"] = perf_metrics.gpu_frame_time_ms;
+	streaming_metrics["gpu_frame_time_valid"] = perf_metrics.gpu_frame_time_valid;
+	streaming_metrics["gpu_tile_overlap_count_time_ms"] = perf_metrics.gpu_tile_overlap_count_time_ms;
+	streaming_metrics["gpu_tile_overlap_count_time_valid"] = perf_metrics.gpu_tile_overlap_count_time_valid;
 	streaming_metrics["gpu_tile_binning_time_ms"] = perf_metrics.gpu_tile_binning_time_ms;
+	streaming_metrics["gpu_tile_overlap_emit_time_ms"] = perf_metrics.gpu_tile_overlap_emit_time_ms;
+	streaming_metrics["gpu_tile_overlap_emit_time_valid"] = perf_metrics.gpu_tile_overlap_emit_time_valid;
+	streaming_metrics["gpu_tile_overlap_sort_time_ms"] = perf_metrics.gpu_tile_overlap_sort_time_ms;
+	streaming_metrics["gpu_tile_overlap_sort_time_valid"] = perf_metrics.gpu_tile_overlap_sort_time_valid;
+	streaming_metrics["tile_overlap_sort_cpu_dispatch_ms"] = perf_metrics.tile_overlap_sort_cpu_dispatch_ms;
+	streaming_metrics["tile_overlap_sort_cpu_dispatch_valid"] = perf_metrics.tile_overlap_sort_cpu_dispatch_valid;
 	streaming_metrics["gpu_tile_prefix_time_ms"] = perf_metrics.gpu_tile_prefix_time_ms;
+	streaming_metrics["gpu_tile_prefix_time_valid"] = perf_metrics.gpu_tile_prefix_time_valid;
+	streaming_metrics["tile_prefix_cpu_sync_fallback_ms"] = perf_metrics.tile_prefix_cpu_sync_fallback_ms;
+	streaming_metrics["tile_prefix_cpu_sync_fallback_valid"] = perf_metrics.tile_prefix_cpu_sync_fallback_valid;
 	streaming_metrics["gpu_tile_raster_time_ms"] = perf_metrics.gpu_tile_raster_time_ms;
+	streaming_metrics["gpu_tile_raster_time_valid"] = perf_metrics.gpu_tile_raster_time_valid;
 	streaming_metrics["gpu_tile_resolve_time_ms"] = perf_metrics.gpu_tile_resolve_time_ms;
+	streaming_metrics["gpu_tile_resolve_time_valid"] = perf_metrics.gpu_tile_resolve_time_valid;
 	streaming_metrics["gpu_timing_frame_serial"] = static_cast<int64_t>(perf_metrics.gpu_timing_frame_serial);
 	streaming_metrics["gpu_timing_frames_behind"] = static_cast<int64_t>(perf_metrics.gpu_timing_frames_behind);
-	streaming_metrics["gpu_pass_breakdown_available"] = perf_metrics.gpu_tile_binning_time_ms > 0.0f ||
+	streaming_metrics["gpu_pass_breakdown_available"] = perf_metrics.gpu_tile_overlap_count_time_valid ||
+			perf_metrics.gpu_tile_overlap_emit_time_valid ||
+			perf_metrics.gpu_tile_overlap_sort_time_valid ||
+			perf_metrics.tile_overlap_sort_cpu_dispatch_valid ||
+			perf_metrics.gpu_tile_prefix_time_valid ||
+			perf_metrics.tile_prefix_cpu_sync_fallback_valid ||
+			perf_metrics.gpu_tile_raster_time_valid ||
+			perf_metrics.gpu_tile_resolve_time_valid ||
+			perf_metrics.gpu_tile_binning_time_ms > 0.0f ||
 			perf_metrics.gpu_tile_prefix_time_ms > 0.0f ||
 			perf_metrics.gpu_tile_raster_time_ms > 0.0f ||
 			perf_metrics.gpu_tile_resolve_time_ms > 0.0f;

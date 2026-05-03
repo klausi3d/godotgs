@@ -9,6 +9,7 @@
 #pragma once
 
 #include "../renderer/gpu_sorter.h"
+#include "../renderer/gpu_sorting_config.h"
 #include "../core/gaussian_data.h"
 #include "core/math/math_funcs.h"
 #include "core/math/random_number_generator.h"
@@ -192,6 +193,117 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] GPU Bitonic Sorting") {
 		// Clean up
 		rd->free(keys_buffer);
 		rd->free(values_buffer);
+	}
+}
+
+TEST_CASE("[GaussianSplatting][RequiresGPU] Radix sort factory honors 32-bit key layout") {
+	struct GPUSortingConfigRestore {
+		GPUSortingConfig previous_config;
+		~GPUSortingConfigRestore() {
+			g_gpu_sorting_config = previous_config;
+		}
+	} restore = { g_gpu_sorting_config };
+
+	g_gpu_sorting_config.reset_to_defaults();
+	g_gpu_sorting_config.radix_bits = 4;
+	g_gpu_sorting_config.workgroup_size = GPUSortingConstants::DEFAULT_WORKGROUP_SIZE;
+
+	RenderingDevice *rd = RenderingDevice::get_singleton();
+	bool owns_local_device = false;
+	if (!rd) {
+		RenderingServer *rs = RenderingServer::get_singleton();
+		if (rs) {
+			rd = rs->create_local_rendering_device();
+			owns_local_device = rd != nullptr;
+		}
+	}
+
+	if (!rd) {
+		MESSAGE("Skipping 32-bit radix sort factory test - no RenderingDevice available");
+		return;
+	}
+
+	SortKeyConfig key_config;
+	key_config.key_bits = 32;
+	key_config.tile_bits = 16;
+	key_config.depth_bits = 16;
+	key_config.enable_tie_breaker = false;
+
+	Ref<IGPUSorter> sorter = GPUSorterFactory::create_sorter(
+			GPUSorterFactory::ALGORITHM_RADIX,
+			rd,
+			16,
+			key_config);
+
+	CHECK(sorter.is_valid());
+	if (!sorter.is_valid()) {
+		if (owns_local_device) {
+			memdelete(rd);
+		}
+		return;
+	}
+
+	const uint32_t count = 5;
+	LocalVector<uint32_t> keys;
+	LocalVector<uint32_t> values;
+	LocalVector<uint32_t> expected_keys;
+	LocalVector<uint32_t> expected_values;
+	keys.push_back(0x00030020u);
+	keys.push_back(0x00010010u);
+	keys.push_back(0x00020030u);
+	keys.push_back(0x00000001u);
+	keys.push_back(0x00010005u);
+	values.push_back(0u);
+	values.push_back(1u);
+	values.push_back(2u);
+	values.push_back(3u);
+	values.push_back(4u);
+	expected_keys.push_back(0x00000001u);
+	expected_keys.push_back(0x00010005u);
+	expected_keys.push_back(0x00010010u);
+	expected_keys.push_back(0x00020030u);
+	expected_keys.push_back(0x00030020u);
+	expected_values.push_back(3u);
+	expected_values.push_back(4u);
+	expected_values.push_back(1u);
+	expected_values.push_back(2u);
+	expected_values.push_back(0u);
+
+	RID keys_buffer = create_storage_buffer(rd, keys);
+	rd->set_resource_name(keys_buffer, "GS_Test_Radix32_Keys");
+	RID values_buffer = create_storage_buffer(rd, values);
+	rd->set_resource_name(values_buffer, "GS_Test_Radix32_Values");
+
+	Error err = sorter->sort(keys_buffer, values_buffer, count);
+	CHECK(err == OK);
+
+	if (err == OK) {
+		Vector<uint8_t> keys_result = rd->buffer_get_data(keys_buffer, 0, count * sizeof(uint32_t));
+		Vector<uint8_t> values_result = rd->buffer_get_data(values_buffer, 0, count * sizeof(uint32_t));
+		const uint32_t *sorted_keys = (const uint32_t *)keys_result.ptr();
+		const uint32_t *sorted_values = (const uint32_t *)values_result.ptr();
+
+		for (uint32_t i = 0; i < count; i++) {
+			CHECK(sorted_keys[i] == expected_keys[i]);
+			CHECK(sorted_values[i] == expected_values[i]);
+		}
+	}
+
+	SortingMetrics metrics = sorter->get_metrics();
+	CHECK(metrics.last_key_bits == 32u);
+	CHECK(metrics.last_radix_bits == 4u);
+	CHECK(metrics.last_pass_count == 8u);
+	CHECK(metrics.last_element_count == count);
+	CHECK(metrics.last_element_count_known);
+	CHECK_FALSE(metrics.last_sort_indirect);
+	CHECK(metrics.last_sort_async);
+
+	rd->free(keys_buffer);
+	rd->free(values_buffer);
+	sorter->shutdown();
+	sorter.unref();
+	if (owns_local_device) {
+		memdelete(rd);
 	}
 }
 

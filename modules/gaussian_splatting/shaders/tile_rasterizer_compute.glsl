@@ -90,6 +90,9 @@ layout(set = 0, binding = 3, std430) buffer OverflowStatisticsBuffer {
     uint raster_alpha_sum_q10;
     uint raster_reject_index_mismatch;
     uint raster_break_subgroup_early_exit;  // Tiles where all pixels were alpha-saturated
+    uint raster_reject_quadratic;     // quadratic > GS_RASTER_ALPHA_REJECT_Q (spatial extent)
+    uint raster_reject_lod_opacity;   // base_opacity * lod_blend <= GS_RASTER_ALPHA_THRESHOLD
+    uint raster_reject_blend_alpha;   // blend_alpha <= 0 after remaining-alpha multiply
 } overflow_stats;
 
 layout(set = 0, binding = 4, std430) readonly buffer ProjectionBuffer {
@@ -212,6 +215,12 @@ void main() {
     float outline_width = interactive_state.state_params.y;
     uint render_state = uint(interactive_state.state_params.z + 0.5);
 
+#ifdef GS_COLLECT_RASTER_STATS
+    bool sample_raster_stats = in_viewport && gs_should_sample_raster_stats(pixel_center);
+    GSRasterStatsCounters raster_stats;
+    gs_reset_raster_stats(raster_stats);
+#endif
+
     for (uint batch_start = 0u; batch_start < splat_count; batch_start += uint(SPLATS_PER_TILE)) {
         uint batch_end = min(batch_start + uint(SPLATS_PER_TILE), splat_count);
         uint batch_size = batch_end - batch_start;
@@ -239,7 +248,12 @@ void main() {
             pixel_saturated = gs_rasterize_splat_batch(
                     pixel_center, batch_size, lod_blend, pixel_dither,
                     highlight_strength, outline_width, render_state,
-                    final_color, final_depth, weighted_depth, final_normal, has_depth);
+                    final_color, final_depth, weighted_depth, final_normal, has_depth
+#ifdef GS_COLLECT_RASTER_STATS
+                    ,
+                    sample_raster_stats, raster_stats
+#endif
+                    );
             if (!pixel_saturated) {
                 atomicAnd(gs_shared_all_saturated, 0u);
             }
@@ -256,6 +270,10 @@ void main() {
     if (!in_viewport) {
         return;
     }
+
+#ifdef GS_COLLECT_RASTER_STATS
+    gs_flush_raster_stats(sample_raster_stats, raster_stats, has_depth, final_color.a);
+#endif
 
     // ========================================================================
     // Output

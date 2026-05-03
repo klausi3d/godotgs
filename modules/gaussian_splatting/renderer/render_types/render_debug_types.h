@@ -57,6 +57,19 @@ struct DebugConfigBase {
     bool gpu_sort_readback_enabled = false; ///< Enable for debug readback; default off to avoid stalls
     bool dump_gpu_counters = false;
     bool enable_pipeline_trace = false;
+    /// Force the tile renderer's per-frame runtime statistics readback path
+    /// (tile counts, max/avg splats per tile, occupancy, overlap_records,
+    /// dense/overflow ratios) on, independently of HUD/tile-grid/density
+    /// overlays. Set by the benchmark harness when --perf-capture is on so
+    /// raster_* fields populate without requiring visual debug overlays.
+    bool perf_capture_force_runtime_statistics = false;
+    /// Force GS_COLLECT_RASTER_STATS compile-time define + per-pixel
+    /// sample_raster_stats runtime flag on, independently of splat-coverage
+    /// or HUD overlays. Pays the per-pixel atomic-counter cost only while
+    /// the flag is set, so production runs with this off keep the hot loop
+    /// free of register pressure / warp divergence. The shader is recompiled
+    /// when this flag flips because raster_shader_defines_hash changes.
+    bool perf_capture_raster_shader_counters = false;
     bool enable_state_guardrails = false;
     bool enable_splat_audit = false;
     bool enable_all_debug = false;

@@ -305,6 +305,9 @@ public:
 		} else {
 			// Ensure no-work frames don't report stale raster mode from prior frames.
 			renderer.perf_metrics.last_raster_used_compute = false;
+			renderer.perf_metrics.last_raster_choice_initialized = true;
+			renderer.perf_metrics.last_raster_choice_compute = false;
+			renderer.perf_metrics.last_raster_choice_reason = "No raster work";
 			renderer.perf_metrics.sorted_indices_blend_fallback_active = false;
 			renderer.perf_metrics.sorted_indices_blend_fallback_reason = String();
 		}
@@ -387,9 +390,21 @@ private:
 			renderer.device_context.performance_monitor->record_submission(renderer.frame_state.current_frame_serial, renderer.frame_state.current_frame_serial);
 		}
 
-		// Enable sync/readback only when HUD or density overlays are active.
+		// Enable the runtime statistics readback path when (a) HUD or density
+		// overlays are active, or (b) the perf-capture harness asked us to
+		// produce raster_* stats without forcing visual overlays. Without
+		// this gate, raster_total_tiles / overlap_records / max_splats_per_tile
+		// would stay zero in offline benchmark captures (see
+		// tile_renderer.cpp:_collect_render_statistics, which short-circuits
+		// to RenderStats() when this flag is false).
 		renderer.diagnostics.runtime_statistics_enabled = params.debug_show_performance_hud ||
-				params.debug_show_tile_grid || params.debug_show_density_heatmap;
+				params.debug_show_tile_grid || params.debug_show_density_heatmap ||
+				params.perf_capture_force_runtime_statistics;
+		// Toggle raster shader counters via the setter so a flag flip triggers
+		// a shader recompile (the GS_COLLECT_RASTER_STATS define is compile-
+		// time). The setter is a no-op if the value is unchanged.
+		renderer.set_perf_capture_raster_shader_counters_enabled(
+				params.perf_capture_raster_shader_counters);
 		renderer.perf_metrics.sorted_indices_blend_fallback_active = false;
 		renderer.perf_metrics.sorted_indices_blend_fallback_reason = String();
 
@@ -917,6 +932,13 @@ private:
 			const bool has_instance_indirect = renderer.instance_pipeline_buffers.indirect_dispatch_buffer.is_valid();
 			const bool should_attempt_sort = renderer.global_sort_resources.sorter.is_valid() &&
 					(allow_sync_readback ? (overlap_record_count > 0) : (params.splat_count > 0 || has_instance_indirect));
+			// Reset only CPU dispatch and timestamp range — leave the GPU
+			// timing fields alone, since the standard timestamp resolution
+			// path (_resolve_timestamp_range / async parser) populates them
+			// when the sort actually runs.
+			renderer.timing_state.last_overlap_sort_cpu_dispatch_ms = 0.0f;
+			renderer.timing_state.overlap_sort_cpu_dispatch_valid = false;
+			renderer.timing_state.overlap_sort_timestamp.reset();
 			// PERF: Use sort_indirect_async to avoid blocking CPU on GPU sort completion.
 			if (should_attempt_sort) {
 #ifdef DEV_ENABLED
@@ -930,10 +952,20 @@ private:
 					}
 				}
 #endif
+				const uint64_t sort_dispatch_start_usec = OS::get_singleton()->get_ticks_usec();
+				renderer.global_sort_resources.sorter->set_pending_frame_label_serial(
+						renderer.frame_state.current_frame_serial);
 				uint64_t sort_timeline = renderer.global_sort_resources.sorter->sort_indirect_async(
 						renderer.global_sort_resources.keys_buffer,
 						renderer.global_sort_resources.values_buffer,
 						renderer.global_sort_resources.indirect_dispatch_buffer);
+				const LastSortGpuTimestamp sort_ts = renderer.global_sort_resources.sorter->get_last_sort_gpu_timestamp();
+				if (sort_ts.valid && sort_ts.device != nullptr) {
+					renderer.timing_state.overlap_sort_timestamp.device = sort_ts.device;
+					renderer.timing_state.overlap_sort_timestamp.start_index = sort_ts.start_index;
+					renderer.timing_state.overlap_sort_timestamp.end_index = sort_ts.end_index;
+					renderer.timing_state.overlap_sort_timestamp.label = "TileOverlapSort";
+				}
 				if (sort_timeline == 0) {
 					if (readback_policy.allow_sync_sort_fallback) {
 						renderer.perf_metrics.sort_sync_fallback_count++;
@@ -952,6 +984,9 @@ private:
 				if (allow_sync_readback) {
 					renderer._flush_pending_submission(true);
 				}
+				const uint64_t sort_dispatch_end_usec = OS::get_singleton()->get_ticks_usec();
+				renderer.timing_state.last_overlap_sort_cpu_dispatch_ms = float(sort_dispatch_end_usec - sort_dispatch_start_usec) / 1000.0f;
+				renderer.timing_state.overlap_sort_cpu_dispatch_valid = true;
 			} else if ((allow_sync_readback ? (overlap_record_count > 0) : (params.splat_count > 0)) &&
 					!renderer.global_sort_resources.sorter.is_valid() && !renderer.global_sort_resources.sorter_missing_logged) {
 				GS_LOG_WARN_DEFAULT("[TileRenderer] Global composite sorter unavailable; rendering unsorted tiles");
@@ -1245,7 +1280,9 @@ GaussianSplatting::TileRenderParams::TileRenderParams() {
 	jacobian_invert_j_col2_sign = false;
 	// Opacity-aware bounding (FlashGS optimization) - enabled by default
 	opacity_aware_culling = true;
-	visibility_threshold = 0.01f;
+	visibility_threshold = 1.0f / 255.0f;
+	// PlayCanvas alphaClip parity (per-splat hard cull at projection).
+	alpha_clip = 0.3f;
 	// Distance-based culling - enabled by default
 	// Uses probabilistic culling to prevent per-tile overflow at distance
 	distance_cull_enabled = true;
@@ -1307,6 +1344,18 @@ void TileRenderer::set_debug_binning_counters_enabled(bool p_enabled) {
 		return;
 	}
 	diagnostics.debug_binning_counters_enabled = p_enabled;
+	shader_resources.reset_state();
+	_invalidate_descriptor_cache();
+}
+
+void TileRenderer::set_perf_capture_raster_shader_counters_enabled(bool p_enabled) {
+	if (diagnostics.perf_capture_raster_shader_counters_enabled == p_enabled) {
+		return;
+	}
+	diagnostics.perf_capture_raster_shader_counters_enabled = p_enabled;
+	// Recompile raster shaders when this flag flips, since GS_COLLECT_RASTER_STATS
+	// is a compile-time define toggle. Without reset_state(), the cached shader
+	// without the stats path would keep being used.
 	shader_resources.reset_state();
 	_invalidate_descriptor_cache();
 }
@@ -1858,30 +1907,36 @@ SortKeyConfig TileRenderer::_get_effective_sort_key_config() const {
         return cfg;
     }
 
-    if (cfg.key_bits == 32) {
-        uint32_t required_tile_bits = _required_tile_bits(grid_state.total_tiles);
-        if (required_tile_bits > cfg.tile_bits) {
-            WARN_PRINT_ONCE(vformat("[TileRenderer] 32-bit sort keys require tile_bits>=%d (tile_count=%d); falling back to 64-bit keys",
-                    required_tile_bits, grid_state.total_tiles));
-            cfg.key_bits = 64;
-            cfg.tile_bits = 32;
-            cfg.depth_bits = 32;
-            cfg.enable_tie_breaker = true;
-        } else if (cfg.depth_bits == 0) {
-            WARN_PRINT_ONCE("[TileRenderer] 32-bit sort keys require depth_bits>0; falling back to 64-bit keys");
-            cfg.key_bits = 64;
-            cfg.tile_bits = 32;
-            cfg.depth_bits = 32;
-            cfg.enable_tie_breaker = true;
-        } else if (cfg.depth_bits < 24) {
-            WARN_PRINT_ONCE(vformat("[TileRenderer] 32-bit tile sort depth_bits=%d can cause motion shimmer; promoting to 64-bit keys",
-                    cfg.depth_bits));
-            cfg.key_bits = 64;
-            cfg.tile_bits = 32;
-            cfg.depth_bits = 32;
-            cfg.enable_tie_breaker = true;
-        }
-    }
+	if (cfg.key_bits == 32) {
+		uint32_t required_tile_bits = _required_tile_bits(grid_state.total_tiles);
+		if (cfg.tile_bits + cfg.depth_bits > cfg.key_bits) {
+			WARN_PRINT_ONCE(vformat("[TileRenderer] 32-bit sort keys require tile_bits + depth_bits <= 32 (got %d + %d); falling back to 64-bit keys",
+					cfg.tile_bits, cfg.depth_bits));
+			cfg.key_bits = 64;
+			cfg.tile_bits = 32;
+			cfg.depth_bits = 32;
+			cfg.enable_tie_breaker = true;
+		} else if (cfg.depth_bits >= cfg.key_bits && required_tile_bits > 0) {
+			WARN_PRINT_ONCE("[TileRenderer] 32-bit multi-tile sort keys require depth_bits < 32 so tile_id remains encoded; falling back to 64-bit keys");
+			cfg.key_bits = 64;
+			cfg.tile_bits = 32;
+			cfg.depth_bits = 32;
+			cfg.enable_tie_breaker = true;
+		} else if (required_tile_bits > cfg.tile_bits) {
+			WARN_PRINT_ONCE(vformat("[TileRenderer] 32-bit sort keys require tile_bits>=%d (tile_count=%d); falling back to 64-bit keys",
+					required_tile_bits, grid_state.total_tiles));
+			cfg.key_bits = 64;
+			cfg.tile_bits = 32;
+			cfg.depth_bits = 32;
+			cfg.enable_tie_breaker = true;
+		} else if (cfg.depth_bits == 0) {
+			WARN_PRINT_ONCE("[TileRenderer] 32-bit sort keys require depth_bits>0; falling back to 64-bit keys");
+			cfg.key_bits = 64;
+			cfg.tile_bits = 32;
+			cfg.depth_bits = 32;
+			cfg.enable_tie_breaker = true;
+		}
+	}
 
     return cfg;
 }
@@ -1915,18 +1970,17 @@ Vector<String> TileRenderer::_build_raster_shader_defines() const {
 	if (render_settings.global_sort_enabled) {
 		defines.push_back("#define GS_TILE_GLOBAL_SORT 1\n");
 	}
-	// Enable compile-time raster stats collection when debug counters are active.
-	// Without this define, the rasterizer hot loop has zero counter variables and
-	// zero stat branches, eliminating register pressure and warp divergence.
-#if defined(DEV_ENABLED) || defined(DEBUG_ENABLED) || defined(TESTS_ENABLED)
-	if (diagnostics.debug_binning_counters_enabled) {
+	// Enable compile-time raster stats collection when either:
+	//   (a) debug binning counters are active (HUD / debug overlays), or
+	//   (b) the perf-capture harness asked for shader counters explicitly.
+	// Without this define, the rasterizer hot loop has zero counter variables
+	// and zero stat branches, eliminating register pressure and warp
+	// divergence. Both flags trigger a shader recompile when toggled, so
+	// production runs with both flags off pay no atomic-counter cost.
+	if (diagnostics.debug_binning_counters_enabled ||
+			diagnostics.perf_capture_raster_shader_counters_enabled) {
 		defines.push_back("#define GS_COLLECT_RASTER_STATS 1\n");
 	}
-#else
-	if (diagnostics.debug_binning_counters_enabled) {
-		WARN_PRINT_ONCE("[TileRenderer] Raster stats collection requested but disabled in this build configuration");
-	}
-#endif
 	return defines;
 }
 
@@ -2176,16 +2230,33 @@ bool TileRenderer::_update_global_tile_ranges(const RID &p_gaussian_buffer, cons
 }
 
 void TileRenderer::_reset_timestamp_tracking() {
+	timing_state.overlap_count_timestamp.reset();
 	timing_state.binning_timestamp.reset();
+	timing_state.overlap_emit_timestamp.reset();
+	timing_state.overlap_sort_timestamp.reset();
 	timing_state.raster_timestamp.reset();
 	timing_state.prefix_timestamp.reset();
 	timing_state.resolve_timestamp.reset();
 	if (!gpu_timestamp_capture_enabled) {
+		timing_state.last_overlap_count_gpu_ms = 0.0f;
 		timing_state.last_binning_gpu_ms = 0.0f;
+		timing_state.last_overlap_emit_gpu_ms = 0.0f;
+		timing_state.last_overlap_sort_gpu_ms = 0.0f;
+		timing_state.last_overlap_sort_cpu_dispatch_ms = 0.0f;
 		timing_state.last_raster_gpu_ms = 0.0f;
 		timing_state.last_prefix_gpu_ms = 0.0f;
+		timing_state.last_prefix_cpu_sync_fallback_ms = 0.0f;
 		timing_state.last_resolve_gpu_ms = 0.0f;
 		timing_state.last_frame_gpu_ms = 0.0f;
+		timing_state.overlap_count_gpu_timing_valid = false;
+		timing_state.overlap_emit_gpu_timing_valid = false;
+		timing_state.overlap_sort_gpu_timing_valid = false;
+		timing_state.overlap_sort_cpu_dispatch_valid = false;
+		timing_state.raster_gpu_timing_valid = false;
+		timing_state.prefix_gpu_timing_valid = false;
+		timing_state.prefix_cpu_sync_fallback_valid = false;
+		timing_state.resolve_gpu_timing_valid = false;
+		timing_state.frame_gpu_timing_valid = false;
 		timing_state.gpu_timing_frame_serial = 0;
 		timing_state.gpu_timing_frames_behind = 0;
 		return;
@@ -2195,35 +2266,37 @@ void TileRenderer::_reset_timestamp_tracking() {
 	// flap to zero and hides otherwise valid samples.
 }
 
-void TileRenderer::_resolve_timestamp_range(TimestampRange &p_range, float &r_duration_ms) {
-    r_duration_ms = 0.0f;
-    if (!p_range.is_valid()) {
-        return;
-    }
+bool TileRenderer::_resolve_timestamp_range(TimestampRange &p_range, float &r_duration_ms) {
+	r_duration_ms = 0.0f;
+	if (!p_range.is_valid()) {
+		return false;
+	}
 
-    RenderingDevice *device = p_range.device;
-    if (!device) {
-        p_range.reset();
-        return;
-    }
+	RenderingDevice *device = p_range.device;
+	if (!device) {
+		p_range.reset();
+		return false;
+	}
 
-    uint32_t timestamp_count = device->get_captured_timestamps_count();
-    if (p_range.start_index >= timestamp_count || p_range.end_index >= timestamp_count) {
-        p_range.reset();
-        return;
-    }
+	uint32_t timestamp_count = device->get_captured_timestamps_count();
+	if (p_range.start_index >= timestamp_count || p_range.end_index >= timestamp_count) {
+		p_range.reset();
+		return false;
+	}
 
-    uint64_t start_gpu = device->get_captured_timestamp_gpu_time(p_range.start_index);
-    uint64_t end_gpu = device->get_captured_timestamp_gpu_time(p_range.end_index);
-    if (end_gpu > start_gpu) {
-        r_duration_ms = (end_gpu - start_gpu) / 1000000.0f;
-    }
+	uint64_t start_gpu = device->get_captured_timestamp_gpu_time(p_range.start_index);
+	uint64_t end_gpu = device->get_captured_timestamp_gpu_time(p_range.end_index);
+	const bool valid_duration = end_gpu >= start_gpu;
+	if (valid_duration) {
+		r_duration_ms = (end_gpu - start_gpu) / 1000000.0f;
+	}
 #ifdef DEBUG_ENABLED
-    if (!p_range.label.is_empty() && r_duration_ms > 0.0f) {
-        GS_LOG_DEBUG(gs_logger::Category::GENERAL, vformat("[TileRenderer] %s GPU time: %.2f ms", p_range.label, r_duration_ms));
-    }
+	if (!p_range.label.is_empty() && r_duration_ms > 0.0f) {
+		GS_LOG_DEBUG(gs_logger::Category::GENERAL, vformat("[TileRenderer] %s GPU time: %.2f ms", p_range.label, r_duration_ms));
+	}
 #endif
-    p_range.reset();
+	p_range.reset();
+	return valid_duration;
 }
 
 void TileRenderer::_parse_timestamps_into_frame_map(RenderingDevice *p_device, uint32_t p_available,
@@ -2247,6 +2320,8 @@ void TileRenderer::_parse_timestamps_into_frame_map(RenderingDevice *p_device, u
         { "TileRaster_", int(sizeof("TileRaster_") - 1), "_End", &GpuTimestampFrameStages::raster, &GpuTimestampStageTimes::end_ns },
         { "TileOverlapCount_", int(sizeof("TileOverlapCount_") - 1), "_Begin", &GpuTimestampFrameStages::overlap_count, &GpuTimestampStageTimes::begin_ns },
         { "TileOverlapCount_", int(sizeof("TileOverlapCount_") - 1), "_End", &GpuTimestampFrameStages::overlap_count, &GpuTimestampStageTimes::end_ns },
+        { "TileOverlapSort_", int(sizeof("TileOverlapSort_") - 1), "_Begin", &GpuTimestampFrameStages::overlap_sort, &GpuTimestampStageTimes::begin_ns },
+        { "TileOverlapSort_", int(sizeof("TileOverlapSort_") - 1), "_End", &GpuTimestampFrameStages::overlap_sort, &GpuTimestampStageTimes::end_ns },
         { "TilePrefix_", int(sizeof("TilePrefix_") - 1), "_Begin", &GpuTimestampFrameStages::prefix, &GpuTimestampStageTimes::begin_ns },
         { "TilePrefix_", int(sizeof("TilePrefix_") - 1), "_End", &GpuTimestampFrameStages::prefix, &GpuTimestampStageTimes::end_ns },
         { "TileResolve_", int(sizeof("TileResolve_") - 1), "_Begin", &GpuTimestampFrameStages::resolve, &GpuTimestampStageTimes::begin_ns },
@@ -2305,26 +2380,32 @@ TileRenderer::GpuTimestampDurations TileRenderer::_compute_stage_durations(const
         const uint64_t serial = kv.key;
         const GpuTimestampFrameStages &stages = kv.value;
 
-        // Check if we have valid markers (total, per-pass, or overlap count).
-        // NOTE: Godot's buffer_get_data() flush resets the timestamp buffer mid-frame;
-        // only pre-flush markers (TileOverlapCount) are reliably readable. Post-flush
-        // markers (GaussianSplat_*, TileBinning_*, TileRaster_*) are usually discarded.
-        // See docs/GPU_TIMESTAMP_PROFILING.md for details.
-        bool has_total = stages.total.is_complete();
-        bool has_per_pass = stages.binning.is_complete() && stages.raster.is_complete();
-        bool has_overlap_count = stages.overlap_count.is_complete();
-        bool has_prefix = stages.prefix.is_complete();
-        bool has_resolve = stages.resolve.is_complete();
+		// Check if we have valid markers (total or any per-pass stage).
+		// NOTE: Godot's buffer_get_data() flush resets the timestamp buffer mid-frame;
+		// only pre-flush markers (TileOverlapCount) are reliably readable. Post-flush
+		// markers (GaussianSplat_*, TileBinning_*, TileRaster_*) are usually discarded.
+		// See docs/GPU_TIMESTAMP_PROFILING.md for details.
+		auto has_ordered_stage = [](const GpuTimestampStageTimes &p_stage) -> bool {
+			return p_stage.is_complete() && p_stage.end_ns >= p_stage.begin_ns;
+		};
+		bool has_total = has_ordered_stage(stages.total);
+		bool has_binning = has_ordered_stage(stages.binning);
+		bool has_raster = has_ordered_stage(stages.raster);
+		bool has_overlap_count = has_ordered_stage(stages.overlap_count);
+		bool has_overlap_sort = has_ordered_stage(stages.overlap_sort);
+		bool has_prefix = has_ordered_stage(stages.prefix);
+		bool has_resolve = has_ordered_stage(stages.resolve);
 
-        if (!has_total && !has_per_pass && !has_overlap_count && !has_prefix && !has_resolve) {
-            continue; // Need at least one complete timing marker pair
-        }
+		if (!has_total && !has_binning && !has_raster && !has_overlap_count && !has_overlap_sort && !has_prefix && !has_resolve) {
+			continue; // Need at least one complete timing marker pair
+		}
 
-        double bin_ms = has_per_pass ? (stages.binning.end_ns - stages.binning.begin_ns) / 1e6 : 0.0;
-        double raster_ms = has_per_pass ? (stages.raster.end_ns - stages.raster.begin_ns) / 1e6 : 0.0;
-        double count_ms = has_overlap_count ? (stages.overlap_count.end_ns - stages.overlap_count.begin_ns) / 1e6 : 0.0;
-        double prefix_ms = has_prefix ? (stages.prefix.end_ns - stages.prefix.begin_ns) / 1e6 : 0.0;
-        double resolve_ms = has_resolve ? (stages.resolve.end_ns - stages.resolve.begin_ns) / 1e6 : 0.0;
+		double bin_ms = has_binning ? (stages.binning.end_ns - stages.binning.begin_ns) / 1e6 : 0.0;
+		double raster_ms = has_raster ? (stages.raster.end_ns - stages.raster.begin_ns) / 1e6 : 0.0;
+		double count_ms = has_overlap_count ? (stages.overlap_count.end_ns - stages.overlap_count.begin_ns) / 1e6 : 0.0;
+		double overlap_sort_ms = has_overlap_sort ? (stages.overlap_sort.end_ns - stages.overlap_sort.begin_ns) / 1e6 : 0.0;
+		double prefix_ms = has_prefix ? (stages.prefix.end_ns - stages.prefix.begin_ns) / 1e6 : 0.0;
+		double resolve_ms = has_resolve ? (stages.resolve.end_ns - stages.resolve.begin_ns) / 1e6 : 0.0;
         double total_ms = has_total ? (stages.total.end_ns - stages.total.begin_ns) / 1e6 : 0.0;
 
         if (!durations.has_data || serial > durations.serial) {
@@ -2332,12 +2413,20 @@ TileRenderer::GpuTimestampDurations TileRenderer::_compute_stage_durations(const
             durations.serial = serial;
             durations.bin_ms = bin_ms;
             durations.raster_ms = raster_ms;
-            durations.count_ms = count_ms;
-            durations.prefix_ms = prefix_ms;
-            durations.resolve_ms = resolve_ms;
-            durations.total_ms = total_ms;
-        }
-    }
+			durations.count_ms = count_ms;
+			durations.overlap_sort_ms = overlap_sort_ms;
+			durations.prefix_ms = prefix_ms;
+			durations.resolve_ms = resolve_ms;
+			durations.total_ms = total_ms;
+			durations.bin_valid = has_binning;
+			durations.raster_valid = has_raster;
+			durations.count_valid = has_overlap_count;
+			durations.overlap_sort_valid = has_overlap_sort;
+			durations.prefix_valid = has_prefix;
+			durations.resolve_valid = has_resolve;
+			durations.total_valid = has_total;
+		}
+	}
 
     return durations;
 }
@@ -2347,13 +2436,29 @@ void TileRenderer::_update_timing_metrics(const GpuTimestampDurations &p_duratio
         return;
     }
 
-    timing_state.last_binning_gpu_ms = (float)p_durations.bin_ms;
-    timing_state.last_raster_gpu_ms = (float)p_durations.raster_ms;
-    timing_state.last_prefix_gpu_ms = (float)((p_durations.prefix_ms > 0.0) ? p_durations.prefix_ms : p_durations.count_ms);
-    timing_state.last_resolve_gpu_ms = (float)p_durations.resolve_ms;
-    float fallback_total = (float)(p_durations.bin_ms + p_durations.raster_ms + timing_state.last_prefix_gpu_ms + p_durations.resolve_ms);
-    timing_state.last_frame_gpu_ms = (float)((p_durations.total_ms > 0.0) ? p_durations.total_ms : fallback_total);
-    timing_state.gpu_timing_frame_serial = p_durations.serial;
+	timing_state.last_overlap_count_gpu_ms = (float)p_durations.count_ms;
+	timing_state.last_overlap_emit_gpu_ms = (float)p_durations.bin_ms;
+	timing_state.last_binning_gpu_ms = timing_state.last_overlap_emit_gpu_ms;
+	timing_state.last_overlap_sort_gpu_ms = (float)p_durations.overlap_sort_ms;
+	timing_state.last_raster_gpu_ms = (float)p_durations.raster_ms;
+	timing_state.last_prefix_gpu_ms = (float)p_durations.prefix_ms;
+	timing_state.last_resolve_gpu_ms = (float)p_durations.resolve_ms;
+	timing_state.overlap_count_gpu_timing_valid = p_durations.count_valid;
+	timing_state.overlap_emit_gpu_timing_valid = p_durations.bin_valid;
+	timing_state.overlap_sort_gpu_timing_valid = p_durations.overlap_sort_valid;
+	timing_state.raster_gpu_timing_valid = p_durations.raster_valid;
+	timing_state.prefix_gpu_timing_valid = p_durations.prefix_valid;
+	timing_state.resolve_gpu_timing_valid = p_durations.resolve_valid;
+	float fallback_total = 0.0f;
+	fallback_total += p_durations.count_valid ? (float)p_durations.count_ms : 0.0f;
+	fallback_total += p_durations.prefix_valid ? (float)p_durations.prefix_ms : 0.0f;
+	fallback_total += p_durations.bin_valid ? (float)p_durations.bin_ms : 0.0f;
+	fallback_total += p_durations.overlap_sort_valid ? (float)p_durations.overlap_sort_ms : 0.0f;
+	fallback_total += p_durations.raster_valid ? (float)p_durations.raster_ms : 0.0f;
+	fallback_total += p_durations.resolve_valid ? (float)p_durations.resolve_ms : 0.0f;
+	timing_state.last_frame_gpu_ms = (float)(p_durations.total_valid ? p_durations.total_ms : fallback_total);
+	timing_state.frame_gpu_timing_valid = p_durations.total_valid || fallback_total > 0.0f;
+	timing_state.gpu_timing_frame_serial = p_durations.serial;
     timing_state.gpu_timing_frames_behind = (frame_state.current_frame_serial > p_durations.serial)
             ? (frame_state.current_frame_serial - p_durations.serial)
             : 0;
@@ -2540,16 +2645,36 @@ void TileRenderer::_queue_submission(RenderingDevice *p_device, bool p_requires_
     // NOTE: diagnostics.runtime_statistics_enabled no longer forces sync - we use async readback
     // for tile counts statistics (see _collect_render_statistics and _on_tile_counts_readback).
     // This avoids the 40ms GPU stall that was caused by synchronous buffer readback.
-    bool needs_sync = p_requires_sync;
-    if (needs_sync) {
-        gs_device_utils::safe_sync(p_device);
-        _resolve_timestamp_range(timing_state.binning_timestamp, timing_state.last_binning_gpu_ms);
-        _resolve_timestamp_range(timing_state.raster_timestamp, timing_state.last_raster_gpu_ms);
-        _resolve_timestamp_range(timing_state.prefix_timestamp, timing_state.last_prefix_gpu_ms);
-        _resolve_timestamp_range(timing_state.resolve_timestamp, timing_state.last_resolve_gpu_ms);
-        timing_state.last_frame_gpu_ms = timing_state.last_binning_gpu_ms + timing_state.last_raster_gpu_ms + timing_state.last_prefix_gpu_ms + timing_state.last_resolve_gpu_ms;
-        timing_state.last_submission_cpu_ms = 0.0f;
-    }
+	bool needs_sync = p_requires_sync;
+	if (needs_sync) {
+		gs_device_utils::safe_sync(p_device);
+		timing_state.overlap_count_gpu_timing_valid = _resolve_timestamp_range(timing_state.overlap_count_timestamp, timing_state.last_overlap_count_gpu_ms);
+		timing_state.overlap_emit_gpu_timing_valid = _resolve_timestamp_range(timing_state.overlap_emit_timestamp, timing_state.last_overlap_emit_gpu_ms);
+		if (!timing_state.overlap_emit_gpu_timing_valid) {
+			timing_state.overlap_emit_gpu_timing_valid = _resolve_timestamp_range(timing_state.binning_timestamp, timing_state.last_overlap_emit_gpu_ms);
+		} else {
+			timing_state.binning_timestamp.reset();
+		}
+		timing_state.last_binning_gpu_ms = timing_state.last_overlap_emit_gpu_ms;
+		timing_state.overlap_sort_gpu_timing_valid = _resolve_timestamp_range(timing_state.overlap_sort_timestamp, timing_state.last_overlap_sort_gpu_ms);
+		timing_state.raster_gpu_timing_valid = _resolve_timestamp_range(timing_state.raster_timestamp, timing_state.last_raster_gpu_ms);
+		timing_state.prefix_gpu_timing_valid = _resolve_timestamp_range(timing_state.prefix_timestamp, timing_state.last_prefix_gpu_ms);
+		timing_state.resolve_gpu_timing_valid = _resolve_timestamp_range(timing_state.resolve_timestamp, timing_state.last_resolve_gpu_ms);
+		timing_state.last_frame_gpu_ms = 0.0f;
+		timing_state.last_frame_gpu_ms += timing_state.overlap_count_gpu_timing_valid ? timing_state.last_overlap_count_gpu_ms : 0.0f;
+		timing_state.last_frame_gpu_ms += timing_state.prefix_gpu_timing_valid ? timing_state.last_prefix_gpu_ms : 0.0f;
+		timing_state.last_frame_gpu_ms += timing_state.overlap_emit_gpu_timing_valid ? timing_state.last_overlap_emit_gpu_ms : 0.0f;
+		timing_state.last_frame_gpu_ms += timing_state.overlap_sort_gpu_timing_valid ? timing_state.last_overlap_sort_gpu_ms : 0.0f;
+		timing_state.last_frame_gpu_ms += timing_state.raster_gpu_timing_valid ? timing_state.last_raster_gpu_ms : 0.0f;
+		timing_state.last_frame_gpu_ms += timing_state.resolve_gpu_timing_valid ? timing_state.last_resolve_gpu_ms : 0.0f;
+		timing_state.frame_gpu_timing_valid = timing_state.overlap_count_gpu_timing_valid ||
+				timing_state.prefix_gpu_timing_valid ||
+				timing_state.overlap_emit_gpu_timing_valid ||
+				timing_state.overlap_sort_gpu_timing_valid ||
+				timing_state.raster_gpu_timing_valid ||
+				timing_state.resolve_gpu_timing_valid;
+		timing_state.last_submission_cpu_ms = 0.0f;
+	}
 }
 
 void TileRenderer::_flush_pending_submission(bool p_block) {
@@ -2558,16 +2683,36 @@ void TileRenderer::_flush_pending_submission(bool p_block) {
         return;
     }
 
-    if (p_block) {
-        // Use safe sync - only syncs on local devices (main device syncs automatically)
-        gs_device_utils::safe_sync(device);
-        _resolve_timestamp_range(timing_state.binning_timestamp, timing_state.last_binning_gpu_ms);
-        _resolve_timestamp_range(timing_state.raster_timestamp, timing_state.last_raster_gpu_ms);
-        _resolve_timestamp_range(timing_state.prefix_timestamp, timing_state.last_prefix_gpu_ms);
-        _resolve_timestamp_range(timing_state.resolve_timestamp, timing_state.last_resolve_gpu_ms);
-        timing_state.last_frame_gpu_ms = timing_state.last_binning_gpu_ms + timing_state.last_raster_gpu_ms + timing_state.last_prefix_gpu_ms + timing_state.last_resolve_gpu_ms;
-        resolve_gpu_timestamps_async();
-    }
+	if (p_block) {
+		// Use safe sync - only syncs on local devices (main device syncs automatically)
+		gs_device_utils::safe_sync(device);
+		timing_state.overlap_count_gpu_timing_valid = _resolve_timestamp_range(timing_state.overlap_count_timestamp, timing_state.last_overlap_count_gpu_ms);
+		timing_state.overlap_emit_gpu_timing_valid = _resolve_timestamp_range(timing_state.overlap_emit_timestamp, timing_state.last_overlap_emit_gpu_ms);
+		if (!timing_state.overlap_emit_gpu_timing_valid) {
+			timing_state.overlap_emit_gpu_timing_valid = _resolve_timestamp_range(timing_state.binning_timestamp, timing_state.last_overlap_emit_gpu_ms);
+		} else {
+			timing_state.binning_timestamp.reset();
+		}
+		timing_state.last_binning_gpu_ms = timing_state.last_overlap_emit_gpu_ms;
+		timing_state.overlap_sort_gpu_timing_valid = _resolve_timestamp_range(timing_state.overlap_sort_timestamp, timing_state.last_overlap_sort_gpu_ms);
+		timing_state.raster_gpu_timing_valid = _resolve_timestamp_range(timing_state.raster_timestamp, timing_state.last_raster_gpu_ms);
+		timing_state.prefix_gpu_timing_valid = _resolve_timestamp_range(timing_state.prefix_timestamp, timing_state.last_prefix_gpu_ms);
+		timing_state.resolve_gpu_timing_valid = _resolve_timestamp_range(timing_state.resolve_timestamp, timing_state.last_resolve_gpu_ms);
+		timing_state.last_frame_gpu_ms = 0.0f;
+		timing_state.last_frame_gpu_ms += timing_state.overlap_count_gpu_timing_valid ? timing_state.last_overlap_count_gpu_ms : 0.0f;
+		timing_state.last_frame_gpu_ms += timing_state.prefix_gpu_timing_valid ? timing_state.last_prefix_gpu_ms : 0.0f;
+		timing_state.last_frame_gpu_ms += timing_state.overlap_emit_gpu_timing_valid ? timing_state.last_overlap_emit_gpu_ms : 0.0f;
+		timing_state.last_frame_gpu_ms += timing_state.overlap_sort_gpu_timing_valid ? timing_state.last_overlap_sort_gpu_ms : 0.0f;
+		timing_state.last_frame_gpu_ms += timing_state.raster_gpu_timing_valid ? timing_state.last_raster_gpu_ms : 0.0f;
+		timing_state.last_frame_gpu_ms += timing_state.resolve_gpu_timing_valid ? timing_state.last_resolve_gpu_ms : 0.0f;
+		timing_state.frame_gpu_timing_valid = timing_state.overlap_count_gpu_timing_valid ||
+				timing_state.prefix_gpu_timing_valid ||
+				timing_state.overlap_emit_gpu_timing_valid ||
+				timing_state.overlap_sort_gpu_timing_valid ||
+				timing_state.raster_gpu_timing_valid ||
+				timing_state.resolve_gpu_timing_valid;
+		resolve_gpu_timestamps_async();
+	}
 }
 
 RenderingDevice *TileRenderer::_get_resource_device() const {
@@ -2806,8 +2951,21 @@ void TileRenderer::_collect_render_statistics() {
 		r_stats.compute_raster_frames = perf_metrics.compute_raster_frames;
 		r_stats.fragment_raster_frames = perf_metrics.fragment_raster_frames;
 		r_stats.last_raster_used_compute = perf_metrics.last_raster_used_compute;
+		r_stats.last_raster_choice_initialized = perf_metrics.last_raster_choice_initialized;
+		r_stats.last_raster_choice_reason = perf_metrics.last_raster_choice_reason;
 		r_stats.sorted_indices_blend_fallback_active = perf_metrics.sorted_indices_blend_fallback_active;
 		r_stats.sorted_indices_blend_fallback_reason = perf_metrics.sorted_indices_blend_fallback_reason;
+		r_stats.global_sort_enabled = render_settings.global_sort_enabled;
+		r_stats.allow_compute_raster = render_settings.allow_compute_raster;
+		r_stats.feature_packed_stage_data = render_settings.enable_packed_stage_data;
+		r_stats.feature_tighter_bounds = render_settings.enable_tighter_bounds;
+		r_stats.feature_sh_amortization = render_settings.enable_sh_amortization;
+		r_stats.sh_amortization_divisor = render_settings.sh_amortization_divisor;
+		r_stats.feature_quantized_storage = instance_pipeline_buffers.quantization_required;
+		r_stats.feature_debug_counters = diagnostics.debug_binning_counters_enabled;
+		r_stats.raster_tile_splat_capacity = uint32_t(MAX_SPLATS_PER_TILE);
+		r_stats.max_raster_splats_per_tile = CLAMP<uint32_t>(g_gpu_sorting_config.max_raster_splats_per_tile, 256u, 131072u);
+		r_stats.shader_defines_hash = shader_resources.shader_defines_hash;
 	};
 	auto reset_stats_and_disable = [&]() {
 		diagnostics.last_render_stats = RenderStats();

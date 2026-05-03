@@ -15,7 +15,7 @@ namespace {
 struct FidelityOverrideSnapshot {
 	bool lod_enabled = true;
 	bool opacity_aware_culling = true;
-	float visibility_threshold = 0.01f;
+	float visibility_threshold = 1.0f / 255.0f;
 	bool distance_cull_enabled = true;
 	float distance_cull_start = 30.0f;
 	float distance_cull_max_rate = 0.5f;
@@ -212,7 +212,11 @@ void RenderQualityOrchestrator::set_opacity_aware_culling(bool p_enabled) {
 }
 
 void RenderQualityOrchestrator::set_visibility_threshold(float p_threshold) {
-	float clamped = CLAMP(p_threshold, 0.001f, 0.1f);
+	// Keep the lower bound permissive for experiments, but the default now
+	// matches GS_RASTER_ALPHA_THRESHOLD (1/255). Binning thresholds looser than
+	// the raster alpha cutoff can drop splats that raster would still draw,
+	// producing moving tile-boundary bands.
+	float clamped = CLAMP(p_threshold, 0.0001f, 0.1f);
 	if (!Math::is_equal_approx(gpu_culler->get_config().visibility_threshold, clamped)) {
 		gpu_culler->get_config().visibility_threshold = clamped;
 		gpu_culler->get_config().cull_params_dirty = true;

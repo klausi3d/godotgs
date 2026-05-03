@@ -299,8 +299,11 @@ TileRenderParamsGPU TileRenderer::TileRenderParamsBuilder::build_params(const Re
 	params.debug_flags[0] = (p_params.debug_show_tile_bounds || p_params.debug_show_tile_grid) ? 1.0f : 0.0f;
 	// Enable rasterizer stats collection for HUD display even without visual splat coverage overlay.
 	// This allows the runtime overlay to show rasterizer stats (samples, iterations, contributions)
-	// when only the performance HUD is enabled.
-	bool collect_raster_stats = p_params.debug_show_splat_coverage || p_params.debug_show_performance_hud;
+	// when only the performance HUD is enabled. The perf-capture harness can also
+	// flip stats on without forcing visual overlays via perf_capture_raster_shader_counters.
+	bool collect_raster_stats = p_params.debug_show_splat_coverage ||
+			p_params.debug_show_performance_hud ||
+			p_params.perf_capture_raster_shader_counters;
 	params.debug_flags[1] = collect_raster_stats ? 1.0f : 0.0f;
 	params.debug_flags[2] = p_params.debug_show_overflow_tiles ? 1.0f : 0.0f;
 	params.debug_flags[3] = p_params.debug_show_projection_issues ? 1.0f : 0.0f;
@@ -330,7 +333,10 @@ TileRenderParamsGPU TileRenderer::TileRenderParamsBuilder::build_params(const Re
 	// When enabled, reduces tile-Gaussian pairs by ~94% using opacity-based radius calculation
 	params.opacity_culling_config[0] = p_params.opacity_aware_culling ? 1.0f : 0.0f;
 	params.opacity_culling_config[1] = p_params.visibility_threshold;
-	params.opacity_culling_config[2] = 0.0f; // reserved
+	// PlayCanvas alphaClip parity: per-splat hard cull at projection. Clamp to
+	// [0, 0.99] so callers cannot accidentally cull every splat (1.0 would
+	// reject all opacities since the test is opacity <= alpha_clip).
+	params.opacity_culling_config[2] = CLAMP(p_params.alpha_clip, 0.0f, 0.99f);
 	params.opacity_culling_config[3] = 0.0f; // reserved
 	// LOD blending configuration (LODGE technique)
 	params.lod_blend_config[0] = p_params.lod_blend_factor;

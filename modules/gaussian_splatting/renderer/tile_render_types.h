@@ -131,6 +131,12 @@ struct TileOverflowStatsSnapshot {
 	uint32_t raster_alpha_sum_q10 = 0;
 	uint32_t raster_reject_index_mismatch = 0;
 	uint32_t raster_break_subgroup_early_exit = 0;
+	// Previously-uninstrumented continue paths: spatial extent (quadratic),
+	// LOD-modulated opacity, and zero blend-alpha. See OverflowStats SSBO
+	// in tile_binning.glsl / tile_rasterizer*.glsl for the matching layout.
+	uint32_t raster_reject_quadratic = 0;
+	uint32_t raster_reject_lod_opacity = 0;
+	uint32_t raster_reject_blend_alpha = 0;
 };
 
 struct TileSplatAuditSnapshot {
@@ -175,8 +181,21 @@ struct TileRenderStats {
 	uint64_t compute_raster_frames = 0;
 	uint64_t fragment_raster_frames = 0;
 	bool last_raster_used_compute = false;
+	bool last_raster_choice_initialized = false;
+	String last_raster_choice_reason;
 	bool sorted_indices_blend_fallback_active = false;
 	String sorted_indices_blend_fallback_reason;
+	bool global_sort_enabled = false;
+	bool allow_compute_raster = false;
+	bool feature_packed_stage_data = false;
+	bool feature_tighter_bounds = false;
+	bool feature_sh_amortization = false;
+	uint32_t sh_amortization_divisor = 1;
+	bool feature_quantized_storage = false;
+	bool feature_debug_counters = false;
+	uint32_t raster_tile_splat_capacity = 0;
+	uint32_t max_raster_splats_per_tile = 0;
+	uint64_t shader_defines_hash = 0;
 };
 
 enum TileResolveDebugMode {
@@ -220,17 +239,34 @@ struct TileTimestampRange {
 };
 
 struct TileTimingState {
+	TileTimestampRange overlap_count_timestamp;
 	TileTimestampRange binning_timestamp;
+	TileTimestampRange overlap_emit_timestamp;
+	TileTimestampRange overlap_sort_timestamp;
 	TileTimestampRange raster_timestamp;
 	TileTimestampRange prefix_timestamp;
 	TileTimestampRange resolve_timestamp;
 	float last_submission_cpu_ms = 0.0f;
 	float last_setup_cpu_ms = 0.0f;  // CPU time for buffer setup, allocation, uniform updates
+	float last_overlap_count_gpu_ms = 0.0f;
 	float last_binning_gpu_ms = 0.0f;
+	float last_overlap_emit_gpu_ms = 0.0f;
+	float last_overlap_sort_gpu_ms = 0.0f;
+	float last_overlap_sort_cpu_dispatch_ms = 0.0f;
 	float last_raster_gpu_ms = 0.0f;
 	float last_prefix_gpu_ms = 0.0f;
+	float last_prefix_cpu_sync_fallback_ms = 0.0f;
 	float last_resolve_gpu_ms = 0.0f;
 	float last_frame_gpu_ms = 0.0f;
+	bool overlap_count_gpu_timing_valid = false;
+	bool overlap_emit_gpu_timing_valid = false;
+	bool overlap_sort_gpu_timing_valid = false;
+	bool overlap_sort_cpu_dispatch_valid = false;
+	bool raster_gpu_timing_valid = false;
+	bool prefix_gpu_timing_valid = false;
+	bool prefix_cpu_sync_fallback_valid = false;
+	bool resolve_gpu_timing_valid = false;
+	bool frame_gpu_timing_valid = false;
 	uint64_t gpu_timing_frame_serial = 0;
 	uint64_t gpu_timing_frames_behind = 0;
 };
@@ -258,6 +294,11 @@ struct TileDiagnosticsState {
 	bool debug_log_resolve = false;
 	int debug_log_resolve_interval_frames = 60;
 	bool debug_binning_counters_enabled = false;
+	// Perf-capture-only path that forces GS_COLLECT_RASTER_STATS into the
+	// raster shader without going through debug_binning_counters_enabled
+	// (which is also used by other debug-overlay machinery). Toggling this
+	// flag triggers a shader recompile via TileRenderer::set_perf_capture_raster_shader_counters_enabled.
+	bool perf_capture_raster_shader_counters_enabled = false;
 	bool debug_dump_gpu_counters = false;
 	bool debug_gpu_counter_logs_enabled = false;
 	bool debug_tile_logs_enabled = false;
@@ -349,6 +390,16 @@ struct TileRenderParams {
 	bool debug_show_depth_visualization = false;
 	bool debug_show_shadow_opacity = false;
 	bool debug_show_performance_hud = false;
+	// Force runtime stats readback on without enabling visual HUD overlays.
+	// Used by the perf-capture harness so raster_total_tiles / overlap_records
+	// / max_splats_per_tile / occupancy / dense+overflow ratios populate.
+	bool perf_capture_force_runtime_statistics = false;
+	// Force GS_COLLECT_RASTER_STATS define + sample_raster_stats runtime flag
+	// without enabling visual HUD or splat-coverage overlays. Pays per-pixel
+	// atomic-counter cost only while on, but populates the shader-internal
+	// counters (raster_splats_iterated, alpha-break breakdowns, subgroup
+	// early-exit count) that explain the per-pixel raster loop's cost.
+	bool perf_capture_raster_shader_counters = false;
 	float debug_overlay_opacity = 0.3f;
 	uint32_t debug_splat_audit_sample_count = 64;
 	bool output_is_premultiplied = false;
@@ -372,18 +423,21 @@ struct TileRenderParams {
 	bool jacobian_bypass_j_col2_clamp = false;
 	bool jacobian_invert_j_col2_sign = false;
 	bool opacity_aware_culling = true;
-	float visibility_threshold = 0.01f;
+	float visibility_threshold = 1.0f / 255.0f;
+	// PlayCanvas alphaClip parity: per-splat hard cull at projection. Splats
+	// with opacity <= alpha_clip are rejected before binning work.
+	float alpha_clip = 0.3f;
 	bool distance_cull_enabled = true;
 	float distance_cull_start = 30.0f;
 	float distance_cull_max_rate = 0.5f;
 	bool lod_blend_enabled = true;
 	float lod_blend_factor = 1.0f;
 	float lod_blend_distance = 5.0f;
-	// Hotspot-aware pre-raster cull (shared by COUNT and EMIT). Defaults match
-	// RasterParams so a tile needs >4096 prior records and the candidate splat
-	// needs raw_min_radius_px<0.7 to be pruned. Set either to 0 to disable.
-	uint32_t hotspot_pressure_threshold = 4096;
-	float hotspot_min_radius_px = 0.7f;
+	// Hotspot-aware pre-raster cull (shared by COUNT and EMIT). Disabled by
+	// default — see rasterizer_interfaces.h for the closed-loop oscillator
+	// rationale. Set both to non-zero to opt in.
+	uint32_t hotspot_pressure_threshold = 0;
+	float hotspot_min_radius_px = 0.0f;
 	bool wind_enabled = false;
 	Vector3 wind_direction = Vector3(1.0f, 0.0f, 0.0f);
 	float wind_strength = 0.0f;

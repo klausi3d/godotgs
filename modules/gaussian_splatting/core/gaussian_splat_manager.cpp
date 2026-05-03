@@ -1048,7 +1048,13 @@ void GaussianSplatManager::initialize_module() {
 	// Opacity-aware bounding (FlashGS optimization) - reduces tile-Gaussian pairs by ~94%
 	// When enabled, splat radii are calculated based on opacity: r = sqrt(2 * ln(alpha/tau) * lambda)
 	GLOBAL_DEF("rendering/gaussian_splatting/culling/opacity_aware_bounds", true);     // Enable opacity-aware bounding
-	GLOBAL_DEF("rendering/gaussian_splatting/culling/visibility_threshold", 0.01f);    // tau: minimum visible contribution
+	GLOBAL_DEF("rendering/gaussian_splatting/culling/visibility_threshold", 1.0f / 255.0f); // tau: minimum visible contribution
+
+	// Per-splat hard cull at projection — matches PlayCanvas alphaClip.
+	// Drops splats with opacity <= threshold BEFORE binning, suppressing low-
+	// confidence "ghost" splats from real-scan reconstructions. 0.3 matches
+	// PlayCanvas/SuperSplat default; lower for more permissive content.
+	GLOBAL_DEF("rendering/gaussian_splatting/culling/alpha_clip", 0.3f);
 
 	// EXPERIMENTAL: overflow auto-tuner (disabled by default due to splat decay bug).
 	// Enable only for testing until the feedback loop is fixed.

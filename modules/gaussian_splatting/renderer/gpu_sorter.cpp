@@ -418,8 +418,7 @@ SortKeyConfig SortKeyConfig::from_settings() {
     static constexpr uint32_t MIN_DEPTH_BITS = 8;
 
     SortKeyConfig cfg;
-    // Instance pipeline requires 64-bit sort keys.
-    cfg.key_bits = 64;
+    cfg.key_bits = (g_gpu_sorting_config.key_bits == 64) ? 64 : 32;
     cfg.tile_bits = g_gpu_sorting_config.tile_bits;
     cfg.depth_bits = g_gpu_sorting_config.depth_bits;
     cfg.enable_tie_breaker = g_gpu_sorting_config.enable_tie_breaker;
@@ -448,9 +447,18 @@ SortKeyConfig SortKeyConfig::from_settings() {
     return cfg;
 }
 
-void SortingMetricsCollector::record_sort(uint32_t element_count, float time_ms, bool used_gpu) {
+void SortingMetricsCollector::record_sort(uint32_t element_count, float time_ms, bool used_gpu,
+        uint32_t key_bits, uint32_t radix_bits, uint32_t pass_count,
+        bool indirect, bool sort_async, bool element_count_known) {
     (void)used_gpu;
     metrics.last_sort_time_ms = time_ms;
+    metrics.last_element_count = element_count;
+    metrics.last_element_count_known = element_count_known;
+    metrics.last_key_bits = key_bits;
+    metrics.last_radix_bits = radix_bits;
+    metrics.last_pass_count = pass_count;
+    metrics.last_sort_indirect = indirect;
+    metrics.last_sort_async = sort_async;
     metrics.total_sorts++;
     if (element_count > 0) {
         metrics.total_elements_sorted += element_count;
@@ -465,8 +473,10 @@ void SortingMetricsCollector::record_sort(uint32_t element_count, float time_ms,
     }
 }
 
-void SortingMetricsCollector::record_async_sort(uint32_t element_count, float time_ms) {
-    record_sort(element_count, time_ms, true);
+void SortingMetricsCollector::record_async_sort(uint32_t element_count, float time_ms,
+        uint32_t key_bits, uint32_t radix_bits, uint32_t pass_count,
+        bool indirect, bool element_count_known) {
+    record_sort(element_count, time_ms, true, key_bits, radix_bits, pass_count, indirect, true, element_count_known);
     metrics.async_sorts++;
 }
 
@@ -875,12 +885,12 @@ Error BitonicSort::sort(RID keys_buffer, RID values_buffer, uint32_t count) {
     if (gpu_time_ms <= 0.0f) {
         sort_time = MAX(sort_time, wait_time_ms);
     }
-    metrics_collector.record_sort(count, sort_time, true);
+    uint32_t total_passes = (num_stages * (num_stages + 1)) / 2;
+    metrics_collector.record_sort(count, sort_time, true, 64, 0, total_passes, false, false, true);
     
     // Calculate bandwidth utilization (rough estimate)
     // Each pass reads and writes all elements once
     // BitonicSort uses 64-bit keys (8 bytes) + 32-bit values (4 bytes) = 12 bytes per element
-    uint32_t total_passes = (num_stages * (num_stages + 1)) / 2;
     constexpr uint32_t key_stride_bytes = 8; // 64-bit keys
     uint64_t bytes_transferred = uint64_t(count) * (uint64_t(key_stride_bytes) + sizeof(uint32_t)) * 2 * total_passes;
     float bandwidth_gbps = (bytes_transferred / 1e9) / (sort_time / 1000.0f);
@@ -928,7 +938,8 @@ void BitonicSort::wait_for_completion() {
 Ref<IGPUSorter> GPUSorterFactory::create_sorter(SortingAlgorithm algorithm, RenderingDevice *rd, uint32_t max_elements,
         const SortKeyConfig &p_key_config) {
     SortKeyConfig key_config = p_key_config;
-    if (key_config.key_bits != 64) {
+    if (key_config.key_bits != 32 && key_config.key_bits != 64) {
+        WARN_PRINT(vformat("[GPU Sort] Unsupported key_bits=%d; falling back to 64-bit keys", key_config.key_bits));
         key_config.key_bits = 64;
     }
     if (key_config.tile_bits > key_config.key_bits) {
@@ -950,8 +961,9 @@ Ref<IGPUSorter> GPUSorterFactory::create_sorter(SortingAlgorithm algorithm, Rend
     const AlgorithmProbe bitonic_runtime_probe = _probe_algorithm(ALGORITHM_BITONIC, rd);
     const AlgorithmProbe onesweep_runtime_probe = _probe_algorithm(ALGORITHM_ONESWEEP, rd);
 
-    // The instance sorting pipeline always uses GPU-driven count buffers and 64-bit sort keys.
-    // Force selection onto an algorithm that satisfies those capabilities.
+    // GPU-driven tile overlap sorting requires indirect-count support. 64-bit
+    // capability is only required when the effective key layout actually uses
+    // 64-bit keys; 32-bit overlap-key experiments must not be promoted here.
     const bool requires_indirect = true;
     const bool requires_64bit_keys = key_config.key_bits > 32;
 
@@ -1449,7 +1461,8 @@ uint64_t RadixSort::_sort_async_internal(RID keys_buffer, RID values_buffer, uin
     current_sort_value = ++timeline_value;
 
     float cpu_submit_time_ms = (OS::get_singleton()->get_ticks_usec() - submit_start) / 1000.0f;
-    metrics_collector.record_async_sort(count, cpu_submit_time_ms);
+    metrics_collector.record_async_sort(count, cpu_submit_time_ms,
+            key_config.key_bits, variant->radix_bits, variant->num_passes, false, true);
 
     // ISSUE-010: Use generation-safe cleanup.
     _free_uniform_sets_safe(uniform_owner, uniform_owner_generation, resource_rd, uniform_sets);
@@ -2464,6 +2477,16 @@ uint64_t RadixSort::_sort_indirect_internal(RID keys_buffer, RID values_buffer, 
     }
 
 
+    // Capture the sort _Begin timestamp before any dispatches so the resolved
+    // gpu_overlap_sort_ms covers both the indirect-args prep pass below and
+    // the radix histogram/scatter loop that follows. The _End timestamp is
+    // captured after the radix passes finish but before the safe_submit, so
+    // the full duration brackets every dispatch in the sort.
+    last_sort_gpu_timestamp = {};
+    const String sort_timestamp_label = "TileOverlapSort_" + String::num_uint64(pending_frame_label_serial);
+    const uint32_t sort_timestamp_base = compute_rd->get_captured_timestamps_count();
+    compute_rd->capture_timestamp(sort_timestamp_label + String("_Begin"));
+
     if (use_indirect_dispatch) {
         ScopedGpuMarkerEx dispatch_marker(compute_rd, "GS_RadixSort_IndirectArgs", PassColors::SORTING);
         ComputeListID dispatch_list = compute_rd->compute_list_begin();
@@ -2558,6 +2581,9 @@ uint64_t RadixSort::_sort_indirect_internal(RID keys_buffer, RID values_buffer, 
     ComputeListID compute_list = compute_rd->compute_list_begin();
     if (compute_list == RD::INVALID_ID) {
         WARN_PRINT_ONCE("[RadixSort] Failed to begin compute list for sort_indirect; sort skipped.");
+        // Pair the begin marker with an end marker so the device's timestamp
+        // sequence stays consistent even though we won't claim the range as valid.
+        compute_rd->capture_timestamp(sort_timestamp_label + String("_End"));
         _free_uniform_sets_safe(uniform_owner, uniform_owner_generation, resource_rd, uniform_sets);
         uniform_owner = nullptr;
         uniform_owner_generation = 0;
@@ -2569,12 +2595,18 @@ uint64_t RadixSort::_sort_indirect_internal(RID keys_buffer, RID values_buffer, 
     if (!commands_ok) {
         // Command recording failed (odd-pass invariant violated). The compute
         // list was already ended above; skip submission to avoid broken GPU work.
+        compute_rd->capture_timestamp(sort_timestamp_label + String("_End"));
         _free_uniform_sets_safe(uniform_owner, uniform_owner_generation, resource_rd, uniform_sets);
         uniform_owner = nullptr;
         uniform_owner_generation = 0;
         is_sorting = false;
         return 0;
     }
+    compute_rd->capture_timestamp(sort_timestamp_label + String("_End"));
+    last_sort_gpu_timestamp.device = compute_rd;
+    last_sort_gpu_timestamp.start_index = sort_timestamp_base;
+    last_sort_gpu_timestamp.end_index = sort_timestamp_base + 1;
+    last_sort_gpu_timestamp.valid = true;
     // PERF: Use safe_submit without sync - GPU barriers ensure correct ordering.
     // Blocking sync here was causing 15 FPS cap.
     gs_device_utils::safe_submit(compute_rd);
@@ -2582,7 +2614,8 @@ uint64_t RadixSort::_sort_indirect_internal(RID keys_buffer, RID values_buffer, 
     current_sort_value = ++timeline_value;
 
     float cpu_submit_time_ms = (OS::get_singleton()->get_ticks_usec() - submit_start) / 1000.0f;
-    metrics_collector.record_async_sort(0, cpu_submit_time_ms);
+    metrics_collector.record_async_sort(0, cpu_submit_time_ms,
+            key_config.key_bits, variant->radix_bits, variant->num_passes, true, false);
 
     // ISSUE-010: Use generation-safe cleanup.
     _free_uniform_sets_safe(uniform_owner, uniform_owner_generation, resource_rd, uniform_sets);
@@ -3279,7 +3312,7 @@ Error OneSweepSort::sort(RID keys_buffer, RID values_buffer, uint32_t count) {
 
     // Update metrics (CPU recording + sync time, not pure GPU execution time).
     float sort_time_ms = end_cpu_record_timing();
-    metrics_collector.record_sort(count, sort_time_ms, true);
+    metrics_collector.record_sort(count, sort_time_ms, true, 32, RADIX_BITS, num_passes, false, false, true);
 
     // Log performance data for Issue #126.
     log_sorting_performance(count, sort_time_ms, get_algorithm_name());

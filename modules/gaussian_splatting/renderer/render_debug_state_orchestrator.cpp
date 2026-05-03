@@ -790,6 +790,8 @@ void RenderDebugStateOrchestrator::apply_debug_options_to_render_params(TileRend
 		r_params.debug_frame_log_frequency = debug_config.frame_log_frequency;
 		r_params.debug_enable_splat_audit = debug_config.enable_splat_audit;
 		r_params.debug_splat_audit_sample_count = debug_config.splat_audit_sample_count;
+		r_params.perf_capture_force_runtime_statistics = debug_config.perf_capture_force_runtime_statistics;
+		r_params.perf_capture_raster_shader_counters = debug_config.perf_capture_raster_shader_counters;
 	} else {
 		r_params.debug_show_tile_bounds = debug_state.show_tile_bounds;
 		r_params.debug_show_splat_coverage = debug_state.show_splat_coverage;
@@ -810,6 +812,8 @@ void RenderDebugStateOrchestrator::apply_debug_options_to_render_params(TileRend
 		r_params.debug_frame_log_frequency = debug_config.frame_log_frequency;
 		r_params.debug_enable_splat_audit = debug_config.enable_splat_audit;
 		r_params.debug_splat_audit_sample_count = debug_config.splat_audit_sample_count;
+		r_params.perf_capture_force_runtime_statistics = debug_config.perf_capture_force_runtime_statistics;
+		r_params.perf_capture_raster_shader_counters = debug_config.perf_capture_raster_shader_counters;
 	}
 
 	if (debug_config.compute_raster_policy_override != GaussianSplatting::ComputeRasterPolicy::Default) {
@@ -1088,6 +1092,22 @@ bool RenderDebugStateOrchestrator::get_debug_pipeline_trace_enabled() const {
 	return debug_config.enable_pipeline_trace;
 }
 
+void RenderDebugStateOrchestrator::set_perf_capture_force_runtime_statistics(bool p_enabled) {
+	debug_config.perf_capture_force_runtime_statistics = p_enabled;
+}
+
+bool RenderDebugStateOrchestrator::get_perf_capture_force_runtime_statistics() const {
+	return debug_config.perf_capture_force_runtime_statistics;
+}
+
+void RenderDebugStateOrchestrator::set_perf_capture_raster_shader_counters(bool p_enabled) {
+	debug_config.perf_capture_raster_shader_counters = p_enabled;
+}
+
+bool RenderDebugStateOrchestrator::get_perf_capture_raster_shader_counters() const {
+	return debug_config.perf_capture_raster_shader_counters;
+}
+
 void RenderDebugStateOrchestrator::set_debug_state_guardrails_enabled(bool p_enabled) {
 	debug_config.enable_state_guardrails = p_enabled;
 }
@@ -1246,6 +1266,22 @@ void GaussianSplatRenderer::set_debug_pipeline_trace_enabled(bool p_enabled) {
 
 bool GaussianSplatRenderer::get_debug_pipeline_trace_enabled() const {
 	return debug_state_orchestrator->get_debug_pipeline_trace_enabled();
+}
+
+void GaussianSplatRenderer::set_perf_capture_force_runtime_statistics(bool p_enabled) {
+	debug_state_orchestrator->set_perf_capture_force_runtime_statistics(p_enabled);
+}
+
+bool GaussianSplatRenderer::get_perf_capture_force_runtime_statistics() const {
+	return debug_state_orchestrator->get_perf_capture_force_runtime_statistics();
+}
+
+void GaussianSplatRenderer::set_perf_capture_raster_shader_counters(bool p_enabled) {
+	debug_state_orchestrator->set_perf_capture_raster_shader_counters(p_enabled);
+}
+
+bool GaussianSplatRenderer::get_perf_capture_raster_shader_counters() const {
+	return debug_state_orchestrator->get_perf_capture_raster_shader_counters();
 }
 
 void GaussianSplatRenderer::set_debug_state_guardrails_enabled(bool p_enabled) {

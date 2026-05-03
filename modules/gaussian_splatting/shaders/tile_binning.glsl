@@ -26,6 +26,7 @@
 #include "includes/tile_projection_common.glsl"
 
 #include "includes/gs_instance_layout.glsl"
+#include "includes/gs_alpha_threshold.glsl"
 #include "includes/quantization_dequant.glsl"
 
 #include "includes/gs_render_params.glsl"
@@ -73,10 +74,14 @@ struct Gaussian {
 
 const float GAUSSIAN_EPSILON = 1e-6;
 // MIN_VARIANCE must ensure: sqrt(MIN_VARIANCE) * MAX_SIGMA >= MIN_SPLAT_RADIUS
-// With MIN_SPLAT_RADIUS=0.1 and MAX_SIGMA=3.0: need sqrt(MIN_VARIANCE) >= 0.0333
-// Using 0.002 gives sqrt(0.002)=0.0447, yielding min_radius = 0.134 pixels
+// With MIN_SPLAT_RADIUS=0.1 and MAX_SIGMA=3.33: need sqrt(MIN_VARIANCE) >= 0.0301.
+// Using 0.002 gives sqrt(0.002)=0.0447, yielding min_radius = 0.149 pixels at MAX_SIGMA=3.33.
 const float MIN_VARIANCE = 0.002;
-const float MAX_SIGMA = 3.0;
+// Derived from GS_RASTER_ALPHA_THRESHOLD so binning includes the same support
+// the rasterizer will accept. Letting these constants drift creates moving
+// tile-boundary bands; making raster looser than binning drops visible tails,
+// while making raster wider than the reference threshold blurs fine detail.
+const float MAX_SIGMA = GS_RASTER_MAX_SIGMA;
 
 #include "includes/gs_sh_binning.glsl"
 #include "includes/gs_eigen_binning.glsl"
@@ -162,6 +167,14 @@ layout(set = 0, binding = 3, std430) buffer OverflowStats {
     uint raster_alpha_sum_q10;
     uint raster_reject_index_mismatch;
     uint raster_break_subgroup_early_exit;  // Tiles where all pixels were alpha-saturated
+    // Previously-uninstrumented continue paths in gs_rasterize_*. Without these,
+    // the "iterated but neither contributed nor rejected" bucket lumped together
+    // (a) conic spatial-extent rejects (b) LOD-modulated opacity rejects and
+    // (c) zero blend-alpha rejects. Splitting them lets perf-capture separate
+    // "math wasted on low-contribution splats" from "spatial coverage too wide".
+    uint raster_reject_quadratic;     // quadratic > GS_RASTER_ALPHA_REJECT_Q (spatial extent)
+    uint raster_reject_lod_opacity;   // base_opacity * lod_blend <= GS_RASTER_ALPHA_THRESHOLD
+    uint raster_reject_blend_alpha;   // blend_alpha <= 0 after remaining-alpha multiply
 } overflow_stats;
 
 layout(set = 0, binding = 5, std430) buffer TileCounts {
@@ -283,11 +296,24 @@ uint gs_pack_sort_key(uint tile_idx, float linear_depth, uint global_idx) {
 #if GS_SORT_DEPTH_BITS >= 32
     return floatBitsToUint(clamped_depth);
 #else
-    // Quantized-depth path: keep the existing tile-prefix layout. Tie-break
-    // is implicit because depth quantization already groups equal-depth splats
-    // and the radix sort is stable within input order.
-    uint depth_mask = (1u << GS_SORT_DEPTH_BITS) - 1u;
-    uint depth_key = uint(clamped_depth * float(depth_mask));
+    // Quantized-depth path with deterministic tie-break (mirrors the 64-bit
+    // path's split between depth and global_idx). Without the tie bits,
+    // splats in the same depth bucket sort by GPU atomic-emit completion
+    // order, which is non-deterministic across frames and produces dense-tile
+    // flicker on camera movement.
+    //
+    // Layout inside the depth half: [depth_quant (high) | tie (low 8)].
+    // Sacrificing 8 of the 16 depth bits for tie matches the 64-bit path's
+    // 16-of-32 split. CAVEAT: at >5000 splats per active tile and 256 tie
+    // values per depth bucket, birthday-collision math gives ~56% chance of
+    // at least one within-bucket tie collision per (tile, bucket) pair, so
+    // some residual flicker remains. The proper fix is rebalancing the bit
+    // budget — reducing GS_SORT_TILE_BITS (16) to 13 frees 3 bits for tie,
+    // raising tie precision to 2048 distinct values (~10% collision). That's
+    // a project setting change; the 8/8 split here is the minimum-risk
+    // shader-only fix.
+    uint depth_quant = uint(clamped_depth * float((1u << (GS_SORT_DEPTH_BITS - 8u)) - 1u));
+    uint depth_key = (depth_quant << 8u) | (global_idx & 0xFFu);
 #if GS_SORT_TILE_BITS >= 32
     uint tile_mask = 0xFFFFFFFFu;
 #else
@@ -403,8 +429,15 @@ uint gs_build_quantized_sh_metadata(uint encoded_total, bool dc_linear_rgb) {
 }
 
 // Project a Gaussian into screen space and derive its 2D covariance.
-vec3 project_gaussian_2d(Gaussian g, out vec2 screen_pos, out mat2 cov2d, out float linear_depth, out float raw_min_radius) {
+//
+// `alpha_rescale` is the Mip-Splatting α-rescale companion (Yu et al. 2024 §3.3).
+// The additive low-pass term inflates the projected splat; without rescaling
+// alpha by sqrt(det(Σ_raw) / det(Σ_filtered)) the dilation becomes pure fattening,
+// producing a uniform soft halo (matched the symptom on commit adc75e5ca8).
+// Defaults to 1.0 on early-return paths so non-rendering splats are unaffected.
+vec3 project_gaussian_2d(Gaussian g, out vec2 screen_pos, out mat2 cov2d, out float linear_depth, out float raw_min_radius, out float alpha_rescale) {
     raw_min_radius = 0.0;  // Default: will be set after valid cov2d computation
+    alpha_rescale = 1.0;   // Default: passes through unchanged on rejection paths
     linear_depth = 1.0;
     // WARNING: Do NOT negate view_pos.x here - it causes "splats rotate with camera" bug.
     // The X-axis offset issue must be fixed elsewhere (likely in PLY loader or data transform).
@@ -604,29 +637,39 @@ vec3 project_gaussian_2d(Gaussian g, out vec2 screen_pos, out mat2 cov2d, out fl
         return vec3(0.0); // Invalid covariance projection
     }
 
-    // SUBPIXEL CULLING (#797): Compute raw minor eigenvalue BEFORE low-pass filter.
+    // Capture pre-low-pass det once for both the subpixel-culling minor radius (#797)
+    // and the Mip-Splatting α-rescale companion below. Lifted out of the original
+    // inner scope so both consumers can reuse the same value.
+    float det_raw = cov2d[0][0] * cov2d[1][1] - cov2d[0][1] * cov2d[0][1];
+    det_raw = max(det_raw, 1e-8);
+
+    // SUBPIXEL CULLING (#797): minor eigenvalue from PRE-low-pass cov2d.
     // The low-pass filter adds a minimum variance floor for stability, which can
     // otherwise inflate tiny splats and defeat subpixel culling.
-    // Capture true minor eigenvalue here for distance-based culling.
     {
         float trace_raw = cov2d[0][0] + cov2d[1][1];
-        float det_raw = cov2d[0][0] * cov2d[1][1] - cov2d[0][1] * cov2d[0][1];
-        det_raw = max(det_raw, 1e-8);  // Prevent negative sqrt
         float disc_raw = max(trace_raw * trace_raw * 0.25 - det_raw, 0.0);
-        float root_raw = sqrt(disc_raw);
-        float lambda_min_raw = max(trace_raw * 0.5 - root_raw, 1e-8);
-        raw_min_radius = sqrt(lambda_min_raw);  // Minor eigenvalue (true screen-space radius)
+        float lambda_min_raw = max(trace_raw * 0.5 - sqrt(disc_raw), 1e-8);
+        raw_min_radius = sqrt(lambda_min_raw);
     }
 
-    // Low-pass filter to prevent degenerate ellipses and view-dependent holes.
-    // Standard EWA/mip-splatting technique: add minimum variance to the diagonal.
-    // The value is runtime configurable to balance stability (higher) vs sharpness (lower).
+    // Low-pass filter (added to cov2d diagonal). The same Mip-Splatting low-pass
+    // SuperSplat / Inria use, but ALWAYS paired with the α-rescale companion below
+    // so the dilation does not become pure fattening.
     float low_pass_filter = clamp(params._pad_before_jacobian, 0.05, 2.0);
     cov2d[0][0] += low_pass_filter;
     cov2d[1][1] += low_pass_filter;
 
     float det = cov2d[0][0] * cov2d[1][1] - cov2d[0][1] * cov2d[0][1];
     det = max(det, low_pass_filter * low_pass_filter);
+
+    // Mip-Splatting α-rescale companion (Yu et al. 2024 §3.3).
+    // Without this, the additive low-pass over-fattens thin splats: at λ_min=0.01
+    // and low_pass=0.05 the screen-space radius grows ~3× (0.10 px → 0.32 px),
+    // producing a uniform fuzzy halo on edges and surfaces. The rescale shrinks
+    // per-splat alpha by the screen-space-area ratio so total visual energy is
+    // preserved through the dilation.
+    alpha_rescale = sqrt(clamp(det_raw / det, 0.0, 1.0));
 
     float inv_det = 1.0 / det;
     return vec3(cov2d[1][1] * inv_det, -cov2d[0][1] * inv_det, cov2d[0][0] * inv_det);
@@ -691,6 +734,14 @@ void main() {
     vec4 local_rotation = g.rotation;
 #endif
 
+    // Per-splat alpha clip — PlayCanvas alphaClip=0.3 reference behavior.
+    // Drops low-confidence "ghost" splats before any world transform, projection,
+    // or binning work. Fires before all other rejects so we save the most work
+    // on splats we'd drop anyway. See gs_get_alpha_clip() in gs_render_params.glsl.
+    if (g.opacity <= gs_get_alpha_clip()) {
+        return;
+    }
+
     uint instance_flags = instance.ids.y;
     float uniform_scale = abs(instance.translation_scale.w);
     vec3 scaled_position = (instance_flags & GS_INSTANCE_FLAG_SCALE_IDENTITY) != 0u
@@ -734,7 +785,8 @@ void main() {
     mat2 cov2d;
     float linear_depth;
     float raw_min_radius_proj;  // Pre-low-pass-filter minor radius for subpixel culling (#797)
-    vec3 conic = project_gaussian_2d(g, screen_pos, cov2d, linear_depth, raw_min_radius_proj);
+    float alpha_rescale_proj;   // Mip-Splatting α-rescale companion to the cov2d low-pass.
+    vec3 conic = project_gaussian_2d(g, screen_pos, cov2d, linear_depth, raw_min_radius_proj, alpha_rescale_proj);
     if (conic == vec3(0.0)) {
         // Counter already incremented in project_gaussian_2d
         return;
@@ -759,10 +811,12 @@ void main() {
     screen_pos = screen_pos_packed;
 
     float max_sigma = MAX_SIGMA;
-#ifdef GS_TIGHTER_BOUNDS
-    // Tighten bounds by reducing the max sigma used for binning.
-    max_sigma = MAX_SIGMA * 0.85;
-#endif
+    // GS_TIGHTER_BOUNDS multiplier (was MAX_SIGMA * 0.85) removed: silently
+    // shrinking the binning iso below the raster alpha cutoff (1/255) produces
+    // tile-aligned bands that move with camera direction. If this perf knob
+    // is reintroduced, the raster-side alpha threshold must tighten in lockstep
+    // (e.g. by deriving GS_RASTER_ALPHA_THRESHOLD from a paired uniform).
+    // Flag wiring kept for telemetry and tier-preset compatibility.
     EigenInfo eigen = compute_eigen(cov2d);
 
     // Check for skip signal from compute_eigen (astronomically large covariance)
@@ -1074,8 +1128,12 @@ void main() {
 #endif
 
     // Use the fade computed earlier for opacity; we already skipped if nearly invisible.
+    // alpha_rescale_proj is the Mip-Splatting companion to the low-pass cov2d dilation
+    // applied inside project_gaussian_2d; without it, dilated splats render with the
+    // SAME alpha over a LARGER footprint (pure fattening). The rescale preserves total
+    // visual energy through the dilation so output matches the Inria/SuperSplat reference.
     float base_opacity = clamp(deformation.opacity * instance.params.x * params.opacity_multiplier *
-            size_fade * aspect_fade * lens_fade, 0.0, 0.99);
+            size_fade * aspect_fade * lens_fade * alpha_rescale_proj, 0.0, 0.99);
 
     // Evaluate SH for view-dependent color using configurable band level
     vec3 view_dir = normalize(params.camera_position.xyz - g.position);

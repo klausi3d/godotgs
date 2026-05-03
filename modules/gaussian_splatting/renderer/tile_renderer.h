@@ -151,6 +151,8 @@ public:
     bool is_resolve_use_texel_fetch_enabled() const { return diagnostics.resolve_use_texel_fetch_sampling; }
     void set_debug_binning_counters_enabled(bool p_enabled);
     bool is_debug_binning_counters_enabled() const { return diagnostics.debug_binning_counters_enabled; }
+    void set_perf_capture_raster_shader_counters_enabled(bool p_enabled);
+    bool is_perf_capture_raster_shader_counters_enabled() const { return diagnostics.perf_capture_raster_shader_counters_enabled; }
 
     void set_adaptive_settings(const AdaptiveSettings &p_settings);
     AdaptiveSettings get_adaptive_settings() const { return adaptive_controller.get_settings(); }
@@ -160,14 +162,28 @@ public:
 
     float get_tile_assignment_time() const { return perf_metrics.tile_assignment_ms; }
     float get_rasterization_time() const { return perf_metrics.rasterization_ms; }
-    uint64_t get_sort_sync_fallback_count() const { return perf_metrics.sort_sync_fallback_count; }
-    float get_last_submission_cpu_ms() const { return timing_state.last_submission_cpu_ms; }
-    float get_last_gpu_frame_time_ms() const { return timing_state.last_frame_gpu_ms; }
-    float get_last_gpu_binning_time_ms() const { return timing_state.last_binning_gpu_ms; }
-    float get_last_gpu_raster_time_ms() const { return timing_state.last_raster_gpu_ms; }
-    float get_last_gpu_prefix_time_ms() const { return timing_state.last_prefix_gpu_ms; }
-    float get_last_gpu_resolve_time_ms() const { return timing_state.last_resolve_gpu_ms; }
-    float get_last_setup_cpu_ms() const { return timing_state.last_setup_cpu_ms; }
+	uint64_t get_sort_sync_fallback_count() const { return perf_metrics.sort_sync_fallback_count; }
+	float get_last_submission_cpu_ms() const { return timing_state.last_submission_cpu_ms; }
+	float get_last_gpu_frame_time_ms() const { return timing_state.last_frame_gpu_ms; }
+	bool is_last_gpu_frame_time_valid() const { return timing_state.frame_gpu_timing_valid; }
+	float get_last_gpu_overlap_count_time_ms() const { return timing_state.last_overlap_count_gpu_ms; }
+	bool is_last_gpu_overlap_count_time_valid() const { return timing_state.overlap_count_gpu_timing_valid; }
+	float get_last_gpu_binning_time_ms() const { return timing_state.last_binning_gpu_ms; }
+	float get_last_gpu_overlap_emit_time_ms() const { return timing_state.last_overlap_emit_gpu_ms; }
+	bool is_last_gpu_overlap_emit_time_valid() const { return timing_state.overlap_emit_gpu_timing_valid; }
+	float get_last_gpu_overlap_sort_time_ms() const { return timing_state.last_overlap_sort_gpu_ms; }
+	bool is_last_gpu_overlap_sort_time_valid() const { return timing_state.overlap_sort_gpu_timing_valid; }
+	float get_last_overlap_sort_cpu_dispatch_time_ms() const { return timing_state.last_overlap_sort_cpu_dispatch_ms; }
+	bool is_last_overlap_sort_cpu_dispatch_time_valid() const { return timing_state.overlap_sort_cpu_dispatch_valid; }
+	float get_last_gpu_raster_time_ms() const { return timing_state.last_raster_gpu_ms; }
+	bool is_last_gpu_raster_time_valid() const { return timing_state.raster_gpu_timing_valid; }
+	float get_last_gpu_prefix_time_ms() const { return timing_state.last_prefix_gpu_ms; }
+	bool is_last_gpu_prefix_time_valid() const { return timing_state.prefix_gpu_timing_valid; }
+	float get_last_prefix_cpu_sync_fallback_time_ms() const { return timing_state.last_prefix_cpu_sync_fallback_ms; }
+	bool is_last_prefix_cpu_sync_fallback_time_valid() const { return timing_state.prefix_cpu_sync_fallback_valid; }
+	float get_last_gpu_resolve_time_ms() const { return timing_state.last_resolve_gpu_ms; }
+	bool is_last_gpu_resolve_time_valid() const { return timing_state.resolve_gpu_timing_valid; }
+	float get_last_setup_cpu_ms() const { return timing_state.last_setup_cpu_ms; }
     uint64_t get_gpu_timing_frame_serial() const { return timing_state.gpu_timing_frame_serial; }
     uint64_t get_gpu_timing_frames_behind() const { return timing_state.gpu_timing_frames_behind; }
     void resolve_gpu_timestamps_async();
@@ -284,7 +300,7 @@ private:
             RenderingDevice *p_main_device, RenderDeviceManager *p_manager, bool p_log_errors);
     void _collect_render_statistics();
     void _reset_timestamp_tracking();
-    void _resolve_timestamp_range(TimestampRange &p_range, float &r_duration_ms);
+	bool _resolve_timestamp_range(TimestampRange &p_range, float &r_duration_ms);
     uint64_t _compute_shader_defines_hash() const;
 
     // GPU timestamp helper structs (must be declared before methods that use them)
@@ -294,10 +310,11 @@ private:
 
         bool is_complete() const { return begin_ns >= 0.0 && end_ns >= 0.0; }
     };
-    struct GpuTimestampFrameStages {
-        GpuTimestampStageTimes binning;
-        GpuTimestampStageTimes raster;
-        GpuTimestampStageTimes overlap_count;
+	struct GpuTimestampFrameStages {
+		GpuTimestampStageTimes binning;
+		GpuTimestampStageTimes raster;
+		GpuTimestampStageTimes overlap_count;
+        GpuTimestampStageTimes overlap_sort;
         GpuTimestampStageTimes prefix;
         GpuTimestampStageTimes resolve;
         GpuTimestampStageTimes total;
@@ -307,11 +324,19 @@ private:
         double bin_ms = 0.0;
         double raster_ms = 0.0;
         double count_ms = 0.0;
+        double overlap_sort_ms = 0.0;
         double prefix_ms = 0.0;
-        double resolve_ms = 0.0;
-        double total_ms = 0.0;
-        bool has_data = false;
-    };
+		double resolve_ms = 0.0;
+		double total_ms = 0.0;
+		bool has_data = false;
+		bool bin_valid = false;
+		bool raster_valid = false;
+		bool count_valid = false;
+		bool overlap_sort_valid = false;
+		bool prefix_valid = false;
+		bool resolve_valid = false;
+		bool total_valid = false;
+	};
 
     void _parse_timestamps_into_frame_map(RenderingDevice *p_device, uint32_t p_available,
             HashMap<uint64_t, GpuTimestampFrameStages> &r_frames) const;

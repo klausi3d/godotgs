@@ -33,6 +33,7 @@
 #include "test_renderer_pipeline.h"
 #include "test_sort_fallback_policy.h"
 #include "test_sort_benchmark_metrics.h"
+#include "test_sorter_metrics_metadata.h"
 #include "test_gaussian_splat_world_io.h"
 #include "test_view_transform.h"
 #include "test_memory_leak_detection.h"
