@@ -29,7 +29,12 @@ void RenderConfigOrchestrator::set_render_mode(GaussianSplatRenderer::RenderMode
 }
 
 void RenderConfigOrchestrator::set_opacity_multiplier(float p_opacity) {
-	float clamped = CLAMP(p_opacity, 0.0f, 1.0f);
+	// Allow >1.0 for SuperSplat-style "overfill" (boost weak splats so dense
+	// regions cover more aggressively). The per-splat alpha is still capped
+	// at 0.99 in tile_binning.glsl (alpha=1.0 == zero transmittance breaks
+	// back-to-front compositing), so multiplier > 1 saturates more splats
+	// toward 0.99 rather than pushing alpha past 1.0.
+	float clamped = CLAMP(p_opacity, 0.0f, 8.0f);
 	if (Math::is_equal_approx(render_config.opacity_multiplier, clamped)) {
 		return;
 	}

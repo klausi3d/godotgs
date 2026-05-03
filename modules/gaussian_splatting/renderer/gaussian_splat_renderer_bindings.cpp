@@ -193,7 +193,7 @@ void GaussianSplatRenderer::_bind_methods() {
                  "set_painterly_material", "get_painterly_material");
     ADD_PROPERTY(PropertyInfo(Variant::INT, "render_mode", PROPERTY_HINT_ENUM, "3D,2D,Hybrid"),
             "set_render_mode", "get_render_mode");
-    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "render/opacity_multiplier", PROPERTY_HINT_RANGE, "0,1,0.01"),
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "render/opacity_multiplier", PROPERTY_HINT_RANGE, "0,8,0.01"),
             "set_opacity_multiplier", "get_opacity_multiplier");
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "sort/static_cache_enabled"),
                  "set_static_sort_cache_enabled", "is_static_sort_cache_enabled");
