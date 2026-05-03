@@ -25,12 +25,15 @@ window/size/viewport_height=1080
 enabled=PackedStringArray()
 
 [rendering]
+gaussian_splatting/culling/visibility_threshold=0.00392156863
 
 gaussian_splatting/gpu_sorting/max_overlap_records=5000000
-gaussian_splatting/gpu_sorting/key_bits=32
-gaussian_splatting/gpu_sorting/tile_bits=16
-gaussian_splatting/gpu_sorting/depth_bits=16
+gaussian_splatting/gpu_sorting/key_bits=64
+gaussian_splatting/gpu_sorting/tile_bits=32
+gaussian_splatting/gpu_sorting/depth_bits=32
 gaussian_splatting/gpu_sorting/enable_tie_breaker=true
+gaussian_splatting/gpu_sorting/max_raster_splats_per_tile=65536
+gaussian_splatting/rasterization/low_pass_filter=0.05
 gaussian_splatting/pipeline/enable_tighter_bounds=true
 gaussian_splatting/lod/max_distance=50.0
 gaussian_splatting/lod/base_threshold=5.0
@@ -53,7 +56,6 @@ gaussian_splatting/streaming/auto_regulate_enabled=false
 gaussian_splatting/streaming/max_chunks_in_vram=384
 rendering/driver/threads/thread_model=1
 gaussian_splatting/instance_pipeline/enabled=true
-gaussian_splatting/gpu_sorting/use_32bit_keys=true
 renderer_rd/forward_plus/use_rgba8_framebuffer=true
 gaussian_splatting/lighting/indirect_sh_scale=0.0
 gaussian_splatting/lighting/shadow_strength=0.0

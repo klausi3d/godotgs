@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/benchmark_suite/lane_template.tscn" id="1"]
+
+[node name="LaneSort32TileBitPressure" instance=ExtResource("1")]
+lane_id = "sort32_tile_bit_pressure"
+lane_name = "Sort32 Tile Bit Pressure"
+lane_description = "Opt-in lane deliberately undersizing 32-bit tile bits to record route fallback behavior."
+lane_preset = "sort32_tile_bit_pressure"
+default_duration_s = 10.0

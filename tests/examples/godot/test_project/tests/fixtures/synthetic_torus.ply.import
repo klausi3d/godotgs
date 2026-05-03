@@ -1,0 +1,114 @@
+[remap]
+
+importer="gaussian_splat_ply"
+importer_version=5
+type="GaussianSplatAsset"
+uid="uid://dyaqm15kfaevy"
+path="res://.godot/imported/synthetic_torus.ply-f406c445278c3169ee1ae378f724d8f2.tres"
+metadata={
+&"asset_type": 0,
+&"bounds": AABB(-9.18641, -2.7622867, -13.071443, 18.350676, 5.531723, 18.241413),
+&"compression_flags": 15,
+&"dc_encoding": "linear_rgb",
+&"density_multiplier": 0.4,
+&"enable_lod": true,
+&"import_time": {
+"day": 3,
+"dst": true,
+"hour": 0,
+"minute": 18,
+"month": 5,
+"second": 59,
+"weekday": 0,
+"year": 2026
+},
+&"loader_statistics": {
+"bounds_max": Vector3(9.164266, 2.7694364, 5.1699705),
+"bounds_min": Vector3(-9.18641, -2.7622867, -13.071443),
+"cache_hit": true,
+"cache_time_ms": 23.3,
+"format": "binary",
+"header_time_ms": 0.902,
+"load_time_ms": 25.352,
+"parse_time_ms": 0.0,
+"properties": 14,
+"splat_count": 3072
+},
+&"max_splats": 250000,
+&"memory_breakdown_mb": {
+&"colors_mb": 0.004688263,
+&"positions_mb": 0.0070323944,
+&"rotations_mb": 0.009376526,
+&"scales_mb": 0.0070323944,
+&"total_mb": 0.028129578
+},
+&"memory_estimate_mb": 0.028129578,
+&"normalize_opacity": true,
+&"optimize_for_gpu": true,
+&"options": {
+&"compression/pack_opacity": false,
+&"compression/quantize_colors": true,
+&"compression/quantize_positions": true,
+&"compression/quantize_rotations": true,
+&"compression/quantize_scales": true,
+&"general/asset_type": 0,
+&"metadata/include_memory_estimate": true,
+&"metadata/include_statistics": true,
+&"preview/generate_thumbnail": true,
+&"preview/thumbnail_size": 96,
+&"preview/thumbnail_style": 1,
+&"processing/normalize_opacity": true,
+&"processing/sort_by_opacity": false,
+&"quality/customized": false,
+&"quality/density_multiplier": 0.4,
+&"quality/enable_lod": true,
+&"quality/max_splats": 250000,
+&"quality/optimize_for_gpu": true,
+&"quality/preset": "mobile",
+&"validation/validate_required_properties": true,
+&"validation/warn_missing_optional": true
+},
+&"original_splat_count": 3072,
+&"preset_display": "Mobile",
+&"quality_customized": false,
+&"quality_preset": "mobile",
+&"sort_by_opacity": false,
+&"source_file": "res://tests/fixtures/synthetic_torus.ply",
+&"source_path": "res://tests/fixtures/synthetic_torus.ply",
+&"splat_count": 1229,
+&"thumbnail_generated": true,
+&"thumbnail_size": 96,
+&"thumbnail_style": 1,
+&"thumbnail_style_name": "Density",
+&"validate_required": true,
+&"warn_missing_optional": true
+}
+
+[deps]
+
+files=["res://.godot/imported/synthetic_torus.ply-f406c445278c3169ee1ae378f724d8f2.tres", "res://tests/fixtures/synthetic_torus.gsplatcache"]
+
+source_file="res://tests/fixtures/synthetic_torus.ply"
+dest_files=["res://.godot/imported/synthetic_torus.ply-f406c445278c3169ee1ae378f724d8f2.tres", "res://.godot/imported/synthetic_torus.ply-f406c445278c3169ee1ae378f724d8f2.tres", "res://tests/fixtures/synthetic_torus.gsplatcache"]
+
+[params]
+
+quality/preset="mobile"
+general/asset_type=0
+quality/max_splats=250000
+quality/density_multiplier=0.4
+quality/enable_lod=true
+quality/optimize_for_gpu=true
+validation/validate_required_properties=true
+validation/warn_missing_optional=true
+processing/normalize_opacity=true
+processing/sort_by_opacity=false
+compression/quantize_positions=true
+compression/quantize_colors=true
+compression/quantize_scales=true
+compression/quantize_rotations=true
+preview/generate_thumbnail=true
+preview/thumbnail_style=1
+preview/thumbnail_size=96
+metadata/include_statistics=true
+metadata/include_memory_estimate=true

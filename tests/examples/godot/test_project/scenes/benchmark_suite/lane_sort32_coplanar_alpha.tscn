@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/benchmark_suite/lane_template.tscn" id="1"]
+
+[node name="LaneSort32CoplanarAlpha" instance=ExtResource("1")]
+lane_id = "sort32_coplanar_alpha"
+lane_name = "Sort32 Coplanar Alpha"
+lane_description = "Opt-in 32-bit key lane with coplanar, high-overlap alpha ordering pressure."
+lane_preset = "sort32_coplanar_alpha"
+default_duration_s = 10.0
