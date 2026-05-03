@@ -331,10 +331,12 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
     PackedColorArray colors;
     PackedFloat32Array scales;
     PackedFloat32Array rotations;
+    PackedFloat32Array opacity_logits;
 
     positions.resize(final_count * 3);
     colors.resize(final_count);
     scales.resize(final_count * 3);
+    opacity_logits.resize(final_count);
     rotations.resize(final_count * 4);
 
     // View-dependent SH bands. The PLY loader already parsed up to 48 SH floats
@@ -377,6 +379,12 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
         Color color = g.sh_dc;
         color.a = normalize_opacity ? CLAMP(g.opacity, 0.0f, 1.0f) : g.opacity;
         colors_ptr[i] = color;
+        // Populate opacity_logits in lockstep with color.a. _ensure_buffer_sizes
+        // zero-fills opacity_logits to splat_count, and get_opacities() prefers
+        // logits over color.a — leaving them unwritten yields sigmoid(0)=0.5
+        // for every splat regardless of the actual stored alpha.
+        const float clamped_op = CLAMP(g.opacity, 0.0001f, 0.9999f);
+        opacity_logits.write[i] = Math::log(clamped_op / (1.0f - clamped_op));
 
         int scale_base = i * 3;
         scales_ptr[scale_base + 0] = g.scale.x;
@@ -420,6 +428,7 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
     asset->set_colors(colors);
     asset->set_scales(scales);
     asset->set_rotations(rotations);
+    asset->set_opacity_logits(opacity_logits);
     if (sh_first_terms > 0) {
         asset->set_sh_first_order_coefficients(sh_first_order);
     }
