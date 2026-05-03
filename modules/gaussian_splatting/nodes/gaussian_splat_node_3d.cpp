@@ -162,7 +162,7 @@ void GaussianSplatNode3D::_bind_methods() {
 
     ClassDB::bind_method(D_METHOD("set_opacity", "opacity"), &GaussianSplatNode3D::set_opacity);
     ClassDB::bind_method(D_METHOD("get_opacity"), &GaussianSplatNode3D::get_opacity);
-    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rendering/opacity", PROPERTY_HINT_RANGE, "0.0,1.0,0.01"), "set_opacity", "get_opacity");
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rendering/opacity", PROPERTY_HINT_RANGE, "0.0,8.0,0.01"), "set_opacity", "get_opacity");
 
     ClassDB::bind_method(D_METHOD("set_effect_position_scale", "scale"), &GaussianSplatNode3D::set_effect_position_scale);
     ClassDB::bind_method(D_METHOD("get_effect_position_scale"), &GaussianSplatNode3D::get_effect_position_scale);
@@ -1089,7 +1089,10 @@ void GaussianSplatNode3D::set_opacity(float p_opacity) {
         WARN_PRINT("[GaussianSplatNode3D] Ignoring non-finite opacity; resetting to 1.0.");
         next_opacity = 1.0f;
     }
-    opacity = CLAMP(next_opacity, 0.0f, 1.0f);
+    // Allow >1.0 for SuperSplat-style "overfill" — boost weak splats so dense
+    // regions cover more aggressively. Per-splat alpha is still capped at 0.99
+    // in tile_binning.glsl so back-to-front compositing stays well-defined.
+    opacity = CLAMP(next_opacity, 0.0f, 8.0f);
     _mark_render_state_dirty();
     _update_instance_params_in_director();
 }
