@@ -505,6 +505,15 @@ script = ExtResource("1")
                 suite_tests = suite_result["tests"]
                 total_tests += len(suite_tests)
                 passed_tests += sum(1 for t in suite_tests if t.get("passed", False))
+            # Treat benchmark entries as test units so --benchmarks-only runs
+            # don't drop to total_tests=0 (which would force success_rate=0%
+            # and make generate_report return failure even when every
+            # benchmark passes). Benchmarks use "completed" rather than
+            # "passed" as their pass-indicator.
+            if "benchmarks" in suite_result:
+                suite_benchmarks = suite_result["benchmarks"]
+                total_tests += len(suite_benchmarks)
+                passed_tests += sum(1 for b in suite_benchmarks if b.get("completed", False))
 
         self.results["summary"] = {
             "total_tests": total_tests,
