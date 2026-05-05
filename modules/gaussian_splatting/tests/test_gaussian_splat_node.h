@@ -1401,8 +1401,12 @@ TEST_CASE("[GaussianSplatting][Node] Runtime effect controls sanitize invalid ga
 
     node->set_opacity(-0.25f);
     CHECK(node->get_opacity() == doctest::Approx(0.0f));
+    // Range was extended from [0, 1] to [0, 8] to support SuperSplat-style
+    // overfill (per-splat alpha still capped at 0.99 in tile_binning.glsl).
     node->set_opacity(1.75f);
-    CHECK(node->get_opacity() == doctest::Approx(1.0f));
+    CHECK(node->get_opacity() == doctest::Approx(1.75f));
+    node->set_opacity(8.5f);
+    CHECK(node->get_opacity() == doctest::Approx(8.0f));
     node->set_opacity(nan);
     CHECK(node->get_opacity() == doctest::Approx(1.0f));
 
