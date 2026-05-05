@@ -415,9 +415,14 @@ private:
 		// 65535 is the structural ceiling: GS_PACKED_STAGE_DATA truncates global_idx to
 		// 16 bits in gs_pack_conic_y_and_index() (shaders/includes/tile_projection_common.glsl),
 		// and the rasterizer's stored_global_idx == sorted_idx equality check will silently
-		// reject any visible splat whose true global_idx exceeds UINT16_MAX. PipelineFeatureSet
-		// (renderer/pipeline_feature_set.cpp:173-180, header constant PACKED_STAGE_MAX_TOTAL_SPLATS)
-		// rejects the request earlier; this is the last-line runtime guard.
+		// reject any visible splat whose true global_idx exceeds UINT16_MAX. This gate IS the
+		// runtime enforcement: it has the scene-actual splat count and disables the flag when
+		// over budget. PipelineFeatureSet only carries the shared PACKED_STAGE_MAX_TOTAL_SPLATS
+		// capability constant (header) and the validation helper at
+		// renderer/pipeline_feature_set.cpp:167-181 — but `initialize_pipeline_feature_set()`
+		// (pipeline_feature_set.cpp:337) calls `validate()` with the default p_total_gaussians = 0,
+		// so init-time validation can never trip the > 65535 check. Do not rely on it for
+		// the splat-count contract.
 		if (packed_stage_requested && packed_stage_count > UINT16_MAX) {
 			WARN_PRINT_ONCE("[TileRenderer] Packed stage data requires <= 65535 total splats; disabling packed projection payloads.");
 			packed_stage_requested = false;
