@@ -28,7 +28,7 @@ public:
     virtual void show_advanced_options(const String &p_path) override;
 
     // Bump whenever importer behavior changes in a way that requires existing
-    // .tres caches to be re-imported. Godot's resource scanner compares this
+    // imported caches to be re-imported. Godot's resource scanner compares this
     // against the value stored in each .ply.import file and re-runs import()
     // when they differ, so users do NOT need to manually wipe .godot/imported/
     // after a fix lands in the importer.
@@ -52,7 +52,10 @@ public:
     //       per-splat RGB and lost view-dependent specular / fresnel detail.
     //       v5 caches carry full per-splat sh_first_order / sh_high_order
     //       arrays sized splat_count * sh_terms * 3.
-    virtual int get_format_version() const override { return 5; }
+    //   v6: imported GaussianSplatAsset payloads are saved as binary .res
+    //       instead of text .tres to avoid multi-hundred-MB text parsing during
+    //       scene loads.
+    virtual int get_format_version() const override { return 6; }
 
     // Validation helpers
     Error validate_ply_properties(const Ref<class PLYLoader> &p_loader) const;

@@ -150,7 +150,7 @@ void ResourceImporterPLY::get_recognized_extensions(List<String> *p_extensions) 
 }
 
 String ResourceImporterPLY::get_save_extension() const {
-    return "tres";
+    return "res";
 }
 
 String ResourceImporterPLY::get_resource_type() const {

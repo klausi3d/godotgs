@@ -130,7 +130,7 @@ void ResourceImporterSPZ::get_recognized_extensions(List<String> *p_extensions) 
 }
 
 String ResourceImporterSPZ::get_save_extension() const {
-    return "tres";
+    return "res";
 }
 
 String ResourceImporterSPZ::get_resource_type() const {
