@@ -15,24 +15,43 @@
 // ---------------------------------------------------------------------------
 
 void GaussianData::set_animation_state_machine(const Ref<GaussianSplatting::GaussianAnimationStateMachine>& p_animation) {
-    animation_state_machine = p_animation;
-    if (animation_state_machine.is_valid()) {
-        animation_state_machine->set_splat_count(gaussians.size());
-        if (incremental_saver.is_valid()) {
-            animation_state_machine->set_incremental_saver(incremental_saver);
-        }
-    }
     {
+        RWLockWrite lock(data_rwlock);
+        animation_state_machine = p_animation;
         MutexLock anim_lock(animation_cache_mutex);
+        if (animation_state_machine.is_valid()) {
+            animation_state_machine->set_splat_count(gaussians.size());
+            if (incremental_saver.is_valid()) {
+                animation_state_machine->set_incremental_saver(incremental_saver);
+            }
+        }
         animation_cache_dirty = true;
     }
 }
 
+Ref<GaussianSplatting::GaussianAnimationStateMachine> GaussianData::get_animation_state_machine() const {
+    RWLockRead lock(data_rwlock);
+    return animation_state_machine;
+}
+
+bool GaussianData::has_animation() const {
+    RWLockRead lock(data_rwlock);
+    return animation_state_machine.is_valid();
+}
+
 void GaussianData::set_incremental_saver(const Ref<GaussianSplatting::GaussianIncrementalSaver>& p_saver) {
+    RWLockWrite lock(data_rwlock);
     incremental_saver = p_saver;
+    MutexLock anim_lock(animation_cache_mutex);
     if (incremental_saver.is_valid() && animation_state_machine.is_valid()) {
         animation_state_machine->set_incremental_saver(incremental_saver);
     }
+    animation_cache_dirty = true;
+}
+
+Ref<GaussianSplatting::GaussianIncrementalSaver> GaussianData::get_incremental_saver() const {
+    RWLockRead lock(data_rwlock);
+    return incremental_saver;
 }
 
 // ---------------------------------------------------------------------------
@@ -40,15 +59,39 @@ void GaussianData::set_incremental_saver(const Ref<GaussianSplatting::GaussianIn
 // ---------------------------------------------------------------------------
 
 void GaussianData::update_animation(float p_delta) {
-    if (!animation_state_machine.is_valid() || !animation_enabled) {
+    Ref<GaussianSplatting::GaussianAnimationStateMachine> animation;
+    bool enabled = false;
+    {
+        RWLockRead lock(data_rwlock);
+        animation = animation_state_machine;
+        enabled = animation_enabled;
+    }
+
+    if (!animation.is_valid() || !enabled) {
         return;
     }
 
-    animation_state_machine->update(p_delta);
+    {
+        MutexLock anim_lock(animation_cache_mutex);
+        animation->update(p_delta);
+        animation_cache_dirty = true;
+    }
+}
+
+void GaussianData::set_animation_enabled(bool p_enabled) {
+    {
+        RWLockWrite lock(data_rwlock);
+        animation_enabled = p_enabled;
+    }
     {
         MutexLock anim_lock(animation_cache_mutex);
         animation_cache_dirty = true;
     }
+}
+
+bool GaussianData::is_animation_enabled() const {
+    RWLockRead lock(data_rwlock);
+    return animation_enabled;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,86 +111,136 @@ void GaussianData::update_animation(float p_delta) {
 // ---------------------------------------------------------------------------
 
 Vector3 GaussianData::get_animated_position(int p_index, float p_time) const {
-    if (p_index < 0 || (uint32_t)p_index >= gaussians.size()) {
-        return Vector3();
+    Vector3 base_position;
+    Ref<GaussianSplatting::GaussianAnimationStateMachine> animation;
+    bool enabled = false;
+    {
+        RWLockRead lock(data_rwlock);
+        if (p_index < 0 || (uint32_t)p_index >= gaussians.size()) {
+            return Vector3();
+        }
+        base_position = gaussians[p_index].position;
+        animation = animation_state_machine;
+        enabled = animation_enabled;
     }
 
-    if (!animation_state_machine.is_valid() || !animation_enabled) {
-        return gaussians[p_index].position;
+    if (!animation.is_valid() || !enabled) {
+        return base_position;
     }
 
     Vector3 animated_pos;
-    if (animation_state_machine->try_sample_position(p_index, p_time, animated_pos)) {
+    MutexLock anim_lock(animation_cache_mutex);
+    if (animation->try_sample_position(p_index, p_time, animated_pos)) {
         return animated_pos;
     }
 
-    return gaussians[p_index].position;
+    return base_position;
 }
 
 Color GaussianData::get_animated_color(int p_index, float p_time) const {
-    if (p_index < 0 || (uint32_t)p_index >= gaussians.size()) {
-        return Color();
+    Color base_color;
+    Ref<GaussianSplatting::GaussianAnimationStateMachine> animation;
+    bool enabled = false;
+    {
+        RWLockRead lock(data_rwlock);
+        if (p_index < 0 || (uint32_t)p_index >= gaussians.size()) {
+            return Color();
+        }
+        base_color = gaussians[p_index].sh_dc;
+        animation = animation_state_machine;
+        enabled = animation_enabled;
     }
 
-    if (!animation_state_machine.is_valid() || !animation_enabled) {
-        return gaussians[p_index].sh_dc;
+    if (!animation.is_valid() || !enabled) {
+        return base_color;
     }
 
     Color animated_color;
-    if (animation_state_machine->try_sample_color(p_index, p_time, animated_color)) {
+    MutexLock anim_lock(animation_cache_mutex);
+    if (animation->try_sample_color(p_index, p_time, animated_color)) {
         return animated_color;
     }
 
-    return gaussians[p_index].sh_dc;
+    return base_color;
 }
 
 float GaussianData::get_animated_opacity(int p_index, float p_time) const {
-    if (p_index < 0 || (uint32_t)p_index >= gaussians.size()) {
-        return 1.0f;
+    float base_opacity = 1.0f;
+    Ref<GaussianSplatting::GaussianAnimationStateMachine> animation;
+    bool enabled = false;
+    {
+        RWLockRead lock(data_rwlock);
+        if (p_index < 0 || (uint32_t)p_index >= gaussians.size()) {
+            return 1.0f;
+        }
+        base_opacity = gaussians[p_index].opacity;
+        animation = animation_state_machine;
+        enabled = animation_enabled;
     }
 
-    if (!animation_state_machine.is_valid() || !animation_enabled) {
-        return gaussians[p_index].opacity;
+    if (!animation.is_valid() || !enabled) {
+        return base_opacity;
     }
 
     float animated_opacity;
-    if (animation_state_machine->try_sample_opacity(p_index, p_time, animated_opacity)) {
+    MutexLock anim_lock(animation_cache_mutex);
+    if (animation->try_sample_opacity(p_index, p_time, animated_opacity)) {
         return animated_opacity;
     }
 
-    return gaussians[p_index].opacity;
+    return base_opacity;
 }
 
 Vector3 GaussianData::get_animated_scale(int p_index, float p_time) const {
-    if (p_index < 0 || (uint32_t)p_index >= gaussians.size()) {
-        return Vector3(1, 1, 1);
+    Vector3 base_scale(1, 1, 1);
+    Ref<GaussianSplatting::GaussianAnimationStateMachine> animation;
+    bool enabled = false;
+    {
+        RWLockRead lock(data_rwlock);
+        if (p_index < 0 || (uint32_t)p_index >= gaussians.size()) {
+            return Vector3(1, 1, 1);
+        }
+        base_scale = gaussians[p_index].scale;
+        animation = animation_state_machine;
+        enabled = animation_enabled;
     }
 
-    if (!animation_state_machine.is_valid() || !animation_enabled) {
-        return gaussians[p_index].scale;
+    if (!animation.is_valid() || !enabled) {
+        return base_scale;
     }
 
     Vector3 animated_scale;
-    if (animation_state_machine->try_sample_scale(p_index, p_time, animated_scale)) {
+    MutexLock anim_lock(animation_cache_mutex);
+    if (animation->try_sample_scale(p_index, p_time, animated_scale)) {
         return animated_scale;
     }
 
-    return gaussians[p_index].scale;
+    return base_scale;
 }
 
 Quaternion GaussianData::get_animated_rotation(int p_index, float p_time) const {
-    if (p_index < 0 || (uint32_t)p_index >= gaussians.size()) {
-        return Quaternion();
+    Quaternion base_rotation;
+    Ref<GaussianSplatting::GaussianAnimationStateMachine> animation;
+    bool enabled = false;
+    {
+        RWLockRead lock(data_rwlock);
+        if (p_index < 0 || (uint32_t)p_index >= gaussians.size()) {
+            return Quaternion();
+        }
+        base_rotation = gaussians[p_index].rotation;
+        animation = animation_state_machine;
+        enabled = animation_enabled;
     }
 
-    if (!animation_state_machine.is_valid() || !animation_enabled) {
-        return gaussians[p_index].rotation;
+    if (!animation.is_valid() || !enabled) {
+        return base_rotation;
     }
 
     Quaternion animated_rotation;
-    if (animation_state_machine->try_sample_rotation(p_index, p_time, animated_rotation)) {
+    MutexLock anim_lock(animation_cache_mutex);
+    if (animation->try_sample_rotation(p_index, p_time, animated_rotation)) {
         return animated_rotation;
     }
 
-    return gaussians[p_index].rotation;
+    return base_rotation;
 }

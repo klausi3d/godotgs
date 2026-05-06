@@ -403,6 +403,7 @@ void GaussianData::set_gaussian(int p_index, const Gaussian &p_gaussian) {
 }
 
 Gaussian GaussianData::get_gaussian(int p_index) const {
+    RWLockRead lock(data_rwlock);
     ERR_FAIL_INDEX_V(p_index, (int)gaussians.size(), Gaussian());
     return gaussians[p_index];
 }

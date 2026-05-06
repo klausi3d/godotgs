@@ -22,9 +22,11 @@
 #include "../core/gaussian_data.h"
 #include "../core/gaussian_splat_asset.h"
 #include "core/io/resource.h"
+#include "core/os/thread.h"
 #include "core/templates/local_vector.h"
 #include "tests/test_macros.h"
 
+#include <atomic>
 #include <type_traits>
 #include <utility>
 
@@ -70,6 +72,55 @@ LocalVector<Gaussian> _make_authority_test_cloud() {
     splats[3] = _make_authority_test_splat(Vector3(0, 2, 0), Color(1, 1, 0, 1));
     return splats;
 }
+
+#ifdef THREADS_ENABLED
+struct _AnimatedAccessorRaceContext {
+    Ref<::GaussianData> data;
+    uint32_t splat_count = 0;
+    std::atomic<bool> stop{ false };
+    std::atomic<int> invalid_samples{ 0 };
+};
+
+static bool _is_finite_color(const Color &p_color) {
+    return Math::is_finite(p_color.r) &&
+            Math::is_finite(p_color.g) &&
+            Math::is_finite(p_color.b) &&
+            Math::is_finite(p_color.a);
+}
+
+static void _animated_accessor_reader_thread(void *p_userdata) {
+    _AnimatedAccessorRaceContext *ctx = static_cast<_AnimatedAccessorRaceContext *>(p_userdata);
+    if (!ctx || !ctx->data.is_valid()) {
+        return;
+    }
+
+    while (!ctx->stop.load(std::memory_order_acquire)) {
+        for (uint32_t i = 0; i < ctx->splat_count; i++) {
+            const int index = static_cast<int>(i);
+            const Vector3 position = ctx->data->get_animated_position(index, -1.0f);
+            const Color color = ctx->data->get_animated_color(index, -1.0f);
+            const float opacity = ctx->data->get_animated_opacity(index, -1.0f);
+            const Vector3 scale = ctx->data->get_animated_scale(index, -1.0f);
+            const Quaternion rotation = ctx->data->get_animated_rotation(index, -1.0f);
+            if (!position.is_finite() || !_is_finite_color(color) ||
+                    !Math::is_finite(opacity) || !scale.is_finite() ||
+                    !rotation.is_finite()) {
+                ctx->invalid_samples.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+
+        if (ctx->data->get_animated_position(-1, 0.0f) != Vector3() ||
+                ctx->data->get_animated_color(-1, 0.0f) != Color() ||
+                ctx->data->get_animated_opacity(-1, 0.0f) != 1.0f ||
+                ctx->data->get_animated_scale(-1, 0.0f) != Vector3(1, 1, 1) ||
+                ctx->data->get_animated_rotation(-1, 0.0f) != Quaternion()) {
+            ctx->invalid_samples.fetch_add(1, std::memory_order_relaxed);
+        }
+
+        Thread::yield();
+    }
+}
+#endif
 
 } // namespace
 
@@ -175,6 +226,84 @@ TEST_CASE("[GaussianSplatting][DataAuthority] Animation sampling is non-destruct
     // adds the symbol back, this static_assert stops being well-formed.
     static_assert(!_HasApplyAnimationAtTime<::GaussianData>::value,
             "GaussianData::apply_animation_at_time() must stay removed -- animation is a non-destructive view.");
+}
+
+TEST_CASE("[GaussianSplatting][DataAuthority] Animated accessors tolerate concurrent payload mutation") {
+#ifndef THREADS_ENABLED
+    MESSAGE("Skipping - THREADS_ENABLED is not enabled in this build");
+    return;
+#else
+    constexpr uint32_t splat_count = 64;
+    LocalVector<Gaussian> splats;
+    splats.resize(splat_count);
+    for (uint32_t i = 0; i < splat_count; i++) {
+        splats[i] = _make_authority_test_splat(Vector3(float(i), 0.0f, 0.0f),
+                Color(float(i % 7) / 6.0f, 0.25f, 0.75f, 0.8f),
+                Vector3(1.0f, 1.0f, 1.0f));
+    }
+
+    Ref<::GaussianData> data;
+    data.instantiate();
+    data->set_gaussians(splats);
+
+    Ref<GaussianSplatting::GaussianAnimationStateMachine> animation;
+    animation.instantiate();
+    animation->set_splat_count(splat_count);
+    data->set_animation_state_machine(animation);
+
+    PackedVector3Array positions_a;
+    PackedVector3Array positions_b;
+    PackedVector3Array scales_a;
+    PackedVector3Array scales_b;
+    PackedFloat32Array opacities_a;
+    PackedFloat32Array opacities_b;
+    TypedArray<Quaternion> rotations_a;
+    TypedArray<Quaternion> rotations_b;
+    positions_a.resize(splat_count);
+    positions_b.resize(splat_count);
+    scales_a.resize(splat_count);
+    scales_b.resize(splat_count);
+    opacities_a.resize(splat_count);
+    opacities_b.resize(splat_count);
+    rotations_a.resize(splat_count);
+    rotations_b.resize(splat_count);
+    for (uint32_t i = 0; i < splat_count; i++) {
+        const int index = static_cast<int>(i);
+        positions_a.set(index, Vector3(float(i), 1.0f, 2.0f));
+        positions_b.set(index, Vector3(-float(i), 3.0f, 4.0f));
+        scales_a.set(index, Vector3(1.0f, 1.5f, 2.0f));
+        scales_b.set(index, Vector3(2.0f, 1.0f, 0.5f));
+        opacities_a.set(index, 0.25f);
+        opacities_b.set(index, 0.85f);
+        rotations_a[index] = Quaternion();
+        rotations_b[index] = Quaternion(Vector3(0.0f, 1.0f, 0.0f), Math::deg_to_rad(30.0f));
+    }
+
+    _AnimatedAccessorRaceContext ctx;
+    ctx.data = data;
+    ctx.splat_count = splat_count;
+
+    Thread reader_thread;
+    const Thread::ID reader_id = reader_thread.start(_animated_accessor_reader_thread, &ctx);
+    REQUIRE(reader_id != Thread::UNASSIGNED_ID);
+
+    for (uint32_t iteration = 0; iteration < 96; iteration++) {
+        const bool use_a = (iteration % 2) == 0;
+        data->set_animation_enabled(use_a);
+        data->set_animation_state_machine((iteration % 8) == 0 ? Ref<GaussianSplatting::GaussianAnimationStateMachine>() : animation);
+        data->set_positions(use_a ? positions_a : positions_b);
+        data->set_scales(use_a ? scales_a : scales_b);
+        data->set_opacities(use_a ? opacities_a : opacities_b);
+        data->set_rotations(use_a ? rotations_a : rotations_b);
+        CHECK(data->get_gaussian(0).position.is_finite());
+        Thread::yield();
+    }
+
+    ctx.stop.store(true, std::memory_order_release);
+    reader_thread.wait_to_finish();
+
+    CHECK(ctx.invalid_samples.load(std::memory_order_relaxed) == 0);
+#endif
 }
 
 TEST_CASE("[GaussianSplatting][DataAuthority] GaussianSplatAsset packed setters are sealed at runtime") {

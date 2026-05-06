@@ -262,11 +262,13 @@ constexpr uint16_t gaussian_get_brush_override_id(uint32_t meta) {
  * - Animation system integration for animated splats
  * - Octree-based spatial queries for frustum culling
  *
- * @note Thread safety: Gaussian payload, SH metadata, and brush history mutations
- *       are serialized by `data_rwlock` (RWLock — readers may run concurrently,
- *       writers are exclusive). Animation caches are protected by a separate
- *       `animation_cache_mutex`. Async streaming pack jobs must read chunk data
- *       through capture_chunk_snapshot() only, which captures under the read lock.
+ * @note Thread safety: Gaussian payload, SH metadata, brush history, and
+ *       GaussianData-owned animation refs/state are serialized by
+ *       `data_rwlock` (RWLock — readers may run concurrently, writers are
+ *       exclusive). Animation state-machine sampling/update and animation
+ *       caches are protected by a separate `animation_cache_mutex`. Async
+ *       streaming pack jobs must read chunk data through capture_chunk_snapshot()
+ *       only, which captures under the read lock.
  */
 class GaussianData : public Resource {
     GDCLASS(GaussianData, Resource);
@@ -318,7 +320,7 @@ private:
     Ref<GaussianSplatting::GaussianAnimationStateMachine> animation_state_machine;
     Ref<GaussianSplatting::GaussianIncrementalSaver> incremental_saver;
     bool animation_enabled = true;
-    mutable Mutex animation_cache_mutex; ///< Protects all animation cache fields below.
+    mutable Mutex animation_cache_mutex; ///< Serializes animation sampling/update and protects cache fields below.
     mutable LocalVector<Vector3> animated_positions_cache;
     mutable LocalVector<Color> animated_colors_cache;
     mutable LocalVector<float> animated_opacities_cache;
@@ -820,10 +822,10 @@ public:
     void set_animation_state_machine(const Ref<GaussianSplatting::GaussianAnimationStateMachine>& p_animation);
 
     /** @brief Returns the current animation state machine. */
-    Ref<GaussianSplatting::GaussianAnimationStateMachine> get_animation_state_machine() const { return animation_state_machine; }
+    Ref<GaussianSplatting::GaussianAnimationStateMachine> get_animation_state_machine() const;
 
     /** @brief Returns true if an animation state machine is assigned. */
-    bool has_animation() const { return animation_state_machine.is_valid(); }
+    bool has_animation() const;
 
     /**
      * @brief Sets the incremental saver for progressive save operations.
@@ -832,7 +834,7 @@ public:
     void set_incremental_saver(const Ref<GaussianSplatting::GaussianIncrementalSaver>& p_saver);
 
     /** @brief Returns the current incremental saver. */
-    Ref<GaussianSplatting::GaussianIncrementalSaver> get_incremental_saver() const { return incremental_saver; }
+    Ref<GaussianSplatting::GaussianIncrementalSaver> get_incremental_saver() const;
 
     /**
      * @brief Updates animation state by the given delta time.
@@ -847,10 +849,10 @@ public:
     // sample a pose at a given time without mutating the splat data.
 
     /** @brief Enables or disables animation playback. */
-    void set_animation_enabled(bool p_enabled) { animation_enabled = p_enabled; }
+    void set_animation_enabled(bool p_enabled);
 
     /** @brief Returns true if animation playback is enabled. */
-    bool is_animation_enabled() const { return animation_enabled; }
+    bool is_animation_enabled() const;
 
     /**
      * @brief Gets the animated position for a Gaussian.
