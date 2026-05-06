@@ -8,6 +8,7 @@
 #include "gaussian_data.h"
 #include "gs_project_settings.h"
 #include "quality_tier_config.h"
+#include "streaming_vram_regulator.h"
 #include "../renderer/sorting_settings_utils.h"
 #include "../nodes/gaussian_splat_node_3d.h"
 #include "../logger/gs_logger.h"
@@ -1143,8 +1144,9 @@ void GaussianSplatManager::initialize_module() {
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/async_io_enabled", false);
 
 	// VRAM budget auto-regulation settings for streaming system (H3DGS-style).
-	// Enables graceful degradation when approaching memory limits.
-	GLOBAL_DEF("rendering/gaussian_splatting/streaming/vram_budget_mb", 12288);
+	// Default to the unknown-capacity fallback; larger budgets should come from
+	// explicit project overrides, runtime overrides, or quality tiers.
+	GLOBAL_DEF("rendering/gaussian_splatting/streaming/vram_budget_mb", STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB);
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/auto_regulate_enabled", true);
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/vram_warning_threshold_percent", 85);
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/min_chunks_in_vram", 4);

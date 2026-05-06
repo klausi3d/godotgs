@@ -52,7 +52,7 @@ float _ps_get_float(ProjectSettings *ps, const StringName &name, float fallback)
     return fallback;
 }
 
-static constexpr uint32_t STREAMING_DEFAULT_VRAM_BUDGET_MB = 12288;
+static constexpr uint32_t STREAMING_DEFAULT_VRAM_BUDGET_MB = STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB;
 static constexpr uint32_t STREAMING_DEFAULT_MIN_CHUNKS_IN_VRAM = 4;
 static constexpr uint32_t STREAMING_DEFAULT_MAX_CHUNKS_IN_VRAM = 128;
 
@@ -243,6 +243,11 @@ void VRAMBudgetRegulator::_apply_config() {
     config.max_chunks = MAX(config.min_chunks, config.max_chunks);
     config.warning_threshold_percent = CLAMP(config.warning_threshold_percent, 50u, 99u);
     config.regulation_step_percent = CLAMP(config.regulation_step_percent, 0.1f, 10.0f);
+    config.requested_budget_mb = config.budget_mb;
+    config.requested_source_budget_mb = config.source_budget_mb;
+    config.budget_capacity_verified = stats.device_capacity_known;
+    config.budget_uses_unknown_capacity_fallback = false;
+    config.budget_unverified = false;
 
     // RenderingDevice::MEMORY_TOTAL reports current total memory usage, not hardware capacity.
     // Clamp configured budget only when true capacity is known from a dedicated query path.
@@ -252,6 +257,24 @@ void VRAMBudgetRegulator::_apply_config() {
             WARN_PRINT(vformat("[VRAM Budget] Clamping configured budget from %d MB to detected device capacity %d MB.",
                     config.budget_mb, capacity_mb));
             config.budget_mb = capacity_mb;
+            config.source_budget_mb = "detected_capacity_clamp";
+        }
+    } else if (config.source_budget_mb == "project_default") {
+        config.budget_mb = MIN(config.budget_mb, STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB);
+        config.source_budget_mb = "unknown_capacity_fallback";
+        config.budget_uses_unknown_capacity_fallback = true;
+    } else {
+        config.budget_unverified = true;
+        if (config.budget_mb > STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB) {
+            const String warning_key = vformat("%s:%d", config.source_budget_mb, config.budget_mb);
+            if (warning_key != last_unverified_budget_warning_key) {
+                WARN_PRINT(vformat("[VRAM Budget] Using unverified %d MB budget from %s while device capacity is unknown; "
+                                   "fresh projects default to %d MB until true capacity can be queried.",
+                        config.budget_mb,
+                        config.source_budget_mb,
+                        STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB));
+                last_unverified_budget_warning_key = warning_key;
+            }
         }
     }
 
@@ -274,6 +297,15 @@ void VRAMBudgetRegulator::reload_config() {
 void VRAMBudgetRegulator::set_config_override(const VRAMBudgetConfig &p_config) {
     config_override_active = true;
     config = p_config;
+    if (config.source_budget_mb.is_empty() || config.source_budget_mb == "project_default") {
+        config.source_budget_mb = "runtime_override";
+    }
+    if (config.source_min_chunks.is_empty() || config.source_min_chunks == "project_default") {
+        config.source_min_chunks = "runtime_override";
+    }
+    if (config.source_max_chunks.is_empty() || config.source_max_chunks == "project_default") {
+        config.source_max_chunks = "runtime_override";
+    }
     _apply_config();
 }
 
@@ -490,8 +522,13 @@ Dictionary VRAMBudgetRegulator::get_debug_stats_dictionary() const {
     d["auto_regulate_enabled"] = config.auto_regulate_enabled;
     d["cap_tier_preset"] = config.cap_tier_preset;
     d["cap_tier_active"] = config.cap_tier_active;
+    d["requested_budget_mb"] = int64_t(config.requested_budget_mb);
+    d["requested_source_budget_mb"] = config.requested_source_budget_mb;
     d["source_budget_mb"] = config.source_budget_mb;
     d["source_min_chunks"] = config.source_min_chunks;
     d["source_max_chunks"] = config.source_max_chunks;
+    d["budget_capacity_verified"] = config.budget_capacity_verified;
+    d["budget_uses_unknown_capacity_fallback"] = config.budget_uses_unknown_capacity_fallback;
+    d["budget_unverified"] = config.budget_unverified;
     return d;
 }

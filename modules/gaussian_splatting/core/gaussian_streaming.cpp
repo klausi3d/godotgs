@@ -28,7 +28,7 @@ namespace {
 static constexpr uint32_t STREAMING_DEFAULT_MAX_UPLOAD_MB_PER_FRAME = 128;
 static constexpr uint32_t STREAMING_DEFAULT_MAX_UPLOAD_MB_PER_SLICE = 16;
 static constexpr uint32_t STREAMING_DEFAULT_MAX_UPLOAD_MB_PER_SECOND = 0;
-static constexpr uint32_t STREAMING_DEFAULT_VRAM_BUDGET_MB = 12288;
+static constexpr uint32_t STREAMING_DEFAULT_VRAM_BUDGET_MB = STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB;
 
 static uint32_t _packed_gaussian_payload_checksum(const Vector<PackedGaussian> &p_data) {
     const int byte_count = int(p_data.size() * sizeof(PackedGaussian));
@@ -3605,9 +3605,14 @@ void GaussianStreamingSystem::end_frame() {
         analytics_snapshot["effective_vram_budget_mb"] = static_cast<int64_t>(active_budget_config.budget_mb);
         analytics_snapshot["effective_vram_min_chunks"] = static_cast<int64_t>(active_budget_config.min_chunks);
         analytics_snapshot["effective_vram_max_chunks"] = static_cast<int64_t>(active_budget_config.max_chunks);
+        analytics_snapshot["requested_vram_budget_mb"] = static_cast<int64_t>(active_budget_config.requested_budget_mb);
         analytics_snapshot["cap_source_vram_budget_mb"] = active_budget_config.source_budget_mb;
+        analytics_snapshot["requested_cap_source_vram_budget_mb"] = active_budget_config.requested_source_budget_mb;
         analytics_snapshot["cap_source_vram_min_chunks"] = active_budget_config.source_min_chunks;
         analytics_snapshot["cap_source_vram_max_chunks"] = active_budget_config.source_max_chunks;
+        analytics_snapshot["vram_budget_capacity_verified"] = active_budget_config.budget_capacity_verified;
+        analytics_snapshot["vram_budget_unknown_capacity_fallback"] = active_budget_config.budget_uses_unknown_capacity_fallback;
+        analytics_snapshot["vram_budget_unverified"] = active_budget_config.budget_unverified;
         analytics_snapshot["cap_tier_preset"] = active_budget_config.cap_tier_preset;
         analytics_snapshot["cap_tier_active"] = active_budget_config.cap_tier_active;
     }
@@ -4141,11 +4146,17 @@ Dictionary GaussianStreamingSystem::_build_streaming_diagnostics_snapshot(
     diagnostics_snapshot["effective_vram_budget_mb"] = effective_vram_budget_mb;
     diagnostics_snapshot["effective_vram_min_chunks"] = effective_vram_min_chunks;
     diagnostics_snapshot["effective_vram_max_chunks"] = effective_vram_max_chunks;
+    diagnostics_snapshot["requested_vram_budget_mb"] = budget.vram_regulator.is_valid()
+            ? static_cast<int64_t>(active_vram_caps.requested_budget_mb)
+            : int64_t(0);
     diagnostics_snapshot["cap_source_upload_mb_per_frame"] = upload_pipeline.cap_source_upload_mb_per_frame;
     diagnostics_snapshot["cap_source_upload_mb_per_slice"] = upload_pipeline.cap_source_upload_mb_per_slice;
     diagnostics_snapshot["cap_source_upload_mb_per_second"] = upload_pipeline.cap_source_upload_mb_per_second;
     diagnostics_snapshot["cap_source_vram_budget_mb"] = budget.vram_regulator.is_valid()
             ? active_vram_caps.source_budget_mb
+            : String("project_default");
+    diagnostics_snapshot["requested_cap_source_vram_budget_mb"] = budget.vram_regulator.is_valid()
+            ? active_vram_caps.requested_source_budget_mb
             : String("project_default");
     diagnostics_snapshot["cap_source_vram_min_chunks"] = budget.vram_regulator.is_valid()
             ? active_vram_caps.source_min_chunks
@@ -4153,6 +4164,15 @@ Dictionary GaussianStreamingSystem::_build_streaming_diagnostics_snapshot(
     diagnostics_snapshot["cap_source_vram_max_chunks"] = budget.vram_regulator.is_valid()
             ? active_vram_caps.source_max_chunks
             : String("project_default");
+    diagnostics_snapshot["vram_budget_capacity_verified"] = budget.vram_regulator.is_valid()
+            ? active_vram_caps.budget_capacity_verified
+            : false;
+    diagnostics_snapshot["vram_budget_unknown_capacity_fallback"] = budget.vram_regulator.is_valid()
+            ? active_vram_caps.budget_uses_unknown_capacity_fallback
+            : false;
+    diagnostics_snapshot["vram_budget_unverified"] = budget.vram_regulator.is_valid()
+            ? active_vram_caps.budget_unverified
+            : false;
     diagnostics_snapshot["upload_frame_cap_hit"] = upload_frame_cap_hit;
     diagnostics_snapshot["upload_slice_cap_hit"] = upload_slice_cap_hit;
     diagnostics_snapshot["upload_bandwidth_cap_hit"] = upload_bandwidth_cap_hit;
