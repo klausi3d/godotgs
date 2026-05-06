@@ -3952,17 +3952,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingtestsperformance_benchmarkcpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/tests/performance_benchmark.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingiogaussian_splat_world_iocpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4546,10 +4535,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrenderergpu_memory_streamh" class="md-nav__link">
+  <a href="#modulesgaussian_splattingshadersincludesgs_deformationglsl" class="md-nav__link">
     <span class="md-ellipsis">
       
-        modules/gaussian_splatting/renderer/gpu_memory_stream.h
+        modules/gaussian_splatting/shaders/includes/gs_deformation.glsl
       
     </span>
   </a>
@@ -4557,10 +4546,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingshadersincludesgs_deformationglsl" class="md-nav__link">
+  <a href="#modulesgaussian_splattingrenderergpu_memory_streamh" class="md-nav__link">
     <span class="md-ellipsis">
       
-        modules/gaussian_splatting/shaders/includes/gs_deformation.glsl
+        modules/gaussian_splatting/renderer/gpu_memory_stream.h
       
     </span>
   </a>
@@ -4660,17 +4649,6 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/interfaces/gpu_sorting_pipeline.h
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingtestsperformance_benchmarkh" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/tests/performance_benchmark.h
       
     </span>
   </a>
@@ -9288,38 +9266,6 @@
 <li>line 42: void StreamingEvictionController::record_total_eviction() {...</li>
 <li>line 129: StreamingEvictionController::EvictionResult StreamingEvictio...</li>
 </ul>
-<h2 id="modulesgaussian_splattingtestsperformance_benchmarkcpp">modules/gaussian_splatting/tests/performance_benchmark.cpp<a class="headerlink" href="#modulesgaussian_splattingtestsperformance_benchmarkcpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 23: Dictionary BenchmarkMetrics::to_dict() const {...</li>
-<li>line 52: void BenchmarkMetrics::from_dict(const Dictionary &amp;dict) {...</li>
-<li>line 79: String BenchmarkMetrics::to_json() const {...</li>
-<li>line 85: Dictionary BenchmarkConfig::to_dict() const {...</li>
-<li>line 101: void BenchmarkConfig::from_dict(const Dictionary &amp;dict) {...</li>
-<li>line 116: Dictionary BenchmarkResult::to_dict() const {...</li>
-<li>line 129: void BenchmarkResult::from_dict(const Dictionary &amp;dict) {...</li>
-<li>line 140: void BenchmarkResult::save_to_file(const String &amp;filepath) c...</li>
-<li>line 148: BenchmarkResult BenchmarkResult::load_from_file(const String...</li>
-<li>line 163: void PerformanceBenchmark::_bind_methods() {...</li>
-<li>line 174: Error PerformanceBenchmark::initialize(RenderingDevice *p_rd...</li>
-<li>line 182: void PerformanceBenchmark::collect_system_info() {...</li>
-<li>line 197: float PerformanceBenchmark::calculate_percentile(std::vector...</li>
-<li>line 205: float PerformanceBenchmark::simulate_painterly_pass(const Lo...</li>
-<li>line 233: float PerformanceBenchmark::calculate_std_deviation(const st...</li>
-<li>line 245: void PerformanceBenchmark::clear_metrics() {...</li>
-<li>line 255: void PerformanceBenchmark::record_painterly_time(float ms) {...</li>
-<li>line 259: BenchmarkResult PerformanceBenchmark::run_benchmark(const Be...</li>
-<li>line 455: BenchmarkMetrics PerformanceBenchmark::calculate_metrics() c...</li>
-<li>line 519: void PerformanceBenchmark::generate_report(const String &amp;out...</li>
-<li>line 641: void BenchmarkRunner::add_standard_configs() {...</li>
-<li>line 676: void BenchmarkRunner::run_all() {...</li>
-<li>line 692: void BenchmarkRunner::generate_summary_report(const String &amp;...</li>
-<li>line 722: bool BenchmarkRunner::check_performance_gates() {...</li>
-<li>line 749: : profiler(p_profiler), name(p_name) {...</li>
-<li>line 762: void PerformanceProfiler::begin_block(const String &amp;name) {...</li>
-<li>line 772: void PerformanceProfiler::end_block() {...</li>
-<li>line 779: void PerformanceProfiler::clear() {...</li>
-<li>line 784: Dictionary PerformanceProfiler::get_summary() const {...</li>
-</ul>
 <h2 id="modulesgaussian_splattingiogaussian_splat_world_iocpp">modules/gaussian_splatting/io/gaussian_splat_world_io.cpp<a class="headerlink" href="#modulesgaussian_splattingiogaussian_splat_world_iocpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 38: static bool fits_within(uint64_t p_offset, uint64_t p_size, ...</li>
@@ -10131,24 +10077,24 @@
 <li>line 143: uint32_t get_cached_framebuffer_count() const { return outpu...</li>
 <li>line 144: uint32_t get_blit_variant_count() const { return viewport_bl...</li>
 </ul>
-<h2 id="modulesgaussian_splattingrenderergpu_memory_streamh">modules/gaussian_splatting/renderer/gpu_memory_stream.h<a class="headerlink" href="#modulesgaussian_splattingrenderergpu_memory_streamh" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 205: StreamingStats get_stats() const { return stats; }...</li>
-<li>line 206: void reset_stats() { stats = StreamingStats(); }...</li>
-<li>line 213: void set_max_gaussians(uint32_t count) { max_gaussians = cou...</li>
-<li>line 214: uint32_t get_max_gaussians() const { return max_gaussians; }...</li>
-<li>line 215: void set_async_upload(bool enabled) { enable_async_upload = ...</li>
-<li>line 216: bool get_async_upload() const { return enable_async_upload; ...</li>
-<li>line 217: void set_sh_coefficient_limit(uint32_t limit) {...</li>
-<li>line 220: uint32_t get_sh_coefficient_limit() const { return sh_coeffi...</li>
-<li>line 288: void set_prefetch_distance(uint32_t distance) { prefetch.pre...</li>
-<li>line 291: void compact_memory() { if (memory_stream.is_valid()) memory...</li>
-<li>line 292: void force_defragment() { if (memory_stream.is_valid()) memo...</li>
-<li>line 295: RID get_current_buffer() { return memory_stream.is_valid() ?...</li>
-</ul>
 <h2 id="modulesgaussian_splattingshadersincludesgs_deformationglsl">modules/gaussian_splatting/shaders/includes/gs_deformation.glsl<a class="headerlink" href="#modulesgaussian_splattingshadersincludesgs_deformationglsl" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 28: uint gs_decode_instance_scene_effector_mask(vec4 instance_ef...</li>
+</ul>
+<h2 id="modulesgaussian_splattingrenderergpu_memory_streamh">modules/gaussian_splatting/renderer/gpu_memory_stream.h<a class="headerlink" href="#modulesgaussian_splattingrenderergpu_memory_streamh" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 204: StreamingStats get_stats() const { return stats; }...</li>
+<li>line 205: void reset_stats() { stats = StreamingStats(); }...</li>
+<li>line 212: void set_max_gaussians(uint32_t count) { max_gaussians = cou...</li>
+<li>line 213: uint32_t get_max_gaussians() const { return max_gaussians; }...</li>
+<li>line 214: void set_async_upload(bool enabled) { enable_async_upload = ...</li>
+<li>line 215: bool get_async_upload() const { return enable_async_upload; ...</li>
+<li>line 216: void set_sh_coefficient_limit(uint32_t limit) {...</li>
+<li>line 219: uint32_t get_sh_coefficient_limit() const { return sh_coeffi...</li>
+<li>line 287: void set_prefetch_distance(uint32_t distance) { prefetch.pre...</li>
+<li>line 290: void compact_memory() { if (memory_stream.is_valid()) memory...</li>
+<li>line 291: void force_defragment() { if (memory_stream.is_valid()) memo...</li>
+<li>line 294: RID get_current_buffer() { return memory_stream.is_valid() ?...</li>
 </ul>
 <h2 id="modulesgaussian_splattingteststest_phase1_integrationh">modules/gaussian_splatting/tests/test_phase1_integration.h<a class="headerlink" href="#modulesgaussian_splattingteststest_phase1_integrationh" title="Permanent link">¶</a></h2>
 <ul>
@@ -10243,13 +10189,6 @@
 <li>line 144: uint32_t get_sort_buffer_capacity() const { return sort_buff...</li>
 <li>line 145: uint32_t get_local_buffer_capacity() const { return local_so...</li>
 <li>line 146: bool are_buffers_external() const { return sort_keys_externa...</li>
-</ul>
-<h2 id="modulesgaussian_splattingtestsperformance_benchmarkh">modules/gaussian_splatting/tests/performance_benchmark.h<a class="headerlink" href="#modulesgaussian_splattingtestsperformance_benchmarkh" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 183: String get_platform_name() const { return platform_name; }...</li>
-<li>line 184: String get_gpu_name() const { return gpu_name; }...</li>
-<li>line 185: String get_driver_version() const { return driver_version; }...</li>
-<li>line 253: void set_enabled(bool p_enabled) { enabled = p_enabled; }...</li>
 </ul>
 <h2 id="testscitest_gpu_sorting_cigd">tests/ci/test_gpu_sorting_ci.gd<a class="headerlink" href="#testscitest_gpu_sorting_cigd" title="Permanent link">¶</a></h2>
 <ul>
@@ -10722,7 +10661,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 1, 2026 07:42:25 UTC">May 1, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 6, 2026 23:04:10 UTC">May 6, 2026</span>
   </span>
 
     
