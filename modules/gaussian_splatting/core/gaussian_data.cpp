@@ -214,6 +214,9 @@ void GaussianData::_on_gaussian_storage_changed_locked() {
         animated_opacities_valid_cache.clear();
         last_animation_time = -1.0f;
         animation_cache_dirty = true;
+        if (animation_state_machine.is_valid()) {
+            animation_state_machine->set_splat_count(gaussians.size());
+        }
     }
 
 #ifndef GS_SILENCE_LOGS
@@ -262,9 +265,6 @@ void GaussianData::_on_gaussian_storage_changed_locked() {
     }
 #endif
 
-    if (animation_state_machine.is_valid()) {
-        animation_state_machine->set_splat_count(gaussians.size());
-    }
     _bump_content_revision();
 }
 
@@ -304,6 +304,9 @@ void GaussianData::set_gaussian_payload(const LocalVector<Gaussian> &p_gaussians
         animated_opacities_valid_cache.clear();
         last_animation_time = -1.0f;
         animation_cache_dirty = true;
+        if (animation_state_machine.is_valid()) {
+            animation_state_machine->set_splat_count(gaussians.size());
+        }
     }
 
     sh_first_order_count = MIN<uint32_t>(p_sh_first_order_count, 3u);
@@ -333,9 +336,6 @@ void GaussianData::set_gaussian_payload(const LocalVector<Gaussian> &p_gaussians
     sh_degree = degree > 0 ? degree - 1 : 0;
     is_2d_mode = p_is_2d_mode;
 
-    if (animation_state_machine.is_valid()) {
-        animation_state_machine->set_splat_count(gaussians.size());
-    }
     _bump_content_revision();
 }
 
