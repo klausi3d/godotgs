@@ -2433,7 +2433,7 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Production metrics contract and perf
     project_settings->set_setting(tier_apply_streaming_setting, true);
     project_settings->set_setting(tier_preset_setting, "low");
     project_settings->set_setting(upload_frame_cap_setting, 128);
-    project_settings->set_setting(vram_budget_setting, 12288);
+    project_settings->set_setting(vram_budget_setting, STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB);
 
     ScopedGaussianManagerPipeline manager_scope;
     GaussianSplatManager *manager = manager_scope.get();
@@ -2499,18 +2499,33 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Production metrics contract and perf
     CHECK_MESSAGE(production_metrics.has("stage_total_ms"), "Expected stage_total_ms in production_metrics");
     CHECK_MESSAGE(stats.has("streaming_effective_upload_cap_mb_per_frame"), "Expected streaming effective upload cap in render stats");
     CHECK_MESSAGE(stats.has("streaming_effective_vram_budget_mb"), "Expected streaming effective VRAM budget in render stats");
+    CHECK_MESSAGE(stats.has("streaming_requested_vram_budget_mb"), "Expected streaming requested VRAM budget in render stats");
     CHECK_MESSAGE(stats.has("streaming_cap_source_upload_mb_per_frame"), "Expected streaming upload cap source in render stats");
     CHECK_MESSAGE(stats.has("streaming_cap_source_vram_budget_mb"), "Expected streaming VRAM cap source in render stats");
+    CHECK_MESSAGE(stats.has("streaming_requested_cap_source_vram_budget_mb"), "Expected streaming requested VRAM cap source in render stats");
+    CHECK_MESSAGE(stats.has("streaming_vram_budget_capacity_verified"), "Expected streaming VRAM capacity verification flag in render stats");
+    CHECK_MESSAGE(stats.has("streaming_vram_budget_unknown_capacity_fallback"), "Expected streaming unknown-capacity fallback flag in render stats");
+    CHECK_MESSAGE(stats.has("streaming_vram_budget_unverified"), "Expected streaming unverified VRAM budget flag in render stats");
     CHECK_MESSAGE(stats.has("streaming_upload_frame_cap_hit"), "Expected streaming upload frame cap indicator in render stats");
     CHECK_MESSAGE(stats.has("streaming_queue_pressure_active"), "Expected streaming queue pressure indicator in render stats");
     CHECK_MESSAGE(int64_t(stats.get("streaming_effective_upload_cap_mb_per_frame", int64_t(-1))) == 32,
             "Expected low-tier effective upload frame cap");
     CHECK_MESSAGE(int64_t(stats.get("streaming_effective_vram_budget_mb", int64_t(-1))) == 2048,
             "Expected low-tier effective VRAM budget");
+    CHECK_MESSAGE(int64_t(stats.get("streaming_requested_vram_budget_mb", int64_t(-1))) == 2048,
+            "Expected low-tier requested VRAM budget");
     CHECK_MESSAGE(String(stats.get("streaming_cap_source_upload_mb_per_frame", String())) == String("tier_preset"),
             "Expected upload cap source to report tier preset");
     CHECK_MESSAGE(String(stats.get("streaming_cap_source_vram_budget_mb", String())) == String("tier_preset"),
             "Expected VRAM cap source to report tier preset");
+    CHECK_MESSAGE(String(stats.get("streaming_requested_cap_source_vram_budget_mb", String())) == String("tier_preset"),
+            "Expected requested VRAM cap source to report tier preset");
+    CHECK_MESSAGE(!bool(stats.get("streaming_vram_budget_capacity_verified", true)),
+            "Expected test rendering device capacity to remain unknown");
+    CHECK_MESSAGE(!bool(stats.get("streaming_vram_budget_unknown_capacity_fallback", true)),
+            "Expected tier-selected budget, not unknown-capacity project default fallback");
+    CHECK_MESSAGE(bool(stats.get("streaming_vram_budget_unverified", false)),
+            "Expected tier-selected budget to be marked unverified while capacity is unknown");
 
     Dictionary validation = stats.get("production_metrics_validation", Dictionary());
     CHECK_MESSAGE(bool(validation.get("valid", false)), "Expected production_metrics_validation to be valid");

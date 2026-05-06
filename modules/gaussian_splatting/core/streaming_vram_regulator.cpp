@@ -232,7 +232,11 @@ void VRAMBudgetRegulator::_bind_methods() {
 void VRAMBudgetRegulator::initialize(RenderingDevice *p_rd) {
     rd = p_rd;
     _query_device_memory();  // Query device first so device memory info is available when applying config
-    reload_config();
+    if (config_override_active) {
+        _apply_config();
+    } else {
+        reload_config();
+    }
 
     GS_LOG_STREAMING_INFO(vformat("[VRAM Regulator] Initialized with budget: %d MB, auto-regulate: %s, max chunks: %d",
             config.budget_mb, config.auto_regulate_enabled ? "enabled" : "disabled", current_max_chunks));

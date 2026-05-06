@@ -64,3 +64,31 @@ TEST_CASE("[GaussianSplatting][VRAMBudgetRegulator] Unknown device capacity rema
     CHECK(bool(stats.get("budget_unverified", false)));
     CHECK(regulator->get_current_max_chunks() == 9u);
 }
+
+TEST_CASE("[GaussianSplatting][VRAMBudgetRegulator] Unknown capacity preserves project VRAM override") {
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    REQUIRE(project_settings != nullptr);
+
+    const String tier_apply_setting = "rendering/gaussian_splatting/quality/tier_apply_streaming_budgets";
+    const String vram_budget_setting = "rendering/gaussian_splatting/streaming/vram_budget_mb";
+    ProjectSettingGuard tier_apply_guard(project_settings, tier_apply_setting);
+    ProjectSettingGuard vram_budget_guard(project_settings, vram_budget_setting);
+
+    project_settings->set_setting(tier_apply_setting, false);
+    project_settings->set_setting(vram_budget_setting, 4096);
+
+    Ref<VRAMBudgetRegulator> regulator;
+    regulator.instantiate();
+    REQUIRE(regulator.is_valid());
+
+    regulator->initialize(nullptr);
+
+    Dictionary stats = regulator->get_debug_stats_dictionary();
+    CHECK_FALSE(bool(stats.get("device_capacity_known", true)));
+    CHECK(int64_t(stats.get("requested_budget_mb", int64_t(-1))) == int64_t(4096));
+    CHECK(Math::is_equal_approx(float(stats.get("budget_mb", -1.0f)), 4096.0f));
+    CHECK(String(stats.get("requested_source_budget_mb", String())) == String("project_override"));
+    CHECK(String(stats.get("source_budget_mb", String())) == String("project_override"));
+    CHECK_FALSE(bool(stats.get("budget_uses_unknown_capacity_fallback", true)));
+    CHECK(bool(stats.get("budget_unverified", false)));
+}
