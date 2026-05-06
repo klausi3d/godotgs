@@ -54,6 +54,7 @@ public:
         uint64_t enqueue_usec = 0;
         Vector<PackedGaussian> packed_data;
         uint32_t payload_checksum = 0;
+        bool payload_checksum_valid = false;
         SHCompressionMetrics metrics;
         uint32_t bytes_uploaded = 0;
     };
@@ -240,6 +241,7 @@ public:
     bool upload_slice_cap_hit_this_frame = false;
     bool upload_bandwidth_cap_hit_this_frame = false;
     bool chunk_load_cap_hit_this_frame = false;
+    bool validate_upload_payload_checksums = false;
     bool queue_pressure_active = false;
     String queue_pressure_source = "none";
     String queue_pressure_reason = "none";
@@ -299,6 +301,10 @@ public:
     bool _test_has_async_pack_queue_owner() const { return has_async_pack_queue_owner(); }
     uint32_t _test_get_sync_snapshot_gaussian_size() const { return sync_pack_scratch.gaussian_snapshot.size(); }
     uint32_t _test_get_sync_snapshot_gaussian_capacity() const { return sync_pack_scratch.gaussian_snapshot.get_capacity(); }
+    void _test_set_upload_payload_checksum_validation_enabled(bool p_enabled) { validate_upload_payload_checksums = p_enabled; }
+    bool _test_is_upload_payload_checksum_validation_enabled() const { return validate_upload_payload_checksums; }
+    static void _test_reset_payload_checksum_hash_calls();
+    static uint64_t _test_get_payload_checksum_hash_calls();
     static UploadCoalescingPlan _test_plan_coalesced_upload_batch(
             const LocalVector<UploadCoalescingCandidate> &p_candidates, uint64_t p_byte_limit) {
         return _plan_coalesced_upload_batch(p_candidates, p_byte_limit);

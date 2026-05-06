@@ -58,6 +58,36 @@ TestRenderingDeviceHandle _get_test_rendering_device() {
     return { rd, false };
 }
 
+StreamingUploadPipeline::PendingChunkUpload *_wait_for_prepared_upload(StreamingUploadPipeline &p_uploads) {
+    StreamingUploadPipeline::PendingChunkUpload *prepared_job = nullptr;
+    for (int i = 0; i < 500; i++) {
+        {
+            MutexLock lock(p_uploads.pack_mutex);
+            if (p_uploads.upload_queue_read_idx < p_uploads.upload_queue.size()) {
+                prepared_job = p_uploads.upload_queue[p_uploads.upload_queue_read_idx];
+                if (prepared_job && !prepared_job->packed_data.is_empty()) {
+                    break;
+                }
+                prepared_job = nullptr;
+            }
+        }
+        OS::get_singleton()->delay_usec(1000);
+    }
+    return prepared_job;
+}
+
+void _tamper_first_payload_byte(StreamingUploadPipeline &p_uploads) {
+    MutexLock lock(p_uploads.pack_mutex);
+    StreamingUploadPipeline::PendingChunkUpload *prepared_job =
+            p_uploads.upload_queue[p_uploads.upload_queue_read_idx];
+    REQUIRE(prepared_job != nullptr);
+    REQUIRE(!prepared_job->packed_data.is_empty());
+    PackedGaussian *packed_data = prepared_job->packed_data.ptrw();
+    REQUIRE(packed_data != nullptr);
+    uint8_t *payload_bytes = reinterpret_cast<uint8_t *>(packed_data);
+    payload_bytes[0] ^= 0x01;
+}
+
 } // namespace
 
 TEST_CASE("[Streaming Pipeline] stop_pack_threads clears partial lifecycle state") {
@@ -91,7 +121,13 @@ TEST_CASE("[Streaming Pipeline] sync pack rescue does not steal worker-owned pac
     CHECK(uploads.get_upload_queue_depth_cached() == 0);
 }
 
-TEST_CASE("[Streaming Pipeline] async chunk upload rejects tampered payload checksums") {
+TEST_CASE("[Streaming Pipeline] upload payload checksum validation is off by default") {
+    StreamingUploadPipeline uploads;
+
+    CHECK_FALSE(uploads._test_is_upload_payload_checksum_validation_enabled());
+}
+
+TEST_CASE("[Streaming Pipeline] production upload path skips payload checksum hashing") {
     const TestRenderingDeviceHandle rd_handle = _get_test_rendering_device();
     RenderingDevice *rd = rd_handle.rd;
     if (!rd) {
@@ -114,44 +150,72 @@ TEST_CASE("[Streaming Pipeline] async chunk upload rejects tampered payload chec
         return;
     }
 
-    const uint32_t asset_id = 4242;
+    const uint32_t asset_id = 4241;
     system->register_asset(asset_id, _create_streaming_phase_order_test_data());
 
+    StreamingUploadPipeline::_test_reset_payload_checksum_hash_calls();
     const bool queued_upload = uploads.queue_chunk_load(system_ref, asset_id, 0);
     REQUIRE(queued_upload);
 
-    StreamingUploadPipeline::PendingChunkUpload *prepared_job = nullptr;
-    for (int i = 0; i < 500; i++) {
-        {
-            MutexLock lock(uploads.pack_mutex);
-            if (uploads.upload_queue_read_idx < uploads.upload_queue.size()) {
-                prepared_job = uploads.upload_queue[uploads.upload_queue_read_idx];
-                if (prepared_job && !prepared_job->packed_data.is_empty()) {
-                    break;
-                }
-                prepared_job = nullptr;
-            }
-        }
-        OS::get_singleton()->delay_usec(1000);
-    }
-
+    StreamingUploadPipeline::PendingChunkUpload *prepared_job = _wait_for_prepared_upload(uploads);
     REQUIRE(prepared_job != nullptr);
-
-    {
-        MutexLock lock(uploads.pack_mutex);
-        prepared_job = uploads.upload_queue[uploads.upload_queue_read_idx];
-        REQUIRE(prepared_job != nullptr);
-        REQUIRE(!prepared_job->packed_data.is_empty());
-        PackedGaussian *packed_data = prepared_job->packed_data.ptrw();
-        REQUIRE(packed_data != nullptr);
-        uint8_t *payload_bytes = reinterpret_cast<uint8_t *>(packed_data);
-        payload_bytes[0] ^= 0x01;
-    }
+    _tamper_first_payload_byte(uploads);
 
     uploads.process_upload_queue(system_ref);
     system->begin_frame();
     system->end_frame();
 
+    CHECK(StreamingUploadPipeline::_test_get_payload_checksum_hash_calls() == 0);
+    CHECK(system->get_pending_pack_jobs() == 0);
+    CHECK(system->get_pending_upload_jobs() == 0);
+    CHECK(system->get_loaded_chunks() == 1);
+
+    Dictionary analytics = system->get_streaming_analytics();
+    Dictionary diagnostics = analytics.get("diagnostics", Dictionary());
+    CHECK(String(analytics.get("diagnostics_category", String())) == "ok");
+    CHECK(int64_t(diagnostics.get("integrity_mismatch_count", int64_t(-1))) == 0);
+}
+
+TEST_CASE("[Streaming Pipeline] async chunk upload rejects tampered payload checksums when validation is enabled") {
+    const TestRenderingDeviceHandle rd_handle = _get_test_rendering_device();
+    RenderingDevice *rd = rd_handle.rd;
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_empty(rd);
+    if (!system->is_runtime_ready()) {
+        MESSAGE("Skipping - Streaming runtime not ready");
+        return;
+    }
+
+    GaussianStreamingSystem &system_ref = *system.ptr();
+    auto &uploads = system->_internal_get_upload_pipeline();
+    uploads._test_set_upload_payload_checksum_validation_enabled(true);
+    if (!uploads.async_pack_enabled || !uploads.pack_thread_running.load(std::memory_order_acquire)) {
+        MESSAGE("Skipping - Async pack threads unavailable");
+        return;
+    }
+
+    const uint32_t asset_id = 4242;
+    system->register_asset(asset_id, _create_streaming_phase_order_test_data());
+
+    StreamingUploadPipeline::_test_reset_payload_checksum_hash_calls();
+    const bool queued_upload = uploads.queue_chunk_load(system_ref, asset_id, 0);
+    REQUIRE(queued_upload);
+
+    StreamingUploadPipeline::PendingChunkUpload *prepared_job = _wait_for_prepared_upload(uploads);
+    REQUIRE(prepared_job != nullptr);
+    _tamper_first_payload_byte(uploads);
+
+    uploads.process_upload_queue(system_ref);
+    system->begin_frame();
+    system->end_frame();
+
+    CHECK(StreamingUploadPipeline::_test_get_payload_checksum_hash_calls() >= 2);
     CHECK(system->get_pending_pack_jobs() == 0);
     CHECK(system->get_pending_upload_jobs() == 0);
     CHECK(system->get_loaded_chunks() == 0);

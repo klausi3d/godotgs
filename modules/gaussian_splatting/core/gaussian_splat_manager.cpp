@@ -1142,6 +1142,9 @@ void GaussianSplatManager::initialize_module() {
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/max_evictions_per_frame", 4);
 	// Async IO for gsplatworld sources.
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/async_io_enabled", false);
+	// Full packed-payload hashing is an O(chunk bytes) invariant check. Keep it
+	// opt-in for QA/debug captures; enable_all_debug also enables it at runtime.
+	GLOBAL_DEF("rendering/gaussian_splatting/streaming/validate_upload_payload_checksums", false);
 
 	// VRAM budget auto-regulation settings for streaming system (H3DGS-style).
 	// Default to the unknown-capacity fallback; larger budgets should come from

@@ -17,6 +17,10 @@ static constexpr uint32_t STREAMING_DEFAULT_MAX_UPLOAD_MB_PER_FRAME = 128;
 static constexpr uint32_t STREAMING_DEFAULT_MAX_UPLOAD_MB_PER_SLICE = 16;
 static constexpr uint32_t STREAMING_DEFAULT_MAX_UPLOAD_MB_PER_SECOND = 0;
 
+#if defined(TESTS_ENABLED)
+static std::atomic<uint64_t> s_payload_checksum_hash_calls{0};
+#endif
+
 struct StreamingTierCapPolicy {
     String tier_preset = "custom";
     bool active = false;
@@ -100,10 +104,36 @@ uint64_t _ticks_usec_now() {
 }
 
 static uint32_t _packed_gaussian_payload_checksum(const Vector<PackedGaussian> &p_data) {
+#if defined(TESTS_ENABLED)
+    s_payload_checksum_hash_calls.fetch_add(1, std::memory_order_relaxed);
+#endif
     const int byte_count = int(p_data.size() * sizeof(PackedGaussian));
     const uint8_t empty_byte = 0;
     const void *payload = byte_count > 0 ? static_cast<const void *>(p_data.ptr()) : static_cast<const void *>(&empty_byte);
     return hash_murmur3_buffer(payload, byte_count);
+}
+
+bool _streaming_upload_payload_checksum_validation_enabled(ProjectSettings *p_ps) {
+    if (!p_ps) {
+        return false;
+    }
+    if (gs::settings::is_all_debug_enabled(p_ps)) {
+        return true;
+    }
+    return gs::settings::get_bool(p_ps,
+            "rendering/gaussian_splatting/streaming/validate_upload_payload_checksums",
+            false);
+}
+
+bool _validate_pending_upload_payload_checksum(const StreamingUploadPipeline::PendingChunkUpload &p_job, uint32_t *r_actual_checksum = nullptr) {
+    if (!p_job.payload_checksum_valid) {
+        return true;
+    }
+    const uint32_t actual_checksum = _packed_gaussian_payload_checksum(p_job.packed_data);
+    if (r_actual_checksum) {
+        *r_actual_checksum = actual_checksum;
+    }
+    return actual_checksum == p_job.payload_checksum;
 }
 
 StreamingQueuePressureController::PressureSummary _summarize_queue_pressure_checked(
@@ -236,6 +266,16 @@ StreamingUploadPipeline::PackTelemetry::read_current() const {
 
 #endif // DEV_ENABLED
 
+#if defined(TESTS_ENABLED)
+void StreamingUploadPipeline::_test_reset_payload_checksum_hash_calls() {
+    s_payload_checksum_hash_calls.store(0, std::memory_order_relaxed);
+}
+
+uint64_t StreamingUploadPipeline::_test_get_payload_checksum_hash_calls() {
+    return s_payload_checksum_hash_calls.load(std::memory_order_relaxed);
+}
+#endif
+
 
 void StreamingUploadPipeline::load_streaming_tuning_config_from_project_settings(GaussianStreamingSystem &system) {
     ProjectSettings *ps = ProjectSettings::get_singleton();
@@ -247,6 +287,7 @@ void StreamingUploadPipeline::load_streaming_tuning_config_from_project_settings
     cap_tier_active = tier_policy.active;
 
     async_pack_enabled = gs::settings::get_bool(ps, "rendering/gaussian_splatting/streaming/async_pack_enabled", async_pack_enabled);
+    validate_upload_payload_checksums = _streaming_upload_payload_checksum_validation_enabled(ps);
     pack_worker_threads = gs::settings::get_uint(ps, "rendering/gaussian_splatting/streaming/pack_worker_threads", pack_worker_threads);
     max_pack_jobs_in_flight = gs::settings::get_uint(ps, "rendering/gaussian_splatting/streaming/max_pack_jobs_in_flight", max_pack_jobs_in_flight);
     max_chunk_loads_per_frame = gs::settings::get_uint(ps, "rendering/gaussian_splatting/streaming/max_chunk_loads_per_frame", max_chunk_loads_per_frame);
@@ -763,7 +804,7 @@ void StreamingUploadPipeline::process_upload_queue(GaussianStreamingSystem &syst
             return false;
         }
 
-        if (_packed_gaussian_payload_checksum(job->packed_data) != job->payload_checksum) {
+        if (validate_upload_payload_checksums && !_validate_pending_upload_payload_checksum(*job)) {
             return false;
         }
 
@@ -927,8 +968,8 @@ void StreamingUploadPipeline::process_upload_queue(GaussianStreamingSystem &syst
             continue;
         }
 
-        const uint32_t actual_checksum = _packed_gaussian_payload_checksum(job->packed_data);
-        if (actual_checksum != job->payload_checksum) {
+        uint32_t actual_checksum = 0;
+        if (validate_upload_payload_checksums && !_validate_pending_upload_payload_checksum(*job, &actual_checksum)) {
             system.diagnostics.invariant_upload_lifecycle_violations++;
             system.diagnostics.integrity_mismatch_count++;
             system.diagnostics.last_invariant_context = "process_upload_queue.payload_checksum";
@@ -1210,7 +1251,10 @@ StreamingUploadPipeline::PendingChunkUpload *StreamingUploadPipeline::build_pend
         const uint64_t duration = pack_end_usec >= pack_start_usec ? (pack_end_usec - pack_start_usec) : 0;
         telemetry.add_pack_time(duration);
     }
-    upload->payload_checksum = _packed_gaussian_payload_checksum(upload->packed_data);
+    if (validate_upload_payload_checksums) {
+        upload->payload_checksum = _packed_gaussian_payload_checksum(upload->packed_data);
+        upload->payload_checksum_valid = true;
+    }
     return upload;
 }
 
