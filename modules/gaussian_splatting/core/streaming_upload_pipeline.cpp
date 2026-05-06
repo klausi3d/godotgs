@@ -125,15 +125,23 @@ bool _streaming_upload_payload_checksum_validation_enabled(ProjectSettings *p_ps
             false);
 }
 
-bool _validate_pending_upload_payload_checksum(const StreamingUploadPipeline::PendingChunkUpload &p_job, uint32_t *r_actual_checksum = nullptr) {
+enum class PayloadChecksumValidationResult {
+    VALID,
+    MISSING_BASELINE,
+    MISMATCH,
+};
+
+PayloadChecksumValidationResult _validate_pending_upload_payload_checksum(const StreamingUploadPipeline::PendingChunkUpload &p_job, uint32_t *r_actual_checksum = nullptr) {
     if (!p_job.payload_checksum_valid) {
-        return true;
+        return PayloadChecksumValidationResult::MISSING_BASELINE;
     }
     const uint32_t actual_checksum = _packed_gaussian_payload_checksum(p_job.packed_data);
     if (r_actual_checksum) {
         *r_actual_checksum = actual_checksum;
     }
-    return actual_checksum == p_job.payload_checksum;
+    return actual_checksum == p_job.payload_checksum ?
+            PayloadChecksumValidationResult::VALID :
+            PayloadChecksumValidationResult::MISMATCH;
 }
 
 StreamingQueuePressureController::PressureSummary _summarize_queue_pressure_checked(
@@ -287,7 +295,7 @@ void StreamingUploadPipeline::load_streaming_tuning_config_from_project_settings
     cap_tier_active = tier_policy.active;
 
     async_pack_enabled = gs::settings::get_bool(ps, "rendering/gaussian_splatting/streaming/async_pack_enabled", async_pack_enabled);
-    validate_upload_payload_checksums = _streaming_upload_payload_checksum_validation_enabled(ps);
+    validate_upload_payload_checksums.store(_streaming_upload_payload_checksum_validation_enabled(ps), std::memory_order_release);
     pack_worker_threads = gs::settings::get_uint(ps, "rendering/gaussian_splatting/streaming/pack_worker_threads", pack_worker_threads);
     max_pack_jobs_in_flight = gs::settings::get_uint(ps, "rendering/gaussian_splatting/streaming/max_pack_jobs_in_flight", max_pack_jobs_in_flight);
     max_chunk_loads_per_frame = gs::settings::get_uint(ps, "rendering/gaussian_splatting/streaming/max_chunk_loads_per_frame", max_chunk_loads_per_frame);
@@ -700,6 +708,7 @@ void StreamingUploadPipeline::process_upload_queue(GaussianStreamingSystem &syst
         clear_pending_uploads(system);
         return;
     }
+    const bool checksum_validation_enabled = validate_upload_payload_checksums.load(std::memory_order_acquire);
 
     auto resolve_upload_chunk = [&](PendingChunkUpload *job, GaussianStreamingSystem::StreamingChunk *&chunk) -> bool {
         const uint64_t chunk_key = system._make_chunk_key(job->asset_id, job->chunk_idx);
@@ -804,7 +813,8 @@ void StreamingUploadPipeline::process_upload_queue(GaussianStreamingSystem &syst
             return false;
         }
 
-        if (validate_upload_payload_checksums && !_validate_pending_upload_payload_checksum(*job)) {
+        if (checksum_validation_enabled &&
+                _validate_pending_upload_payload_checksum(*job) != PayloadChecksumValidationResult::VALID) {
             return false;
         }
 
@@ -969,15 +979,25 @@ void StreamingUploadPipeline::process_upload_queue(GaussianStreamingSystem &syst
         }
 
         uint32_t actual_checksum = 0;
-        if (validate_upload_payload_checksums && !_validate_pending_upload_payload_checksum(*job, &actual_checksum)) {
+        const PayloadChecksumValidationResult checksum_result = checksum_validation_enabled ?
+                _validate_pending_upload_payload_checksum(*job, &actual_checksum) :
+                PayloadChecksumValidationResult::VALID;
+        if (checksum_result != PayloadChecksumValidationResult::VALID) {
             system.diagnostics.invariant_upload_lifecycle_violations++;
             system.diagnostics.integrity_mismatch_count++;
-            system.diagnostics.last_invariant_context = "process_upload_queue.payload_checksum";
-            system.diagnostics.last_invariant_message = vformat(
-                    "[Streaming] Upload payload checksum mismatch: asset=%d chunk=%d expected=0x%x actual=0x%x.",
-                    job->asset_id, job->chunk_idx,
-                    (unsigned int)job->payload_checksum,
-                    (unsigned int)actual_checksum);
+            if (checksum_result == PayloadChecksumValidationResult::MISSING_BASELINE) {
+                system.diagnostics.last_invariant_context = "process_upload_queue.payload_checksum_missing";
+                system.diagnostics.last_invariant_message = vformat(
+                        "[Streaming] Upload payload checksum validation is enabled, but job was packed without a checksum baseline: asset=%d chunk=%d.",
+                        job->asset_id, job->chunk_idx);
+            } else {
+                system.diagnostics.last_invariant_context = "process_upload_queue.payload_checksum";
+                system.diagnostics.last_invariant_message = vformat(
+                        "[Streaming] Upload payload checksum mismatch: asset=%d chunk=%d expected=0x%x actual=0x%x.",
+                        job->asset_id, job->chunk_idx,
+                        (unsigned int)job->payload_checksum,
+                        (unsigned int)actual_checksum);
+            }
             system.diagnostics.last_integrity_mismatch_message = system.diagnostics.last_invariant_message;
             WARN_PRINT(system.diagnostics.last_invariant_message);
             system._rollback_pending_chunk(job->asset_id, job->chunk_idx, *chunk, true);
@@ -1251,7 +1271,7 @@ StreamingUploadPipeline::PendingChunkUpload *StreamingUploadPipeline::build_pend
         const uint64_t duration = pack_end_usec >= pack_start_usec ? (pack_end_usec - pack_start_usec) : 0;
         telemetry.add_pack_time(duration);
     }
-    if (validate_upload_payload_checksums) {
+    if (validate_upload_payload_checksums.load(std::memory_order_acquire)) {
         upload->payload_checksum = _packed_gaussian_payload_checksum(upload->packed_data);
         upload->payload_checksum_valid = true;
     }

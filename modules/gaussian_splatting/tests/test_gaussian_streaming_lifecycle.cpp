@@ -246,6 +246,60 @@ TEST_CASE("[Streaming Pipeline] async chunk upload rejects tampered payload chec
     CHECK(String(reset_diagnostics.get("last_integrity_mismatch_message", String())).is_empty());
 }
 
+TEST_CASE("[Streaming Pipeline] enabling checksum validation rejects pending jobs without baselines") {
+    const TestRenderingDeviceHandle rd_handle = _get_test_rendering_device();
+    RenderingDevice *rd = rd_handle.rd;
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_empty(rd);
+    if (!system->is_runtime_ready()) {
+        MESSAGE("Skipping - Streaming runtime not ready");
+        return;
+    }
+
+    GaussianStreamingSystem &system_ref = *system.ptr();
+    auto &uploads = system->_internal_get_upload_pipeline();
+    if (!uploads.async_pack_enabled || !uploads.pack_thread_running.load(std::memory_order_acquire)) {
+        MESSAGE("Skipping - Async pack threads unavailable");
+        return;
+    }
+
+    const uint32_t asset_id = 4243;
+    system->register_asset(asset_id, _create_streaming_phase_order_test_data());
+
+    StreamingUploadPipeline::_test_reset_payload_checksum_hash_calls();
+    const bool queued_upload = uploads.queue_chunk_load(system_ref, asset_id, 0);
+    REQUIRE(queued_upload);
+
+    StreamingUploadPipeline::PendingChunkUpload *prepared_job = _wait_for_prepared_upload(uploads);
+    REQUIRE(prepared_job != nullptr);
+    CHECK_FALSE(prepared_job->payload_checksum_valid);
+
+    uploads._test_set_upload_payload_checksum_validation_enabled(true);
+    uploads.process_upload_queue(system_ref);
+    system->begin_frame();
+    system->end_frame();
+
+    CHECK(StreamingUploadPipeline::_test_get_payload_checksum_hash_calls() == 0);
+    CHECK(system->get_pending_pack_jobs() == 0);
+    CHECK(system->get_pending_upload_jobs() == 0);
+    CHECK(system->get_loaded_chunks() == 0);
+
+    Dictionary analytics = system->get_streaming_analytics();
+    Dictionary diagnostics = analytics.get("diagnostics", Dictionary());
+    CHECK(String(analytics.get("diagnostics_category", String())) == "integrity_mismatch");
+    CHECK(String(analytics.get("diagnostics_reason", String())).contains("without a checksum baseline"));
+    CHECK(int64_t(diagnostics.get("invariant_upload_lifecycle_violations", int64_t(0))) == 1);
+    CHECK(int64_t(diagnostics.get("integrity_mismatch_count", int64_t(0))) == 1);
+    CHECK(String(diagnostics.get("last_invariant_context", String())) == "process_upload_queue.payload_checksum_missing");
+    CHECK(String(diagnostics.get("last_integrity_mismatch_message", String())).contains("without a checksum baseline"));
+}
+
 TEST_CASE("[Streaming Pipeline] update_streaming publishes phase timings before atlas sync and keeps atlas generation stable when idle") {
     const TestRenderingDeviceHandle rd_handle = _get_test_rendering_device();
     RenderingDevice *rd = rd_handle.rd;

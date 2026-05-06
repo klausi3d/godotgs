@@ -241,7 +241,7 @@ public:
     bool upload_slice_cap_hit_this_frame = false;
     bool upload_bandwidth_cap_hit_this_frame = false;
     bool chunk_load_cap_hit_this_frame = false;
-    bool validate_upload_payload_checksums = false;
+    std::atomic<bool> validate_upload_payload_checksums{false};
     bool queue_pressure_active = false;
     String queue_pressure_source = "none";
     String queue_pressure_reason = "none";
@@ -301,8 +301,8 @@ public:
     bool _test_has_async_pack_queue_owner() const { return has_async_pack_queue_owner(); }
     uint32_t _test_get_sync_snapshot_gaussian_size() const { return sync_pack_scratch.gaussian_snapshot.size(); }
     uint32_t _test_get_sync_snapshot_gaussian_capacity() const { return sync_pack_scratch.gaussian_snapshot.get_capacity(); }
-    void _test_set_upload_payload_checksum_validation_enabled(bool p_enabled) { validate_upload_payload_checksums = p_enabled; }
-    bool _test_is_upload_payload_checksum_validation_enabled() const { return validate_upload_payload_checksums; }
+    void _test_set_upload_payload_checksum_validation_enabled(bool p_enabled) { validate_upload_payload_checksums.store(p_enabled, std::memory_order_release); }
+    bool _test_is_upload_payload_checksum_validation_enabled() const { return validate_upload_payload_checksums.load(std::memory_order_acquire); }
     static void _test_reset_payload_checksum_hash_calls();
     static uint64_t _test_get_payload_checksum_hash_calls();
     static UploadCoalescingPlan _test_plan_coalesced_upload_batch(
