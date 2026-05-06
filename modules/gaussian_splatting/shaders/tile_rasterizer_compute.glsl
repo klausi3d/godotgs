@@ -157,8 +157,8 @@ void main() {
         uint range_start = range.x;
         uint total_splat_count = range.y;
         uint original_splat_count = total_splat_count;
-        // Use GPU's current-frame element_count instead of stale CPU uniform
-        uint record_count = indirect_dispatch.element_count;
+        // Use GPU's current-frame element_count, capped to the actual sorted_values buffer capacity.
+        uint record_count = gs_get_clamped_overlap_record_count();
         if (range_start >= record_count) {
             if (total_splat_count > 0u) {
                 atomicAdd(overflow_stats.overflow_tile_count, 1u);
@@ -288,7 +288,7 @@ void main() {
 
     if (debug_tiles) {
         vec3 debug_color = vec3(0.0, 0.0, 0.3);
-        float avg_records = max(1.0, float(indirect_dispatch.element_count) / max(1.0, params.tile_count.x * params.tile_count.y));
+        float avg_records = max(1.0, float(gs_get_clamped_overlap_record_count()) / max(1.0, params.tile_count.x * params.tile_count.y));
         float occupancy = clamp(float(splat_count) / avg_records, 0.0, 4.0) * 0.25;
         bool tile_clamped = original_splat_count > splat_count;
         if (original_splat_count == 0u) {
@@ -312,7 +312,7 @@ void main() {
     }
 
     if (debug_density_heatmap) {
-        float avg_records = max(1.0, float(indirect_dispatch.element_count) / max(1.0, params.tile_count.x * params.tile_count.y));
+        float avg_records = max(1.0, float(gs_get_clamped_overlap_record_count()) / max(1.0, params.tile_count.x * params.tile_count.y));
         float density = clamp(float(splat_count) / avg_records, 0.0, 4.0) * 0.25;
         vec3 heat_color = gs_spectral_heatmap(density);
         if (debug_tile_grid) { heat_color = gs_apply_tile_grid(frag_coord, heat_color, params.debug_overlay_opacity); }

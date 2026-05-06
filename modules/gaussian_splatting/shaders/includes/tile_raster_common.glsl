@@ -121,6 +121,20 @@ uint gs_get_visible_gaussian_count() {
     return instance_indirect.element_count;
 }
 
+// Return the actual capacity of the sorted overlap-value buffer bound for this
+// raster dispatch. This is the final safety boundary before values[] reads.
+uint gs_get_sorted_value_capacity() {
+    return uint(sorted_values.values.length());
+}
+
+// The prefix scan should already clamp indirect_dispatch.element_count to the
+// overlap buffer capacity, but the rasterizer must not trust a GPU-produced
+// count blindly. Clamp again at the consumer so corrupt or stale indirect
+// payloads cannot drive out-of-bounds reads from sorted_values.values[].
+uint gs_get_clamped_overlap_record_count() {
+    return min(indirect_dispatch.element_count, gs_get_sorted_value_capacity());
+}
+
 // ============================================================================
 // Multi-pass batch rasterization (compute shader only)
 // ============================================================================
@@ -756,7 +770,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
     // - Green (intensity): occupancy ratio for tiles that rendered something
     if (debug_tiles) {
         vec3 debug_color = vec3(0.0, 0.0, 0.3);
-        float avg_records = max(1.0, float(indirect_dispatch.element_count) / max(1.0, params.tile_count.x * params.tile_count.y));
+        float avg_records = max(1.0, float(gs_get_clamped_overlap_record_count()) / max(1.0, params.tile_count.x * params.tile_count.y));
         float occupancy = clamp(float(splat_count) / avg_records, 0.0, 4.0) * 0.25;
         bool tile_clamped = original_splat_count > splat_count;
 
@@ -787,7 +801,7 @@ void gs_rasterize_pixel(vec2 frag_coord, uint range_start, uint splat_count, uin
     }
 
     if (debug_density_heatmap) {
-        float avg_records = max(1.0, float(indirect_dispatch.element_count) / max(1.0, params.tile_count.x * params.tile_count.y));
+        float avg_records = max(1.0, float(gs_get_clamped_overlap_record_count()) / max(1.0, params.tile_count.x * params.tile_count.y));
         float density = clamp(float(splat_count) / avg_records, 0.0, 4.0) * 0.25;
         vec3 heat_color = gs_spectral_heatmap(density);
         if (debug_tile_grid) {

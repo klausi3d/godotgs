@@ -139,8 +139,8 @@ void main() {
     uint total_splat_count = range.y;
     uint original_splat_count = total_splat_count;
 
-    // Use GPU's current-frame element_count instead of stale CPU uniform
-    uint record_count = indirect_dispatch.element_count;
+    // Use GPU's current-frame element_count, capped to the actual sorted_values buffer capacity.
+    uint record_count = gs_get_clamped_overlap_record_count();
 
     // Clamp to available records first.
     if (range_start >= record_count) {
