@@ -3468,17 +3468,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrenderertile_renderercpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/renderer/tile_renderer.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#testsexamplesgodottest_projectscriptsqa_test_basegd" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3571,6 +3560,17 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/interfaces/interactive_state_manager.cpp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingrenderertile_renderercpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/renderer/tile_renderer.cpp
       
     </span>
   </a>
@@ -8267,116 +8267,6 @@
 <li>line 284: bool GaussianStreamingSystem::_upload_quantization_buffer(Re...</li>
 <li>line 393: Dictionary GaussianStreamingSystem::get_quantization_stats()...</li>
 </ul>
-<h2 id="modulesgaussian_splattingrenderertile_renderercpp">modules/gaussian_splatting/renderer/tile_renderer.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderertile_renderercpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 62: void set_timestamp_context(RenderingDevice *p_device, const ...</li>
-<li>line 69: void mark_success() {...</li>
-<li>line 80: bool _resolve_compute_raster_policy(GaussianSplatting::Compu...</li>
-<li>line 92: bool _is_srgb_format(RD::DataFormat p_format) {...</li>
-<li>line 103: RD::DataFormat _resolve_storage_compatible_color_format(RD::...</li>
-<li>line 120: uint64_t _hash_shader_defines(const Vector<string> &amp;p_define...</string></li>
-<li>line 130: static bool _is_adaptive_overlap_budget_enabled() {...</li>
-<li>line 134: static uint32_t _get_adaptive_overlap_budget_hard_cap() {...</li>
-<li>line 138: static uint32_t _get_adaptive_overlap_budget_min() {...</li>
-<li>line 142: static uint32_t _compute_overlap_budget_with_headroom(uint32...</li>
-<li>line 148: static void _record_adaptive_overlap_raw_usage(TileRenderer:...</li>
-<li>line 162: static bool _adaptive_overlap_budget_has_history(const TileR...</li>
-<li>line 181: static uint32_t _get_adaptive_overlap_budget_suggestion(cons...</li>
-<li>line 195: static uint32_t _get_adaptive_overlap_budget_floor(TileRende...</li>
-<li>line 210: static uint32_t _update_adaptive_overlap_budget(TileRenderer...</li>
-<li>line 281: RID run() {...</li>
-<li>line 315: bool _has_dispatch_work() const {...</li>
-<li>line 322: void _prepare_next_tile_counts_if_needed() {...</li>
-<li>line 333: bool _validate_and_configure_settings() {...</li>
-<li>line 480: void _setup_frame_timestamps() {...</li>
-<li>line 502: uint32_t _resolve_effective_visible_splats() {...</li>
-<li>line 515: bool _validate_viewport_and_resources() {...</li>
-<li>line 584: void _setup_diagnostics_state() {...</li>
-<li>line 612: bool _upload_param_buffer(float p_overlap_keep_ratio) {...</li>
-<li>line 643: bool _build_and_upload_params() {...</li>
-<li>line 669: bool _setup_diagnostics_and_params() {...</li>
-<li>line 674: bool _execute_global_sort_pipeline() {...</li>
-<li>line 973: bool _select_and_prepare_raster_path() {...</li>
-<li>line 1021: void _dispatch_rasterization() {...</li>
-<li>line 1047: RID _finalize_frame() {...</li>
-<li>line 1278: void TileRenderer::_bind_methods() {...</li>
-<li>line 1290: void TileRenderer::set_debug_log_resolve(bool p_enabled) {...</li>
-<li>line 1297: void TileRenderer::set_resolve_debug_visualize_tiles(bool p_...</li>
-<li>line 1301: void TileRenderer::set_resolve_use_texel_fetch(bool p_enable...</li>
-<li>line 1305: void TileRenderer::set_debug_binning_counters_enabled(bool p...</li>
-<li>line 1314: void TileRenderer::_on_overflow_flag_readback(const Vector&lt;u...</li>
-<li>line 1319: void TileRenderer::_on_debug_counters_readback(const Vector&lt;...</li>
-<li>line 1323: void TileRenderer::_on_overflow_stats_readback(const Vector&lt;...</li>
-<li>line 1327: void TileRenderer::_on_splat_audit_readback(const Vector&lt;uin...</li>
-<li>line 1331: void TileRenderer::_on_tile_counts_readback(const Vector&lt;uin...</li>
-<li>line 1336: RID TileRenderer::get_output_texture() const {...</li>
-<li>line 1342: RID TileRenderer::get_depth_texture() const {...</li>
-<li>line 1366: bool TileRenderer::_is_main_rendering_device(RenderingDevice...</li>
-<li>line 1429: void TileRenderer::cleanup() {...</li>
-<li>line 1507: Error TileRenderer::resize(const Vector2i &amp;p_size, RD::DataF...</li>
-<li>line 1519: void TileRenderer::set_output_format(RD::DataFormat p_format...</li>
-<li>line 1536: void TileRenderer::set_output_invalidation_callback(std::fun...</li>
-<li>line 1540: void TileRenderer::clear_output_invalidation_callback() {...</li>
-<li>line 1544: void TileRenderer::set_adaptive_settings(const AdaptiveSetti...</li>
-<li>line 1557: void TileRenderer::clear_adaptive_overlap_budget_runtime_sta...</li>
-<li>line 1562: Error TileRenderer::_ensure_resources(const Vector2i &amp;p_size...</li>
-<li>line 1658: int TileRenderer::_compute_adaptive_tile_size(int p_requeste...</li>
-<li>line 1662: void TileRenderer::_update_tile_dimensions(const Vector2i &amp;p...</li>
-<li>line 1679: bool TileRenderer::_validate_tile_grid(const char *p_context...</li>
-<li>line 1786: void TileRenderer::_create_aux_buffers() {...</li>
-<li>line 1790: void TileRenderer::_destroy_output_textures() {...</li>
-<li>line 1798: void TileRenderer::<em>create_output_texture(const Vector2i &amp;p</em>...</li>
-<li>line 1802: Vector<string> TileRenderer::_build_common_shader_defines(bo...</string></li>
-<li>line 1842: static uint32_t _required_tile_bits(uint32_t p_total_tiles) ...</li>
-<li>line 1855: SortKeyConfig TileRenderer::_get_effective_sort_key_config()...</li>
-<li>line 1889: Vector<string> TileRenderer::_build_binning_shader_defines()...</string></li>
-<li>line 1910: Vector<string> TileRenderer::_build_raster_shader_defines() ...</string></li>
-<li>line 1934: void TileRenderer::_detect_subgroup_support(RenderingDevice ...</li>
-<li>line 1970: bool TileRenderer::_check_pipeline_validity(RenderingDevice ...</li>
-<li>line 1989: void TileRenderer::_initialize_shader_sources() {...</li>
-<li>line 2021: void TileRenderer::_free_existing_pipelines(RenderingDevice ...</li>
-<li>line 2109: Error TileRenderer::_compile_binning_shaders(RenderingDevice...</li>
-<li>line 2114: Error TileRenderer::_compile_prefix_shaders(RenderingDevice ...</li>
-<li>line 2119: Error TileRenderer::_compile_raster_shaders(RenderingDevice ...</li>
-<li>line 2124: Error TileRenderer::_compile_tile_shaders() {...</li>
-<li>line 2129: uint64_t TileRenderer::_compute_shader_defines_hash() const ...</li>
-<li>line 2138: void TileRenderer::_clear_debug_counters() {...</li>
-<li>line 2142: void TileRenderer::_update_splat_audit_buffer(const RenderPa...</li>
-<li>line 2146: uint32_t TileRenderer::_get_projection_stride() const {...</li>
-<li>line 2150: uint64_t TileRenderer::_compute_projection_buffer_bytes(uint...</li>
-<li>line 2165: void TileRenderer::_ensure_global_projection_buffer(uint32_t...</li>
-<li>line 2169: void TileRenderer::<em>ensure_global_sort_resources(uint32_t p</em>...</li>
-<li>line 2178: void TileRenderer::_reset_timestamp_tracking() {...</li>
-<li>line 2198: void TileRenderer::_resolve_timestamp_range(TimestampRange &amp;...</li>
-<li>line 2300: TileRenderer::GpuTimestampDurations TileRenderer::_compute_s...</li>
-<li>line 2345: void TileRenderer::_update_timing_metrics(const GpuTimestamp...</li>
-<li>line 2362: void TileRenderer::resolve_gpu_timestamps_async() {...</li>
-<li>line 2400: RID TileRenderer::render(RenderingDevice *p_rendering_device...</li>
-<li>line 2420: TileRenderer::RasterDecision TileRenderer::<em>evaluate_raster</em>...</li>
-<li>line 2497: void TileRenderer::_log_raster_path_decision(const RasterDec...</li>
-<li>line 2532: void TileRenderer::_queue_submission(RenderingDevice *p_devi...</li>
-<li>line 2555: void TileRenderer::_flush_pending_submission(bool p_block) {...</li>
-<li>line 2601: void TileRenderer::_invalidate_descriptor_cache() {...</li>
-<li>line 2668: bool TileRenderer::_ensure_param_uniform_buffer(RenderingDev...</li>
-<li>line 2672: RID TileRenderer::_get_default_state_uniform(RenderingDevice...</li>
-<li>line 2676: bool TileRenderer::_ensure_prefix_param_buffer(RenderingDevi...</li>
-<li>line 2680: uint32_t TileRenderer::_clamp_overlap_record_budget(uint32_t...</li>
-<li>line 2689: uint32_t TileRenderer::_get_effective_overlap_capacity(uint3...</li>
-<li>line 2697: void TileRenderer::_issue_async_tile_count_readback(Renderin...</li>
-<li>line 2771: TileRenderer::RenderStats TileRenderer::<em>build_render_stats</em>...</li>
-<li>line 2804: void TileRenderer::_collect_render_statistics() {...</li>
-<li>line 2887: void TileRenderer::_dump_gpu_debug_counters(const RenderPara...</li>
-<li>line 2891: float TileRenderer::get_projection_success_rate_pct() const ...</li>
-<li>line 2899: float TileRenderer::get_sh_cache_hit_rate_pct() const {...</li>
-<li>line 2909: void TileRenderer::_update_adaptive_state(const RenderStats ...</li>
-<li>line 2913: SortingMetrics TileRenderer::get_sorter_metrics() const {...</li>
-<li>line 2920: TileRenderer::DebugCounterSnapshot TileRenderer::get_debug_c...</li>
-<li>line 2925: TileRenderer::OverflowStatsSnapshot TileRenderer::get_overfl...</li>
-<li>line 2930: TileRenderer::SplatAuditSnapshot TileRenderer::get_splat_aud...</li>
-<li>line 2942: void TileRenderer::set_device_manager(RenderDeviceManager *p...</li>
-<li>line 2951: void TileRenderer::clear_output_resource_tracking() {...</li>
-<li>line 2955: TileRenderer::RenderResult TileRenderer::render_with_contrac...</li>
-</ul>
 <h2 id="testsexamplesgodottest_projectscriptsqa_test_basegd">tests/examples/godot/test_project/scripts/qa_test_base.gd<a class="headerlink" href="#testsexamplesgodottest_projectscriptsqa_test_basegd" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 31: func _ready():...</li>
@@ -8716,6 +8606,116 @@
 <li>line 594: void GaussianSplatRenderer::enable_highlight_effect(const Co...</li>
 <li>line 600: void GaussianSplatRenderer::enable_outline_effect(const Colo...</li>
 <li>line 606: void GaussianSplatRenderer::remove_visual_effects() {...</li>
+</ul>
+<h2 id="modulesgaussian_splattingrenderertile_renderercpp">modules/gaussian_splatting/renderer/tile_renderer.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderertile_renderercpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 62: void set_timestamp_context(RenderingDevice *p_device, const ...</li>
+<li>line 69: void mark_success() {...</li>
+<li>line 80: bool _resolve_compute_raster_policy(GaussianSplatting::Compu...</li>
+<li>line 92: bool _is_srgb_format(RD::DataFormat p_format) {...</li>
+<li>line 103: RD::DataFormat _resolve_storage_compatible_color_format(RD::...</li>
+<li>line 120: uint64_t _hash_shader_defines(const Vector<string> &amp;p_define...</string></li>
+<li>line 130: static bool _is_adaptive_overlap_budget_enabled() {...</li>
+<li>line 134: static uint32_t _get_adaptive_overlap_budget_hard_cap() {...</li>
+<li>line 138: static uint32_t _get_adaptive_overlap_budget_min() {...</li>
+<li>line 142: static uint32_t _compute_overlap_budget_with_headroom(uint32...</li>
+<li>line 148: static void _record_adaptive_overlap_raw_usage(TileRenderer:...</li>
+<li>line 162: static bool _adaptive_overlap_budget_has_history(const TileR...</li>
+<li>line 181: static uint32_t _get_adaptive_overlap_budget_suggestion(cons...</li>
+<li>line 195: static uint32_t _get_adaptive_overlap_budget_floor(TileRende...</li>
+<li>line 210: static uint32_t _update_adaptive_overlap_budget(TileRenderer...</li>
+<li>line 281: RID run() {...</li>
+<li>line 315: bool _has_dispatch_work() const {...</li>
+<li>line 322: void _prepare_next_tile_counts_if_needed() {...</li>
+<li>line 333: bool _validate_and_configure_settings() {...</li>
+<li>line 491: void _setup_frame_timestamps() {...</li>
+<li>line 513: uint32_t _resolve_effective_visible_splats() {...</li>
+<li>line 526: bool _validate_viewport_and_resources() {...</li>
+<li>line 595: void _setup_diagnostics_state() {...</li>
+<li>line 623: bool _upload_param_buffer(float p_overlap_keep_ratio) {...</li>
+<li>line 654: bool _build_and_upload_params() {...</li>
+<li>line 680: bool _setup_diagnostics_and_params() {...</li>
+<li>line 685: bool _execute_global_sort_pipeline() {...</li>
+<li>line 984: bool _select_and_prepare_raster_path() {...</li>
+<li>line 1032: void _dispatch_rasterization() {...</li>
+<li>line 1058: RID _finalize_frame() {...</li>
+<li>line 1289: void TileRenderer::_bind_methods() {...</li>
+<li>line 1301: void TileRenderer::set_debug_log_resolve(bool p_enabled) {...</li>
+<li>line 1308: void TileRenderer::set_resolve_debug_visualize_tiles(bool p_...</li>
+<li>line 1312: void TileRenderer::set_resolve_use_texel_fetch(bool p_enable...</li>
+<li>line 1316: void TileRenderer::set_debug_binning_counters_enabled(bool p...</li>
+<li>line 1325: void TileRenderer::_on_overflow_flag_readback(const Vector&lt;u...</li>
+<li>line 1330: void TileRenderer::_on_debug_counters_readback(const Vector&lt;...</li>
+<li>line 1334: void TileRenderer::_on_overflow_stats_readback(const Vector&lt;...</li>
+<li>line 1338: void TileRenderer::_on_splat_audit_readback(const Vector&lt;uin...</li>
+<li>line 1342: void TileRenderer::_on_tile_counts_readback(const Vector&lt;uin...</li>
+<li>line 1347: RID TileRenderer::get_output_texture() const {...</li>
+<li>line 1353: RID TileRenderer::get_depth_texture() const {...</li>
+<li>line 1377: bool TileRenderer::_is_main_rendering_device(RenderingDevice...</li>
+<li>line 1440: void TileRenderer::cleanup() {...</li>
+<li>line 1518: Error TileRenderer::resize(const Vector2i &amp;p_size, RD::DataF...</li>
+<li>line 1530: void TileRenderer::set_output_format(RD::DataFormat p_format...</li>
+<li>line 1547: void TileRenderer::set_output_invalidation_callback(std::fun...</li>
+<li>line 1551: void TileRenderer::clear_output_invalidation_callback() {...</li>
+<li>line 1555: void TileRenderer::set_adaptive_settings(const AdaptiveSetti...</li>
+<li>line 1568: void TileRenderer::clear_adaptive_overlap_budget_runtime_sta...</li>
+<li>line 1573: Error TileRenderer::_ensure_resources(const Vector2i &amp;p_size...</li>
+<li>line 1669: int TileRenderer::_compute_adaptive_tile_size(int p_requeste...</li>
+<li>line 1673: void TileRenderer::_update_tile_dimensions(const Vector2i &amp;p...</li>
+<li>line 1690: bool TileRenderer::_validate_tile_grid(const char *p_context...</li>
+<li>line 1797: void TileRenderer::_create_aux_buffers() {...</li>
+<li>line 1801: void TileRenderer::_destroy_output_textures() {...</li>
+<li>line 1809: void TileRenderer::<em>create_output_texture(const Vector2i &amp;p</em>...</li>
+<li>line 1813: Vector<string> TileRenderer::_build_common_shader_defines(bo...</string></li>
+<li>line 1860: static uint32_t _required_tile_bits(uint32_t p_total_tiles) ...</li>
+<li>line 1873: SortKeyConfig TileRenderer::_get_effective_sort_key_config()...</li>
+<li>line 1907: Vector<string> TileRenderer::_build_binning_shader_defines()...</string></li>
+<li>line 1928: Vector<string> TileRenderer::_build_raster_shader_defines() ...</string></li>
+<li>line 1952: void TileRenderer::_detect_subgroup_support(RenderingDevice ...</li>
+<li>line 1988: bool TileRenderer::_check_pipeline_validity(RenderingDevice ...</li>
+<li>line 2007: void TileRenderer::_initialize_shader_sources() {...</li>
+<li>line 2039: void TileRenderer::_free_existing_pipelines(RenderingDevice ...</li>
+<li>line 2127: Error TileRenderer::_compile_binning_shaders(RenderingDevice...</li>
+<li>line 2132: Error TileRenderer::_compile_prefix_shaders(RenderingDevice ...</li>
+<li>line 2137: Error TileRenderer::_compile_raster_shaders(RenderingDevice ...</li>
+<li>line 2142: Error TileRenderer::_compile_tile_shaders() {...</li>
+<li>line 2147: uint64_t TileRenderer::_compute_shader_defines_hash() const ...</li>
+<li>line 2156: void TileRenderer::_clear_debug_counters() {...</li>
+<li>line 2160: void TileRenderer::_update_splat_audit_buffer(const RenderPa...</li>
+<li>line 2164: uint32_t TileRenderer::_get_projection_stride() const {...</li>
+<li>line 2168: uint64_t TileRenderer::_compute_projection_buffer_bytes(uint...</li>
+<li>line 2183: void TileRenderer::_ensure_global_projection_buffer(uint32_t...</li>
+<li>line 2187: void TileRenderer::<em>ensure_global_sort_resources(uint32_t p</em>...</li>
+<li>line 2196: void TileRenderer::_reset_timestamp_tracking() {...</li>
+<li>line 2216: void TileRenderer::_resolve_timestamp_range(TimestampRange &amp;...</li>
+<li>line 2318: TileRenderer::GpuTimestampDurations TileRenderer::_compute_s...</li>
+<li>line 2363: void TileRenderer::_update_timing_metrics(const GpuTimestamp...</li>
+<li>line 2380: void TileRenderer::resolve_gpu_timestamps_async() {...</li>
+<li>line 2418: RID TileRenderer::render(RenderingDevice *p_rendering_device...</li>
+<li>line 2438: TileRenderer::RasterDecision TileRenderer::<em>evaluate_raster</em>...</li>
+<li>line 2515: void TileRenderer::_log_raster_path_decision(const RasterDec...</li>
+<li>line 2550: void TileRenderer::_queue_submission(RenderingDevice *p_devi...</li>
+<li>line 2573: void TileRenderer::_flush_pending_submission(bool p_block) {...</li>
+<li>line 2619: void TileRenderer::_invalidate_descriptor_cache() {...</li>
+<li>line 2686: bool TileRenderer::_ensure_param_uniform_buffer(RenderingDev...</li>
+<li>line 2690: RID TileRenderer::_get_default_state_uniform(RenderingDevice...</li>
+<li>line 2694: bool TileRenderer::_ensure_prefix_param_buffer(RenderingDevi...</li>
+<li>line 2698: uint32_t TileRenderer::_clamp_overlap_record_budget(uint32_t...</li>
+<li>line 2707: uint32_t TileRenderer::_get_effective_overlap_capacity(uint3...</li>
+<li>line 2715: void TileRenderer::_issue_async_tile_count_readback(Renderin...</li>
+<li>line 2789: TileRenderer::RenderStats TileRenderer::<em>build_render_stats</em>...</li>
+<li>line 2822: void TileRenderer::_collect_render_statistics() {...</li>
+<li>line 2905: void TileRenderer::_dump_gpu_debug_counters(const RenderPara...</li>
+<li>line 2909: float TileRenderer::get_projection_success_rate_pct() const ...</li>
+<li>line 2917: float TileRenderer::get_sh_cache_hit_rate_pct() const {...</li>
+<li>line 2927: void TileRenderer::_update_adaptive_state(const RenderStats ...</li>
+<li>line 2931: SortingMetrics TileRenderer::get_sorter_metrics() const {...</li>
+<li>line 2938: TileRenderer::DebugCounterSnapshot TileRenderer::get_debug_c...</li>
+<li>line 2943: TileRenderer::OverflowStatsSnapshot TileRenderer::get_overfl...</li>
+<li>line 2948: TileRenderer::SplatAuditSnapshot TileRenderer::get_splat_aud...</li>
+<li>line 2960: void TileRenderer::set_device_manager(RenderDeviceManager *p...</li>
+<li>line 2969: void TileRenderer::clear_output_resource_tracking() {...</li>
+<li>line 2973: TileRenderer::RenderResult TileRenderer::render_with_contrac...</li>
 </ul>
 <h2 id="modulesgaussian_splattingrenderergaussian_splat_renderer_bindingscpp">modules/gaussian_splatting/renderer/gaussian_splat_renderer_bindings.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderergaussian_splat_renderer_bindingscpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -10661,7 +10661,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 6, 2026 23:04:10 UTC">May 6, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 6, 2026 23:07:14 UTC">May 6, 2026</span>
   </span>
 
     
