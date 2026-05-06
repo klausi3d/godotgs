@@ -5,6 +5,10 @@
 #include "core/os/os.h"
 #include "servers/rendering_server.h"
 
+extern "C" int test_gaussian_streaming_lifecycle_cpp_force_link() {
+    return 0;
+}
+
 namespace {
 
 Ref<GaussianData> _create_streaming_phase_order_test_data(uint32_t p_count = 1024) {
