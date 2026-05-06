@@ -187,7 +187,6 @@ public:
 
     // Buffer management
     RID get_current_gpu_buffer();
-    RID get_sort_keys_buffer() const;
     void swap_buffers();
     bool is_upload_complete() const;
     void wait_for_all_uploads();
