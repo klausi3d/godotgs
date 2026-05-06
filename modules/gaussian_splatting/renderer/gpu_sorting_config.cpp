@@ -43,7 +43,15 @@ void GPUSortingConfig::load_from_project_settings() {
     String preset_name = ps->get_setting(GPU_PRESET_PATH, "");
     if (!preset_name.is_empty() && preset_name != "custom") {
         if (apply_preset(preset_name)) {
-            // Preset applied successfully - still load debug/logging overrides
+            // Preset applied successfully — load only debug/logging/profiling
+            // overrides that are orthogonal to the sort layout. Per Codex P2 on
+            // PR #325: reading max_raster_splats_per_tile / key_bits / tile_bits
+            // / depth_bits / enable_tie_breaker here would silently promote the
+            // preset's layout back to the GLOBAL_DEF defaults (65536/64/32/32/0),
+            // defeating preset_low() which intentionally sets 32-bit keys at
+            // 16/16. Users who want a custom layout should select
+            // gpu_sorting/preset="custom", which falls through to the manual
+            // config block below and reads every knob individually.
             enable_performance_logging = ps->get_setting(PERFORMANCE_LOGGING_PATH, enable_performance_logging);
             performance_log_interval = ps->get_setting(LOG_INTERVAL_PATH, performance_log_interval);
             enable_bandwidth_monitoring = ps->get_setting(BANDWIDTH_MONITORING_PATH, enable_bandwidth_monitoring);
@@ -51,11 +59,6 @@ void GPUSortingConfig::load_from_project_settings() {
             enable_prefix_readback = ps->get_setting(ENABLE_PREFIX_READBACK_PATH, enable_prefix_readback);
             profiling_preserve_gpu_timestamps = ps->get_setting(PROFILING_PRESERVE_TIMESTAMPS_PATH, profiling_preserve_gpu_timestamps);
             enable_compute_raster = ps->get_setting(ENABLE_COMPUTE_RASTER_PATH, enable_compute_raster);
-            max_raster_splats_per_tile = ps->get_setting(MAX_RASTER_SPLATS_PER_TILE_PATH, max_raster_splats_per_tile);
-            key_bits = ps->get_setting(KEY_BITS_PATH, key_bits);
-            tile_bits = ps->get_setting(TILE_BITS_PATH, tile_bits);
-            depth_bits = ps->get_setting(DEPTH_BITS_PATH, depth_bits);
-            enable_tie_breaker = ps->get_setting(ENABLE_TIE_BREAKER_PATH, enable_tie_breaker);
             strict_global_sort = ps->get_setting(STRICT_GLOBAL_SORT_PATH, strict_global_sort);
             validate_sorted_output = ps->get_setting(VALIDATE_SORTED_OUTPUT_PATH, validate_sorted_output);
             enable_stage_timestamps = ps->get_setting(ENABLE_STAGE_TIMESTAMPS_PATH, enable_stage_timestamps);
