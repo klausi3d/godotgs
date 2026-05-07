@@ -31,19 +31,58 @@ static void _describe_project_setting_source(ProjectSettings *p_ps, const String
 
 static void _register_pipeline_project_settings() {
     GLOBAL_DEF(PipelineFeatureSet::ENABLE_TWO_STAGE_SORT_PATH, g_pipeline_feature_set.enable_two_stage_sort);
-    GLOBAL_DEF(PipelineFeatureSet::ENABLE_PACKED_STAGE_DATA_PATH, g_pipeline_feature_set.enable_packed_stage_data);
-    GLOBAL_DEF(PipelineFeatureSet::ENABLE_TIGHTER_BOUNDS_PATH, g_pipeline_feature_set.enable_tighter_bounds);
-    GLOBAL_DEF(PipelineFeatureSet::ENABLE_FAST_RASTER_PATH, g_pipeline_feature_set.enable_fast_raster);
-    GLOBAL_DEF(PipelineFeatureSet::ENABLE_SH_AMORTIZATION_PATH, g_pipeline_feature_set.enable_sh_amortization);
-    GLOBAL_DEF(PipelineFeatureSet::SH_AMORTIZATION_DIVISOR_PATH, g_pipeline_feature_set.sh_amortization_divisor);
+    GLOBAL_DEF(
+            PropertyInfo(Variant::BOOL, PipelineFeatureSet::ENABLE_PACKED_STAGE_DATA_PATH,
+                    PROPERTY_HINT_NONE, String(),
+                    PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_STORAGE),
+            g_pipeline_feature_set.enable_packed_stage_data);
+    GLOBAL_DEF(
+            PropertyInfo(Variant::BOOL, PipelineFeatureSet::ENABLE_TIGHTER_BOUNDS_PATH,
+                    PROPERTY_HINT_NONE, String(),
+                    PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_STORAGE),
+            g_pipeline_feature_set.enable_tighter_bounds);
+    GLOBAL_DEF(
+            PropertyInfo(Variant::BOOL, PipelineFeatureSet::ENABLE_FAST_RASTER_PATH,
+                    PROPERTY_HINT_NONE, String(),
+                    PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_STORAGE),
+            g_pipeline_feature_set.enable_fast_raster);
+    GLOBAL_DEF(
+            PropertyInfo(Variant::BOOL, PipelineFeatureSet::ENABLE_SH_AMORTIZATION_PATH,
+                    PROPERTY_HINT_NONE, String(),
+                    PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_STORAGE),
+            g_pipeline_feature_set.enable_sh_amortization);
+    GLOBAL_DEF(
+            PropertyInfo(Variant::INT, PipelineFeatureSet::SH_AMORTIZATION_DIVISOR_PATH,
+                    PROPERTY_HINT_NONE, String(),
+                    PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_STORAGE),
+            g_pipeline_feature_set.sh_amortization_divisor);
     GLOBAL_DEF(PipelineFeatureSet::DISABLE_SH_AMORTIZATION_VISIBILITY_PATH,
             g_pipeline_feature_set.disable_sh_amortization_on_visibility_change);
     GLOBAL_DEF(PipelineFeatureSet::SH_AMORTIZATION_VISIBILITY_THRESHOLD_PATH,
             g_pipeline_feature_set.sh_amortization_visibility_threshold);
-    GLOBAL_DEF(PipelineFeatureSet::ENABLE_ALL_EXPERIMENTAL_PATH, g_pipeline_feature_set.enable_all_experimental);
+    GLOBAL_DEF(
+            PropertyInfo(Variant::BOOL, PipelineFeatureSet::ENABLE_ALL_EXPERIMENTAL_PATH,
+                    PROPERTY_HINT_NONE, String(),
+                    PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_STORAGE),
+            g_pipeline_feature_set.enable_all_experimental);
 }
 
 void PipelineFeatureSet::load_from_project_settings() {
+    // Precedence for pipeline/* settings:
+    //   1. Code defaults — the values of g_pipeline_feature_set.* members at
+    //      module init time. Registered as the default arg of GLOBAL_DEF.
+    //   2. project.godot values — read here via ProjectSettings::get_setting_with_override.
+    //   3. Quality tier — when quality/tier_apply_pipeline_toggles=true, the
+    //      tier OVERWRITES the project.godot values immediately after this
+    //      function returns (see the apply_tier_toggles branch below in
+    //      load_from_project_settings). The tier wins.
+    //
+    // Implication: project.godot entries for pipeline/enable_* take effect
+    // ONLY when tier_apply_pipeline_toggles=false. Most projects should
+    // configure pipeline behavior via tier_preset, not via these keys
+    // directly. The keys are marked PROPERTY_USAGE_NO_EDITOR in their
+    // GLOBAL_DEF registrations so they are hidden from the default editor
+    // inspector tree but remain readable/writable via ProjectSettings.
     ProjectSettings *ps = ProjectSettings::get_singleton();
     if (!ps) {
         return;
