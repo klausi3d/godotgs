@@ -18,6 +18,7 @@ struct StreamingChunk;
 }
 
 class GaussianStreamingSystem;
+struct LODConfig;
 
 struct ChunkSpatialGrid {
     static constexpr int MAX_CELLS_PER_DIM = 64;
@@ -60,6 +61,8 @@ public:
         uint32_t loaded_chunks = 0;
         uint32_t resident_chunks = 0;
         uint32_t visibility_flag_reset_scan_count = 0;
+        uint32_t lod_parameter_update_scan_count = 0;
+        uint32_t lod_blend_update_scan_count = 0;
 
         void reset() {
             total_chunks = 0;
@@ -68,6 +71,8 @@ public:
             loaded_chunks = 0;
             resident_chunks = 0;
             visibility_flag_reset_scan_count = 0;
+            lod_parameter_update_scan_count = 0;
+            lod_blend_update_scan_count = 0;
         }
     };
 
@@ -124,6 +129,13 @@ private:
             uint32_t max_prefetch, uint32_t max_scan_budget, LocalVector<uint32_t> &out_candidates) const;
     uint32_t schedule_prefetch_loads(GaussianStreamingSystem &system, const Vector3 &predicted_pos,
             const LocalVector<uint32_t> &candidates, uint32_t available_slots, uint32_t load_budget);
+    void begin_lod_worklist(uint32_t chunk_count);
+    void append_lod_worklist_index(uint32_t chunk_idx, uint32_t chunk_count);
+    void append_lod_worklist(const LocalVector<uint32_t> &chunk_indices, uint32_t chunk_count);
+    bool lod_parameter_config_matches(const LODConfig &lod_config) const;
+    void remember_lod_parameter_config(const LODConfig &lod_config, uint32_t chunk_count);
+    bool lod_blend_config_matches() const;
+    void remember_lod_blend_config(uint32_t chunk_count);
 
     bool chunk_frustum_culling_enabled = true;
     float chunk_frustum_padding = 1.5f;
@@ -131,6 +143,7 @@ private:
     float max_discovery_distance = 10000.0f;
     ChunkCullingStats culling_stats;
     LocalVector<uint32_t> visible_chunk_indices;
+    LocalVector<uint32_t> previous_visible_chunk_indices;
     CameraVelocityTracker camera_tracker;
 
     ChunkSpatialGrid spatial_grid;
@@ -145,6 +158,23 @@ private:
     uint32_t prev_visible_count = 0;
     bool visibility_flags_initialized = false;
     uint32_t visibility_flags_chunk_count = 0;
+    LocalVector<uint32_t> lod_worklist_indices;
+    LocalVector<uint32_t> lod_worklist_marks;
+    uint32_t lod_worklist_generation = 1;
+    bool lod_parameter_state_initialized = false;
+    uint32_t lod_parameter_state_chunk_count = 0;
+    bool lod_parameter_last_enabled = false;
+    int lod_parameter_last_num_levels = 0;
+    float lod_parameter_last_max_distance = 0.0f;
+    float lod_parameter_last_base_threshold = 0.0f;
+    bool lod_parameter_last_splat_skip_enabled = false;
+    bool lod_parameter_last_sh_reduction_enabled = false;
+    bool lod_parameter_last_opacity_fade_enabled = false;
+    bool lod_blend_state_initialized = false;
+    uint32_t lod_blend_state_chunk_count = 0;
+    bool lod_blend_last_enabled = false;
+    float lod_blend_last_distance = 0.0f;
+    float lod_blend_last_hysteresis_zone = 0.0f;
     ZeroVisibleRecoveryState zero_visible_recovery;
 };
 

@@ -3171,6 +3171,75 @@ TEST_CASE("[Streaming Pipeline] LOD debug stats track transitions_this_frame acr
     CHECK(int(stable_stats.get("transitions_this_frame", -1)) == 0);
 }
 
+TEST_CASE("[Streaming Pipeline] Large-world LOD updates scan visible working set after warmup") {
+    const uint32_t chunk_count = 80;
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+
+    GaussianStreamingSystem::ConfigOverrides overrides;
+    overrides.override_lod_config = true;
+    overrides.lod_config.enabled = true;
+    overrides.lod_config.num_levels = 4;
+    overrides.lod_config.base_threshold = 4.0f;
+    overrides.lod_config.max_distance = 80.0f;
+    system->set_config_overrides(overrides);
+    system->set_lod_blend_enabled(true);
+
+    LocalVector<GaussianStreamingTypes::StreamingChunk> &chunks = system->_test_get_primary_chunks();
+    chunks.resize(chunk_count);
+    for (uint32_t i = 0; i < chunk_count; i++) {
+        const bool near_camera = i < 8;
+        const Vector3 center = near_camera
+                ? Vector3(float(i) * 0.25f, 0.0f, 0.0f)
+                : Vector3(1000.0f + float(i), 0.0f, 0.0f);
+        GaussianStreamingTypes::StreamingChunk &chunk = chunks[i];
+        chunk.start_idx = i;
+        chunk.count = 1;
+        chunk.center = center;
+        chunk.bounds = AABB(center - Vector3(0.05f, 0.05f, 0.05f), Vector3(0.1f, 0.1f, 0.1f));
+        chunk.max_radius = 0.05f;
+        chunk.distance = 0.0f;
+        chunk.is_loaded = false;
+        chunk.is_visible = true;
+        chunk.upload_pending = false;
+        chunk.buffer_slot = UINT32_MAX;
+        chunk.current_lod_level = 0;
+        chunk.target_lod_level = 0;
+        chunk.sh_band_level = 3;
+        chunk.splat_skip_factor = 1;
+        chunk.opacity_multiplier = 1.0f;
+        chunk.effective_count = chunk.count;
+    }
+
+    Projection projection;
+    projection.set_perspective(60.0f, 1.0f, 0.1f, 100.0f);
+    Transform3D camera_transform;
+    camera_transform.origin = Vector3(0.0f, 0.0f, 5.0f);
+    StreamingVisibilityController &visibility = system->_test_get_visibility_controller();
+
+    visibility.update_chunk_visibility(*system.ptr(), camera_transform, projection);
+    visibility.update_chunk_lod_parameters(*system.ptr(), camera_transform.origin);
+    visibility.update_chunk_lod_blend_factors(*system.ptr(), camera_transform.origin);
+    Dictionary warmup_stats = system->get_chunk_culling_stats();
+    CHECK(int(warmup_stats.get("total_chunks", 0)) == int(chunk_count));
+    CHECK(int(warmup_stats.get("lod_parameter_update_scan_count", 0)) == int(chunk_count));
+
+    visibility.update_chunk_visibility(*system.ptr(), camera_transform, projection);
+    visibility.update_chunk_lod_parameters(*system.ptr(), camera_transform.origin);
+    visibility.update_chunk_lod_blend_factors(*system.ptr(), camera_transform.origin);
+    Dictionary steady_stats = system->get_chunk_culling_stats();
+    const int visible_chunks = int(steady_stats.get("visible_chunks", 0));
+    const int lod_parameter_scans = int(steady_stats.get("lod_parameter_update_scan_count", 0));
+    const int lod_blend_scans = int(steady_stats.get("lod_blend_update_scan_count", 0));
+
+    CHECK(visible_chunks > 0);
+    CHECK(visible_chunks < int(chunk_count));
+    CHECK(lod_parameter_scans >= visible_chunks);
+    CHECK(lod_parameter_scans < int(chunk_count));
+    CHECK(lod_blend_scans >= visible_chunks);
+    CHECK(lod_blend_scans < int(chunk_count));
+}
+
 TEST_CASE("[Streaming Pipeline] Renderer renders streamed non-zero chunk") {
     RenderingServer *rs = RenderingServer::get_singleton();
     if (rs == nullptr) {

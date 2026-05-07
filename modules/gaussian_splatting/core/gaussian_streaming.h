@@ -297,6 +297,8 @@ public:
     // core templates and triggers GCC ODR errors.
     AtlasAssetState *_test_get_asset_state(uint32_t p_asset_id) { return _get_asset_state(p_asset_id); }
     LocalVector<StreamingChunk> &_test_get_asset_chunks(AtlasAssetState &p_asset) { return _get_asset_chunks(p_asset); }
+    LocalVector<StreamingChunk> &_test_get_primary_chunks() { return chunks; }
+    StreamingVisibilityController &_test_get_visibility_controller() { return visibility; }
     uint64_t _test_make_chunk_key(uint32_t p_asset_id, uint32_t p_chunk_id) const {
         return _make_chunk_key(p_asset_id, p_chunk_id);
     }
