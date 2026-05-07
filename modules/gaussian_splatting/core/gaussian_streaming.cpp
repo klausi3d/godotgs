@@ -4974,6 +4974,7 @@ Dictionary GaussianStreamingSystem::get_chunk_culling_stats() const {
     stats["frustum_culled_chunks"] = visibility.culling_stats.frustum_culled_chunks;
     stats["loaded_chunks"] = visibility.culling_stats.loaded_chunks;
     stats["resident_chunks"] = visibility.culling_stats.resident_chunks;
+    stats["visibility_flag_reset_scan_count"] = visibility.culling_stats.visibility_flag_reset_scan_count;
     stats["atlas_published_chunks"] = global_atlas_registry.get_atlas_published_chunks();
     stats["culling_enabled"] = visibility.chunk_frustum_culling_enabled;
     stats["frustum_padding"] = visibility.chunk_frustum_padding;

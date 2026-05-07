@@ -155,6 +155,8 @@ void StreamingVisibilityController::reset_runtime_state() {
     current_lod_blend_factor = 1.0f;
     lod_transitions_this_frame = 0;
     prev_visible_count = 0;
+    visibility_flags_initialized = false;
+    visibility_flags_chunk_count = 0;
     zero_visible_recovery.zero_visible_consecutive_frames = 0;
     zero_visible_recovery.last_recovery_frame = UINT64_MAX;
     zero_visible_recovery.last_stall_log_frame = UINT64_MAX;
@@ -165,6 +167,8 @@ void StreamingVisibilityController::reset_runtime_state() {
 void StreamingVisibilityController::clear_visible_state() {
     visible_chunk_indices.clear();
     culling_stats.reset();
+    visibility_flags_initialized = false;
+    visibility_flags_chunk_count = 0;
 }
 
 void StreamingVisibilityController::update_camera_tracking(const Vector3 &camera_pos, float frame_delta_seconds) {
@@ -359,10 +363,11 @@ void StreamingVisibilityController::update_chunk_visibility(
     culling_stats.reset();
     const uint32_t chunk_count = system.chunks.size();
     culling_stats.total_chunks = chunk_count;
-    visible_chunk_indices.clear();
-    visible_chunk_indices.reserve(chunk_count);
 
     if (chunk_count == 0) {
+        visible_chunk_indices.clear();
+        visibility_flags_initialized = false;
+        visibility_flags_chunk_count = 0;
         return;
     }
 
@@ -373,9 +378,39 @@ void StreamingVisibilityController::update_chunk_visibility(
 
     if (use_spatial_grid) {
         // Build / rebuild the spatial grid when chunk count changes.
-        if (spatial_grid.built_for_chunk_count != chunk_count) {
+        const bool chunk_topology_changed = spatial_grid.built_for_chunk_count != chunk_count;
+        if (chunk_topology_changed) {
             spatial_grid.build(system.chunks.ptr(), chunk_count);
         }
+
+        const bool full_visibility_reset = !visibility_flags_initialized ||
+                visibility_flags_chunk_count != chunk_count ||
+                chunk_topology_changed;
+        if (full_visibility_reset) {
+            for (uint32_t i = 0; i < chunk_count; i++) {
+                system.chunks[i].is_visible = false;
+            }
+            culling_stats.visibility_flag_reset_scan_count = chunk_count;
+        } else {
+            const uint32_t previous_visible_count = visible_chunk_indices.size();
+            for (uint32_t i = 0; i < previous_visible_count; i++) {
+                const uint32_t chunk_idx = visible_chunk_indices[i];
+                if (chunk_idx < chunk_count) {
+                    system.chunks[chunk_idx].is_visible = false;
+                }
+            }
+            culling_stats.visibility_flag_reset_scan_count = previous_visible_count;
+        }
+        visibility_flags_initialized = true;
+        visibility_flags_chunk_count = chunk_count;
+
+        visible_chunk_indices.clear();
+        visible_chunk_indices.reserve(MIN(chunk_count, uint32_t(4096)));
+        // Loaded chunks are maintained incrementally by the streaming budget.
+        // Avoid rebuilding the same count by scanning every chunk in the
+        // large-world grid path.
+        culling_stats.loaded_chunks = system.budget.loaded_chunks_count;
+        culling_stats.resident_chunks = system.budget.loaded_chunks_count;
 
         // Compute bounded discovery AABB centred on camera.
         float discovery_dist = max_discovery_distance;
@@ -396,18 +431,6 @@ void StreamingVisibilityController::update_chunk_visibility(
             grid_query_visited.resize(chunk_count);
         }
         memset(grid_query_visited.ptr(), 0, chunk_count);
-
-        // Lightweight O(N) pass: clear visibility flags and accumulate
-        // loaded / resident stats (boolean-only, no math).
-        for (uint32_t i = 0; i < chunk_count; i++) {
-            system.chunks[i].is_visible = false;
-            if (system.chunks[i].is_loaded) {
-                culling_stats.loaded_chunks++;
-                if (!system.chunks[i].upload_pending && system.chunks[i].buffer_slot != UINT32_MAX) {
-                    culling_stats.resident_chunks++;
-                }
-            }
-        }
 
         // Collect candidate chunk indices from grid cells overlapping the query AABB.
         grid_query_candidates.clear();
@@ -452,6 +475,11 @@ void StreamingVisibilityController::update_chunk_visibility(
         }
     } else {
         // Original O(N) path for small chunk counts.
+        visible_chunk_indices.clear();
+        visible_chunk_indices.reserve(chunk_count);
+        culling_stats.visibility_flag_reset_scan_count = chunk_count;
+        visibility_flags_initialized = true;
+        visibility_flags_chunk_count = chunk_count;
         for (uint32_t i = 0; i < chunk_count; i++) {
             system.chunks[i].distance = camera_pos.distance_to(system.chunks[i].center);
 

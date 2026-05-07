@@ -59,6 +59,7 @@ public:
         uint32_t frustum_culled_chunks = 0;
         uint32_t loaded_chunks = 0;
         uint32_t resident_chunks = 0;
+        uint32_t visibility_flag_reset_scan_count = 0;
 
         void reset() {
             total_chunks = 0;
@@ -66,6 +67,7 @@ public:
             frustum_culled_chunks = 0;
             loaded_chunks = 0;
             resident_chunks = 0;
+            visibility_flag_reset_scan_count = 0;
         }
     };
 
@@ -141,6 +143,8 @@ private:
     int global_sh_band_level = 3;
     uint32_t lod_transitions_this_frame = 0;
     uint32_t prev_visible_count = 0;
+    bool visibility_flags_initialized = false;
+    uint32_t visibility_flags_chunk_count = 0;
     ZeroVisibleRecoveryState zero_visible_recovery;
 };
 
