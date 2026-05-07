@@ -204,7 +204,20 @@ StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan StreamingGlobalAtlasRegistry::
 StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan StreamingGlobalAtlasRegistry::_test_plan_chunk_meta_sync(GaussianStreamingSystem &system) {
 	_reset_sync_diagnostics();
 	const SyncPreparation prep = _prepare_sync_state(system, system.quantization_dirty);
-	if (prep.rebuild_cpu_state || chunk_meta_dirty_all || chunk_meta_dirty_indices.is_empty()) {
+	if (prep.rebuild_cpu_state) {
+		return ChunkMetaUploadPlan();
+	}
+	if (chunk_meta_dirty_all) {
+		ChunkMetaUploadPlan plan;
+		plan.full_update = prep.total_chunks > 0;
+		plan.dirty_count = prep.total_chunks;
+		plan.contiguous_range_count = prep.total_chunks > 0 ? 1 : 0;
+		last_sync_diagnostics.chunk_meta_dirty_count = plan.dirty_count;
+		last_sync_diagnostics.chunk_meta_range_count = plan.contiguous_range_count;
+		last_sync_diagnostics.chunk_meta_full_update = plan.full_update;
+		return plan;
+	}
+	if (chunk_meta_dirty_indices.is_empty()) {
 		return ChunkMetaUploadPlan();
 	}
 
@@ -616,12 +629,18 @@ void StreamingGlobalAtlasRegistry::sync_to_gpu(GaussianStreamingSystem &system, 
 			chunk_meta_buffer = p_rd->storage_buffer_create(chunk_meta_size, chunk_span.reinterpret<uint8_t>());
 			p_rd->set_resource_name(chunk_meta_buffer, "GS_Streaming_ChunkMetaBuffer");
 			chunk_meta_buffer_size = chunk_meta_size;
+			last_sync_diagnostics.chunk_meta_dirty_count = chunk_meta_cpu.size();
+			last_sync_diagnostics.chunk_meta_range_count = 1;
+			last_sync_diagnostics.chunk_meta_full_update = true;
 			chunk_meta_dirty_all = false;
 			chunk_meta_dirty_indices.clear();
 			_clear_dirty_flags(chunk_meta_dirty_flags);
 			atlas_dirty = true;
 		} else if (chunk_meta_dirty_all) {
 			p_rd->buffer_update(chunk_meta_buffer, 0, chunk_meta_size, chunk_span.reinterpret<uint8_t>().ptr());
+			last_sync_diagnostics.chunk_meta_dirty_count = chunk_meta_cpu.size();
+			last_sync_diagnostics.chunk_meta_range_count = 1;
+			last_sync_diagnostics.chunk_meta_full_update = true;
 			chunk_meta_dirty_all = false;
 			chunk_meta_dirty_indices.clear();
 			_clear_dirty_flags(chunk_meta_dirty_flags);

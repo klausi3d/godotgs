@@ -1928,9 +1928,9 @@ TEST_CASE("[Streaming Pipeline] Invalid chunk meta dirty marks force a safe atla
 }
 
 TEST_CASE("[Streaming Pipeline] Sparse chunk meta sync planning uses cached topology") {
-    Ref<GaussianStreamingSystem> system;
-    system.instantiate();
-    system->initialize_empty(nullptr);
+	Ref<GaussianStreamingSystem> system;
+	system.instantiate();
+	system->initialize_empty(nullptr);
 
     constexpr uint32_t asset_count = 64;
     constexpr uint32_t first_asset_id = 9000;
@@ -1956,13 +1956,35 @@ TEST_CASE("[Streaming Pipeline] Sparse chunk meta sync planning uses cached topo
     CHECK(diagnostics.topology_scan_asset_count == 0);
     CHECK(diagnostics.topology_scan_chunk_count == 0);
     CHECK(diagnostics.chunk_meta_dirty_count == 3);
-    CHECK(diagnostics.chunk_meta_range_count == 3);
-    CHECK_FALSE(diagnostics.chunk_meta_full_update);
+	CHECK(diagnostics.chunk_meta_range_count == 3);
+	CHECK_FALSE(diagnostics.chunk_meta_full_update);
+}
+
+TEST_CASE("[Streaming Pipeline] Full chunk meta sync planning reports full-update diagnostics") {
+	Ref<GaussianStreamingSystem> system;
+	system.instantiate();
+	system->initialize_empty(nullptr);
+
+	constexpr uint32_t asset_id = 9060;
+	system->register_asset(asset_id, create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE * 2));
+
+	system->_test_build_global_atlas_cpu_state();
+
+	const StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan plan = system->_test_plan_chunk_meta_sync();
+	const StreamingGlobalAtlasRegistry::SyncDiagnostics diagnostics = system->_test_get_atlas_sync_diagnostics();
+
+	CHECK(system->_test_get_chunk_meta_dirty_all());
+	CHECK(plan.full_update);
+	CHECK(plan.dirty_count == 2);
+	CHECK(plan.contiguous_range_count == 1);
+	CHECK(diagnostics.chunk_meta_full_update);
+	CHECK(diagnostics.chunk_meta_dirty_count == 2);
+	CHECK(diagnostics.chunk_meta_range_count == 1);
 }
 
 TEST_CASE("[Streaming Pipeline] Dirty atlas publication is invalidated when GPU sync is skipped") {
-    RenderingServer *rs = RenderingServer::get_singleton();
-    if (!rs) {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (!rs) {
         MESSAGE("Skipping - Rendering server unavailable");
         return;
     }
