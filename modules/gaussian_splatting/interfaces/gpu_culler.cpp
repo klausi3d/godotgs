@@ -222,19 +222,8 @@ void GPUCuller::update_culling_settings() {
         project_bias_setting = _get_float_setting(ps, "rendering/gaussian_splatting/lod/bias", project_bias_setting);
         importance_setting = _get_float_setting(ps, "rendering/gaussian_splatting/lod/importance_threshold", importance_setting);
         frustum_slack_setting = _get_float_setting(ps, "rendering/gaussian_splatting/cull/frustum_plane_slack", frustum_slack_setting);
-        // Refresh opacity-aware-culling settings from project at runtime so
-        // visibility_threshold changes (lane preset / project.godot edits)
-        // actually reach the binning shader's compute_opacity_aware_sigma path.
-        // Without this, the value baked at construction sticks regardless of
-        // _set_project_setting calls. Setter clamp is independently widened
-        // in render_quality_orchestrator.cpp so 1e-4..1e-1 is reachable.
-        culling_config.opacity_aware_culling = _get_bool_setting(ps,
-                "rendering/gaussian_splatting/culling/opacity_aware_bounds",
-                culling_config.opacity_aware_culling);
-        const float visibility_setting = _get_float_setting(ps,
-                "rendering/gaussian_splatting/culling/visibility_threshold",
-                culling_config.visibility_threshold);
-        culling_config.visibility_threshold = CLAMP(visibility_setting, 0.0001f, 0.1f);
+        // Keep runtime overrides (set_opacity_aware_culling / set_visibility_threshold)
+        // sticky across frames by not reloading these knobs from ProjectSettings here.
         // Per-splat hard alpha cull — PlayCanvas alphaClip parity. Drops splats
         // with opacity <= alpha_clip before any projection or binning work.
         const float alpha_clip_setting = _get_float_setting(ps,
