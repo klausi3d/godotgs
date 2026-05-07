@@ -320,7 +320,7 @@ uint gs_pack_sort_key(uint tile_idx, float linear_depth, uint global_idx) {
     // shift underflows in unsigned arithmetic. Below 9 bits, fall back to
     // full-precision depth without tie-break — these configs are tile-budget
     // constrained and trade off determinism for bit count by definition.
-#if GS_SORT_DEPTH_BITS > 8
+#if GS_SORT_TIE_BITS > 0 && GS_SORT_DEPTH_BITS > 8
     uint depth_quant = uint(clamped_depth * float((1u << (GS_SORT_DEPTH_BITS - 8u)) - 1u));
     uint depth_key = (depth_quant << 8u) | (global_idx & 0xFFu);
 #else

@@ -316,7 +316,7 @@ TEST_CASE("[GaussianSplatting][Config] GPUSortingConfig rejects invalid key_bits
 	}
 }
 
-TEST_CASE("[GaussianSplatting][Config] Project settings preserve explicit 32-bit sort-key layout") {
+TEST_CASE("[GaussianSplatting][Config] Project settings apply preset layouts unless preset is custom") {
 	ProjectSettings *project_settings = ProjectSettings::get_singleton();
 	REQUIRE(project_settings != nullptr);
 
@@ -355,12 +355,35 @@ TEST_CASE("[GaussianSplatting][Config] Project settings preserve explicit 32-bit
 		CHECK(sort_key_config.enable_tie_breaker);
 	};
 
-	SUBCASE("Preset loading honors explicit key-layout overrides") {
-		const char *preset_names[] = { "low", "medium", "high", "ultra" };
-		for (const char *preset_name : preset_names) {
-			project_settings->set_setting(preset_path, preset_name);
+	SUBCASE("Named presets keep their own key layout") {
+		struct PresetExpectation {
+			const char *name;
+			uint32_t key_bits;
+			uint32_t tile_bits;
+			uint32_t depth_bits;
+			bool tie_breaker;
+		};
+		const PresetExpectation preset_expectations[] = {
+			{ "low", 32, 16, 16, false },
+			{ "medium", 64, 32, 32, false },
+			{ "high", 64, 32, 32, false },
+			{ "ultra", 64, 32, 32, true },
+		};
+		for (const PresetExpectation &preset : preset_expectations) {
+			project_settings->set_setting(preset_path, preset.name);
 			apply_explicit_32bit_layout();
-			check_loaded_32bit_layout();
+
+			g_gpu_sorting_config.load_from_project_settings();
+			CHECK(g_gpu_sorting_config.key_bits == preset.key_bits);
+			CHECK(g_gpu_sorting_config.tile_bits == preset.tile_bits);
+			CHECK(g_gpu_sorting_config.depth_bits == preset.depth_bits);
+			CHECK(g_gpu_sorting_config.enable_tie_breaker == preset.tie_breaker);
+
+			const SortKeyConfig sort_key_config = SortKeyConfig::from_settings();
+			CHECK(sort_key_config.key_bits == preset.key_bits);
+			CHECK(sort_key_config.tile_bits == preset.tile_bits);
+			CHECK(sort_key_config.depth_bits == preset.depth_bits);
+			CHECK(sort_key_config.enable_tie_breaker == preset.tie_breaker);
 		}
 	}
 
