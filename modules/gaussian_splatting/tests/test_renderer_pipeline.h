@@ -834,6 +834,102 @@ TEST_CASE("[GaussianSplatting] Clearing a resident instance contract drops resid
 	CHECK_FALSE(renderer->has_instance_pipeline_buffers());
 }
 
+TEST_CASE("[GaussianSplatting][RequiresGPU] Clearing a resident instance contract frees tracked resident atlas buffers") {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (rs == nullptr) {
+		MESSAGE("Skipping test - Rendering server unavailable");
+		return;
+	}
+
+	ScopedGaussianManagerPipeline manager_scope;
+	GaussianSplatManager *manager = manager_scope.get();
+	if (manager == nullptr) {
+		MESSAGE("Skipping test - GaussianSplatManager unavailable");
+		return;
+	}
+
+	ScopedRenderingDeviceLease device_lease;
+	RenderingDevice *primary_rd = device_lease.acquire(rs, manager);
+	if (primary_rd == nullptr) {
+		MESSAGE("Skipping test - Rendering device unavailable");
+		return;
+	}
+
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate(primary_rd);
+	CHECK(renderer.is_valid());
+	if (!renderer.is_valid()) {
+		return;
+	}
+	renderer->initialize();
+
+	const RID atlas_buffer = primary_rd->storage_buffer_create(128);
+	const RID asset_meta_buffer = primary_rd->storage_buffer_create(64);
+	const RID chunk_meta_buffer = primary_rd->storage_buffer_create(96);
+	const RID asset_chunk_index_buffer = primary_rd->storage_buffer_create(32);
+	REQUIRE(atlas_buffer.is_valid());
+	REQUIRE(asset_meta_buffer.is_valid());
+	REQUIRE(chunk_meta_buffer.is_valid());
+	REQUIRE(asset_chunk_index_buffer.is_valid());
+	renderer->track_resource_owner(atlas_buffer, primary_rd, true, "test_resident_atlas_gaussian_buffer");
+	renderer->track_resource_owner(asset_meta_buffer, primary_rd, true, "test_resident_asset_meta_buffer");
+	renderer->track_resource_owner(chunk_meta_buffer, primary_rd, true, "test_resident_chunk_meta_buffer");
+	renderer->track_resource_owner(asset_chunk_index_buffer, primary_rd, true, "test_resident_asset_chunk_index_buffer");
+
+	GaussianSplatRenderer::ResourceState &resource_state = renderer->get_resource_state();
+	resource_state.resident_atlas_gaussian_buffer = atlas_buffer;
+	resource_state.resident_asset_meta_buffer = asset_meta_buffer;
+	resource_state.resident_chunk_meta_buffer = chunk_meta_buffer;
+	resource_state.resident_asset_chunk_index_buffer = asset_chunk_index_buffer;
+	resource_state.resident_atlas_gaussian_buffer_size = 128;
+	resource_state.resident_asset_meta_buffer_size = 64;
+	resource_state.resident_chunk_meta_buffer_size = 96;
+	resource_state.resident_asset_chunk_index_buffer_size = 32;
+	resource_state.instance_pipeline_atlas_generation = 41;
+	resource_state.resident_atlas_gaussian_count = 23;
+	resource_state.resident_dispatch_chunk_count = 5;
+	resource_state.resident_max_chunk_splats = 9;
+
+	GaussianRenderPipeline::InstancePipelineBuffers buffers;
+	buffers.atlas_gaussian_buffer = atlas_buffer;
+	buffers.asset_meta_buffer = asset_meta_buffer;
+	buffers.chunk_meta_buffer = chunk_meta_buffer;
+	buffers.asset_chunk_index_buffer = asset_chunk_index_buffer;
+	buffers.atlas_gaussian_count = resource_state.resident_atlas_gaussian_count;
+
+	GaussianRenderPipeline::PublishedInstanceAssetRemap remap;
+	remap.asset_to_dense_id.insert(0u, 0u);
+	remap.generation = 41;
+	remap.valid = true;
+
+	renderer->publish_instance_pipeline_contract(
+			buffers,
+			remap,
+			GaussianRenderPipeline::InstanceBackendPolicy::RESIDENT,
+			remap.generation,
+			"atlas_emulation");
+
+	renderer->clear_instance_pipeline_buffers();
+
+	CHECK_FALSE(resource_state.resident_atlas_gaussian_buffer.is_valid());
+	CHECK_FALSE(resource_state.resident_asset_meta_buffer.is_valid());
+	CHECK_FALSE(resource_state.resident_chunk_meta_buffer.is_valid());
+	CHECK_FALSE(resource_state.resident_asset_chunk_index_buffer.is_valid());
+	CHECK_FALSE(primary_rd->buffer_is_valid(atlas_buffer));
+	CHECK_FALSE(primary_rd->buffer_is_valid(asset_meta_buffer));
+	CHECK_FALSE(primary_rd->buffer_is_valid(chunk_meta_buffer));
+	CHECK_FALSE(primary_rd->buffer_is_valid(asset_chunk_index_buffer));
+	CHECK(resource_state.resident_atlas_gaussian_buffer_size == 0u);
+	CHECK(resource_state.resident_asset_meta_buffer_size == 0u);
+	CHECK(resource_state.resident_chunk_meta_buffer_size == 0u);
+	CHECK(resource_state.resident_asset_chunk_index_buffer_size == 0u);
+	CHECK(resource_state.instance_pipeline_atlas_generation == 0u);
+	CHECK(resource_state.resident_atlas_gaussian_count == 0u);
+	CHECK(resource_state.resident_dispatch_chunk_count == 0u);
+	CHECK(resource_state.resident_max_chunk_splats == 0u);
+	CHECK_FALSE(renderer->has_instance_pipeline_buffers());
+}
+
 TEST_CASE("[GaussianSplatting] Publishing a streaming instance contract supersedes resident atlas buffers") {
 	Ref<GaussianSplatRenderer> renderer;
 	renderer.instantiate();
