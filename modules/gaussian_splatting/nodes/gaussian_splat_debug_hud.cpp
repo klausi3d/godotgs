@@ -1,6 +1,8 @@
 #include "gaussian_splat_debug_hud.h"
 #include "gaussian_splat_node_3d.h"
 #include "../renderer/gaussian_splat_renderer.h"
+#include "core/object/object.h"
+#include "scene/scene_string_names.h"
 #include "scene/resources/font.h"
 #include "scene/theme/theme_db.h"
 
@@ -30,16 +32,18 @@ void GaussianSplatDebugHUD::_bind_methods() {
 }
 
 GaussianSplatDebugHUD::GaussianSplatDebugHUD() {
-	set_mouse_filter(MOUSE_FILTER_IGNORE);
-	set_process(true);
 }
 
 GaussianSplatDebugHUD::~GaussianSplatDebugHUD() {
+	_clear_splat_node(false);
 }
 
 void GaussianSplatDebugHUD::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_ENTER_TREE: {
+			set_mouse_filter(MOUSE_FILTER_IGNORE);
+			set_process(true);
+
 			// Try to get default font from theme
 			if (!hud_font.is_valid()) {
 				hud_font = ThemeDB::get_singleton()->get_fallback_font();
@@ -53,12 +57,17 @@ void GaussianSplatDebugHUD::_notification(int p_what) {
 			if (time_since_update >= update_interval) {
 				time_since_update = 0.0f;
 				_update_cached_stats();
-				queue_redraw();
+				_queue_hud_redraw();
 			}
 		} break;
 
 		case NOTIFICATION_DRAW: {
 			_draw_hud();
+		} break;
+
+		case NOTIFICATION_EXIT_TREE:
+		case NOTIFICATION_PREDELETE: {
+			_clear_splat_node(p_what == NOTIFICATION_EXIT_TREE);
 		} break;
 	}
 }
@@ -66,7 +75,12 @@ void GaussianSplatDebugHUD::_notification(int p_what) {
 void GaussianSplatDebugHUD::_update_cached_stats() {
 	cached_hud_lines.clear();
 
+	GaussianSplatNode3D *splat_node = _resolve_splat_node();
 	if (!splat_node) {
+		splat_node_id = ObjectID();
+		return;
+	}
+	if (!splat_node->is_inside_tree()) {
 		return;
 	}
 
@@ -160,16 +174,70 @@ Vector2 GaussianSplatDebugHUD::_calculate_hud_position(const Vector2 &p_hud_size
 	}
 }
 
+GaussianSplatNode3D *GaussianSplatDebugHUD::_resolve_splat_node() const {
+	if (splat_node_id == ObjectID()) {
+		return nullptr;
+	}
+
+	return ObjectDB::get_instance<GaussianSplatNode3D>(splat_node_id);
+}
+
+void GaussianSplatDebugHUD::_disconnect_splat_node_tree_exiting() {
+	GaussianSplatNode3D *splat_node = _resolve_splat_node();
+	if (!splat_node) {
+		return;
+	}
+
+	Callable exiting_callable = callable_mp(this, &GaussianSplatDebugHUD::_on_splat_node_tree_exiting);
+	if (splat_node->is_connected(SceneStringName(tree_exiting), exiting_callable)) {
+		splat_node->disconnect(SceneStringName(tree_exiting), exiting_callable);
+	}
+}
+
+void GaussianSplatDebugHUD::_clear_splat_node(bool p_queue_redraw) {
+	_disconnect_splat_node_tree_exiting();
+	splat_node_id = ObjectID();
+	cached_hud_lines.clear();
+	if (p_queue_redraw) {
+		_queue_hud_redraw();
+	}
+}
+
+void GaussianSplatDebugHUD::_on_splat_node_tree_exiting() {
+	_clear_splat_node();
+}
+
+void GaussianSplatDebugHUD::_queue_hud_redraw() {
+	if (is_inside_tree()) {
+		queue_redraw();
+	}
+}
+
 void GaussianSplatDebugHUD::set_splat_node(GaussianSplatNode3D *p_node) {
-	splat_node = p_node;
+	if (_resolve_splat_node() != p_node) {
+		_disconnect_splat_node_tree_exiting();
+		splat_node_id = p_node ? p_node->get_instance_id() : ObjectID();
+
+		if (p_node) {
+			Callable exiting_callable = callable_mp(this, &GaussianSplatDebugHUD::_on_splat_node_tree_exiting);
+			if (!p_node->is_connected(SceneStringName(tree_exiting), exiting_callable)) {
+				p_node->connect(SceneStringName(tree_exiting), exiting_callable, Object::CONNECT_REFERENCE_COUNTED);
+			}
+		}
+	}
+
 	_update_cached_stats();
-	queue_redraw();
+	_queue_hud_redraw();
+}
+
+GaussianSplatNode3D *GaussianSplatDebugHUD::get_splat_node() const {
+	return _resolve_splat_node();
 }
 
 void GaussianSplatDebugHUD::set_corner(Corner p_corner) {
 	if (corner != p_corner) {
 		corner = p_corner;
-		queue_redraw();
+		_queue_hud_redraw();
 	}
 }
 
@@ -179,15 +247,15 @@ void GaussianSplatDebugHUD::set_update_interval(float p_interval) {
 
 void GaussianSplatDebugHUD::set_font_size(int p_size) {
 	font_size = CLAMP(p_size, 8, 32);
-	queue_redraw();
+	_queue_hud_redraw();
 }
 
 void GaussianSplatDebugHUD::set_background_color(const Color &p_color) {
 	background_color = p_color;
-	queue_redraw();
+	_queue_hud_redraw();
 }
 
 void GaussianSplatDebugHUD::refresh_stats() {
 	_update_cached_stats();
-	queue_redraw();
+	_queue_hud_redraw();
 }
