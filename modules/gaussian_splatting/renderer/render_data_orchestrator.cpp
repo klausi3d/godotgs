@@ -103,6 +103,7 @@ Error RenderDataOrchestrator::set_gaussian_data(const Ref<::GaussianData> &p_dat
 		scene_state.payload_source_splat_count = 0;
 		scene_state.payload_source_sh_degree = 0;
 		scene_state.payload_source_bounds = AABB();
+		streaming_state.pending_payload_source.unref();
 	}
 	// Scene data identity changed: never reuse last-frame color/depth outputs.
 	(renderer->*runtime_ports.invalidate_cached_render)();
@@ -539,6 +540,54 @@ Error GaussianSplatRenderer::set_gaussian_data(const Ref<::GaussianData> &p_data
 	return err;
 }
 
+Error GaussianSplatRenderer::set_file_backed_payload_source(const Ref<ChunkPayloadSource> &p_source) {
+	const auto &debug_config = get_debug_config();
+	const bool log_enabled = debug_config.enable_data_logging ||
+			debug_config.enable_frame_logging ||
+			debug_config.enable_all_debug;
+	if (log_enabled) {
+		GS_LOG_RENDERER_DEBUG(vformat("[GSR-SET-FILE-SOURCE] ENTER count=%d orchestrator=%s",
+				p_source.is_valid() ? p_source->get_count() : -1,
+				data_orchestrator ? "valid" : "null"));
+	}
+
+	RenderingServer *rs = RenderingServer::get_singleton();
+	bool dispatch_submitted = false;
+	uint64_t dispatched_request_id = 0;
+	if (rs && !rs->is_on_render_thread()) {
+		if (_dispatch_call_on_render_thread_blocking(
+					callable_mp(this, &GaussianSplatRenderer::_set_file_backed_payload_source_on_render_thread).bind(p_source),
+					&dispatch_submitted,
+					true,
+					&dispatched_request_id)) {
+			if (log_enabled) {
+				GS_LOG_RENDERER_DEBUG(vformat("[GSR-SET-FILE-SOURCE] EXIT err=%d (render-thread dispatch)",
+						render_thread_dispatcher ? int(render_thread_dispatcher->get_latest_data_result()) : int(ERR_UNAVAILABLE)));
+			}
+			return render_thread_dispatcher ? render_thread_dispatcher->get_latest_data_result() : ERR_UNAVAILABLE;
+		}
+		if (dispatch_submitted) {
+			if (render_thread_dispatcher) {
+				render_thread_dispatcher->promote_latest_data_request_id(dispatched_request_id);
+			}
+			if (log_enabled) {
+				GS_LOG_RENDERER_WARN("[GSR-SET-FILE-SOURCE] Render-thread dispatch timed out after submit; skipping unsafe local fallback");
+			}
+			return ERR_BUSY;
+		}
+	}
+
+	Error err = data_orchestrator->set_file_backed_payload_source(p_source);
+	if (render_thread_dispatcher) {
+		const uint64_t request_id_floor = render_thread_dispatcher->get_next_request_id();
+		render_thread_dispatcher->promote_latest_data_request_id(request_id_floor);
+	}
+	if (log_enabled) {
+		GS_LOG_RENDERER_DEBUG(vformat("[GSR-SET-FILE-SOURCE] EXIT err=%d", err));
+	}
+	return err;
+}
+
 void GaussianSplatRenderer::_set_gaussian_data_on_render_thread(const Ref<::GaussianData> &p_data, uint64_t p_request_id) {
 	const uint64_t latest_request_id =
 			render_thread_dispatcher ? render_thread_dispatcher->get_latest_data_request_id() : 0;
@@ -559,6 +608,29 @@ void GaussianSplatRenderer::_set_gaussian_data_on_render_thread(const Ref<::Gaus
 		return;
 	}
 	const Error set_data_result = data_orchestrator->set_gaussian_data(p_data);
+	if (render_thread_dispatcher) {
+		render_thread_dispatcher->set_latest_data_result(set_data_result);
+	}
+	_notify_render_thread_dispatch_completed(p_request_id);
+}
+
+void GaussianSplatRenderer::_set_file_backed_payload_source_on_render_thread(const Ref<ChunkPayloadSource> &p_source, uint64_t p_request_id) {
+	const uint64_t latest_request_id =
+			render_thread_dispatcher ? render_thread_dispatcher->get_latest_data_request_id() : 0;
+	if (p_request_id < latest_request_id) {
+		_notify_render_thread_dispatch_completed(p_request_id);
+		return;
+	}
+	if (render_thread_dispatcher) {
+		render_thread_dispatcher->promote_latest_data_request_id(p_request_id);
+	}
+	const uint64_t previous_request_id =
+			render_thread_dispatcher ? render_thread_dispatcher->get_latest_data_request_id() : p_request_id;
+	if (p_request_id < previous_request_id) {
+		_notify_render_thread_dispatch_completed(p_request_id);
+		return;
+	}
+	const Error set_data_result = data_orchestrator->set_file_backed_payload_source(p_source);
 	if (render_thread_dispatcher) {
 		render_thread_dispatcher->set_latest_data_result(set_data_result);
 	}
@@ -650,7 +722,7 @@ Error GaussianSplatRenderer::restore_world_submission_runtime_state(const WorldS
 	const Error err = has_resident_data
 			? set_gaussian_data(p_snapshot.gaussian_data)
 			: (has_file_backed_payload
-							? data_orchestrator->set_file_backed_payload_source(p_snapshot.payload_source)
+							? set_file_backed_payload_source(p_snapshot.payload_source)
 							: set_gaussian_data(Ref<GaussianData>()));
 	if (err != OK) {
 		set_gaussian_data(Ref<GaussianData>());
@@ -717,7 +789,7 @@ Error GaussianSplatRenderer::apply_world_submission_contract(const WorldSubmissi
 	const Error err = has_resident_data
 			? set_gaussian_data(p_contract.gaussian_data)
 			: (has_file_backed_payload
-							? data_orchestrator->set_file_backed_payload_source(p_contract.payload_source)
+							? set_file_backed_payload_source(p_contract.payload_source)
 							: set_gaussian_data(Ref<GaussianData>()));
 	if (err != OK) {
 		clear_static_chunks();

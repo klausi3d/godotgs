@@ -228,6 +228,7 @@ TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld direct format saver/loader")
         Ref<GaussianData> resident_data = resident_loaded->get_gaussian_data();
         CHECK(resident_data.is_valid());
         CHECK(resident_loaded->has_resident_gaussian_data());
+        CHECK_FALSE(resident_loaded->has_chunk_payload_source());
         CHECK_EQ(resident_loaded->get_splat_count(), 4);
         if (resident_data.is_valid()) {
             const Gaussian g0 = resident_data->get_gaussian(0);
@@ -469,6 +470,25 @@ TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld rejects metadata range overf
     hdr.metadata_offset = file_len - 4u;
     hdr.metadata_size = UINT64_MAX - 8u;
     REQUIRE(_write_malformed_world(path, hdr, pad));
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error err = OK;
+    Ref<Resource> result = loader.load(path, "", &err);
+    CHECK_EQ(err, ERR_FILE_CORRUPT);
+    CHECK_FALSE(result.is_valid());
+
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld rejects high SH count without high SH flag") {
+    const String path = _make_world_io_fixture_path("malformed_sh_flag_mismatch");
+
+    MalformedWorldHeader hdr;
+    hdr.flags = 0u;
+    hdr.splat_count = 1u;
+    hdr.sh_high_order = 1u;
+    hdr.gaussian_offset = 104u;
+    REQUIRE(_write_malformed_world(path, hdr, sizeof(Gaussian)));
 
     ResourceFormatLoaderGaussianSplatWorld loader;
     Error err = OK;

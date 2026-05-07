@@ -266,6 +266,13 @@ static Ref<Resource> _load_gsplatworld_resource(const String &p_path, Error *r_e
 		}
 	}
 
+	if (sh_high_order > 0 && (flags & kFlagHasHighSh) == 0) {
+		if (r_error) {
+			*r_error = ERR_FILE_CORRUPT;
+		}
+		return Ref<Resource>();
+	}
+
 	if ((flags & kFlagHasHighSh) != 0 && sh_high_order > 0) {
 		uint64_t sh_count = 0;
 		uint64_t sh_bytes = 0;
@@ -488,10 +495,11 @@ static Ref<Resource> _load_gsplatworld_resource(const String &p_path, Error *r_e
 	// Only uncompressed files support file-backed chunk payload reads. Compressed
 	// .gsplatworld files are resident-only: the decoded payload lives in memory on
 	// the GaussianData above and no staged-file payload source is attached.
-	if (!gaussian_data_compressed) {
+	if (!gaussian_data_compressed && !p_force_resident) {
 		Ref<StagedFileChunkPayloadSource> file_source;
 		file_source.instantiate();
-		file_source->configure(p_path, gaussian_offset, sh_offset,
+		const uint64_t staged_sh_offset = ((flags & kFlagHasHighSh) != 0 && sh_high_order > 0) ? sh_offset : 0u;
+		file_source->configure(p_path, gaussian_offset, staged_sh_offset,
 				splat_count, sh_degree, sh_first_order, sh_high_order,
 				AABB(bounds_pos, bounds_size));
 		world->set_chunk_payload_source(file_source);

@@ -636,6 +636,7 @@ public:
 #endif
     void _set_max_splats_on_render_thread(int p_count, uint64_t p_request_id);
     void _set_gaussian_data_on_render_thread(const Ref<::GaussianData> &p_data, uint64_t p_request_id);
+    void _set_file_backed_payload_source_on_render_thread(const Ref<ChunkPayloadSource> &p_source, uint64_t p_request_id);
     void _force_sort_for_view_on_render_thread(const Transform3D &p_world_to_camera_transform, uint64_t p_request_id);
     RenderingDevice *_acquire_rendering_device();
     RenderingDevice *_get_main_rendering_device() const;
@@ -902,6 +903,7 @@ public:
      * directly.
      */
     Error set_gaussian_data(const Ref<::GaussianData> &p_data) override;
+    Error set_file_backed_payload_source(const Ref<ChunkPayloadSource> &p_source);
 
     /** @brief Returns the currently assigned resident direct-data binding. */
     Ref<::GaussianData> get_gaussian_data() const override { return get_scene_state().gaussian_data; }
