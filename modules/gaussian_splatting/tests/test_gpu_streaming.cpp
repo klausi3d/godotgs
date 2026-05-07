@@ -1927,6 +1927,39 @@ TEST_CASE("[Streaming Pipeline] Invalid chunk meta dirty marks force a safe atla
     CHECK(system->get_asset_chunk_index_buffer().is_valid());
 }
 
+TEST_CASE("[Streaming Pipeline] Sparse chunk meta sync planning uses cached topology") {
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_empty(nullptr);
+
+    constexpr uint32_t asset_count = 64;
+    constexpr uint32_t first_asset_id = 9000;
+    for (uint32_t i = 0; i < asset_count; i++) {
+        system->register_asset(first_asset_id + i, create_test_gaussian_data(1));
+    }
+
+    system->_test_build_global_atlas_cpu_state();
+    system->_test_clear_atlas_cpu_dirty_state();
+
+    system->_test_mark_chunk_meta_dirty(first_asset_id + 3, 0);
+    system->_test_mark_chunk_meta_dirty(first_asset_id + 17, 0);
+    system->_test_mark_chunk_meta_dirty(first_asset_id + 51, 0);
+
+    const StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan plan = system->_test_plan_chunk_meta_sync();
+    const StreamingGlobalAtlasRegistry::SyncDiagnostics diagnostics = system->_test_get_atlas_sync_diagnostics();
+
+    CHECK(plan.dirty_count == 3);
+    CHECK(plan.contiguous_range_count == 3);
+    CHECK_FALSE(plan.full_update);
+    CHECK(diagnostics.used_cached_topology);
+    CHECK_FALSE(diagnostics.forced_full_rebuild);
+    CHECK(diagnostics.topology_scan_asset_count == 0);
+    CHECK(diagnostics.topology_scan_chunk_count == 0);
+    CHECK(diagnostics.chunk_meta_dirty_count == 3);
+    CHECK(diagnostics.chunk_meta_range_count == 3);
+    CHECK_FALSE(diagnostics.chunk_meta_full_update);
+}
+
 TEST_CASE("[Streaming Pipeline] Dirty atlas publication is invalidated when GPU sync is skipped") {
     RenderingServer *rs = RenderingServer::get_singleton();
     if (!rs) {

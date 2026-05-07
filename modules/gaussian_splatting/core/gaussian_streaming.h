@@ -286,6 +286,14 @@ public:
     uint64_t get_atlas_generation() const { return global_atlas_registry.get_atlas_generation(); }
 #if defined(TESTS_ENABLED)
     void _test_sync_global_atlas_state(RenderingDevice *p_rd) { global_atlas_registry.sync_to_gpu(*this, p_rd); }
+    void _test_build_global_atlas_cpu_state() { global_atlas_registry.build_cpu_state(*this); }
+    StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan _test_plan_chunk_meta_sync() {
+        return global_atlas_registry._test_plan_chunk_meta_sync(*this);
+    }
+    StreamingGlobalAtlasRegistry::SyncDiagnostics _test_get_atlas_sync_diagnostics() const {
+        return global_atlas_registry.get_last_sync_diagnostics();
+    }
+    void _test_clear_atlas_cpu_dirty_state() { global_atlas_registry._test_clear_cpu_dirty_state(); }
     void _test_mark_chunk_meta_dirty(uint32_t asset_id, uint32_t chunk_idx) {
         global_atlas_registry.mark_chunk_meta_dirty(*this, asset_id, chunk_idx);
     }
