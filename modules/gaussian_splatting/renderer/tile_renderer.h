@@ -139,6 +139,18 @@ public:
         bool has_depth = false;
         bool depth_copy_compatible = false;
     };
+
+    struct InstancePipelineBindings {
+        RID instance_buffer;
+        RID instance_grading_buffer;
+        RID splat_ref_buffer;
+        RID chunk_meta_buffer;
+        RID quantization_buffer;
+        RID indirect_count_buffer;
+        RID indirect_dispatch_buffer;
+        bool quantization_required = false;
+    };
+
     RenderResult render_with_contract(RenderingDevice *p_device, const RenderParams &p_params);
     void set_gpu_timestamp_capture_enabled(bool p_enabled) { gpu_timestamp_capture_enabled = p_enabled; }
     bool is_gpu_timestamp_capture_enabled() const { return gpu_timestamp_capture_enabled; }
@@ -239,6 +251,19 @@ public:
     }
     void _test_on_tile_counts_readback(const Vector<uint8_t> &p_data, int64_t p_request_frame_serial) {
         _on_tile_counts_readback(p_data, p_request_frame_serial);
+    }
+    uint64_t _test_get_descriptor_generation() const { return descriptor_generation; }
+    bool _test_update_instance_pipeline_bindings(const RenderParams &p_params) {
+        return _update_instance_pipeline_bindings(p_params);
+    }
+    static bool _test_apply_instance_pipeline_bindings(InstancePipelineBindings &r_bindings,
+            uint64_t &r_descriptor_generation, const RenderParams &p_params) {
+        const bool bindings_changed = _instance_pipeline_bindings_changed(r_bindings, p_params);
+        if (bindings_changed) {
+            r_descriptor_generation++;
+        }
+        _assign_instance_pipeline_bindings(r_bindings, p_params);
+        return bindings_changed;
     }
 #endif
 
@@ -357,6 +382,7 @@ private:
 	RenderingDevice *_acquire_submission_device();
 	void _invalidate_descriptor_cache();
 	uint64_t descriptor_generation = 0; // Monotonic counter; incremented by _invalidate_descriptor_cache().
+	bool _update_instance_pipeline_bindings(const RenderParams &p_params);
 	bool _ensure_param_uniform_buffer(RenderingDevice *p_device);
 	RID _get_default_state_uniform(RenderingDevice *p_device);
 	std::function<void()> output_invalidation_callback;
@@ -424,16 +450,6 @@ private:
     AdaptiveOverlapBudgetRuntimeState adaptive_overlap_budget_runtime_state;
     bool adaptive_overlap_budget_runtime_state_initialized = false;
     TileResourceController resource_controller;
-    struct InstancePipelineBindings {
-        RID instance_buffer;
-        RID instance_grading_buffer;
-        RID splat_ref_buffer;
-        RID chunk_meta_buffer;
-        RID quantization_buffer;
-        RID indirect_count_buffer;
-        RID indirect_dispatch_buffer;
-        bool quantization_required = false;
-    };
     InstancePipelineBindings instance_pipeline_buffers;
     bool sh_cache_needs_full_update = false;
     TileFrameState frame_state;
@@ -454,6 +470,10 @@ private:
     void _on_overflow_stats_readback(const Vector<uint8_t> &p_data);
     void _on_splat_audit_readback(const Vector<uint8_t> &p_data);
     void _on_tile_counts_readback(const Vector<uint8_t> &p_data, int64_t p_request_frame_serial);
+    static bool _instance_pipeline_bindings_changed(const InstancePipelineBindings &p_bindings,
+            const RenderParams &p_params);
+    static void _assign_instance_pipeline_bindings(InstancePipelineBindings &r_bindings,
+            const RenderParams &p_params);
 };
 
 #endif // TILE_RENDERER_H

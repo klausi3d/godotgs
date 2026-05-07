@@ -344,19 +344,12 @@ private:
 			return false;
 		}
 
-		renderer.instance_pipeline_buffers.instance_buffer = params.instance_buffer;
-		renderer.instance_pipeline_buffers.instance_grading_buffer = params.instance_grading_buffer;
-		renderer.instance_pipeline_buffers.splat_ref_buffer = params.splat_ref_buffer;
-			renderer.instance_pipeline_buffers.chunk_meta_buffer = params.chunk_meta_buffer;
-			renderer.instance_pipeline_buffers.quantization_buffer = params.quantization_buffer;
-			renderer.instance_pipeline_buffers.quantization_required = params.quantization_buffer.is_valid();
-			renderer.instance_pipeline_buffers.indirect_count_buffer = params.instance_indirect_count_buffer;
-			renderer.instance_pipeline_buffers.indirect_dispatch_buffer = params.instance_indirect_dispatch_buffer;
+		renderer._update_instance_pipeline_bindings(params);
 
-			const bool quantization_required = renderer.instance_pipeline_buffers.quantization_required;
-			const GaussianSplatting::InstancePipelineContract::InvariantViolationReason invariant_reason =
-					GaussianSplatting::InstancePipelineContract::first_tile_runtime_violation(
-							renderer.instance_pipeline_buffers.instance_buffer,
+		const bool quantization_required = renderer.instance_pipeline_buffers.quantization_required;
+		const GaussianSplatting::InstancePipelineContract::InvariantViolationReason invariant_reason =
+				GaussianSplatting::InstancePipelineContract::first_tile_runtime_violation(
+						renderer.instance_pipeline_buffers.instance_buffer,
 						renderer.instance_pipeline_buffers.instance_grading_buffer,
 						renderer.instance_pipeline_buffers.splat_ref_buffer,
 						renderer.instance_pipeline_buffers.indirect_count_buffer,
@@ -2808,6 +2801,43 @@ void TileRenderer::_invalidate_descriptor_cache() {
     raster_stage.cached_raster_image_output = RID();
     raster_stage.cached_raster_image_depth = RID();
     raster_stage.cached_raster_image_normal = RID();
+}
+
+bool TileRenderer::_update_instance_pipeline_bindings(const RenderParams &p_params) {
+	const bool bindings_changed = _instance_pipeline_bindings_changed(instance_pipeline_buffers, p_params);
+
+	if (bindings_changed) {
+		_invalidate_descriptor_cache();
+	}
+
+	_assign_instance_pipeline_bindings(instance_pipeline_buffers, p_params);
+
+	return bindings_changed;
+}
+
+bool TileRenderer::_instance_pipeline_bindings_changed(const InstancePipelineBindings &p_bindings,
+		const RenderParams &p_params) {
+	const bool new_quantization_required = p_params.quantization_buffer.is_valid();
+	return p_bindings.instance_buffer != p_params.instance_buffer ||
+			p_bindings.instance_grading_buffer != p_params.instance_grading_buffer ||
+			p_bindings.splat_ref_buffer != p_params.splat_ref_buffer ||
+			p_bindings.chunk_meta_buffer != p_params.chunk_meta_buffer ||
+			p_bindings.quantization_buffer != p_params.quantization_buffer ||
+			p_bindings.indirect_count_buffer != p_params.instance_indirect_count_buffer ||
+			p_bindings.indirect_dispatch_buffer != p_params.instance_indirect_dispatch_buffer ||
+			p_bindings.quantization_required != new_quantization_required;
+}
+
+void TileRenderer::_assign_instance_pipeline_bindings(InstancePipelineBindings &r_bindings,
+		const RenderParams &p_params) {
+	r_bindings.instance_buffer = p_params.instance_buffer;
+	r_bindings.instance_grading_buffer = p_params.instance_grading_buffer;
+	r_bindings.splat_ref_buffer = p_params.splat_ref_buffer;
+	r_bindings.chunk_meta_buffer = p_params.chunk_meta_buffer;
+	r_bindings.quantization_buffer = p_params.quantization_buffer;
+	r_bindings.quantization_required = p_params.quantization_buffer.is_valid();
+	r_bindings.indirect_count_buffer = p_params.instance_indirect_count_buffer;
+	r_bindings.indirect_dispatch_buffer = p_params.instance_indirect_dispatch_buffer;
 }
 
 bool TileRenderer::_ensure_param_uniform_buffer(RenderingDevice *p_device) {
