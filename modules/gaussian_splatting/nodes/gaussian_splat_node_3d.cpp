@@ -478,13 +478,18 @@ void GaussianSplatNode3D::_validate_property(PropertyInfo &p_property) const {
     if (_is_renderer_shared_with_other_content(renderer)) {
         // Color grading stays visible on every node even when the renderer is
         // shared: each node pushes its own grading to the renderer (last
-        // write wins until per-submission grading lands). Painterly and
-        // debug overlays remain renderer-wide and are still hidden here.
+        // write wins until per-submission grading lands). Painterly, debug
+        // overlays, and renderer-wide quality knobs (lod_bias, max_splats)
+        // remain renderer-wide and are hidden here on non-owner peers —
+        // see gaussian_splat_node_helpers.cpp:1284-1378 for the
+        // ownership/silent-drop logic these match.
         if (p_property.name.begins_with("painterly/") ||
                 p_property.name == "debug/show_tile_grid" ||
                 p_property.name == "debug/show_density_heatmap" ||
                 p_property.name == "debug/show_performance_hud" ||
-                p_property.name == "debug/show_residency_hud") {
+                p_property.name == "debug/show_residency_hud" ||
+                p_property.name == "quality/lod_bias" ||
+                p_property.name == "quality/max_splat_count") {
             p_property.usage = PROPERTY_USAGE_NO_EDITOR;
             return;
         }
