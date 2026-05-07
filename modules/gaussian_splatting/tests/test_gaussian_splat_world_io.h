@@ -2,6 +2,7 @@
 
 #include "test_macros.h"
 
+#include "../core/streaming_chunk_payload_source.h"
 #include "../core/gaussian_splat_world.h"
 #include "../io/gaussian_splat_world_io.h"
 
@@ -114,7 +115,96 @@ void _remove_world_io_fixture(const String &p_path) {
     DirAccess::remove_absolute(p_path);
 }
 
+Vector<Gaussian> build_staged_payload_gaussians(uint32_t p_count) {
+    Vector<Gaussian> gaussians;
+    gaussians.resize(p_count);
+    for (uint32_t i = 0; i < p_count; i++) {
+        gaussians.write[i] = make_gaussian(Vector3(float(i), float(i % 7), float(i % 3)), Color(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+    return gaussians;
+}
+
+bool write_staged_payload_fixture(const String &p_path, const Vector<Gaussian> &p_gaussians) {
+    Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::WRITE);
+    if (!f.is_valid()) {
+        return false;
+    }
+    f->store_buffer(reinterpret_cast<const uint8_t *>(p_gaussians.ptr()), uint64_t(p_gaussians.size()) * sizeof(Gaussian));
+    f.unref();
+    return true;
+}
+
 } // namespace
+
+TEST_CASE("[GaussianSplatting][WorldIO] StagedFileChunkPayloadSource contiguous snapshot reads requested bytes") {
+    const String path = _make_world_io_fixture_path("staged_contiguous");
+    const Vector<Gaussian> gaussians = build_staged_payload_gaussians(16);
+    REQUIRE(write_staged_payload_fixture(path, gaussians));
+
+    Ref<StagedFileChunkPayloadSource> source;
+    source.instantiate();
+    source->configure(path, 0, 0, gaussians.size(), 0, 0, 0, AABB());
+
+    LocalVector<Gaussian> snapshot;
+    LocalVector<Vector3> sh_high;
+    uint32_t sh_first = 0;
+    uint32_t sh_high_count = 0;
+    source->reset_io_counters();
+    const bool ok = source->capture_chunk_snapshot(4, 5, snapshot, sh_high, sh_first, sh_high_count);
+
+    CHECK(ok);
+    CHECK_EQ(snapshot.size(), 5);
+    if (snapshot.size() == 5) {
+        CHECK(snapshot[0].position.is_equal_approx(gaussians[4].position));
+        CHECK(snapshot[4].position.is_equal_approx(gaussians[8].position));
+    }
+    CHECK_EQ(source->get_bytes_requested(), uint64_t(5) * sizeof(Gaussian));
+    CHECK_EQ(source->get_bytes_read(), uint64_t(5) * sizeof(Gaussian));
+    CHECK_EQ(source->get_file_open_count(), 1);
+
+    LocalVector<Gaussian> second_snapshot;
+    const bool second_ok = source->capture_chunk_snapshot(8, 1, second_snapshot, sh_high, sh_first, sh_high_count);
+    CHECK(second_ok);
+    CHECK_EQ(second_snapshot.size(), 1);
+    CHECK_EQ(source->get_bytes_requested(), uint64_t(6) * sizeof(Gaussian));
+    CHECK_EQ(source->get_bytes_read(), uint64_t(6) * sizeof(Gaussian));
+    CHECK_EQ(source->get_file_open_count(), 1);
+
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] StagedFileChunkPayloadSource sparse indexed snapshot avoids full span read") {
+    const String path = _make_world_io_fixture_path("staged_sparse_indexed");
+    const Vector<Gaussian> gaussians = build_staged_payload_gaussians(128);
+    REQUIRE(write_staged_payload_fixture(path, gaussians));
+
+    Ref<StagedFileChunkPayloadSource> source;
+    source.instantiate();
+    source->configure(path, 0, 0, gaussians.size(), 0, 0, 0, AABB());
+
+    const uint32_t indices[] = { 2, 80, 127, 3 };
+    LocalVector<Gaussian> snapshot;
+    LocalVector<Vector3> sh_high;
+    uint32_t sh_first = 0;
+    uint32_t sh_high_count = 0;
+    source->reset_io_counters();
+    const bool ok = source->capture_indexed_chunk_snapshot(indices, 4, snapshot, sh_high, sh_first, sh_high_count);
+
+    CHECK(ok);
+    CHECK_EQ(snapshot.size(), 4);
+    if (snapshot.size() == 4) {
+        CHECK(snapshot[0].position.is_equal_approx(gaussians[2].position));
+        CHECK(snapshot[1].position.is_equal_approx(gaussians[80].position));
+        CHECK(snapshot[2].position.is_equal_approx(gaussians[127].position));
+        CHECK(snapshot[3].position.is_equal_approx(gaussians[3].position));
+    }
+    CHECK_EQ(source->get_bytes_requested(), uint64_t(4) * sizeof(Gaussian));
+    CHECK_EQ(source->get_bytes_read(), uint64_t(4) * sizeof(Gaussian));
+    CHECK_LT(source->get_bytes_read(), uint64_t(126) * sizeof(Gaussian));
+    CHECK_EQ(source->get_file_open_count(), 1);
+
+    _remove_world_io_fixture(path);
+}
 
 TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld direct format saver/loader") {
     GsplatWorldCompressionSettingGuard compression_guard(false);

@@ -1,9 +1,12 @@
 #ifndef STREAMING_CHUNK_PAYLOAD_SOURCE_H
 #define STREAMING_CHUNK_PAYLOAD_SOURCE_H
 
+#include "core/io/file_access.h"
 #include "core/math/aabb.h"
 #include "core/object/ref_counted.h"
 #include "core/os/mutex.h"
+#include "core/os/thread.h"
+#include "core/templates/hash_map.h"
 #include "core/templates/local_vector.h"
 #include "gaussian_data.h"
 #include <cstdint>
@@ -92,6 +95,14 @@ protected:
 	uint32_t sh_high_order = 0;
 	AABB bounds;
 	mutable Mutex file_mutex;
+	mutable HashMap<Thread::ID, Ref<FileAccess>> cached_files;
+	mutable uint64_t bytes_requested = 0;
+	mutable uint64_t bytes_read = 0;
+	mutable uint64_t file_open_count = 0;
+
+	Ref<FileAccess> _get_thread_file() const;
+	bool _read_exact(FileAccess *p_file, uint64_t p_offset, void *p_dst, uint64_t p_bytes, const char *p_label, uint64_t *r_bytes_read = nullptr) const;
+	void _record_io_counters(uint64_t p_bytes_requested, uint64_t p_bytes_read) const;
 
 public:
 	StagedFileChunkPayloadSource() = default;
@@ -123,6 +134,10 @@ public:
 	bool is_valid() const override { return !file_path.is_empty() && splat_count > 0; }
 
 	const String &get_file_path() const { return file_path; }
+	uint64_t get_bytes_requested() const;
+	uint64_t get_bytes_read() const;
+	uint64_t get_file_open_count() const;
+	void reset_io_counters();
 };
 
 #endif // STREAMING_CHUNK_PAYLOAD_SOURCE_H
