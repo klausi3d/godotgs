@@ -27,55 +27,57 @@ static TileRenderer::RenderParams make_instance_pipeline_params_for_descriptor_c
 }
 
 TEST_CASE("[GaussianSplatting][TileRenderer] Instance pipeline RID drift invalidates descriptor generation") {
-	TileRenderer::InstancePipelineBindings bindings;
-	TileRenderer::RenderParams params;
-	uint64_t descriptor_generation = 0;
+	Vector<TileRenderer::RenderParams> sequence;
 
-	CHECK_FALSE(TileRenderer::_test_apply_instance_pipeline_bindings(bindings, descriptor_generation, params));
-	CHECK(descriptor_generation == 0u);
+	TileRenderer::RenderParams params;
+	sequence.push_back(params);
 
 	params = make_instance_pipeline_params_for_descriptor_cache_test(0x24700u);
-	CHECK(TileRenderer::_test_apply_instance_pipeline_bindings(bindings, descriptor_generation, params));
-	CHECK(descriptor_generation == 1u);
+	sequence.push_back(params);
 
-	CHECK_FALSE(TileRenderer::_test_apply_instance_pipeline_bindings(bindings, descriptor_generation, params));
-	CHECK(descriptor_generation == 1u);
+	sequence.push_back(params);
 
 	params.instance_buffer = RID::from_uint64(0x24801u);
-	CHECK(TileRenderer::_test_apply_instance_pipeline_bindings(bindings, descriptor_generation, params));
-	CHECK(descriptor_generation == 2u);
+	sequence.push_back(params);
 
 	params.instance_grading_buffer = RID::from_uint64(0x24802u);
-	CHECK(TileRenderer::_test_apply_instance_pipeline_bindings(bindings, descriptor_generation, params));
-	CHECK(descriptor_generation == 3u);
+	sequence.push_back(params);
 
 	params.splat_ref_buffer = RID::from_uint64(0x24803u);
-	CHECK(TileRenderer::_test_apply_instance_pipeline_bindings(bindings, descriptor_generation, params));
-	CHECK(descriptor_generation == 4u);
+	sequence.push_back(params);
 
 	params.instance_indirect_count_buffer = RID::from_uint64(0x24804u);
-	CHECK(TileRenderer::_test_apply_instance_pipeline_bindings(bindings, descriptor_generation, params));
-	CHECK(descriptor_generation == 5u);
+	sequence.push_back(params);
 
 	params.instance_indirect_dispatch_buffer = RID::from_uint64(0x24805u);
-	CHECK(TileRenderer::_test_apply_instance_pipeline_bindings(bindings, descriptor_generation, params));
-	CHECK(descriptor_generation == 6u);
+	sequence.push_back(params);
 
 	params.quantization_buffer = RID::from_uint64(0x24806u);
-	CHECK(TileRenderer::_test_apply_instance_pipeline_bindings(bindings, descriptor_generation, params));
-	CHECK(descriptor_generation == 7u);
+	sequence.push_back(params);
 
 	params.chunk_meta_buffer = RID::from_uint64(0x24807u);
-	CHECK(TileRenderer::_test_apply_instance_pipeline_bindings(bindings, descriptor_generation, params));
-	CHECK(descriptor_generation == 8u);
+	sequence.push_back(params);
 
 	params.chunk_meta_buffer = RID::from_uint64(0x24808u);
-	CHECK(TileRenderer::_test_apply_instance_pipeline_bindings(bindings, descriptor_generation, params));
-	CHECK(descriptor_generation == 9u);
+	sequence.push_back(params);
 
 	params.quantization_buffer = RID();
-	CHECK(TileRenderer::_test_apply_instance_pipeline_bindings(bindings, descriptor_generation, params));
-	CHECK(descriptor_generation == 10u);
+	sequence.push_back(params);
+
+	const Vector<uint64_t> trace = TileRenderer::_test_instance_pipeline_binding_generation_trace(sequence);
+	REQUIRE(trace.size() == 12);
+	CHECK(trace[0] == 0u);
+	CHECK(trace[1] == 1u);
+	CHECK(trace[2] == 1u);
+	CHECK(trace[3] == 2u);
+	CHECK(trace[4] == 3u);
+	CHECK(trace[5] == 4u);
+	CHECK(trace[6] == 5u);
+	CHECK(trace[7] == 6u);
+	CHECK(trace[8] == 7u);
+	CHECK(trace[9] == 8u);
+	CHECK(trace[10] == 9u);
+	CHECK(trace[11] == 10u);
 }
 
 #endif // TESTS_ENABLED

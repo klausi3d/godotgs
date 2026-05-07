@@ -2804,13 +2804,20 @@ void TileRenderer::_invalidate_descriptor_cache() {
 }
 
 bool TileRenderer::_update_instance_pipeline_bindings(const RenderParams &p_params) {
-	const bool bindings_changed = _instance_pipeline_bindings_changed(instance_pipeline_buffers, p_params);
-
-	if (bindings_changed) {
+	return _apply_instance_pipeline_bindings(instance_pipeline_buffers, p_params, [this]() {
 		_invalidate_descriptor_cache();
+	});
+}
+
+bool TileRenderer::_apply_instance_pipeline_bindings(InstancePipelineBindings &r_bindings,
+		const RenderParams &p_params, const std::function<void()> &p_invalidate_descriptor_cache) {
+	const bool bindings_changed = _instance_pipeline_bindings_changed(r_bindings, p_params);
+
+	if (bindings_changed && p_invalidate_descriptor_cache) {
+		p_invalidate_descriptor_cache();
 	}
 
-	_assign_instance_pipeline_bindings(instance_pipeline_buffers, p_params);
+	_assign_instance_pipeline_bindings(r_bindings, p_params);
 
 	return bindings_changed;
 }
@@ -2839,6 +2846,25 @@ void TileRenderer::_assign_instance_pipeline_bindings(InstancePipelineBindings &
 	r_bindings.indirect_count_buffer = p_params.instance_indirect_count_buffer;
 	r_bindings.indirect_dispatch_buffer = p_params.instance_indirect_dispatch_buffer;
 }
+
+#ifdef TESTS_ENABLED
+Vector<uint64_t> TileRenderer::_test_instance_pipeline_binding_generation_trace(
+		const Vector<RenderParams> &p_params_sequence) {
+	InstancePipelineBindings bindings;
+	uint64_t descriptor_generation = 0u;
+	Vector<uint64_t> generation_trace;
+	generation_trace.resize(p_params_sequence.size());
+
+	for (int i = 0; i < p_params_sequence.size(); i++) {
+		_apply_instance_pipeline_bindings(bindings, p_params_sequence[i], [&descriptor_generation]() {
+			descriptor_generation++;
+		});
+		generation_trace.write[i] = descriptor_generation;
+	}
+
+	return generation_trace;
+}
+#endif
 
 bool TileRenderer::_ensure_param_uniform_buffer(RenderingDevice *p_device) {
     return uniform_buffers.ensure_param_buffer(p_device);
