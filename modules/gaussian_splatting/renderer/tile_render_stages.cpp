@@ -14,6 +14,7 @@
 
 #include "tile_renderer.h"
 #include "gaussian_gpu_layout.h"
+#include "tile_lighting_abi.h"
 #include "core/error/error_macros.h"
 #include "core/os/os.h"
 #include "core/math/vector3.h"
@@ -25,17 +26,6 @@
 #include "sh_config.h"
 
 namespace {
-
-static uint32_t _get_shift_from_power_of_2(uint32_t p_value) {
-	if (p_value <= 1u) {
-		return 0u;
-	}
-    uint32_t shift = 0u;
-    while ((1u << shift) < p_value && shift < 31u) {
-        shift++;
-    }
-	return shift;
-}
 
 static float _sanitize_effector_float(float p_value, float p_fallback) {
 	return Math::is_finite(p_value) ? p_value : p_fallback;
@@ -387,27 +377,18 @@ TileRenderParamsGPU TileRenderer::TileRenderParamsBuilder::build_params(const Re
 	params.lighting_mode[2] = 0u;
 	params.lighting_mode[3] = 0u;
 
-	uint32_t cluster_shift = 0u;
-	uint32_t cluster_width = 0u;
-	uint32_t cluster_type_size = 0u;
-	uint32_t max_cluster_element_count_div_32 = 0u;
-	if (p_params.cluster_size > 0u && p_params.cluster_max_elements > 0u) {
-		cluster_shift = _get_shift_from_power_of_2(p_params.cluster_size);
-		uint32_t width = (uint32_t(p_params.viewport_size.x) + p_params.cluster_size - 1u) / p_params.cluster_size;
-		uint32_t height = (uint32_t(p_params.viewport_size.y) + p_params.cluster_size - 1u) / p_params.cluster_size;
-		max_cluster_element_count_div_32 = p_params.cluster_max_elements / 32u;
-		cluster_type_size = width * height * (max_cluster_element_count_div_32 + 32u);
-		cluster_width = width;
-	}
+	const GaussianSplatting::TileLightingClusterABIConfig cluster_config =
+			GaussianSplatting::TileLightingSetABI::compute_cluster_config(p_params.viewport_size,
+					p_params.cluster_size, p_params.cluster_max_elements, p_params.cluster_buffer.is_valid());
 
 	params.light_counts[0] = p_params.omni_light_count;
 	params.light_counts[1] = p_params.spot_light_count;
-	params.light_counts[2] = (p_params.cluster_buffer.is_valid() && cluster_type_size > 0u) ? 1u : 0u;
+	params.light_counts[2] = cluster_config.enabled ? 1u : 0u;
 	params.light_counts[3] = p_params.light_mask;
-	params.cluster_config[0] = cluster_shift;
-	params.cluster_config[1] = cluster_width;
-	params.cluster_config[2] = cluster_type_size;
-	params.cluster_config[3] = max_cluster_element_count_div_32;
+	params.cluster_config[0] = cluster_config.cluster_shift;
+	params.cluster_config[1] = cluster_config.cluster_width;
+	params.cluster_config[2] = cluster_config.cluster_type_size;
+	params.cluster_config[3] = cluster_config.max_cluster_element_count_div_32;
 	params.debug_overlay_opacity = p_params.debug_overlay_opacity;
 	params.opacity_multiplier = p_params.opacity_multiplier;
 	// camera_position already populated above

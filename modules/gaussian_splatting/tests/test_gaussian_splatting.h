@@ -31,6 +31,7 @@
 #include "test_logger_rate_limit.h"
 #include "test_vram_budget_regulator.h"
 #include "test_renderer_pipeline.h"
+#include "test_tile_lighting_abi.h"
 #include "test_sort_fallback_policy.h"
 #include "test_sort_benchmark_metrics.h"
 #include "test_sorter_metrics_metadata.h"
