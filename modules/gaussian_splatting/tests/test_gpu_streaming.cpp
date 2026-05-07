@@ -3240,6 +3240,88 @@ TEST_CASE("[Streaming Pipeline] Large-world LOD updates scan visible working set
     CHECK(lod_blend_scans < int(chunk_count));
 }
 
+TEST_CASE("[Streaming Pipeline] Primary eviction scans resident chunks instead of total chunks") {
+    const uint32_t chunk_count = 100;
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+
+    LocalVector<GaussianStreamingTypes::StreamingChunk> &chunks = system->_test_get_primary_chunks();
+    chunks.resize(chunk_count);
+    for (uint32_t i = 0; i < chunk_count; i++) {
+        GaussianStreamingTypes::StreamingChunk &chunk = chunks[i];
+        chunk.start_idx = i;
+        chunk.count = 1;
+        chunk.center = Vector3(float(i), 0.0f, 0.0f);
+        chunk.bounds = AABB(chunk.center, Vector3(0.1f, 0.1f, 0.1f));
+        chunk.is_loaded = false;
+        chunk.is_visible = false;
+        chunk.upload_pending = false;
+        chunk.buffer_slot = UINT32_MAX;
+	}
+	system->_test_register_primary_asset_for_chunks();
+	system->_test_reset_atlas_allocator(chunk_count);
+	for (int i = 0; i < 10; i++) {
+		system->begin_frame();
+	}
+
+    system->_test_mark_chunk_loaded_for_eviction(0, 7, false, 0, 30, 10.0f);
+    system->_test_mark_chunk_loaded_for_eviction(0, 20, false, 0, 10, 5.0f);
+    system->_test_mark_chunk_loaded_for_eviction(0, 88, true, 0, 1, 100.0f);
+
+    const auto result = system->_test_evict_least_recently_used(false);
+
+    CHECK(result == StreamingEvictionController::EvictionResult::EvictedNonVisible);
+    CHECK_FALSE(chunks[20].is_loaded);
+    CHECK(chunks[88].is_loaded);
+    CHECK(system->_test_get_primary_eviction_scan_count() == 3);
+    CHECK(system->_test_get_primary_eviction_candidate_count() == 3);
+}
+
+TEST_CASE("[Streaming Pipeline] Non-primary eviction scans resident chunks and preserves request exclusions") {
+    const uint32_t asset_id = 777;
+    const uint32_t chunk_count = 100;
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->register_asset(asset_id, create_test_gaussian_data(1));
+
+	auto *asset = system->_test_get_asset_state(asset_id);
+	REQUIRE(asset != nullptr);
+	system->_test_reset_atlas_allocator(chunk_count);
+	LocalVector<GaussianStreamingTypes::StreamingChunk> &asset_chunks = system->_test_get_asset_chunks(*asset);
+    asset_chunks.resize(chunk_count);
+    for (uint32_t i = 0; i < chunk_count; i++) {
+        GaussianStreamingTypes::StreamingChunk &chunk = asset_chunks[i];
+        chunk.start_idx = i;
+        chunk.count = 1;
+        chunk.center = Vector3(float(i), 0.0f, 0.0f);
+        chunk.bounds = AABB(chunk.center, Vector3(0.1f, 0.1f, 0.1f));
+        chunk.is_loaded = false;
+        chunk.is_visible = false;
+        chunk.upload_pending = false;
+        chunk.buffer_slot = UINT32_MAX;
+    }
+
+    system->begin_residency_requests();
+    CHECK(system->request_chunk_residency(asset_id, 33, 0) == OK);
+    system->finalize_residency_requests();
+    for (int i = 0; i < 10; i++) {
+        system->begin_frame();
+    }
+
+    system->_test_mark_chunk_loaded_for_eviction(asset_id, 10, false, 0, 40, 10.0f);
+    system->_test_mark_chunk_loaded_for_eviction(asset_id, 33, false, 0, 1, 99.0f);
+    system->_test_mark_chunk_loaded_for_eviction(asset_id, 44, false, 0, 20, 20.0f);
+    system->_test_mark_chunk_loaded_for_eviction(asset_id, 80, true, 0, 30, 30.0f);
+
+    const auto result = system->_test_evict_non_primary_lru();
+
+    CHECK(result == StreamingEvictionController::EvictionResult::EvictedNonVisible);
+    CHECK(asset_chunks[33].is_loaded);
+    CHECK_FALSE(asset_chunks[44].is_loaded);
+    CHECK(system->_test_get_non_primary_eviction_scan_count() == 4);
+    CHECK(system->_test_get_non_primary_eviction_candidate_count() == 3);
+}
+
 TEST_CASE("[Streaming Pipeline] Renderer renders streamed non-zero chunk") {
     RenderingServer *rs = RenderingServer::get_singleton();
     if (rs == nullptr) {

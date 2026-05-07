@@ -815,7 +815,10 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
     scheduler.last_visible_scan_count = 0;
     scheduler.last_visible_scan_budget_effective = 0;
     scheduler.last_load_candidate_count = 0;
+    scheduler.last_primary_eviction_scan_count = 0;
+    scheduler.last_primary_eviction_candidate_count = 0;
     scheduler.last_non_primary_scan_count = 0;
+    scheduler.last_non_primary_eviction_candidate_count = 0;
     scheduler.last_prefetch_scan_count = 0;
     scheduler.last_prefetch_scan_budget_effective = 0;
     scheduler.last_prefetch_candidate_count = 0;
@@ -851,6 +854,7 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
         global_atlas_registry.cleanup(rd);
         atlas_allocator.clear();
         chunks.clear();
+        eviction_controller.invalidate_resident_tracking();
         asset_registry.primary_chunk_source_indices.clear();
         primary_chunk_layout_metrics.reset();
         return;
@@ -978,7 +982,10 @@ void GaussianStreamingSystem::initialize_empty(RenderingDevice *p_device) {
     scheduler.last_visible_scan_count = 0;
     scheduler.last_visible_scan_budget_effective = 0;
     scheduler.last_load_candidate_count = 0;
+    scheduler.last_primary_eviction_scan_count = 0;
+    scheduler.last_primary_eviction_candidate_count = 0;
     scheduler.last_non_primary_scan_count = 0;
+    scheduler.last_non_primary_eviction_candidate_count = 0;
     scheduler.last_prefetch_scan_count = 0;
     scheduler.last_prefetch_scan_budget_effective = 0;
     scheduler.last_prefetch_candidate_count = 0;
@@ -1008,6 +1015,7 @@ void GaussianStreamingSystem::initialize_empty(RenderingDevice *p_device) {
     per_chunk_quantization_dc_compatible = true;
     total_splat_count = 0;
     chunks.clear();
+    eviction_controller.invalidate_resident_tracking();
     asset_registry.primary_chunk_source_indices.clear();
     primary_chunk_layout_metrics.reset();
     budget.evicted_bytes_total = 0;
@@ -1155,16 +1163,19 @@ void GaussianStreamingSystem::set_config_overrides(const ConfigOverrides &p_over
     config_overrides = p_overrides;
     config_overrides_active = p_overrides.has_any_override();
     config_dirty = true;
+    eviction_controller.invalidate_candidate_cache();
 }
 
 void GaussianStreamingSystem::clear_config_overrides() {
     config_overrides = ConfigOverrides();
     config_overrides_active = false;
     config_dirty = true;
+    eviction_controller.invalidate_candidate_cache();
 }
 
 void GaussianStreamingSystem::set_io_chunk_layout_hints(const Vector<ChunkLayoutHint> &p_hints, uint32_t p_asset_id) {
     asset_registry.io_chunk_layout_hints = p_hints;
+    eviction_controller.invalidate_resident_tracking();
     if (asset_registry.io_chunk_layout_hints.is_empty()) {
         asset_registry.io_chunk_layout_asset_id = INVALID_ASSET_ID;
         return;
@@ -1208,6 +1219,7 @@ void GaussianStreamingSystem::set_primary_chunk_layout(const Vector<ChunkLayoutH
     if (!hints_changed && !indices_changed) {
         return;
     }
+    eviction_controller.invalidate_resident_tracking();
 
     asset_registry.primary_chunk_layout_hints = p_hints;
     asset_registry.primary_chunk_layout_source_indices.clear();
@@ -1581,6 +1593,7 @@ void GaussianStreamingSystem::register_asset(uint32_t asset_id, const Ref<Gaussi
     }
     quantization_cpu_cache_valid = false;
     _refresh_quantization_dc_compatibility();
+    eviction_controller.invalidate_resident_tracking();
 
     global_atlas_registry.mark_asset_registry_dirty();
 }
@@ -1636,6 +1649,7 @@ void GaussianStreamingSystem::unregister_asset(uint32_t asset_id) {
     quantization_dirty = true;
     quantization_cpu_cache_valid = false;
     _refresh_quantization_dc_compatibility();
+    eviction_controller.invalidate_resident_tracking();
 }
 
 void GaussianStreamingSystem::set_chunk_payload_source(uint32_t asset_id, const Ref<ChunkPayloadSource> &p_source) {
@@ -1791,6 +1805,7 @@ bool GaussianStreamingSystem::_create_chunks() {
         }
     }
     _refresh_primary_chunk_layout_metrics();
+    eviction_controller.invalidate_resident_tracking();
     GS_LOG_STREAMING_INFO(vformat(
             "[Streaming] Created %d chunks with precomputed AABBs for frustum culling (spatial=%s avg_radius_ratio=%.4f volume_ratio=%.4f)",
             chunks.size(),
@@ -2338,6 +2353,7 @@ void GaussianStreamingSystem::_register_primary_asset() {
     asset_registry.asset_id_to_dense[PRIMARY_ASSET_ID] = PRIMARY_ASSET_ID;
     asset_registry.dense_to_asset_id.push_back(PRIMARY_ASSET_ID);
     asset_registry.dense_id_generation.push_back(1);
+    eviction_controller.invalidate_resident_tracking();
     global_atlas_registry.mark_asset_registry_dirty();
 }
 
@@ -2416,6 +2432,33 @@ const LocalVector<GaussianStreamingSystem::StreamingChunk> &GaussianStreamingSys
 uint64_t GaussianStreamingSystem::_make_chunk_key(uint32_t asset_id, uint32_t chunk_id) const {
     return (uint64_t(asset_id) << 32) | uint64_t(chunk_id);
 }
+
+#if defined(TESTS_ENABLED)
+void GaussianStreamingSystem::_test_mark_chunk_loaded_for_eviction(uint32_t p_asset_id, uint32_t p_chunk_id,
+        bool p_visible, uint64_t p_last_loaded_frame, uint64_t p_last_used_frame, float p_distance) {
+    AtlasAssetState *asset = _get_asset_state(p_asset_id);
+    ERR_FAIL_NULL(asset);
+    LocalVector<StreamingChunk> &asset_chunks = _get_asset_chunks(*asset);
+    ERR_FAIL_UNSIGNED_INDEX(p_chunk_id, asset_chunks.size());
+
+	StreamingChunk &chunk = asset_chunks[p_chunk_id];
+	uint32_t buffer_slot = UINT32_MAX;
+	ERR_FAIL_COND_MSG(!atlas_allocator.allocate_slot(_make_chunk_key(p_asset_id, p_chunk_id), buffer_slot),
+			"[Streaming][Test] Failed to allocate atlas slot for synthetic eviction resident chunk.");
+	if (!chunk.is_loaded) {
+		budget.loaded_chunks_count++;
+		budget.vram_usage += uint64_t(chunk.count) * sizeof(PackedGaussian);
+	}
+	chunk.is_loaded = true;
+	chunk.upload_pending = false;
+	chunk.is_visible = p_visible;
+	chunk.buffer_slot = buffer_slot;
+	chunk.last_loaded_frame = p_last_loaded_frame;
+	chunk.last_used_frame = p_last_used_frame;
+	chunk.distance = p_distance;
+    eviction_controller.note_chunk_loaded(p_asset_id, p_chunk_id);
+}
+#endif
 
 void GaussianStreamingSystem::set_chunk_radius_multiplier(float p_multiplier) {
     float clamped = CLAMP(p_multiplier, 1.0f, 16.0f);
@@ -2717,7 +2760,10 @@ void GaussianStreamingSystem::_reset_per_frame_counters() {
     scheduler.last_visible_scan_count = 0;
     scheduler.last_visible_scan_budget_effective = 0;
     scheduler.last_load_candidate_count = 0;
+    scheduler.last_primary_eviction_scan_count = 0;
+    scheduler.last_primary_eviction_candidate_count = 0;
     scheduler.last_non_primary_scan_count = 0;
+    scheduler.last_non_primary_eviction_candidate_count = 0;
     scheduler.last_prefetch_scan_count = 0;
     scheduler.last_prefetch_scan_budget_effective = 0;
     scheduler.last_prefetch_candidate_count = 0;
@@ -3574,6 +3620,7 @@ void GaussianStreamingSystem::_complete_chunk_load_common(uint32_t asset_id, uin
     eviction_controller.touch_chunk_use(chunk.last_used_frame);
     budget.loaded_chunks_count++;
     budget.vram_usage += chunk.count * sizeof(PackedGaussian);
+    eviction_controller.note_chunk_loaded(asset_id, chunk_idx);
     AtlasAssetState *asset = _get_asset_state(asset_id);
     if (asset) {
         if (chunk.explicit_request_generation != 0) {
@@ -3618,6 +3665,7 @@ void GaussianStreamingSystem::_unload_chunk(uint32_t asset_id, uint32_t chunk_id
     chunk.is_loaded = false;
     chunk.upload_pending = false;
     chunk.buffer_slot = UINT32_MAX; // Clear buffer slot
+    eviction_controller.note_chunk_unloaded(asset_id, chunk_idx);
     global_atlas_registry.mark_chunk_meta_dirty(*this, asset_id, chunk_idx);
     _assert_chunk_state_invariant(asset_id, chunk_idx, chunk, "_unload_chunk.post");
     budget.loaded_chunks_count--;
@@ -3827,7 +3875,10 @@ void GaussianStreamingSystem::end_frame() {
     analytics_snapshot["pending_uploads"] = (int)upload_queue_depth;
     analytics_snapshot["scheduler_visible_scan_chunks"] = (int)scheduler.last_visible_scan_count;
     analytics_snapshot["scheduler_load_candidates"] = (int)scheduler.last_load_candidate_count;
+    analytics_snapshot["scheduler_primary_eviction_scan_chunks"] = (int)scheduler.last_primary_eviction_scan_count;
+    analytics_snapshot["scheduler_primary_eviction_candidates"] = (int)scheduler.last_primary_eviction_candidate_count;
     analytics_snapshot["scheduler_non_primary_scan_chunks"] = (int)scheduler.last_non_primary_scan_count;
+    analytics_snapshot["scheduler_non_primary_eviction_candidates"] = (int)scheduler.last_non_primary_eviction_candidate_count;
     analytics_snapshot["scheduler_prefetch_scan_chunks"] = (int)scheduler.last_prefetch_scan_count;
     analytics_snapshot["scheduler_prefetch_candidates"] = (int)scheduler.last_prefetch_candidate_count;
     analytics_snapshot["scheduler_prefetch_upload_pending_skips"] =
@@ -4188,6 +4239,14 @@ Dictionary GaussianStreamingSystem::_build_streaming_diagnostics_snapshot(
     diagnostics_snapshot["layout_hint_last_context"] = layout_hint_validation.get("last_context", String("none"));
     diagnostics_snapshot["layout_hint_last_usage"] = layout_hint_validation.get("last_usage", String("none"));
     diagnostics_snapshot["load_candidates"] = static_cast<int64_t>(load_candidates);
+    diagnostics_snapshot["scheduler_primary_eviction_scan_chunks"] =
+            static_cast<int64_t>(scheduler.last_primary_eviction_scan_count);
+    diagnostics_snapshot["scheduler_primary_eviction_candidates"] =
+            static_cast<int64_t>(scheduler.last_primary_eviction_candidate_count);
+    diagnostics_snapshot["scheduler_non_primary_scan_chunks"] =
+            static_cast<int64_t>(scheduler.last_non_primary_scan_count);
+    diagnostics_snapshot["scheduler_non_primary_eviction_candidates"] =
+            static_cast<int64_t>(scheduler.last_non_primary_eviction_candidate_count);
     diagnostics_snapshot["pack_queue_depth"] = static_cast<int64_t>(pack_queue_depth);
     diagnostics_snapshot["upload_queue_depth"] = static_cast<int64_t>(upload_queue_depth);
     diagnostics_snapshot["sync_fallback_queue_depth"] = static_cast<int64_t>(sync_fallback_queue_depth);
@@ -4979,6 +5038,10 @@ Dictionary GaussianStreamingSystem::get_chunk_culling_stats() const {
     stats["visibility_flag_reset_scan_count"] = visibility.culling_stats.visibility_flag_reset_scan_count;
     stats["lod_parameter_update_scan_count"] = visibility.culling_stats.lod_parameter_update_scan_count;
     stats["lod_blend_update_scan_count"] = visibility.culling_stats.lod_blend_update_scan_count;
+    stats["primary_eviction_scan_count"] = static_cast<int64_t>(scheduler.last_primary_eviction_scan_count);
+    stats["primary_eviction_candidate_count"] = static_cast<int64_t>(scheduler.last_primary_eviction_candidate_count);
+    stats["non_primary_eviction_scan_count"] = static_cast<int64_t>(scheduler.last_non_primary_scan_count);
+    stats["non_primary_eviction_candidate_count"] = static_cast<int64_t>(scheduler.last_non_primary_eviction_candidate_count);
     stats["atlas_published_chunks"] = global_atlas_registry.get_atlas_published_chunks();
     stats["culling_enabled"] = visibility.chunk_frustum_culling_enabled;
     stats["frustum_padding"] = visibility.chunk_frustum_padding;

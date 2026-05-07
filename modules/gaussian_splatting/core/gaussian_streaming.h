@@ -309,6 +309,18 @@ public:
     void _test_evict_unrequested_chunks(uint32_t p_asset_id, AtlasAssetState &p_asset, LocalVector<StreamingChunk> &p_asset_chunks) {
         _evict_unrequested_chunks(p_asset_id, p_asset, p_asset_chunks);
     }
+    void _test_register_primary_asset_for_chunks() { _register_primary_asset(); }
+	void _test_mark_chunk_loaded_for_eviction(uint32_t p_asset_id, uint32_t p_chunk_id, bool p_visible,
+			uint64_t p_last_loaded_frame, uint64_t p_last_used_frame, float p_distance);
+	void _test_reset_atlas_allocator(uint32_t p_capacity) { atlas_allocator.reset(p_capacity); }
+	EvictionResult _test_evict_least_recently_used(bool p_allow_visible_eviction) {
+		return _evict_least_recently_used(p_allow_visible_eviction);
+	}
+    EvictionResult _test_evict_non_primary_lru() { return _evict_non_primary_lru(); }
+    uint32_t _test_get_primary_eviction_scan_count() const { return scheduler.last_primary_eviction_scan_count; }
+    uint32_t _test_get_primary_eviction_candidate_count() const { return scheduler.last_primary_eviction_candidate_count; }
+    uint32_t _test_get_non_primary_eviction_scan_count() const { return scheduler.last_non_primary_scan_count; }
+    uint32_t _test_get_non_primary_eviction_candidate_count() const { return scheduler.last_non_primary_eviction_candidate_count; }
     // Field-level accessors for the global atlas registry. Returning the
     // registry by reference would expose private fields the registry's
     // friendship with this class doesn't grant onward — these forward only
