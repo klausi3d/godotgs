@@ -245,7 +245,7 @@ static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_re
 	const auto &scene_state = state_view.get_scene_state();
 	uint32_t total_splats = scene_state.gaussian_data.is_valid()
 			? scene_state.gaussian_data->get_count()
-			: 0;
+			: scene_state.payload_source_splat_count;
 	float cull_ms = p_stage_valid ? p_stage_metrics.cull.cull_time_ms : perf.culling_time_ms;
 	float sort_ms = p_stage_valid ? p_stage_metrics.sort.sort_time_ms : frame_state.sort_time_ms;
 	float raster_ms = p_stage_valid ? p_stage_metrics.raster.render_time_ms : frame_state.render_time_ms;
@@ -1172,7 +1172,7 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 		_merge_dictionary(stats, diagnostics_state.last_telemetry_snapshot);
 	} else {
 		stats["visible_splats"] = frame_state.visible_splat_count.load(std::memory_order_acquire);
-		stats["total_splats"] = scene_state.gaussian_data.is_valid() ? scene_state.gaussian_data->get_count() : 0;
+		stats["total_splats"] = scene_state.gaussian_data.is_valid() ? scene_state.gaussian_data->get_count() : scene_state.payload_source_splat_count;
 		stats["sort_time_ms"] = frame_state.sort_time_ms;
 		stats["render_time_ms"] = frame_state.render_time_ms;
 		stats["frame_count"] = frame_state.frame_counter;
@@ -1769,6 +1769,7 @@ GaussianSplatRenderer::MonitorStreamingSnapshot GaussianSplatRenderer::get_monit
 	snapshot.metrics_rendered_splat_count = metrics.rendered_splat_count;
 	snapshot.frame_visible_splat_count = frame_state.visible_splat_count.load(std::memory_order_acquire);
 	snapshot.has_streaming_data = (scene_state.gaussian_data.is_valid() && scene_state.gaussian_data->get_count() > 0) ||
+			scene_state.payload_source_splat_count > 0 ||
 			scene_state.active_asset.is_valid();
 
 	const StreamingState &streaming_state = state_view.get_streaming_state();

@@ -273,6 +273,10 @@ public:
     struct WorldSubmissionRuntimeStateSnapshot {
         bool valid = false;
         Ref<GaussianData> gaussian_data;
+        Ref<ChunkPayloadSource> payload_source;
+        uint32_t payload_source_splat_count = 0;
+        uint32_t payload_source_sh_degree = 0;
+        AABB payload_source_bounds;
         Vector<StaticChunk> static_chunks;
         bool lod_enabled = true;
         float lod_bias = 1.0f;

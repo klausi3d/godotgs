@@ -157,11 +157,7 @@ static Error _ensure_file_write_ok(const Ref<FileAccess> &p_file, const char *p_
 
 } // namespace
 
-Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path, const String &p_original_path,
-		Error *r_error, bool p_use_sub_threads, float *r_progress, CacheMode p_cache_mode) {
-	(void)p_original_path;
-	(void)p_use_sub_threads;
-	(void)p_cache_mode;
+static Ref<Resource> _load_gsplatworld_resource(const String &p_path, Error *r_error, float *r_progress, bool p_force_resident) {
 	if (r_progress) {
 		*r_progress = 0.0f;
 	}
@@ -313,51 +309,57 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 		}
 	}
 
+	const bool should_materialize_resident_payload = gaussian_data_compressed || p_force_resident;
 	LocalVector<Gaussian> gaussians;
-	gaussians.resize(splat_count);
-	file->seek(gaussian_offset);
 
-	if ((flags & kFlagCompressed) != 0) {
-		// Compressed format: [8 bytes compressed_size][compressed_data]
-		const uint64_t compressed_size = file->get_64();
-		const uint64_t compressed_data_offset = file->get_position();
-		if (!fits_within(compressed_data_offset, compressed_size, file_len)) {
-			if (r_error) {
-				*r_error = ERR_FILE_CORRUPT;
+	if (should_materialize_resident_payload) {
+		gaussians.resize(splat_count);
+		file->seek(gaussian_offset);
+
+		if ((flags & kFlagCompressed) != 0) {
+			// Compressed format: [8 bytes compressed_size][compressed_data].
+			// This path is intentionally resident-only because the current
+			// compressed file layout has no per-chunk random-access blocks.
+			const uint64_t compressed_size = file->get_64();
+			const uint64_t compressed_data_offset = file->get_position();
+			if (!fits_within(compressed_data_offset, compressed_size, file_len)) {
+				if (r_error) {
+					*r_error = ERR_FILE_CORRUPT;
+				}
+				return Ref<Resource>();
 			}
-			return Ref<Resource>();
-		}
-		PackedByteArray compressed_data;
-		compressed_data.resize(compressed_size);
-		if (!_read_exact(file, compressed_data.ptrw(), compressed_size)) {
-			if (r_error) {
-				*r_error = ERR_FILE_CORRUPT;
+			PackedByteArray compressed_data;
+			compressed_data.resize(compressed_size);
+			if (!_read_exact(file, compressed_data.ptrw(), compressed_size)) {
+				if (r_error) {
+					*r_error = ERR_FILE_CORRUPT;
+				}
+				return Ref<Resource>();
 			}
-			return Ref<Resource>();
-		}
-		if (!_decompress_data(compressed_data.ptr(), compressed_size,
-				reinterpret_cast<uint8_t *>(gaussians.ptr()), gaussian_bytes)) {
-			GS_LOG_ERROR_DEFAULT("Failed to decompress gaussian data");
-			if (r_error) {
-				*r_error = ERR_FILE_CORRUPT;
+			if (!_decompress_data(compressed_data.ptr(), compressed_size,
+					reinterpret_cast<uint8_t *>(gaussians.ptr()), gaussian_bytes)) {
+				GS_LOG_ERROR_DEFAULT("Failed to decompress gaussian data");
+				if (r_error) {
+					*r_error = ERR_FILE_CORRUPT;
+				}
+				return Ref<Resource>();
 			}
-			return Ref<Resource>();
-		}
-		GS_LOG_STREAMING_INFO(vformat("Decompressed gaussian data: %d KB -> %d KB (%.1fx)",
-				int(compressed_size / 1024), int(gaussian_bytes / 1024),
-				float(gaussian_bytes) / float(compressed_size)));
-	} else {
-		// Uncompressed format: raw gaussian data
-		if (!_read_exact(file, gaussians.ptr(), gaussian_bytes)) {
-			if (r_error) {
-				*r_error = ERR_FILE_CORRUPT;
+			GS_LOG_STREAMING_INFO(vformat("Decompressed gaussian data: %d KB -> %d KB (%.1fx)",
+					int(compressed_size / 1024), int(gaussian_bytes / 1024),
+					float(gaussian_bytes) / float(compressed_size)));
+		} else {
+			// Explicit resident compatibility path for uncompressed worlds.
+			if (!_read_exact(file, gaussians.ptr(), gaussian_bytes)) {
+				if (r_error) {
+					*r_error = ERR_FILE_CORRUPT;
+				}
+				return Ref<Resource>();
 			}
-			return Ref<Resource>();
 		}
 	}
 
 	LocalVector<Vector3> sh_high_coeffs;
-	if ((flags & kFlagHasHighSh) != 0 && sh_high_order > 0) {
+	if (should_materialize_resident_payload && (flags & kFlagHasHighSh) != 0 && sh_high_order > 0) {
 		uint64_t sh_count = 0;
 		uint64_t sh_bytes = 0;
 		if (!checked_mul_u64(uint64_t(splat_count), uint64_t(sh_high_order), sh_count) ||
@@ -427,8 +429,10 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 	}
 
 	Ref<GaussianData> gaussian_data;
-	gaussian_data.instantiate();
-	gaussian_data->set_gaussian_payload(gaussians, sh_high_coeffs, sh_first_order, sh_high_order, (flags & kFlagIs2D) != 0);
+	if (should_materialize_resident_payload) {
+		gaussian_data.instantiate();
+		gaussian_data->set_gaussian_payload(gaussians, sh_high_coeffs, sh_first_order, sh_high_order, (flags & kFlagIs2D) != 0);
+	}
 
 	Vector<StaticChunk> chunks;
 	if (!chunk_records.is_empty()) {
@@ -473,7 +477,10 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 
 	Ref<GaussianSplatWorld> world;
 	world.instantiate();
-	world->set_gaussian_data(gaussian_data);
+	world->set_payload_metadata(splat_count, sh_degree, sh_first_order, sh_high_order, (flags & kFlagIs2D) != 0);
+	if (gaussian_data.is_valid()) {
+		world->set_gaussian_data(gaussian_data);
+	}
 	world->set_bounds(AABB(bounds_pos, bounds_size));
 	world->set_metadata(file_metadata);
 	world->set_static_chunks(chunks);
@@ -501,6 +508,20 @@ Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path,
 	if (r_progress) {
 		*r_progress = 1.0f;
 	}
+	return world;
+}
+
+Ref<Resource> ResourceFormatLoaderGaussianSplatWorld::load(const String &p_path, const String &p_original_path,
+		Error *r_error, bool p_use_sub_threads, float *r_progress, CacheMode p_cache_mode) {
+	(void)p_original_path;
+	(void)p_use_sub_threads;
+	(void)p_cache_mode;
+	return _load_gsplatworld_resource(p_path, r_error, r_progress, false);
+}
+
+Ref<GaussianSplatWorld> ResourceFormatLoaderGaussianSplatWorld::load_resident(const String &p_path, Error *r_error) const {
+	Ref<Resource> resource = _load_gsplatworld_resource(p_path, r_error, nullptr, true);
+	Ref<GaussianSplatWorld> world = resource;
 	return world;
 }
 

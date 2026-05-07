@@ -1360,16 +1360,13 @@ GaussianSplatRenderer::RuntimeFidelityPolicy GaussianSplatRenderer::build_runtim
     policy.preserve_source_fidelity =
             _renderer_requests_conservative_full_fidelity_runtime(this, p_scene_state.active_asset);
 
-    if (!p_scene_state.gaussian_data.is_valid()) {
-        policy.runtime_budget_splats = 0;
-        return policy;
-    }
-
-    const uint32_t real_count = uint32_t(MAX(0, p_scene_state.gaussian_data->get_count()));
-    if (real_count == 0) {
-        policy.runtime_budget_splats = 0;
-        return policy;
-    }
+	const uint32_t real_count = p_scene_state.gaussian_data.is_valid()
+			? uint32_t(MAX(0, p_scene_state.gaussian_data->get_count()))
+			: p_scene_state.payload_source_splat_count;
+	if (real_count == 0) {
+		policy.runtime_budget_splats = 0;
+		return policy;
+	}
 
     if (policy.preserve_source_fidelity || p_performance_settings.max_splats <= 0) {
         policy.runtime_budget_splats = real_count;

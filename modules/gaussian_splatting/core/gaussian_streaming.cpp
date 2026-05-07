@@ -1216,8 +1216,24 @@ void GaussianStreamingSystem::set_primary_chunk_layout(const Vector<ChunkLayoutH
         asset_registry.primary_chunk_layout_source_indices[i] = p_source_indices[i];
     }
 
-    if (streaming_initialized && source_data.is_valid()) {
-        update_primary_asset_data(source_data);
+    if (streaming_initialized) {
+        if (source_data.is_valid()) {
+            update_primary_asset_data(source_data);
+        } else {
+            AtlasAssetState *primary_asset = _get_asset_state(PRIMARY_ASSET_ID);
+            if (primary_asset && primary_asset->payload_source.is_valid() && primary_asset->payload_source->is_valid()) {
+                _create_chunks();
+                primary_asset = _get_asset_state(PRIMARY_ASSET_ID);
+                if (primary_asset) {
+                    primary_asset->uses_primary_chunks = true;
+                    primary_asset->metadata_dirty = true;
+                    primary_asset->generation = _advance_asset_generation(PRIMARY_ASSET_ID);
+                }
+                quantization_dirty = true;
+                quantization_cpu_cache_valid = false;
+                global_atlas_registry.mark_asset_registry_dirty();
+            }
+        }
     }
 }
 
@@ -1274,8 +1290,8 @@ Error GaussianStreamingSystem::request_asset_residency(uint32_t asset_id, uint32
         ERR_PRINT(vformat("[Streaming] request_asset_residency ignored: asset %d is not registered.", asset_id));
         return ERR_DOES_NOT_EXIST;
     }
-    if (!asset->data.is_valid()) {
-        ERR_PRINT(vformat("[Streaming] request_asset_residency ignored: asset %d has no data.", asset_id));
+    if (!asset->data.is_valid() && !asset->payload_source.is_valid()) {
+        ERR_PRINT(vformat("[Streaming] request_asset_residency ignored: asset %d has no data or payload source.", asset_id));
         return ERR_DOES_NOT_EXIST;
     }
     LocalVector<StreamingChunk> &asset_chunks = _get_asset_chunks(*asset);
@@ -1625,6 +1641,30 @@ void GaussianStreamingSystem::set_chunk_payload_source(uint32_t asset_id, const 
     AtlasAssetState *asset = _get_asset_state(asset_id);
     ERR_FAIL_NULL_MSG(asset, vformat("[Streaming] set_chunk_payload_source: asset %d not registered.", asset_id));
     asset->payload_source = p_source;
+    if (asset_id == PRIMARY_ASSET_ID && p_source.is_valid() && p_source->is_valid()) {
+        if (source_data.is_null()) {
+            total_splat_count = p_source->get_count();
+        }
+        asset->uses_primary_chunks = true;
+        asset->sh_degree = p_source->get_sh_degree();
+        asset->bounds = p_source->get_bounds();
+        asset->metadata_dirty = true;
+        asset->generation = _advance_asset_generation(PRIMARY_ASSET_ID);
+        if (source_data.is_null()) {
+            _create_chunks();
+            asset = _get_asset_state(asset_id);
+            if (asset) {
+                asset->payload_source = p_source;
+                asset->uses_primary_chunks = true;
+                asset->sh_degree = p_source->get_sh_degree();
+                asset->bounds = p_source->get_bounds();
+                asset->metadata_dirty = true;
+            }
+        }
+        quantization_dirty = true;
+        quantization_cpu_cache_valid = false;
+        global_atlas_registry.mark_asset_registry_dirty();
+    }
 }
 
 void GaussianStreamingSystem::detach_source_data(uint32_t asset_id) {
@@ -1719,6 +1759,8 @@ bool GaussianStreamingSystem::_create_chunks() {
     asset_registry.primary_chunk_source_indices.clear();
     primary_chunk_layout_metrics.reset();
     const bool strict_layout_validation = _layout_hint_strict_validation_enabled();
+    AtlasAssetState *primary_asset = _get_asset_state(PRIMARY_ASSET_ID);
+    const Ref<ChunkPayloadSource> primary_payload_source = primary_asset ? primary_asset->payload_source : Ref<ChunkPayloadSource>();
     bool built_from_primary_layout = false;
 	if (!asset_registry.primary_chunk_layout_hints.is_empty()) {
         built_from_primary_layout = _build_primary_chunks_from_layout_hints(
@@ -1740,7 +1782,11 @@ bool GaussianStreamingSystem::_create_chunks() {
         }
     }
     if (!built_from_primary_layout) {
-        _build_chunks_for_data(source_data, chunks);
+        if (source_data.is_valid()) {
+            _build_chunks_for_data(source_data, chunks);
+        } else {
+            _build_chunks_for_payload_source(primary_payload_source, chunks);
+        }
     }
     _refresh_primary_chunk_layout_metrics();
     GS_LOG_STREAMING_INFO(vformat(
@@ -1756,7 +1802,11 @@ bool GaussianStreamingSystem::_build_primary_chunks_from_layout_hints(const Ref<
         const Vector<ChunkLayoutHint> &p_hints, const LocalVector<uint32_t> &p_source_indices, LocalVector<StreamingChunk> &out_chunks) {
     out_chunks.clear();
     asset_registry.primary_chunk_source_indices.clear();
-    if (p_data.is_null()) {
+    AtlasAssetState *primary_asset = _get_asset_state(PRIMARY_ASSET_ID);
+    const Ref<ChunkPayloadSource> primary_payload_source = primary_asset ? primary_asset->payload_source : Ref<ChunkPayloadSource>();
+    const bool has_resident_data = p_data.is_valid();
+    const bool has_payload_source = primary_payload_source.is_valid() && primary_payload_source->is_valid();
+    if (!has_resident_data && !has_payload_source) {
         _layout_hint_set_last_failure(this, LayoutHintUsage::PRIMARY, LayoutHintValidationFailure{
                 LayoutHintFailureReason::DATA_NULL, -1, 0, 0 });
         return false;
@@ -1767,12 +1817,13 @@ bool GaussianStreamingSystem::_build_primary_chunks_from_layout_hints(const Ref<
         return false;
     }
     if (p_source_indices.is_empty()) {
+        const uint32_t expected_count = has_resident_data ? p_data->get_count() : primary_payload_source->get_count();
         _layout_hint_set_last_failure(this, LayoutHintUsage::PRIMARY, LayoutHintValidationFailure{
-                LayoutHintFailureReason::REMAP_SOURCE_COUNT_MISMATCH, -1, 0, static_cast<uint64_t>(p_data->get_count()) });
+                LayoutHintFailureReason::REMAP_SOURCE_COUNT_MISMATCH, -1, 0, static_cast<uint64_t>(expected_count) });
         return false;
     }
 
-    const uint32_t splat_count = p_data->get_count();
+    const uint32_t splat_count = has_resident_data ? p_data->get_count() : primary_payload_source->get_count();
     if (splat_count == 0) {
         _layout_hint_set_last_failure(this, LayoutHintUsage::PRIMARY, LayoutHintValidationFailure{
                 LayoutHintFailureReason::SPLAT_COUNT_ZERO, -1, 0, 0 });
@@ -1836,7 +1887,10 @@ bool GaussianStreamingSystem::_build_primary_chunks_from_layout_hints(const Ref<
         asset_registry.primary_chunk_source_indices[i] = p_source_indices[i];
     }
     out_chunks.resize(p_hints.size());
-    const bool quantize = per_chunk_quantization_enabled;
+    const bool quantize = per_chunk_quantization_enabled && has_resident_data;
+    if (per_chunk_quantization_enabled && !has_resident_data) {
+        WARN_PRINT_ONCE("[Streaming] Per-chunk quantization is deferred for file-backed primary worlds; using unquantized chunk payloads.");
+    }
 
     for (int i = 0; i < p_hints.size(); i++) {
         const ChunkLayoutHint &hint = p_hints[i];
@@ -2011,6 +2065,40 @@ void GaussianStreamingSystem::_build_chunks_for_data(const Ref<GaussianData> &p_
     }
 }
 
+void GaussianStreamingSystem::_build_chunks_for_payload_source(const Ref<ChunkPayloadSource> &p_source, LocalVector<StreamingChunk> &out_chunks) {
+    out_chunks.clear();
+    if (p_source.is_null() || !p_source->is_valid()) {
+        return;
+    }
+
+    const uint32_t splat_count = p_source->get_count();
+    const uint32_t num_chunks = (splat_count + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    out_chunks.resize(num_chunks);
+
+    const AABB source_bounds = p_source->get_bounds();
+    const Vector3 center = source_bounds.position + source_bounds.size * 0.5f;
+    const float radius = source_bounds.size.length() * 0.5f;
+    if (per_chunk_quantization_enabled) {
+        WARN_PRINT_ONCE("[Streaming] Per-chunk quantization is deferred for file-backed primary worlds without static chunk metadata.");
+    }
+
+    for (uint32_t i = 0; i < num_chunks; i++) {
+        StreamingChunk &chunk = out_chunks[i];
+        chunk.start_idx = i * CHUNK_SIZE;
+        chunk.count = MIN(CHUNK_SIZE, splat_count - chunk.start_idx);
+        chunk.source_index_remapped = false;
+        chunk.is_loaded = false;
+        chunk.is_visible = true;
+        chunk.upload_pending = false;
+        chunk.buffer_slot = UINT32_MAX;
+        chunk.quantization_computed = false;
+        chunk.effective_count = chunk.count;
+        chunk.center = center;
+        chunk.max_radius = radius;
+        chunk.bounds = source_bounds;
+    }
+}
+
 bool GaussianStreamingSystem::_build_chunks_from_layout_hints(const Ref<GaussianData> &p_data,
 		const Vector<ChunkLayoutHint> &p_hints, LocalVector<StreamingChunk> &out_chunks) {
 	out_chunks.clear();
@@ -2171,11 +2259,15 @@ void GaussianStreamingSystem::_refresh_primary_chunk_layout_metrics() {
             !asset_registry.primary_chunk_source_indices.is_empty();
     primary_chunk_layout_metrics.source_index_count = asset_registry.primary_chunk_source_indices.size();
 
-    if (chunks.is_empty() || source_data.is_null()) {
+    AtlasAssetState *primary_asset = _get_asset_state(PRIMARY_ASSET_ID);
+    const bool has_payload_source = primary_asset &&
+            primary_asset->payload_source.is_valid() &&
+            primary_asset->payload_source->is_valid();
+    if (chunks.is_empty() || (source_data.is_null() && !has_payload_source)) {
         return;
     }
 
-    const AABB asset_bounds = source_data->get_aabb();
+    const AABB asset_bounds = source_data.is_valid() ? source_data->get_aabb() : primary_asset->payload_source->get_bounds();
     const Vector3 asset_half = asset_bounds.size * 0.5f;
     const float asset_radius = asset_half.length();
     const double asset_volume = double(MAX(asset_bounds.size.x, 0.0f)) *
@@ -4254,6 +4346,11 @@ LocalVector<Gaussian> GaussianStreamingSystem::get_visible_gaussians() const {
     LocalVector<Gaussian> visible_gaussians;
     const FrameData &frame = frame_data[current_frame_idx];
     const LODConfig &lod_config = _get_lod_config();
+    const AtlasAssetState *primary_asset = asset_registry.atlas_assets.getptr(PRIMARY_ASSET_ID);
+    const Ref<ChunkPayloadSource> payload_source = primary_asset ? primary_asset->payload_source : Ref<ChunkPayloadSource>();
+    if (source_data.is_null() && (payload_source.is_null() || !payload_source->is_valid())) {
+        return visible_gaussians;
+    }
 
     // Calculate total count after LOD reduction (using effective_count)
     uint32_t total_count = get_effective_splat_count();
@@ -4266,13 +4363,47 @@ LocalVector<Gaussian> GaussianStreamingSystem::get_visible_gaussians() const {
         const StreamingChunk &chunk = chunks[chunk_idx];
         uint32_t skip_factor = MAX(1u, (uint32_t)chunk.splat_skip_factor);
 
-        // Apply LOD-based splat skipping: render every Nth splat
-        for (uint32_t i = 0; i < chunk.count; i += skip_factor) {
-            uint32_t source_index = 0;
-            if (!_resolve_primary_chunk_source_index(chunk, i, source_index)) {
+        LocalVector<Gaussian> payload_gaussians;
+        LocalVector<Vector3> payload_sh;
+        uint32_t payload_sh_first = 0;
+        uint32_t payload_sh_high = 0;
+        if (source_data.is_null()) {
+            bool snapshot_ok = false;
+            if (chunk.source_index_remapped) {
+                LocalVector<uint32_t> source_indices;
+                source_indices.resize(chunk.count);
+                for (uint32_t i = 0; i < chunk.count; i++) {
+                    uint32_t source_index = 0;
+                    if (!_resolve_primary_chunk_source_index(chunk, i, source_index)) {
+                        source_indices.clear();
+                        break;
+                    }
+                    source_indices[i] = source_index;
+                }
+                snapshot_ok = !source_indices.is_empty() &&
+                        payload_source->capture_indexed_chunk_snapshot(source_indices.ptr(), chunk.count,
+                                payload_gaussians, payload_sh, payload_sh_first, payload_sh_high);
+            } else {
+                snapshot_ok = payload_source->capture_chunk_snapshot(chunk.start_idx, chunk.count,
+                        payload_gaussians, payload_sh, payload_sh_first, payload_sh_high);
+            }
+            if (!snapshot_ok || payload_gaussians.size() < chunk.count) {
                 continue;
             }
-            Gaussian g = source_data->get_gaussian(source_index);
+        }
+
+        // Apply LOD-based splat skipping: render every Nth splat
+        for (uint32_t i = 0; i < chunk.count; i += skip_factor) {
+            Gaussian g;
+            if (source_data.is_valid()) {
+                uint32_t source_index = 0;
+                if (!_resolve_primary_chunk_source_index(chunk, i, source_index)) {
+                    continue;
+                }
+                g = source_data->get_gaussian(source_index);
+            } else {
+                g = payload_gaussians[i];
+            }
 
             // Apply LOD-based opacity fade if enabled
             if (lod_config.opacity_fade_enabled && chunk.opacity_multiplier < 1.0f) {
@@ -4370,7 +4501,7 @@ bool GaussianStreamingSystem::is_runtime_ready(String *r_reason) const {
 uint32_t GaussianStreamingSystem::get_registered_asset_count_with_data() const {
 	uint32_t count = 0;
 	for (const KeyValue<uint32_t, AtlasAssetState> &E : asset_registry.atlas_assets) {
-		if (E.value.data.is_valid()) {
+		if (E.value.data.is_valid() || (E.value.payload_source.is_valid() && E.value.payload_source->is_valid())) {
 			count++;
 		}
 	}

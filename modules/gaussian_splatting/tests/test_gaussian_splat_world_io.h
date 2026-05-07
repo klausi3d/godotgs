@@ -5,6 +5,7 @@
 #include "../core/gaussian_splat_world.h"
 #include "../io/gaussian_splat_world_io.h"
 
+#include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
@@ -82,6 +83,27 @@ struct GsplatWorldSaverGuard {
 	}
 };
 
+struct GsplatWorldCompressionSettingGuard {
+    StringName key = StringName("rendering/gaussian_splatting/import/gsplatworld_compression_enabled");
+    Variant previous_value;
+
+    explicit GsplatWorldCompressionSettingGuard(bool p_enabled) {
+        ProjectSettings *ps = ProjectSettings::get_singleton();
+        if (!ps) {
+            return;
+        }
+        previous_value = ps->has_setting(key) ? ps->get_setting(key) : Variant(false);
+        ps->set_setting(key, p_enabled);
+    }
+
+    ~GsplatWorldCompressionSettingGuard() {
+        ProjectSettings *ps = ProjectSettings::get_singleton();
+        if (ps) {
+            ps->set_setting(key, previous_value);
+        }
+    }
+};
+
 String _make_world_io_fixture_path(const String &p_prefix) {
     const uint64_t ticks = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : 0;
     const String base_temp = OS::get_singleton() ? OS::get_singleton()->get_temp_path() : ".";
@@ -95,6 +117,7 @@ void _remove_world_io_fixture(const String &p_path) {
 } // namespace
 
 TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld direct format saver/loader") {
+    GsplatWorldCompressionSettingGuard compression_guard(false);
     // This test bypasses ResourceLoader/ResourceSaver to test our format directly
     Ref<GaussianData> gaussian_data;
     gaussian_data.instantiate();
@@ -154,24 +177,71 @@ TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld direct format saver/loader")
     }
 
     Ref<GaussianData> loaded_data = loaded->get_gaussian_data();
-    CHECK_MESSAGE(loaded_data.is_valid(), "Loaded world should have GaussianData");
-    if (loaded_data.is_valid()) {
-        MESSAGE("Loaded gaussian count: ", loaded_data->get_count());
-        CHECK_EQ(loaded_data->get_count(), 4);
-        const Gaussian g0 = loaded_data->get_gaussian(0);
-        CHECK_EQ(gaussian_get_palette_id(g0.painterly_meta), 17);
-        CHECK_EQ(gaussian_get_brush_override_id(g0.painterly_meta), 300);
-    }
+    CHECK_MESSAGE(loaded_data.is_null(), "Default uncompressed load should not materialize GaussianData");
+    CHECK_FALSE(loaded->has_resident_gaussian_data());
+    CHECK(loaded->has_chunk_payload_source());
+    CHECK(loaded->is_payload_source_backed());
+    CHECK(loaded->has_renderable_payload());
+    CHECK_EQ(loaded->get_splat_count(), 4);
 
     const Vector<GaussianSplatRenderer::StaticChunk> &chunks = loaded->get_static_chunks();
     MESSAGE("Loaded chunk count: ", chunks.size());
     CHECK_EQ(chunks.size(), 2);
+    CHECK_EQ(loaded->get_sh_first_order_count(), 1);
+    CHECK_EQ(loaded->get_sh_high_order_count(), 0);
+
+    Ref<ChunkPayloadSource> payload_source = loaded->get_chunk_payload_source();
+    CHECK(payload_source.is_valid());
+    CHECK(payload_source->is_valid());
+    CHECK_EQ(payload_source->get_count(), 4);
+    if (payload_source.is_valid()) {
+        LocalVector<Gaussian> snapshot;
+        LocalVector<Vector3> sh_high;
+        uint32_t sh_first = 0;
+        uint32_t sh_high_count = 0;
+        const bool snapshot_ok = payload_source->capture_chunk_snapshot(0, 2,
+                snapshot, sh_high, sh_first, sh_high_count);
+        CHECK(snapshot_ok);
+        CHECK_EQ(snapshot.size(), 2);
+        if (snapshot.size() >= 1) {
+            CHECK(snapshot[0].position.is_equal_approx(gaussians[0].position));
+            CHECK_EQ(gaussian_get_palette_id(snapshot[0].painterly_meta), 17);
+            CHECK_EQ(gaussian_get_brush_override_id(snapshot[0].painterly_meta), 300);
+        }
+
+        LocalVector<Gaussian> indexed_snapshot;
+        const bool indexed_ok = chunks.size() >= 2 &&
+                payload_source->capture_indexed_chunk_snapshot(chunks[1].indices.ptr(), chunks[1].indices.size(),
+                        indexed_snapshot, sh_high, sh_first, sh_high_count);
+        CHECK(indexed_ok);
+        CHECK_EQ(indexed_snapshot.size(), 2);
+        if (indexed_snapshot.size() >= 2) {
+            CHECK(indexed_snapshot[0].position.is_equal_approx(gaussians[2].position));
+            CHECK(indexed_snapshot[1].position.is_equal_approx(gaussians[3].position));
+        }
+    }
+
+    Ref<GaussianSplatWorld> resident_loaded = loader.load_resident(path, &load_err);
+    CHECK_MESSAGE(load_err == OK, "Explicit resident loader should succeed");
+    CHECK(resident_loaded.is_valid());
+    if (resident_loaded.is_valid()) {
+        Ref<GaussianData> resident_data = resident_loaded->get_gaussian_data();
+        CHECK(resident_data.is_valid());
+        CHECK(resident_loaded->has_resident_gaussian_data());
+        CHECK_EQ(resident_loaded->get_splat_count(), 4);
+        if (resident_data.is_valid()) {
+            const Gaussian g0 = resident_data->get_gaussian(0);
+            CHECK_EQ(gaussian_get_palette_id(g0.painterly_meta), 17);
+            CHECK_EQ(gaussian_get_brush_override_id(g0.painterly_meta), 300);
+        }
+    }
 
     // Cleanup
     _remove_world_io_fixture(path);
 }
 
 TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld save/load round-trip") {
+    GsplatWorldCompressionSettingGuard compression_guard(false);
     // Check what resource type the loader returns for our extension
     String detected_type = ResourceLoader::get_resource_type("test.gsplatworld");
     MESSAGE("ResourceLoader detected type for .gsplatworld: '", detected_type, "'");
@@ -244,14 +314,18 @@ TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld save/load round-trip") {
     }
 
     Ref<GaussianData> loaded_data = loaded->get_gaussian_data();
-    CHECK(loaded_data.is_valid());
-    if (!loaded_data.is_valid()) {
-        return;
-    }
+    CHECK(loaded_data.is_null());
+    CHECK_FALSE(loaded->has_resident_gaussian_data());
+    CHECK(loaded->has_chunk_payload_source());
+    CHECK_EQ(loaded->get_splat_count(), uint32_t(gaussians.size()));
 
-    MESSAGE("Loaded gaussian count via ResourceLoader: ", loaded_data->get_count());
-    CHECK_EQ(loaded_data->get_count(), gaussians.size());
-    if (loaded_data->get_count() > 0) {
+    const Error materialize_err = loaded->materialize_resident_gaussian_data();
+    CHECK(materialize_err == OK);
+    loaded_data = loaded->get_gaussian_data();
+    CHECK(loaded_data.is_valid());
+    if (loaded_data.is_valid() && loaded_data->get_count() > 0) {
+        MESSAGE("Materialized gaussian count via ResourceLoader: ", loaded_data->get_count());
+        CHECK_EQ(loaded_data->get_count(), gaussians.size());
         const Gaussian g0 = loaded_data->get_gaussian(0);
         CHECK(g0.position.is_equal_approx(gaussians[0].position));
         CHECK(g0.sh_dc.is_equal_approx(gaussians[0].sh_dc));
@@ -273,6 +347,53 @@ TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld save/load round-trip") {
     CHECK(int(loaded_metadata[StringName("lod_levels")]) == 2);
 
     // Cleanup
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] compressed gsplatworld remains resident-only") {
+    GsplatWorldCompressionSettingGuard compression_guard(true);
+
+    Ref<GaussianData> gaussian_data;
+    gaussian_data.instantiate();
+    Vector<Gaussian> gaussians;
+    gaussians.resize(16); // > 1KB so the saver attempts compression.
+    for (int i = 0; i < gaussians.size(); i++) {
+        gaussians.write[i] = make_gaussian(Vector3(float(i), 0.0f, 0.0f), Color(1.0f, 0.0f, 0.0f, 1.0f));
+    }
+    gaussian_data->set_gaussians(gaussians);
+
+    Ref<GaussianSplatWorld> world;
+    world.instantiate();
+    world->set_gaussian_data(gaussian_data);
+    world->set_bounds(gaussian_data->get_aabb());
+
+    const String path = _make_world_io_fixture_path("compressed_resident");
+    ResourceFormatSaverGaussianSplatWorld saver;
+    const Error save_err = saver.save(world, path);
+    CHECK(save_err == OK);
+    if (save_err != OK) {
+        return;
+    }
+
+    Ref<FileAccess> f = FileAccess::open(path, FileAccess::READ);
+    REQUIRE(f.is_valid());
+    f->seek(8); // magic + version
+    const uint32_t flags = f->get_32();
+    CHECK_MESSAGE((flags & (1u << 4u)) != 0u, "Fixture should exercise the compressed load path");
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error load_err = OK;
+    Ref<Resource> loaded_res = loader.load(path, "", &load_err);
+    CHECK(load_err == OK);
+    Ref<GaussianSplatWorld> loaded = loaded_res;
+    CHECK(loaded.is_valid());
+    if (loaded.is_valid()) {
+        CHECK(loaded->has_resident_gaussian_data());
+        CHECK_FALSE(loaded->has_chunk_payload_source());
+        CHECK_EQ(loaded->get_splat_count(), uint32_t(gaussians.size()));
+        CHECK(loaded->get_gaussian_data().is_valid());
+    }
+
     _remove_world_io_fixture(path);
 }
 

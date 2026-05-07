@@ -1814,6 +1814,10 @@ TEST_CASE("[GaussianSplatting][Importer] gsplatworld importer preserves payload 
     Ref<GaussianSplatWorld> imported_world = ResourceLoader::load(imported_path, "GaussianSplatWorld");
     CHECK_MESSAGE(imported_world.is_valid(), "Imported gsplatworld should be loadable.");
     if (imported_world.is_valid()) {
+        CHECK_FALSE(imported_world->has_resident_gaussian_data());
+        CHECK(imported_world->has_chunk_payload_source());
+        CHECK(imported_world->get_splat_count() == 2);
+        CHECK(imported_world->materialize_resident_gaussian_data() == OK);
         Ref<GaussianData> imported_data = imported_world->get_gaussian_data();
         CHECK(imported_data.is_valid());
         if (imported_data.is_valid()) {

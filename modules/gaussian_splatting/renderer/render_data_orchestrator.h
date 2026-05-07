@@ -46,6 +46,7 @@ public:
 	explicit RenderDataOrchestrator(const Dependencies &p_dependencies);
 
 	Error set_gaussian_data(const Ref<::GaussianData> &p_data);
+	Error set_file_backed_payload_source(const Ref<ChunkPayloadSource> &p_source);
 	void set_gaussian_asset(const Ref<GaussianSplatAsset> &p_asset);
 	Error update_gpu_buffers_with_real_data();
 	void set_static_chunks(const Vector<StaticChunk> &p_chunks);

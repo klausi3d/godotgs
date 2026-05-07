@@ -329,6 +329,7 @@ public:
 private:
     bool _create_chunks();
     void _build_chunks_for_data(const Ref<GaussianData> &p_data, LocalVector<StreamingChunk> &out_chunks);
+    void _build_chunks_for_payload_source(const Ref<ChunkPayloadSource> &p_source, LocalVector<StreamingChunk> &out_chunks);
     bool _build_primary_chunks_from_layout_hints(const Ref<GaussianData> &p_data, const Vector<ChunkLayoutHint> &p_hints,
             const LocalVector<uint32_t> &p_source_indices, LocalVector<StreamingChunk> &out_chunks);
     bool _build_chunks_from_layout_hints(const Ref<GaussianData> &p_data, const Vector<ChunkLayoutHint> &p_hints, LocalVector<StreamingChunk> &out_chunks);

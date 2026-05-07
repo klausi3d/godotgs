@@ -168,8 +168,7 @@ TEST_CASE("[GaussianSplatting][PLYLoader] Cache version mismatch forces re-parse
     if (FileAccess::exists(cache_path)) {
         ResourceFormatLoaderGaussianSplatWorld format_loader;
         Error load_err = OK;
-        Ref<Resource> resource = format_loader.load(cache_path, cache_path, &load_err);
-        Ref<GaussianSplatWorld> world = resource;
+        Ref<GaussianSplatWorld> world = format_loader.load_resident(cache_path, &load_err);
         REQUIRE_MESSAGE(world.is_valid(), "Cache should be a valid GaussianSplatWorld");
 
         Dictionary metadata = world->get_metadata();
