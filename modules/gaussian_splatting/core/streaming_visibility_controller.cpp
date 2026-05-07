@@ -167,6 +167,9 @@ void StreamingVisibilityController::reset_runtime_state() {
 void StreamingVisibilityController::clear_visible_state() {
     visible_chunk_indices.clear();
     culling_stats.reset();
+    spatial_grid.clear();
+    grid_query_visited.clear();
+    grid_query_candidates.clear();
     visibility_flags_initialized = false;
     visibility_flags_chunk_count = 0;
 }
@@ -363,6 +366,8 @@ void StreamingVisibilityController::update_chunk_visibility(
     culling_stats.reset();
     const uint32_t chunk_count = system.chunks.size();
     culling_stats.total_chunks = chunk_count;
+    culling_stats.loaded_chunks = system.budget.loaded_chunks_count;
+    culling_stats.resident_chunks = system.budget.loaded_chunks_count;
 
     if (chunk_count == 0) {
         visible_chunk_indices.clear();
@@ -406,12 +411,6 @@ void StreamingVisibilityController::update_chunk_visibility(
 
         visible_chunk_indices.clear();
         visible_chunk_indices.reserve(MIN(chunk_count, uint32_t(4096)));
-        // Loaded chunks are maintained incrementally by the streaming budget.
-        // Avoid rebuilding the same count by scanning every chunk in the
-        // large-world grid path.
-        culling_stats.loaded_chunks = system.budget.loaded_chunks_count;
-        culling_stats.resident_chunks = system.budget.loaded_chunks_count;
-
         // Compute bounded discovery AABB centred on camera.
         float discovery_dist = max_discovery_distance;
         real_t z_far = projection.get_z_far();
@@ -507,12 +506,6 @@ void StreamingVisibilityController::update_chunk_visibility(
             if (system.chunks[i].is_visible) {
                 culling_stats.visible_chunks++;
                 visible_chunk_indices.push_back(i);
-            }
-            if (system.chunks[i].is_loaded) {
-                culling_stats.loaded_chunks++;
-                if (!system.chunks[i].upload_pending && system.chunks[i].buffer_slot != UINT32_MAX) {
-                    culling_stats.resident_chunks++;
-                }
             }
         }
     }

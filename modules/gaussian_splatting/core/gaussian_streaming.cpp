@@ -1223,6 +1223,7 @@ void GaussianStreamingSystem::set_primary_chunk_layout(const Vector<ChunkLayoutH
             AtlasAssetState *primary_asset = _get_asset_state(PRIMARY_ASSET_ID);
             if (primary_asset && primary_asset->payload_source.is_valid() && primary_asset->payload_source->is_valid()) {
                 _create_chunks();
+                visibility.clear_visible_state();
                 primary_asset = _get_asset_state(PRIMARY_ASSET_ID);
                 if (primary_asset) {
                     primary_asset->uses_primary_chunks = true;
@@ -1652,6 +1653,7 @@ void GaussianStreamingSystem::set_chunk_payload_source(uint32_t asset_id, const 
         asset->generation = _advance_asset_generation(PRIMARY_ASSET_ID);
         if (source_data.is_null()) {
             _create_chunks();
+            visibility.clear_visible_state();
             asset = _get_asset_state(asset_id);
             if (asset) {
                 asset->payload_source = p_source;
