@@ -1257,6 +1257,8 @@ void GaussianSplatRenderer::_teardown_resources() {
         get_sorting_state().gpu_sorter.unref();
     }
 
+    _release_resident_contract_buffers();
+
     // Clean up GPU resources
     if (get_device_state().rd) {
         ResourceState &resource_state = get_resource_state();
@@ -1302,6 +1304,36 @@ void GaussianSplatRenderer::_teardown_resources() {
 void GaussianSplatRenderer::_teardown_on_render_thread(uint64_t p_request_id) {
     _teardown_resources();
     _notify_render_thread_dispatch_completed(p_request_id);
+}
+
+void GaussianSplatRenderer::_release_resident_contract_buffers() {
+    ResourceState &resource_state = get_resource_state();
+
+    auto release_owned_resident_buffer = [this](RID &r_buffer, uint32_t &r_buffer_size) {
+        if (r_buffer.is_valid()) {
+            RenderingDevice *owner = get_resource_owner(r_buffer, nullptr);
+            if (owner != nullptr) {
+                _free_owned_resource(owner, r_buffer);
+            } else {
+                r_buffer = RID();
+            }
+        }
+        r_buffer_size = 0;
+    };
+
+    release_owned_resident_buffer(resource_state.resident_atlas_gaussian_buffer,
+            resource_state.resident_atlas_gaussian_buffer_size);
+    release_owned_resident_buffer(resource_state.resident_asset_meta_buffer,
+            resource_state.resident_asset_meta_buffer_size);
+    release_owned_resident_buffer(resource_state.resident_chunk_meta_buffer,
+            resource_state.resident_chunk_meta_buffer_size);
+    release_owned_resident_buffer(resource_state.resident_asset_chunk_index_buffer,
+            resource_state.resident_asset_chunk_index_buffer_size);
+
+    resource_state.instance_pipeline_atlas_generation = 0;
+    resource_state.resident_atlas_gaussian_count = 0;
+    resource_state.resident_dispatch_chunk_count = 0;
+    resource_state.resident_max_chunk_splats = 0;
 }
 
 void GaussianSplatRenderer::_release_shared_dynamic_asset() {
@@ -2601,6 +2633,12 @@ bool GaussianSplatRenderer::_publish_resident_direct_data_contract(String *r_rea
 void GaussianSplatRenderer::publish_instance_pipeline_contract(const InstancePipelineBuffers &p_buffers,
         const PublishedInstanceAssetRemap &p_remap, InstanceBackendPolicy p_backend_policy,
         uint64_t p_source_generation, const String &p_contract_shape) {
+    if (instance_pipeline_buffers_valid &&
+            instance_backend_policy == InstanceBackendPolicy::RESIDENT &&
+            p_backend_policy != InstanceBackendPolicy::RESIDENT) {
+        _release_resident_contract_buffers();
+    }
+
     instance_pipeline_buffers = p_buffers;
     instance_asset_remap = p_remap;
     instance_backend_policy = p_backend_policy;
@@ -2626,6 +2664,7 @@ void GaussianSplatRenderer::set_instance_pipeline_buffers(const InstancePipeline
 }
 
 void GaussianSplatRenderer::clear_instance_pipeline_buffers() {
+    _release_resident_contract_buffers();
     instance_pipeline_buffers = InstancePipelineBuffers();
     instance_asset_remap.clear();
     instance_pipeline_buffers_valid = false;

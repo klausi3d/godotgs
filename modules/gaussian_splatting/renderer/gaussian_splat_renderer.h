@@ -631,6 +631,7 @@ public:
     void _initialize_on_render_thread(uint64_t p_request_id);
     void _teardown_resources();
     void _teardown_on_render_thread(uint64_t p_request_id);
+    void _release_resident_contract_buffers();
 #ifdef TESTS_ENABLED
     void _test_dispatch_noop_callback(uint64_t p_request_id);
 #endif
