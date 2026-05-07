@@ -577,6 +577,9 @@ void TileRenderer::TileResolveStage::free_fallback_lighting_buffers(RenderingDev
         fallback_cluster_buffer = RID();
         fallback_decal_texture = RID();
         fallback_reflection_texture = RID();
+        fallback_shadow_texture = RID();
+        fallback_directional_shadow_texture = RID();
+        fallback_cluster_buffer_bytes = 0;
         fallback_lighting_owner.clear();
         return;
     }
@@ -598,11 +601,19 @@ void TileRenderer::TileResolveStage::free_fallback_lighting_buffers(RenderingDev
     free_resource(fallback_reflection_texture);
     free_resource(fallback_shadow_texture);
     free_resource(fallback_directional_shadow_texture);
+    fallback_cluster_buffer_bytes = 0;
     fallback_lighting_owner.clear();
 }
 
-bool TileRenderer::TileResolveStage::ensure_fallback_lighting_buffers(RenderingDevice *p_device) {
+bool TileRenderer::TileResolveStage::ensure_fallback_lighting_buffers(RenderingDevice *p_device, uint64_t p_min_cluster_storage_bytes) {
     if (!p_device) {
+        return false;
+    }
+
+    const uint64_t required_cluster_storage_bytes = std::max<uint64_t>(
+            uint64_t(kFallbackClusterStorageBytes), p_min_cluster_storage_bytes);
+    if (required_cluster_storage_bytes > UINT32_MAX) {
+        WARN_PRINT_ONCE(vformat("[TileRenderer] Resolve lighting fallback cluster buffer request is too large: requested=%d bytes", int64_t(required_cluster_storage_bytes)));
         return false;
     }
 
@@ -613,6 +624,7 @@ bool TileRenderer::TileResolveStage::ensure_fallback_lighting_buffers(RenderingD
             fallback_spot_light_buffer.is_valid() &&
             fallback_reflection_buffer.is_valid() &&
             fallback_cluster_buffer.is_valid() &&
+            fallback_cluster_buffer_bytes >= required_cluster_storage_bytes &&
             fallback_decal_texture.is_valid() &&
             fallback_reflection_texture.is_valid() &&
             fallback_shadow_texture.is_valid() &&
@@ -667,13 +679,14 @@ bool TileRenderer::TileResolveStage::ensure_fallback_lighting_buffers(RenderingD
     }
     p_device->set_resource_name(fallback_reflection_buffer, "GS_TileResolve_FallbackReflectionSSBO");
 
-    zero_data.resize(kFallbackClusterStorageBytes);
+    zero_data.resize(uint32_t(required_cluster_storage_bytes));
     zero_data.fill(0);
     fallback_cluster_buffer = p_device->storage_buffer_create(zero_data.size(), zero_data);
     if (!fallback_cluster_buffer.is_valid()) {
         free_fallback_lighting_buffers(p_device);
         return false;
     }
+    fallback_cluster_buffer_bytes = required_cluster_storage_bytes;
     p_device->set_resource_name(fallback_cluster_buffer, "GS_TileResolve_FallbackClusterSSBO");
 
     RD::TextureFormat decal_format;
@@ -931,7 +944,8 @@ RID TileRenderer::TileResolveStage::create_lighting_uniform_set(RenderingDevice 
     RID lighting_uniform_set = p_device->uniform_set_create(uniforms, owner.shader_resources.tile_resolve_shader, GaussianSplatting::TileLightingSetABI::SET);
     if (!lighting_uniform_set.is_valid()) {
         WARN_PRINT_ONCE("[TileRenderer] Resolve lighting set 2 rejected by RenderingDevice; retrying with all fallback buffers/textures");
-        if (!ensure_fallback_lighting_buffers(p_device)) {
+        const uint64_t retry_cluster_storage_bytes = cluster_config.enabled ? cluster_config.required_storage_bytes : 0;
+        if (!ensure_fallback_lighting_buffers(p_device, retry_cluster_storage_bytes)) {
             return RID();
         }
         uniforms.clear();

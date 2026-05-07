@@ -45,6 +45,7 @@ TEST_CASE("[GaussianSplatting][TileLightingABI] cluster config matches Godot pac
 	CHECK(config.cluster_type_size == 60u * 34u * (16u + 32u));
 	CHECK(config.required_storage_bytes == uint64_t(config.cluster_type_size) *
 					ABI::CLUSTER_ELEMENT_TYPES * ABI::CLUSTER_WORD_BYTES);
+	CHECK(config.required_storage_bytes > ABI::MIN_CLUSTER_STORAGE_BYTES);
 }
 
 TEST_CASE("[GaussianSplatting][TileLightingABI] cluster config rejects incompatible metadata") {
