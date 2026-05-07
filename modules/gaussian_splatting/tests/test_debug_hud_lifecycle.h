@@ -48,4 +48,27 @@ TEST_CASE("[GaussianSplatting][SceneTree] Debug HUD clears target when splat nod
 	memdelete(hud);
 }
 
+TEST_CASE("[GaussianSplatting][SceneTree] Debug HUD preserves owner-controlled processing across re-entry") {
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree must exist (provided by [SceneTree] tag)");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window must exist");
+
+	GaussianSplatDebugHUD *hud = memnew(GaussianSplatDebugHUD);
+
+	root->add_child(hud);
+	tree->process(0.0);
+	hud->set_process(false);
+
+	root->remove_child(hud);
+	root->add_child(hud);
+	tree->process(0.0);
+
+	CHECK_FALSE(hud->is_processing());
+
+	root->remove_child(hud);
+	memdelete(hud);
+}
+
 #endif // TESTS_ENABLED || TOOLS_ENABLED

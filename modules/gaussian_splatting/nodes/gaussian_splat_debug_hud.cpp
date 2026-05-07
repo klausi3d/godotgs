@@ -42,7 +42,6 @@ void GaussianSplatDebugHUD::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_ENTER_TREE: {
 			set_mouse_filter(MOUSE_FILTER_IGNORE);
-			set_process(true);
 
 			// Try to get default font from theme
 			if (!hud_font.is_valid()) {
