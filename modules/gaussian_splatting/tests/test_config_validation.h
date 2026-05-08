@@ -391,6 +391,13 @@ TEST_CASE("[GaussianSplatting][Config] Project settings apply preset layouts unl
 			CHECK(sort_key_config.depth_bits == preset.depth_bits);
 			CHECK(sort_key_config.enable_tie_breaker == preset.tie_breaker);
 		}
+
+		project_settings->set_setting(preset_path, "ultra");
+		g_gpu_sorting_config.load_from_project_settings();
+		CHECK(g_gpu_sorting_config.key_bits == 64);
+		CHECK(g_gpu_sorting_config.tile_bits == 32);
+		CHECK(g_gpu_sorting_config.depth_bits == 32);
+		CHECK(g_gpu_sorting_config.enable_tie_breaker);
 	}
 
 	SUBCASE("Custom loading honors explicit key-layout settings") {
