@@ -4242,6 +4242,32 @@ TEST_CASE("[GaussianSplatting] frame backend plan preserves resident request sem
 	CHECK(backend_plan.resident_backend_reason == String("requested_resident_policy"));
 }
 
+TEST_CASE("[GaussianSplatting] file-backed payload forces streaming backend even when resident is requested") {
+	ProjectSettings *project_settings = ProjectSettings::get_singleton();
+	if (project_settings == nullptr) {
+		MESSAGE("Skipping test - ProjectSettings unavailable");
+		return;
+	}
+
+	ScopedGaussianManagerPipeline manager_guard;
+	const String route_policy_setting = "rendering/gaussian_splatting/streaming/route_policy";
+	ScopedProjectSetting route_guard(project_settings, route_policy_setting);
+	project_settings->set_setting(route_policy_setting, int64_t(gs::settings::GS_ROUTE_RESIDENT));
+
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate();
+	REQUIRE(renderer.is_valid());
+
+	GaussianSplatRenderer::SceneState &scene_state = renderer->get_scene_state();
+	scene_state.payload_source_splat_count = 32;
+
+	const GaussianSplatRenderer::FrameBackendPlan backend_plan = renderer->build_frame_backend_plan(false);
+	CHECK(backend_plan.streaming_requested);
+	CHECK_FALSE(backend_plan.prefer_resident_backend);
+	CHECK(backend_plan.should_attempt_streaming_bootstrap);
+	CHECK(backend_plan.streaming_backend_reason == String("file_backed_payload_requires_streaming"));
+}
+
 TEST_CASE("[GaussianSplatting] get_streaming_route_policy defaults to STREAMING when unset") {
 	ProjectSettings *project_settings = ProjectSettings::get_singleton();
 	if (project_settings == nullptr) {

@@ -1,10 +1,10 @@
 [remap]
 
 importer="gaussian_splat_ply"
-importer_version=5
+importer_version=6
 type="GaussianSplatAsset"
 uid="uid://qqmoaqljvyka"
-path="res://.godot/imported/synthetic_plane.ply-474536e58092e4b151fd0ca9de92877b.tres"
+path="res://.godot/imported/synthetic_plane.ply-474536e58092e4b151fd0ca9de92877b.res"
 metadata={
 &"asset_type": 0,
 &"bounds": AABB(-9.700173, -0.9696859, -13.734253, 19.322021, 1.9203963, 19.409199),
@@ -86,10 +86,10 @@ metadata={
 
 [deps]
 
-files=["res://.godot/imported/synthetic_plane.ply-474536e58092e4b151fd0ca9de92877b.tres", "res://tests/fixtures/synthetic_plane.gsplatcache"]
+files=["res://.godot/imported/synthetic_plane.ply-474536e58092e4b151fd0ca9de92877b.res", "res://tests/fixtures/synthetic_plane.gsplatcache"]
 
 source_file="res://tests/fixtures/synthetic_plane.ply"
-dest_files=["res://.godot/imported/synthetic_plane.ply-474536e58092e4b151fd0ca9de92877b.tres", "res://.godot/imported/synthetic_plane.ply-474536e58092e4b151fd0ca9de92877b.tres", "res://tests/fixtures/synthetic_plane.gsplatcache"]
+dest_files=["res://.godot/imported/synthetic_plane.ply-474536e58092e4b151fd0ca9de92877b.res", "res://.godot/imported/synthetic_plane.ply-474536e58092e4b151fd0ca9de92877b.res", "res://tests/fixtures/synthetic_plane.gsplatcache"]
 
 [params]
 

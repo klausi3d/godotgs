@@ -1,10 +1,10 @@
 [remap]
 
 importer="gaussian_splat_ply"
-importer_version=5
+importer_version=6
 type="GaussianSplatAsset"
 uid="uid://dkih1b317kr0j"
-path="res://.godot/imported/synthetic_mandelbulb.ply-0aa16d46a6120f6eb35e522f8c04dcf9.tres"
+path="res://.godot/imported/synthetic_mandelbulb.ply-0aa16d46a6120f6eb35e522f8c04dcf9.res"
 metadata={
 &"asset_type": 0,
 &"bounds": AABB(-7.2322507, -7.224934, -11.218638, 14.462849, 14.459291, 14.471253),
@@ -86,10 +86,10 @@ metadata={
 
 [deps]
 
-files=["res://.godot/imported/synthetic_mandelbulb.ply-0aa16d46a6120f6eb35e522f8c04dcf9.tres", "res://tests/fixtures/synthetic_mandelbulb.gsplatcache"]
+files=["res://.godot/imported/synthetic_mandelbulb.ply-0aa16d46a6120f6eb35e522f8c04dcf9.res", "res://tests/fixtures/synthetic_mandelbulb.gsplatcache"]
 
 source_file="res://tests/fixtures/synthetic_mandelbulb.ply"
-dest_files=["res://.godot/imported/synthetic_mandelbulb.ply-0aa16d46a6120f6eb35e522f8c04dcf9.tres", "res://.godot/imported/synthetic_mandelbulb.ply-0aa16d46a6120f6eb35e522f8c04dcf9.tres", "res://tests/fixtures/synthetic_mandelbulb.gsplatcache"]
+dest_files=["res://.godot/imported/synthetic_mandelbulb.ply-0aa16d46a6120f6eb35e522f8c04dcf9.res", "res://.godot/imported/synthetic_mandelbulb.ply-0aa16d46a6120f6eb35e522f8c04dcf9.res", "res://tests/fixtures/synthetic_mandelbulb.gsplatcache"]
 
 [params]
 

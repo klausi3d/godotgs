@@ -956,8 +956,8 @@ RID TileRenderer::TileResolveStage::create_lighting_uniform_set(RenderingDevice 
         _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_STORAGE_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_SPOT_LIGHTS, fallback_spot_light_buffer);
         _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_STORAGE_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_REFLECTIONS, fallback_reflection_buffer);
         _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_STORAGE_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_CLUSTER_BUFFER, fallback_cluster_buffer);
-        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_TEXTURE, GaussianSplatting::TileLightingSetABI::BINDING_DECAL_ATLAS, decal_texture);
-        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_TEXTURE, GaussianSplatting::TileLightingSetABI::BINDING_REFLECTION_ATLAS, reflection_texture);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_TEXTURE, GaussianSplatting::TileLightingSetABI::BINDING_DECAL_ATLAS, fallback_decal_texture);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_TEXTURE, GaussianSplatting::TileLightingSetABI::BINDING_REFLECTION_ATLAS, fallback_reflection_texture);
         _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_SAMPLER, GaussianSplatting::TileLightingSetABI::BINDING_LIGHT_PROJECTOR_SAMPLER, resolve_sampler);
         _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_SAMPLER, GaussianSplatting::TileLightingSetABI::BINDING_DEFAULT_SAMPLER_LINEAR_MIPMAPS_CLAMP, resolve_sampler);
         _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_SAMPLER, GaussianSplatting::TileLightingSetABI::BINDING_SHADOW_SAMPLER, shadow_sampler);

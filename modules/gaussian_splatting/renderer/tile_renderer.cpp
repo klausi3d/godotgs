@@ -1274,8 +1274,8 @@ GaussianSplatting::TileRenderParams::TileRenderParams() {
 	// Opacity-aware bounding (FlashGS optimization) - enabled by default
 	opacity_aware_culling = true;
 	visibility_threshold = 1.0f / 255.0f;
-	// PlayCanvas alphaClip parity (per-splat hard cull at projection).
-	alpha_clip = 0.3f;
+		// Optional per-splat hard cull at projection.
+		alpha_clip = 0.0f;
 	// Distance-based culling - enabled by default
 	// Uses probabilistic culling to prevent per-tile overflow at distance
 	distance_cull_enabled = true;

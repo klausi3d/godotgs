@@ -52,6 +52,7 @@ const PROJECT_SETTING_KEYS := [
 	"rendering/gaussian_splatting/gpu_sorting/debug_validate_prefix",
 	"rendering/gaussian_splatting/gpu_sorting/enable_prefix_readback",
 	"rendering/gaussian_splatting/gpu_sorting/profiling_preserve_gpu_timestamps",
+	"rendering/gaussian_splatting/gpu_sorting/gpu_preset",
 	"rendering/gaussian_splatting/gpu_sorting/max_overlap_records",
 	"rendering/gaussian_splatting/gpu_sorting/key_bits",
 	"rendering/gaussian_splatting/gpu_sorting/tile_bits",
@@ -275,6 +276,7 @@ func _ready() -> void:
 	_lane_config = _config_for_preset(lane_preset)
 	_apply_lane_project_settings(_lane_config)
 	_build_instances(_lane_config)
+	_reload_renderer_gpu_sorting_config()
 	_apply_renderer_overrides_from_config()
 	_apply_perf_capture_renderer_settings()
 	_focus_point = _resolve_focus_point()
@@ -1502,6 +1504,7 @@ func _apply_lane_project_settings(config: Dictionary) -> void:
 	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/debug_validate_prefix", false)
 	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/enable_prefix_readback", false)
 	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/profiling_preserve_gpu_timestamps", true)
+	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/gpu_preset", "custom")
 	var overlap_budget_default := int(_setting_snapshot_value_or_default("rendering/gaussian_splatting/gpu_sorting/max_overlap_records", 100000000))
 	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/max_overlap_records", int(config.get("max_overlap_records", overlap_budget_default)))
 	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/key_bits", int(config.get("sort_key_bits", _setting_snapshot_value_or_default("rendering/gaussian_splatting/gpu_sorting/key_bits", 32))))
@@ -1547,6 +1550,16 @@ func _apply_lane_project_settings(config: Dictionary) -> void:
 		camera.far = float(config.get("camera_far"))
 	if config.has("camera_fov"):
 		camera.fov = float(config.get("camera_fov"))
+
+func _reload_renderer_gpu_sorting_config() -> void:
+	for node in _instance_nodes:
+		if node == null or not node.has_method("get_renderer"):
+			continue
+		var renderer = node.get_renderer()
+		if renderer == null:
+			continue
+		if renderer.has_method("reload_gpu_sorting_config_from_project_settings"):
+			renderer.reload_gpu_sorting_config_from_project_settings()
 
 func _restore_project_settings() -> void:
 	if _settings_restored:

@@ -339,11 +339,10 @@ Error RenderDataOrchestrator::update_gpu_buffers_with_real_data() {
 
 	const GaussianSplatRenderer::RuntimeFidelityPolicy runtime_policy =
 			renderer->build_runtime_fidelity_policy(scene_state, *performance_settings);
-	if (runtime_policy.prefer_resident_backend) {
-		if (has_file_backed_payload) {
-			GS_LOG_WARN_DEFAULT("[GPU Streaming] File-backed world submission cannot use the resident backend without explicit materialization.");
-			return ERR_UNAVAILABLE;
-		}
+	if (runtime_policy.prefer_resident_backend && has_file_backed_payload) {
+		GS_LOG_WARN_DEFAULT("[GPU Streaming] File-backed world submission cannot use the resident backend without explicit materialization; using streaming backend.");
+	}
+	if (runtime_policy.prefer_resident_backend && !has_file_backed_payload) {
 		streaming_state.current_streaming_system.unref();
 		streaming_state.use_streamed_data = false;
 		streaming_state.cached_streamed_gaussians.clear();

@@ -1051,11 +1051,11 @@ void GaussianSplatManager::initialize_module() {
 	GLOBAL_DEF("rendering/gaussian_splatting/culling/opacity_aware_bounds", true);     // Enable opacity-aware bounding
 	GLOBAL_DEF("rendering/gaussian_splatting/culling/visibility_threshold", 1.0f / 255.0f); // tau: minimum visible contribution
 
-	// Per-splat hard cull at projection — matches PlayCanvas alphaClip.
-	// Drops splats with opacity <= threshold BEFORE binning, suppressing low-
-	// confidence "ghost" splats from real-scan reconstructions. 0.3 matches
-	// PlayCanvas/SuperSplat default; lower for more permissive content.
-	GLOBAL_DEF("rendering/gaussian_splatting/culling/alpha_clip", 0.3f);
+	// Optional per-splat hard cull at projection. Keep disabled by default:
+	// real captures often rely on many low-opacity splats accumulating, and
+	// opacity-aware bounds already cull splats below visibility_threshold
+	// after per-node/global opacity multipliers are applied.
+	GLOBAL_DEF("rendering/gaussian_splatting/culling/alpha_clip", 0.0f);
 
 	// EXPERIMENTAL: overflow auto-tuner (disabled by default due to splat decay bug).
 	// Enable only for testing until the feedback loop is fixed.

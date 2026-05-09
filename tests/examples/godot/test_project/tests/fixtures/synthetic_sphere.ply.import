@@ -1,10 +1,10 @@
 [remap]
 
 importer="gaussian_splat_ply"
-importer_version=5
+importer_version=6
 type="GaussianSplatAsset"
 uid="uid://80j5jl7w81s6"
-path="res://.godot/imported/synthetic_sphere.ply-cba1824c59acff4b5ae5fac44716d159.tres"
+path="res://.godot/imported/synthetic_sphere.ply-cba1824c59acff4b5ae5fac44716d159.res"
 metadata={
 &"asset_type": 0,
 &"bounds": AABB(-5.4368153, -5.489575, -9.387396, 10.92272, 10.825405, 10.828738),
@@ -86,10 +86,10 @@ metadata={
 
 [deps]
 
-files=["res://.godot/imported/synthetic_sphere.ply-cba1824c59acff4b5ae5fac44716d159.tres", "res://tests/fixtures/synthetic_sphere.gsplatcache"]
+files=["res://.godot/imported/synthetic_sphere.ply-cba1824c59acff4b5ae5fac44716d159.res", "res://tests/fixtures/synthetic_sphere.gsplatcache"]
 
 source_file="res://tests/fixtures/synthetic_sphere.ply"
-dest_files=["res://.godot/imported/synthetic_sphere.ply-cba1824c59acff4b5ae5fac44716d159.tres", "res://.godot/imported/synthetic_sphere.ply-cba1824c59acff4b5ae5fac44716d159.tres", "res://tests/fixtures/synthetic_sphere.gsplatcache"]
+dest_files=["res://.godot/imported/synthetic_sphere.ply-cba1824c59acff4b5ae5fac44716d159.res", "res://.godot/imported/synthetic_sphere.ply-cba1824c59acff4b5ae5fac44716d159.res", "res://tests/fixtures/synthetic_sphere.gsplatcache"]
 
 [params]
 

@@ -1,10 +1,10 @@
 [remap]
 
 importer="gaussian_splat_ply"
-importer_version=5
+importer_version=6
 type="GaussianSplatAsset"
 uid="uid://dn2tmp3c3pckv"
-path="res://.godot/imported/synthetic_cloud.ply-f733b0a98cdaf71dff5dbc591f48ac53.tres"
+path="res://.godot/imported/synthetic_cloud.ply-f733b0a98cdaf71dff5dbc591f48ac53.res"
 metadata={
 &"asset_type": 0,
 &"bounds": AABB(-12.082072, 0.15310723, -12.628657, 24.017673, 7.7208586, 17.103289),
@@ -86,10 +86,10 @@ metadata={
 
 [deps]
 
-files=["res://.godot/imported/synthetic_cloud.ply-f733b0a98cdaf71dff5dbc591f48ac53.tres", "res://tests/fixtures/synthetic_cloud.gsplatcache"]
+files=["res://.godot/imported/synthetic_cloud.ply-f733b0a98cdaf71dff5dbc591f48ac53.res", "res://tests/fixtures/synthetic_cloud.gsplatcache"]
 
 source_file="res://tests/fixtures/synthetic_cloud.ply"
-dest_files=["res://.godot/imported/synthetic_cloud.ply-f733b0a98cdaf71dff5dbc591f48ac53.tres", "res://.godot/imported/synthetic_cloud.ply-f733b0a98cdaf71dff5dbc591f48ac53.tres", "res://tests/fixtures/synthetic_cloud.gsplatcache"]
+dest_files=["res://.godot/imported/synthetic_cloud.ply-f733b0a98cdaf71dff5dbc591f48ac53.res", "res://.godot/imported/synthetic_cloud.ply-f733b0a98cdaf71dff5dbc591f48ac53.res", "res://tests/fixtures/synthetic_cloud.gsplatcache"]
 
 [params]
 

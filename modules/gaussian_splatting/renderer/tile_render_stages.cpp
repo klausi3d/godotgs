@@ -323,7 +323,7 @@ TileRenderParamsGPU TileRenderer::TileRenderParamsBuilder::build_params(const Re
 	// When enabled, reduces tile-Gaussian pairs by ~94% using opacity-based radius calculation
 	params.opacity_culling_config[0] = p_params.opacity_aware_culling ? 1.0f : 0.0f;
 	params.opacity_culling_config[1] = p_params.visibility_threshold;
-	// PlayCanvas alphaClip parity: per-splat hard cull at projection. Clamp to
+	// Optional per-splat hard cull at projection. Clamp to
 	// [0, 0.99] so callers cannot accidentally cull every splat (1.0 would
 	// reject all opacities since the test is opacity <= alpha_clip).
 	params.opacity_culling_config[2] = CLAMP(p_params.alpha_clip, 0.0f, 0.99f);

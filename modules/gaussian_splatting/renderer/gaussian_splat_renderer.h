@@ -963,11 +963,14 @@ public:
     /** @brief Enables or disables cached render reuse in the output compositor. */
     void set_cached_render_reuse_enabled(bool p_enabled);
 
-    /** @brief Returns true if cached render reuse is enabled. */
-    bool is_cached_render_reuse_enabled() const;
+	/** @brief Returns true if cached render reuse is enabled. */
+	bool is_cached_render_reuse_enabled() const;
 
-    /** @brief Invalidates cached final-frame reuse state in the output compositor. */
-    void invalidate_cached_render();
+	/** @brief Reloads global GPU sorting settings and rebuilds this renderer's sorter. */
+	void reload_gpu_sorting_config_from_project_settings();
+
+	/** @brief Invalidates cached final-frame reuse state in the output compositor. */
+	void invalidate_cached_render();
 
     /**
      * @brief Sets the painterly material for stylized rendering.
