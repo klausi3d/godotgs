@@ -1632,6 +1632,79 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] World submission produc
 	}
 }
 
+TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Source-backed world submission remains renderable without resident data") {
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	const bool owns_director = (director == nullptr);
+	if (!director) {
+		director = memnew(GaussianSplatSceneDirector);
+	}
+	REQUIRE(director != nullptr);
+
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	Ref<World3D> world = root->get_world_3d();
+	REQUIRE(world.is_valid());
+	const RID scenario = world->get_scenario();
+	REQUIRE(scenario.is_valid());
+
+	Node *owner = memnew(Node);
+	REQUIRE(owner != nullptr);
+	root->add_child(owner);
+	tree->process(0.0);
+
+	Ref<GaussianData> source_data = stage1a_make_submission_test_data(8, 0.0f);
+	Ref<InMemoryChunkPayloadSource> payload_source;
+	payload_source.instantiate();
+	payload_source->set_data(source_data);
+
+	GaussianSplatSceneDirector::WorldSubmission submission;
+	submission.owner_id = owner->get_instance_id();
+	submission.scenario = scenario;
+	submission.payload_source = payload_source;
+	submission.static_chunks.push_back(stage1a_make_submission_test_chunk(0));
+	submission.has_desired_residency_hint = true;
+	submission.desired_residency_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING;
+
+	CHECK(director->submit_world_submission(submission));
+
+	Ref<GaussianSplatRenderer> renderer = director->get_shared_renderer(world.ptr());
+	if (renderer.is_valid()) {
+		CHECK(director->has_world_submission_for_renderer(renderer.ptr()));
+
+		int32_t renderer_hint = GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT;
+		String renderer_hint_source;
+		CHECK(director->get_submission_residency_hint_for_renderer(renderer.ptr(),
+				&renderer_hint, &renderer_hint_source));
+		CHECK(renderer_hint == GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_STREAMING);
+		CHECK(renderer_hint_source == String("world_submission"));
+
+		LocalVector<InstanceDataGPU> instance_buffer;
+		director->build_instance_buffer_for_renderer(renderer.ptr(), instance_buffer, false);
+		CHECK_MESSAGE(instance_buffer.size() == 1,
+				"Source-backed world submission should produce the same identity instance as resident data.");
+
+		LocalVector<InstanceGradingGPU> grading_buffer;
+		director->build_instance_grading_buffer_for_renderer(renderer.ptr(), grading_buffer, false);
+		CHECK_MESSAGE(grading_buffer.size() == 1,
+				"Source-backed world submission should produce a matching grading row.");
+	} else {
+		MESSAGE("Skipping source-backed world submission checks - shared renderer unavailable");
+	}
+
+	director->release_world_submission(submission.owner_id);
+	root->remove_child(owner);
+	memdelete(owner);
+	tree->process(0.0);
+
+	if (owns_director) {
+		memdelete(director);
+	}
+}
+
 TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] World submission with zero splats produces no instance") {
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
 	const bool owns_director = (director == nullptr);

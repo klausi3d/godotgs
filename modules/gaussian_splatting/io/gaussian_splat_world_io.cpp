@@ -551,10 +551,16 @@ String ResourceFormatLoaderGaussianSplatWorld::get_resource_type(const String &p
 
 Error ResourceFormatSaverGaussianSplatWorld::save(const Ref<Resource> &p_resource, const String &p_path, uint32_t p_flags) {
 	(void)p_flags;
-	const GaussianSplatWorld *world = Object::cast_to<GaussianSplatWorld>(*p_resource);
+	GaussianSplatWorld *world = Object::cast_to<GaussianSplatWorld>(*p_resource);
 	ERR_FAIL_COND_V_MSG(world == nullptr, ERR_INVALID_PARAMETER, "Resource is not a GaussianSplatWorld.");
 
-	const Ref<GaussianData> gaussian_data = world->get_gaussian_data();
+	Ref<GaussianData> gaussian_data = world->get_gaussian_data();
+	if (gaussian_data.is_null() && world->has_chunk_payload_source()) {
+		const Error materialize_err = world->materialize_resident_gaussian_data();
+		ERR_FAIL_COND_V_MSG(materialize_err != OK, materialize_err,
+				vformat("Failed to materialize source-backed GaussianSplatWorld before save: %s", p_path));
+		gaussian_data = world->get_gaussian_data();
+	}
 	ERR_FAIL_COND_V_MSG(gaussian_data.is_null(), ERR_INVALID_DATA, "GaussianSplatWorld has no GaussianData.");
 	Error err = OK;
 

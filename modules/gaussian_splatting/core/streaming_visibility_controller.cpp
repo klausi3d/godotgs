@@ -378,8 +378,19 @@ void StreamingVisibilityController::update_chunk_visibility(
     culling_stats.reset();
     const uint32_t chunk_count = system.chunks.size();
     culling_stats.total_chunks = chunk_count;
-    culling_stats.loaded_chunks = system.budget.loaded_chunks_count;
-    culling_stats.resident_chunks = system.budget.loaded_chunks_count;
+    uint32_t primary_loaded_chunks = 0;
+    uint32_t primary_resident_chunks = 0;
+    for (uint32_t i = 0; i < chunk_count; i++) {
+        const GaussianStreamingTypes::StreamingChunk &chunk = system.chunks[i];
+        if (chunk.is_loaded) {
+            primary_loaded_chunks++;
+        }
+        if (chunk.is_loaded && !chunk.upload_pending && chunk.buffer_slot != UINT32_MAX) {
+            primary_resident_chunks++;
+        }
+    }
+    culling_stats.loaded_chunks = primary_loaded_chunks;
+    culling_stats.resident_chunks = primary_resident_chunks;
     previous_visible_chunk_indices.clear();
     previous_visible_chunk_indices.reserve(visible_chunk_indices.size());
     for (uint32_t i = 0; i < visible_chunk_indices.size(); i++) {

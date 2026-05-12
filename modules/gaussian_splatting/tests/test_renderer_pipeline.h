@@ -4320,6 +4320,47 @@ TEST_CASE("[GaussianSplatting][Pipeline] ChunkCullingStats tracks resident_chunk
 	CHECK(stats.resident_chunks == 0);
 }
 
+TEST_CASE("[GaussianSplatting][Pipeline] Chunk culling stats scope loaded counts to primary chunks") {
+	LocalVector<Gaussian> primary_gaussians;
+	fill_gaussians(primary_gaussians, GaussianStreamingSystem::CHUNK_SIZE + 128);
+	Ref<::GaussianData> primary_data;
+	primary_data.instantiate();
+	primary_data->set_gaussians(primary_gaussians);
+
+	Ref<GaussianStreamingSystem> system;
+	system.instantiate();
+	system->initialize(primary_data);
+	system->_test_reset_atlas_allocator(8);
+
+	LocalVector<GaussianStreamingTypes::StreamingChunk> &primary_chunks = system->_test_get_primary_chunks();
+	REQUIRE(primary_chunks.size() >= 1);
+
+	system->_test_mark_chunk_loaded_for_eviction(0, 0, true, 1, 1, 10.0f);
+
+	LocalVector<Gaussian> secondary_gaussians;
+	fill_gaussians(secondary_gaussians, 128);
+	Ref<::GaussianData> secondary_data;
+	secondary_data.instantiate();
+	secondary_data->set_gaussians(secondary_gaussians);
+	system->register_asset(42, secondary_data);
+	system->_test_mark_chunk_loaded_for_eviction(42, 0, true, 1, 1, 10.0f);
+
+	CHECK(system->get_loaded_chunks() == 2);
+
+	Projection projection;
+	projection.set_perspective(70.0f, 1.0f, 0.1f, 100.0f);
+	Transform3D camera_transform;
+	camera_transform.origin = Vector3(0.0f, 0.0f, 10.0f);
+	system->_test_get_visibility_controller().update_chunk_visibility(*system.ptr(), camera_transform, projection);
+
+	const Dictionary scoped_stats = system->get_chunk_culling_stats();
+	CHECK(uint32_t(int(scoped_stats["total_chunks"])) == primary_chunks.size());
+	CHECK(int(scoped_stats["loaded_chunks"]) == 1);
+	CHECK(int(scoped_stats["resident_chunks"]) == 1);
+	CHECK(int(scoped_stats["loaded_chunks"]) <= int(scoped_stats["total_chunks"]));
+	CHECK(int(scoped_stats["resident_chunks"]) <= int(scoped_stats["total_chunks"]));
+}
+
 TEST_CASE("[GaussianSplatting][Pipeline] StreamingGlobalAtlasRegistry exposes atlas_published_chunk_count") {
 	StreamingGlobalAtlasRegistry registry;
 	CHECK(registry.get_atlas_published_chunks() == 0);

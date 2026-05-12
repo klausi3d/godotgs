@@ -311,6 +311,14 @@ TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld direct format saver/loader")
         }
     }
 
+    const String resave_path = _make_world_io_fixture_path("direct_resave");
+    const Error resave_err = saver.save(loaded, resave_path);
+    CHECK_MESSAGE(resave_err == OK, "Saving a source-backed gsplatworld should materialize its payload.");
+    CHECK_MESSAGE(loaded->has_resident_gaussian_data(),
+            "Saving should leave the source-backed world with resident GaussianData for load-edit-save workflows.");
+    CHECK_MESSAGE(FileAccess::exists(resave_path), "Resaved source-backed gsplatworld should exist.");
+    _remove_world_io_fixture(resave_path);
+
     Ref<GaussianSplatWorld> resident_loaded = loader.load_resident(path, &load_err);
     CHECK_MESSAGE(load_err == OK, "Explicit resident loader should succeed");
     CHECK(resident_loaded.is_valid());
