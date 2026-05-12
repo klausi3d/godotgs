@@ -1,10 +1,10 @@
 [remap]
 
 importer="gaussian_splat_ply"
-importer_version=5
+importer_version=6
 type="GaussianSplatAsset"
 uid="uid://bc80b3sekp6i4"
-path="res://.godot/imported/synthetic_cube.ply-acaa360d995443d1d062453ffacc2280.tres"
+path="res://.godot/imported/synthetic_cube.ply-acaa360d995443d1d062453ffacc2280.res"
 metadata={
 &"asset_type": 0,
 &"bounds": AABB(-4.394267, -4.456499, -8.435846, 8.768791, 8.914125, 8.874743),
@@ -86,10 +86,10 @@ metadata={
 
 [deps]
 
-files=["res://.godot/imported/synthetic_cube.ply-acaa360d995443d1d062453ffacc2280.tres", "res://tests/fixtures/synthetic_cube.gsplatcache"]
+files=["res://.godot/imported/synthetic_cube.ply-acaa360d995443d1d062453ffacc2280.res", "res://tests/fixtures/synthetic_cube.gsplatcache"]
 
 source_file="res://tests/fixtures/synthetic_cube.ply"
-dest_files=["res://.godot/imported/synthetic_cube.ply-acaa360d995443d1d062453ffacc2280.tres", "res://.godot/imported/synthetic_cube.ply-acaa360d995443d1d062453ffacc2280.tres", "res://tests/fixtures/synthetic_cube.gsplatcache"]
+dest_files=["res://.godot/imported/synthetic_cube.ply-acaa360d995443d1d062453ffacc2280.res", "res://.godot/imported/synthetic_cube.ply-acaa360d995443d1d062453ffacc2280.res", "res://tests/fixtures/synthetic_cube.gsplatcache"]
 
 [params]
 

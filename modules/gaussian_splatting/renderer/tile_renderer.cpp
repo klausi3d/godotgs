@@ -344,19 +344,12 @@ private:
 			return false;
 		}
 
-		renderer.instance_pipeline_buffers.instance_buffer = params.instance_buffer;
-		renderer.instance_pipeline_buffers.instance_grading_buffer = params.instance_grading_buffer;
-		renderer.instance_pipeline_buffers.splat_ref_buffer = params.splat_ref_buffer;
-			renderer.instance_pipeline_buffers.chunk_meta_buffer = params.chunk_meta_buffer;
-			renderer.instance_pipeline_buffers.quantization_buffer = params.quantization_buffer;
-			renderer.instance_pipeline_buffers.quantization_required = params.quantization_buffer.is_valid();
-			renderer.instance_pipeline_buffers.indirect_count_buffer = params.instance_indirect_count_buffer;
-			renderer.instance_pipeline_buffers.indirect_dispatch_buffer = params.instance_indirect_dispatch_buffer;
+		renderer._update_instance_pipeline_bindings(params);
 
-			const bool quantization_required = renderer.instance_pipeline_buffers.quantization_required;
-			const GaussianSplatting::InstancePipelineContract::InvariantViolationReason invariant_reason =
-					GaussianSplatting::InstancePipelineContract::first_tile_runtime_violation(
-							renderer.instance_pipeline_buffers.instance_buffer,
+		const bool quantization_required = renderer.instance_pipeline_buffers.quantization_required;
+		const GaussianSplatting::InstancePipelineContract::InvariantViolationReason invariant_reason =
+				GaussianSplatting::InstancePipelineContract::first_tile_runtime_violation(
+						renderer.instance_pipeline_buffers.instance_buffer,
 						renderer.instance_pipeline_buffers.instance_grading_buffer,
 						renderer.instance_pipeline_buffers.splat_ref_buffer,
 						renderer.instance_pipeline_buffers.indirect_count_buffer,
@@ -427,6 +420,17 @@ private:
 		renderer.render_settings.allow_compute_raster = _resolve_compute_raster_policy(params.compute_raster_policy);
 		bool packed_stage_requested = params.request_packed_stage_data;
 		uint32_t packed_stage_count = resolved_total_gaussians > 0 ? resolved_total_gaussians : effective_splat_floor;
+		// 65535 is the structural ceiling: GS_PACKED_STAGE_DATA truncates global_idx to
+		// 16 bits in gs_pack_conic_y_and_index() (shaders/includes/tile_projection_common.glsl),
+		// and the rasterizer's stored_global_idx == sorted_idx equality check will silently
+		// reject any visible splat whose true global_idx exceeds UINT16_MAX. This gate IS the
+		// runtime enforcement: it has the scene-actual splat count and disables the flag when
+		// over budget. PipelineFeatureSet only carries the shared PACKED_STAGE_MAX_TOTAL_SPLATS
+		// capability constant (header) and the validation helper at
+		// renderer/pipeline_feature_set.cpp:167-181 — but `initialize_pipeline_feature_set()`
+		// (pipeline_feature_set.cpp:337) calls `validate()` with the default p_total_gaussians = 0,
+		// so init-time validation can never trip the > 65535 check. Do not rely on it for
+		// the splat-count contract.
 		if (packed_stage_requested && packed_stage_count > UINT16_MAX) {
 			WARN_PRINT_ONCE("[TileRenderer] Packed stage data requires <= 65535 total splats; disabling packed projection payloads.");
 			packed_stage_requested = false;
@@ -1281,8 +1285,8 @@ GaussianSplatting::TileRenderParams::TileRenderParams() {
 	// Opacity-aware bounding (FlashGS optimization) - enabled by default
 	opacity_aware_culling = true;
 	visibility_threshold = 1.0f / 255.0f;
-	// PlayCanvas alphaClip parity (per-splat hard cull at projection).
-	alpha_clip = 0.3f;
+		// Optional per-splat hard cull at projection.
+		alpha_clip = 0.0f;
 	// Distance-based culling - enabled by default
 	// Uses probabilistic culling to prevent per-tile overflow at distance
 	distance_cull_enabled = true;
@@ -1866,6 +1870,13 @@ Vector<String> TileRenderer::_build_common_shader_defines(bool p_include_dispatc
 		defines.push_back("#define GS_DEBUG_COUNTERS_DISABLED 1\n");
 	}
 	if (render_settings.enable_packed_stage_data) {
+		// Reaching this branch requires `enable_packed_stage_data` to have survived
+		// the runtime gate at TileRenderer::_apply_render_params (~ line 415), which
+		// flips it false whenever the packed-stage payload count exceeds UINT16_MAX.
+		// The shader's gs_pack_conic_y_and_index() truncates global_idx to 16 bits
+		// (shaders/includes/tile_projection_common.glsl), and the rasterizer rejects
+		// stored_global_idx != sorted_idx silently — so this define must never be
+		// emitted with a payload size above 65535.
 		defines.push_back("#define GS_PACKED_STAGE_DATA 1\n");
 	}
 	if (render_settings.enable_tighter_bounds) {
@@ -2809,6 +2820,69 @@ void TileRenderer::_invalidate_descriptor_cache() {
     raster_stage.cached_raster_image_depth = RID();
     raster_stage.cached_raster_image_normal = RID();
 }
+
+bool TileRenderer::_update_instance_pipeline_bindings(const RenderParams &p_params) {
+	return _apply_instance_pipeline_bindings(instance_pipeline_buffers, p_params, [this]() {
+		_invalidate_descriptor_cache();
+	});
+}
+
+bool TileRenderer::_apply_instance_pipeline_bindings(InstancePipelineBindings &r_bindings,
+		const RenderParams &p_params, const std::function<void()> &p_invalidate_descriptor_cache) {
+	const bool bindings_changed = _instance_pipeline_bindings_changed(r_bindings, p_params);
+
+	if (bindings_changed && p_invalidate_descriptor_cache) {
+		p_invalidate_descriptor_cache();
+	}
+
+	_assign_instance_pipeline_bindings(r_bindings, p_params);
+
+	return bindings_changed;
+}
+
+bool TileRenderer::_instance_pipeline_bindings_changed(const InstancePipelineBindings &p_bindings,
+		const RenderParams &p_params) {
+	const bool new_quantization_required = p_params.quantization_buffer.is_valid();
+	return p_bindings.instance_buffer != p_params.instance_buffer ||
+			p_bindings.instance_grading_buffer != p_params.instance_grading_buffer ||
+			p_bindings.splat_ref_buffer != p_params.splat_ref_buffer ||
+			p_bindings.chunk_meta_buffer != p_params.chunk_meta_buffer ||
+			p_bindings.quantization_buffer != p_params.quantization_buffer ||
+			p_bindings.indirect_count_buffer != p_params.instance_indirect_count_buffer ||
+			p_bindings.indirect_dispatch_buffer != p_params.instance_indirect_dispatch_buffer ||
+			p_bindings.quantization_required != new_quantization_required;
+}
+
+void TileRenderer::_assign_instance_pipeline_bindings(InstancePipelineBindings &r_bindings,
+		const RenderParams &p_params) {
+	r_bindings.instance_buffer = p_params.instance_buffer;
+	r_bindings.instance_grading_buffer = p_params.instance_grading_buffer;
+	r_bindings.splat_ref_buffer = p_params.splat_ref_buffer;
+	r_bindings.chunk_meta_buffer = p_params.chunk_meta_buffer;
+	r_bindings.quantization_buffer = p_params.quantization_buffer;
+	r_bindings.quantization_required = p_params.quantization_buffer.is_valid();
+	r_bindings.indirect_count_buffer = p_params.instance_indirect_count_buffer;
+	r_bindings.indirect_dispatch_buffer = p_params.instance_indirect_dispatch_buffer;
+}
+
+#ifdef TESTS_ENABLED
+Vector<uint64_t> TileRenderer::_test_instance_pipeline_binding_generation_trace(
+		const Vector<RenderParams> &p_params_sequence) {
+	InstancePipelineBindings bindings;
+	uint64_t descriptor_generation = 0u;
+	Vector<uint64_t> generation_trace;
+	generation_trace.resize(p_params_sequence.size());
+
+	for (int i = 0; i < p_params_sequence.size(); i++) {
+		_apply_instance_pipeline_bindings(bindings, p_params_sequence[i], [&descriptor_generation]() {
+			descriptor_generation++;
+		});
+		generation_trace.write[i] = descriptor_generation;
+	}
+
+	return generation_trace;
+}
+#endif
 
 bool TileRenderer::_ensure_param_uniform_buffer(RenderingDevice *p_device) {
     return uniform_buffers.ensure_param_buffer(p_device);

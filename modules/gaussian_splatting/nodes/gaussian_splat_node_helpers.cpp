@@ -1373,7 +1373,9 @@ void GaussianSplatNodeRendererHelper::apply_renderer_settings() {
     }
 
     const bool renderer_shared = renderer_splat_count > 0 && renderer_splat_count != local_splat_count;
-    if (!renderer_shared) {
+    if (renderer_shared) {
+        WARN_PRINT_ONCE("[GaussianSplatNode3D] max_splat_count is renderer-wide and was ignored on a non-owner peer of a shared GaussianSplatRenderer. The first node to claim the renderer owns max_splat_count for the renderer's lifetime.");
+    } else {
         owner.renderer->set_max_splats(owner.max_splat_count);
     }
     // Use asset-level LOD setting from import metadata (defaults to true)

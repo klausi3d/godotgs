@@ -1347,6 +1347,23 @@ void GaussianSplatRenderer::initialize_sorting() {
 	sorting_orchestrator->initialize_sorting();
 }
 
+void GaussianSplatRenderer::reload_gpu_sorting_config_from_project_settings() {
+	g_gpu_sorting_config.load_from_project_settings();
+	if (!g_gpu_sorting_config.validate()) {
+		GS_LOG_GPU_SORT_ERROR(vformat("[GPU Sort] Invalid runtime sorting config; restoring defaults: %s",
+				g_gpu_sorting_config.get_validation_errors()));
+		g_gpu_sorting_config.reset_to_defaults();
+	}
+	if (sorting_orchestrator) {
+		SortingState &sorting_state = get_sorting_state();
+		sorting_state.sorter_needs_rebuild = true;
+	}
+	if (subsystem_state.sorting_pipeline.is_valid()) {
+		subsystem_state.sorting_pipeline->mark_sorter_dirty();
+	}
+	refresh_gpu_sorter("reload_gpu_sorting_config_from_project_settings");
+}
+
 Array GaussianSplatRenderer::run_sort_benchmark(const PackedInt32Array &p_sizes) {
 	return sorting_orchestrator->run_sort_benchmark(p_sizes);
 }

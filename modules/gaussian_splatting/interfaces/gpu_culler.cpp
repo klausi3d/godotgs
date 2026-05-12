@@ -64,10 +64,6 @@ static float _get_float_setting(ProjectSettings *ps, const StringName &name, flo
     return gs::settings::get_float(ps, name, fallback);
 }
 
-static bool _get_bool_setting(ProjectSettings *ps, const StringName &name, bool fallback) {
-    return gs::settings::get_bool(ps, name, fallback);
-}
-
 static bool _is_cull_debug_counters_enabled() {
     if (ProjectSettings *ps = ProjectSettings::get_singleton()) {
         const bool all_debug = gs::settings::is_all_debug_enabled(ps);
@@ -224,8 +220,8 @@ void GPUCuller::update_culling_settings() {
         frustum_slack_setting = _get_float_setting(ps, "rendering/gaussian_splatting/cull/frustum_plane_slack", frustum_slack_setting);
         // Keep runtime overrides (set_opacity_aware_culling / set_visibility_threshold)
         // sticky across frames by not reloading these knobs from ProjectSettings here.
-        // Per-splat hard alpha cull — PlayCanvas alphaClip parity. Drops splats
-        // with opacity <= alpha_clip before any projection or binning work.
+        // Optional per-splat hard alpha cull. Drops splats with opacity <=
+        // alpha_clip before any projection or binning work.
         const float alpha_clip_setting = _get_float_setting(ps,
                 "rendering/gaussian_splatting/culling/alpha_clip",
                 culling_config.alpha_clip);

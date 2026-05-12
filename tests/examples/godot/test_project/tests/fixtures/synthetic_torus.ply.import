@@ -1,10 +1,10 @@
 [remap]
 
 importer="gaussian_splat_ply"
-importer_version=5
+importer_version=6
 type="GaussianSplatAsset"
 uid="uid://dyaqm15kfaevy"
-path="res://.godot/imported/synthetic_torus.ply-f406c445278c3169ee1ae378f724d8f2.tres"
+path="res://.godot/imported/synthetic_torus.ply-f406c445278c3169ee1ae378f724d8f2.res"
 metadata={
 &"asset_type": 0,
 &"bounds": AABB(-9.18641, -2.7622867, -13.071443, 18.350676, 5.531723, 18.241413),
@@ -86,10 +86,10 @@ metadata={
 
 [deps]
 
-files=["res://.godot/imported/synthetic_torus.ply-f406c445278c3169ee1ae378f724d8f2.tres", "res://tests/fixtures/synthetic_torus.gsplatcache"]
+files=["res://.godot/imported/synthetic_torus.ply-f406c445278c3169ee1ae378f724d8f2.res", "res://tests/fixtures/synthetic_torus.gsplatcache"]
 
 source_file="res://tests/fixtures/synthetic_torus.ply"
-dest_files=["res://.godot/imported/synthetic_torus.ply-f406c445278c3169ee1ae378f724d8f2.tres", "res://.godot/imported/synthetic_torus.ply-f406c445278c3169ee1ae378f724d8f2.tres", "res://tests/fixtures/synthetic_torus.gsplatcache"]
+dest_files=["res://.godot/imported/synthetic_torus.ply-f406c445278c3169ee1ae378f724d8f2.res", "res://.godot/imported/synthetic_torus.ply-f406c445278c3169ee1ae378f724d8f2.res", "res://tests/fixtures/synthetic_torus.gsplatcache"]
 
 [params]
 

@@ -245,8 +245,17 @@
         bool ensure_shadow_sampler(RenderingDevice *p_device);
         RID create_resolve_uniform_set(RenderingDevice *p_device);
         RID create_resolve_param_uniform_set(RenderingDevice *p_device);
+        // Creates the tile resolve lighting descriptor set. Contract:
+        // - Binds the set=2 ABI documented by TileLightingSetABI and
+        //   modules/gaussian_splatting/shaders/includes/gs_lighting_bridge.glsl.
+        // - Scene/directional buffers must match Godot's std140 SceneDataBlock
+        //   and DirectionalLightData layouts; omni/spot/reflection/cluster
+        //   buffers must match the std430 bridge layouts.
+        // - Missing or incompatible resources are replaced with zero fallbacks.
+        // - Clustered lighting is enabled only when cluster metadata can produce
+        //   the same 32-slice layout as Godot's ClusterBuilderRD.
         RID create_lighting_uniform_set(RenderingDevice *p_device, const RenderParams &p_params);
-        bool ensure_fallback_lighting_buffers(RenderingDevice *p_device);
+        bool ensure_fallback_lighting_buffers(RenderingDevice *p_device, uint64_t p_min_cluster_storage_bytes = 0);
         void free_fallback_lighting_buffers(RenderingDevice *p_device);
         ResolvePushConstants build_push_constants(const Vector2i &p_viewport, int p_tile_size, bool p_output_is_premultiplied) const;
         void dispatch_tile_resolve(const Vector2i &p_viewport, int p_tile_size, bool p_output_is_premultiplied,
@@ -268,6 +277,7 @@
         RID fallback_shadow_texture;
         RID fallback_directional_shadow_texture;
         BufferOwnership fallback_lighting_owner;
+        uint64_t fallback_cluster_buffer_bytes = 0;
     };
 
 #endif

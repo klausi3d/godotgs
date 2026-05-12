@@ -24,6 +24,7 @@ void GaussianSplatRenderer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("is_static_sort_cache_enabled"), &GaussianSplatRenderer::is_static_sort_cache_enabled);
     ClassDB::bind_method(D_METHOD("set_cached_render_reuse_enabled", "enabled"), &GaussianSplatRenderer::set_cached_render_reuse_enabled);
     ClassDB::bind_method(D_METHOD("is_cached_render_reuse_enabled"), &GaussianSplatRenderer::is_cached_render_reuse_enabled);
+    ClassDB::bind_method(D_METHOD("reload_gpu_sorting_config_from_project_settings"), &GaussianSplatRenderer::reload_gpu_sorting_config_from_project_settings);
 
     // Performance controls
     ClassDB::bind_method(D_METHOD("set_lod_enabled", "enabled"), &GaussianSplatRenderer::set_lod_enabled);

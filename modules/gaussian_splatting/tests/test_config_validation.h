@@ -19,6 +19,7 @@
 #include "../renderer/sorting_settings_utils.h"
 #include "../renderer/gpu_sorter.h"
 #include "../core/gaussian_splat_quality_config.h"
+#include "../core/streaming_vram_regulator.h"
 #include "../interfaces/gpu_culler.h"
 #include "../lod/lod_config.h"
 
@@ -61,14 +62,19 @@ TEST_CASE("[GaussianSplatting][Config] Hidden runtime-affecting ProjectSettings 
 	const StringName renderdoc_key("rendering/gaussian_splatting/renderdoc_compatibility");
 	const StringName depth_test_key("rendering/gaussian_splatting/composite/depth_test");
 	const StringName effector_frequency_key("rendering/gaussian_splatting/effects/sphere_effector_frequency");
+	const StringName vram_budget_key("rendering/gaussian_splatting/streaming/vram_budget_mb");
 
 	CHECK(ps->has_setting(renderdoc_key));
 	CHECK(ps->has_setting(depth_test_key));
 	CHECK(ps->has_setting(effector_frequency_key));
+	CHECK(ps->has_setting(vram_budget_key));
 
 	CHECK_FALSE(bool(ps->get_setting(renderdoc_key)));
 	CHECK(bool(ps->get_setting(depth_test_key)));
 	CHECK(Math::is_equal_approx(double(ps->get_setting(effector_frequency_key)), 2.0));
+	if (ps->property_can_revert(vram_budget_key)) {
+		CHECK(int64_t(ps->property_get_revert(vram_budget_key)) == int64_t(STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB));
+	}
 }
 
 TEST_CASE("[GaussianSplatting][Config] GPUSortingConfig rejects invalid target_sort_time_ms") {
@@ -385,6 +391,13 @@ TEST_CASE("[GaussianSplatting][Config] Project settings apply preset layouts unl
 			CHECK(sort_key_config.depth_bits == preset.depth_bits);
 			CHECK(sort_key_config.enable_tie_breaker == preset.tie_breaker);
 		}
+
+		project_settings->set_setting(preset_path, "ultra");
+		g_gpu_sorting_config.load_from_project_settings();
+		CHECK(g_gpu_sorting_config.key_bits == 64);
+		CHECK(g_gpu_sorting_config.tile_bits == 32);
+		CHECK(g_gpu_sorting_config.depth_bits == 32);
+		CHECK(g_gpu_sorting_config.enable_tie_breaker);
 	}
 
 	SUBCASE("Custom loading honors explicit key-layout settings") {

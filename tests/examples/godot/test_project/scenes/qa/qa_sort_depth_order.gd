@@ -3,6 +3,7 @@ extends "res://scripts/qa_test_base.gd"
 
 @export var capture_delay_frames: int = 8
 @export var capture_timeout_frames: int = 60
+@export var red_dominance_margin: float = 0.15
 
 var splat_node: GaussianSplatNode3D
 var _captured_color: Color
@@ -77,10 +78,12 @@ func _on_test_start():
 
 	var positions := PackedFloat32Array([0.0, 0.0, -2.0, 0.0, 0.0, -1.0])
 	var colors := PackedColorArray([Color(0.0, 0.0, 1.0, 1.0), Color(1.0, 0.0, 0.0, 1.0)])
+	var opacity_logits := PackedFloat32Array([6.0, 6.0])
 	var scales := PackedFloat32Array([0.6, 0.6, 0.6, 0.6, 0.6, 0.6])
 
 	asset.set_positions(positions)
 	asset.set_colors(colors)
+	asset.set_opacity_logits(opacity_logits)
 	asset.set_scales(scales)
 
 	splat_node.splat_asset = asset
@@ -142,10 +145,15 @@ func _on_test_complete():
 		return
 
 	result_metrics["center_color"] = _captured_color
-	var red_dominant = _captured_color.r > (_captured_color.b + 0.2) and _captured_color.r > 0.4
+	var red_minus_blue := _captured_color.r - _captured_color.b
+	result_metrics["red_minus_blue"] = red_minus_blue
+	result_metrics["red_dominance_margin"] = red_dominance_margin
+	var red_dominant = red_minus_blue >= red_dominance_margin and _captured_color.r > 0.4
 
 	_test_result = red_dominant
-	_test_message = "center_color r=%.3f g=%.3f b=%.3f" % [_captured_color.r, _captured_color.g, _captured_color.b]
+	_test_message = "center_color r=%.3f g=%.3f b=%.3f red_minus_blue=%.3f" % [
+		_captured_color.r, _captured_color.g, _captured_color.b, red_minus_blue
+	]
 
 func _sample_center_color(image: Image, center: Vector2i, radius: int = 1) -> Color:
 	var min_x = max(0, center.x - radius)

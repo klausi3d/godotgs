@@ -793,9 +793,12 @@ def _ensure_duration_scale(value: float) -> float:
     return value
 
 
-def _select_lanes(requested: list[str]) -> list[LaneDefinition]:
+def _select_lanes(requested: list[str], profile: str) -> list[LaneDefinition]:
     if not requested:
-        return LANES
+        default_lane_ids = PROFILE_DEFAULT_LANE_IDS.get(profile)
+        if default_lane_ids is None:
+            return [lane for lane in LANES if profile in lane.durations]
+        requested = list(default_lane_ids)
     index = {lane.lane_id: lane for lane in LANES}
     selected: list[LaneDefinition] = []
     missing: list[str] = []
@@ -1568,7 +1571,7 @@ def main() -> int:
         return 2
 
     try:
-        selected_lanes = _select_lanes(args.lane)
+        selected_lanes = _select_lanes(args.lane, args.profile)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2

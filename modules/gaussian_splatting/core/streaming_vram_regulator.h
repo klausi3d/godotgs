@@ -16,9 +16,15 @@ struct LODBlendConfig {
     static LODBlendConfig load_from_project_settings();
 };
 
+// Conservative budget used when the renderer cannot query true device VRAM.
+// A fresh project must not assume a 12 GB desktop GPU; explicit project,
+// runtime, or quality-tier overrides may still opt into larger budgets.
+static constexpr uint32_t STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB = 2048;
+
 // VRAM budget configuration loaded from project settings
 struct VRAMBudgetConfig {
-    uint32_t budget_mb = 512;              // Total VRAM budget in MB
+    uint32_t budget_mb = STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB; // Effective VRAM budget in MB
+    uint32_t requested_budget_mb = STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB; // Pre-clamp/override budget in MB
     bool auto_regulate_enabled = true;     // Enable automatic chunk limit adjustment
     uint32_t warning_threshold_percent = 85; // Warn when usage exceeds this percentage
     uint32_t min_chunks = 4;               // Minimum chunks to keep loaded
@@ -27,8 +33,12 @@ struct VRAMBudgetConfig {
     String cap_tier_preset = "custom";
     bool cap_tier_active = false;
     String source_budget_mb = "project_default";
+    String requested_source_budget_mb = "project_default";
     String source_min_chunks = "project_default";
     String source_max_chunks = "project_default";
+    bool budget_capacity_verified = false;
+    bool budget_uses_unknown_capacity_fallback = false;
+    bool budget_unverified = false;
 
     static VRAMBudgetConfig load_from_project_settings();
 };
@@ -60,6 +70,7 @@ private:
     VRAMBudgetConfig config;
     VRAMDebugStats stats;
     bool config_override_active = false;
+    String last_unverified_budget_warning_key;
 
     // Dynamic chunk limit (adjusted based on VRAM pressure)
     uint32_t current_max_chunks = 32;

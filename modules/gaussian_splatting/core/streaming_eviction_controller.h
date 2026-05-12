@@ -25,6 +25,10 @@ public:
     void load_streaming_tuning_config_from_project_settings();
     void reset_per_frame_counters();
     void touch_chunk_use(uint64_t &r_last_used_frame);
+    void invalidate_candidate_cache();
+    void invalidate_resident_tracking();
+    void note_chunk_loaded(uint32_t p_asset_id, uint32_t p_chunk_id);
+    void note_chunk_unloaded(uint32_t p_asset_id, uint32_t p_chunk_id);
     void record_eviction_result(EvictionResult p_result);
     void record_total_eviction();
 
@@ -40,6 +44,9 @@ public:
     EvictionResult evict_non_primary_lru(GaussianStreamingSystem &system);
 
 private:
+    static uint64_t make_chunk_key(uint32_t p_asset_id, uint32_t p_chunk_id);
+    void ensure_resident_tracking(GaussianStreamingSystem &system);
+
     uint64_t chunk_load_counter = 0;
     uint32_t eviction_hysteresis_frames = 5;
     uint32_t max_evictions_per_frame = 4;
@@ -49,6 +56,9 @@ private:
     uint64_t cached_eviction_frame = UINT64_MAX;
     uint64_t cached_non_primary_lru_frame = UINT64_MAX;
     uint32_t cached_non_primary_lru_cursor = 0;
+    bool resident_tracking_dirty = true;
+    LocalVector<uint32_t> loaded_primary_chunks;
+    LocalVector<uint64_t> loaded_non_primary_chunk_keys;
     LocalVector<NonPrimaryEvictionCandidate> cached_non_primary_lru_candidates;
     LocalVector<uint32_t> cached_visible_chunks;
     LocalVector<uint32_t> cached_nonvisible_chunks;

@@ -1,7 +1,7 @@
 class_name BenchmarkMetrics
 extends RefCounted
 
-const RENDER_PERF_ROW_SCHEMA_VERSION := 6
+const RENDER_PERF_ROW_SCHEMA_VERSION := 7
 
 const RENDER_PERF_CONTEXT_FIELDS := [
 	"lane_id",
@@ -268,6 +268,25 @@ const RENDER_PERF_STATS_FIELDS := [
 	"effective_distance_cull_max_rate",
 	"effective_tiny_splat_screen_radius",
 	"effective_overflow_autotune_enabled",
+	"streaming_cap_tier_preset",
+	"streaming_cap_tier_active",
+	"streaming_effective_upload_cap_mb_per_frame",
+	"streaming_effective_upload_cap_mb_per_slice",
+	"streaming_effective_upload_cap_mb_per_second",
+	"streaming_effective_vram_budget_mb",
+	"streaming_effective_vram_min_chunks",
+	"streaming_effective_vram_max_chunks",
+	"streaming_requested_vram_budget_mb",
+	"streaming_cap_source_upload_mb_per_frame",
+	"streaming_cap_source_upload_mb_per_slice",
+	"streaming_cap_source_upload_mb_per_second",
+	"streaming_cap_source_vram_budget_mb",
+	"streaming_requested_cap_source_vram_budget_mb",
+	"streaming_cap_source_vram_min_chunks",
+	"streaming_cap_source_vram_max_chunks",
+	"streaming_vram_budget_capacity_verified",
+	"streaming_vram_budget_unknown_capacity_fallback",
+	"streaming_vram_budget_unverified",
 	"streaming_queue_pressure_active",
 	"streaming_queue_pressure_frames",
 	"streaming_vram_cap_hit_frames",

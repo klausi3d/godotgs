@@ -5,10 +5,20 @@
 void GaussianSplatWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_gaussian_data", "data"), &GaussianSplatWorld::set_gaussian_data);
     ClassDB::bind_method(D_METHOD("get_gaussian_data"), &GaussianSplatWorld::get_gaussian_data);
+    ClassDB::bind_method(D_METHOD("has_resident_gaussian_data"), &GaussianSplatWorld::has_resident_gaussian_data);
     ClassDB::bind_method(D_METHOD("set_bounds", "bounds"), &GaussianSplatWorld::set_bounds);
     ClassDB::bind_method(D_METHOD("get_bounds"), &GaussianSplatWorld::get_bounds);
     ClassDB::bind_method(D_METHOD("set_metadata", "metadata"), &GaussianSplatWorld::set_metadata);
     ClassDB::bind_method(D_METHOD("get_metadata"), &GaussianSplatWorld::get_metadata);
+    ClassDB::bind_method(D_METHOD("has_chunk_payload_source"), &GaussianSplatWorld::has_chunk_payload_source);
+    ClassDB::bind_method(D_METHOD("is_payload_source_backed"), &GaussianSplatWorld::is_payload_source_backed);
+    ClassDB::bind_method(D_METHOD("has_renderable_payload"), &GaussianSplatWorld::has_renderable_payload);
+    ClassDB::bind_method(D_METHOD("get_splat_count"), &GaussianSplatWorld::get_splat_count);
+    ClassDB::bind_method(D_METHOD("get_sh_degree"), &GaussianSplatWorld::get_sh_degree);
+    ClassDB::bind_method(D_METHOD("get_sh_first_order_count"), &GaussianSplatWorld::get_sh_first_order_count);
+    ClassDB::bind_method(D_METHOD("get_sh_high_order_count"), &GaussianSplatWorld::get_sh_high_order_count);
+    ClassDB::bind_method(D_METHOD("get_2d_mode"), &GaussianSplatWorld::get_2d_mode);
+    ClassDB::bind_method(D_METHOD("materialize_resident_gaussian_data"), &GaussianSplatWorld::materialize_resident_gaussian_data);
     ClassDB::bind_method(D_METHOD("get_chunk_count"), &GaussianSplatWorld::get_chunk_count);
     ClassDB::bind_method(D_METHOD("get_chunk_sizes"), &GaussianSplatWorld::get_chunk_sizes);
     ClassDB::bind_method(D_METHOD("get_chunk_aabbs"), &GaussianSplatWorld::get_chunk_aabbs);
@@ -23,7 +33,7 @@ void GaussianSplatWorld::_bind_methods() {
 
 bool GaussianSplatWorld::_get(const StringName &p_name, Variant &r_ret) const {
     if (p_name == StringName("stats/total_splats")) {
-        r_ret = gaussian_data.is_valid() ? gaussian_data->get_count() : 0;
+        r_ret = get_splat_count();
         return true;
     }
     if (p_name == StringName("stats/chunk_count")) {
@@ -68,8 +78,22 @@ void GaussianSplatWorld::_get_property_list(List<PropertyInfo> *p_list) const {
 
 void GaussianSplatWorld::set_gaussian_data(const Ref<GaussianData> &p_data) {
     gaussian_data = p_data;
+    if (gaussian_data.is_valid()) {
+        set_payload_metadata(gaussian_data->get_count(),
+                gaussian_data->get_sh_degree(),
+                gaussian_data->get_sh_first_order_count(),
+                gaussian_data->get_sh_high_order_count(),
+                gaussian_data->get_2d_mode());
+        if (!bounds.has_volume()) {
+            bounds = gaussian_data->get_aabb();
+        }
+    }
     notify_property_list_changed();
     emit_changed();
+}
+
+bool GaussianSplatWorld::has_resident_gaussian_data() const {
+    return gaussian_data.is_valid() && gaussian_data->get_count() > 0;
 }
 
 void GaussianSplatWorld::set_bounds(const AABB &p_bounds) {
@@ -87,6 +111,112 @@ void GaussianSplatWorld::set_static_chunks(const Vector<GaussianSplatRenderer::S
     static_chunks = p_chunks;
     notify_property_list_changed();
     emit_changed();
+}
+
+void GaussianSplatWorld::set_chunk_payload_source(const Ref<ChunkPayloadSource> &p_source) {
+    chunk_payload_source = p_source;
+    if (chunk_payload_source.is_valid() && chunk_payload_source->is_valid()) {
+        if (splat_count_metadata == 0) {
+            splat_count_metadata = chunk_payload_source->get_count();
+        }
+        if (sh_degree_metadata == 0) {
+            sh_degree_metadata = chunk_payload_source->get_sh_degree();
+        }
+        if (!bounds.has_volume()) {
+            bounds = chunk_payload_source->get_bounds();
+        }
+    }
+    notify_property_list_changed();
+    emit_changed();
+}
+
+bool GaussianSplatWorld::has_chunk_payload_source() const {
+    return chunk_payload_source.is_valid() && chunk_payload_source->is_valid();
+}
+
+bool GaussianSplatWorld::is_payload_source_backed() const {
+    return has_chunk_payload_source() && !has_resident_gaussian_data();
+}
+
+bool GaussianSplatWorld::has_renderable_payload() const {
+    return has_resident_gaussian_data() || has_chunk_payload_source();
+}
+
+void GaussianSplatWorld::set_payload_metadata(uint32_t p_splat_count, uint32_t p_sh_degree,
+        uint32_t p_sh_first_order_count, uint32_t p_sh_high_order_count, bool p_is_2d) {
+    splat_count_metadata = p_splat_count;
+    sh_degree_metadata = p_sh_degree;
+    sh_first_order_count_metadata = p_sh_first_order_count;
+    sh_high_order_count_metadata = p_sh_high_order_count;
+    is_2d_metadata = p_is_2d;
+    notify_property_list_changed();
+    emit_changed();
+}
+
+uint32_t GaussianSplatWorld::get_splat_count() const {
+    if (gaussian_data.is_valid()) {
+        return gaussian_data->get_count();
+    }
+    if (chunk_payload_source.is_valid() && chunk_payload_source->is_valid()) {
+        return chunk_payload_source->get_count();
+    }
+    return splat_count_metadata;
+}
+
+uint32_t GaussianSplatWorld::get_sh_degree() const {
+    if (gaussian_data.is_valid()) {
+        return gaussian_data->get_sh_degree();
+    }
+    if (chunk_payload_source.is_valid() && chunk_payload_source->is_valid()) {
+        return chunk_payload_source->get_sh_degree();
+    }
+    return sh_degree_metadata;
+}
+
+uint32_t GaussianSplatWorld::get_sh_first_order_count() const {
+    if (gaussian_data.is_valid()) {
+        return gaussian_data->get_sh_first_order_count();
+    }
+    return sh_first_order_count_metadata;
+}
+
+uint32_t GaussianSplatWorld::get_sh_high_order_count() const {
+    if (gaussian_data.is_valid()) {
+        return gaussian_data->get_sh_high_order_count();
+    }
+    return sh_high_order_count_metadata;
+}
+
+bool GaussianSplatWorld::get_2d_mode() const {
+    if (gaussian_data.is_valid()) {
+        return gaussian_data->get_2d_mode();
+    }
+    return is_2d_metadata;
+}
+
+Error GaussianSplatWorld::materialize_resident_gaussian_data() {
+    if (gaussian_data.is_valid()) {
+        return OK;
+    }
+    if (!has_chunk_payload_source()) {
+        return ERR_UNCONFIGURED;
+    }
+
+    LocalVector<Gaussian> gaussians;
+    LocalVector<Vector3> sh_high_order;
+    uint32_t sh_first_order = 0;
+    uint32_t sh_high_order_count = 0;
+    if (!chunk_payload_source->capture_chunk_snapshot(0, chunk_payload_source->get_count(),
+                gaussians, sh_high_order, sh_first_order, sh_high_order_count)) {
+        return ERR_FILE_CANT_READ;
+    }
+
+    Ref<GaussianData> materialized;
+    materialized.instantiate();
+    materialized->set_gaussian_payload(gaussians, sh_high_order,
+            sh_first_order, sh_high_order_count, is_2d_metadata);
+    set_gaussian_data(materialized);
+    return OK;
 }
 
 int GaussianSplatWorld::get_chunk_count() const {
@@ -120,6 +250,11 @@ void GaussianSplatWorld::clear() {
     static_chunks.clear();
     bounds = AABB();
     metadata.clear();
+    splat_count_metadata = 0;
+    sh_degree_metadata = 0;
+    sh_first_order_count_metadata = 0;
+    sh_high_order_count_metadata = 0;
+    is_2d_metadata = false;
 }
 
 Error GaussianSplatWorld::save_to_file(const String &p_path) const {

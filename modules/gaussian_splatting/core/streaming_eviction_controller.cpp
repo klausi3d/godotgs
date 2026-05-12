@@ -19,6 +19,7 @@ void StreamingEvictionController::load_streaming_tuning_config_from_project_sett
     max_evictions_per_frame = gs::settings::get_uint(ps,
             "rendering/gaussian_splatting/streaming/max_evictions_per_frame",
             max_evictions_per_frame);
+    invalidate_candidate_cache();
 }
 
 void StreamingEvictionController::reset_per_frame_counters() {
@@ -28,6 +29,83 @@ void StreamingEvictionController::reset_per_frame_counters() {
 
 void StreamingEvictionController::touch_chunk_use(uint64_t &r_last_used_frame) {
     r_last_used_frame = ++chunk_load_counter;
+}
+
+void StreamingEvictionController::invalidate_candidate_cache() {
+    cached_eviction_frame = UINT64_MAX;
+    cached_non_primary_lru_frame = UINT64_MAX;
+    cached_non_primary_lru_cursor = 0;
+    cached_visible_chunks.clear();
+    cached_nonvisible_chunks.clear();
+    cached_non_primary_lru_candidates.clear();
+}
+
+void StreamingEvictionController::invalidate_resident_tracking() {
+    loaded_primary_chunks.clear();
+    loaded_non_primary_chunk_keys.clear();
+    resident_tracking_dirty = true;
+    invalidate_candidate_cache();
+}
+
+uint64_t StreamingEvictionController::make_chunk_key(uint32_t p_asset_id, uint32_t p_chunk_id) {
+    return (uint64_t(p_asset_id) << 32) | uint64_t(p_chunk_id);
+}
+
+void StreamingEvictionController::note_chunk_loaded(uint32_t p_asset_id, uint32_t p_chunk_id) {
+    if (p_asset_id == GaussianStreamingSystem::PRIMARY_ASSET_ID) {
+        if (!loaded_primary_chunks.has(p_chunk_id)) {
+            loaded_primary_chunks.ordered_insert(p_chunk_id);
+        }
+    } else {
+        const uint64_t chunk_key = make_chunk_key(p_asset_id, p_chunk_id);
+        if (!loaded_non_primary_chunk_keys.has(chunk_key)) {
+            loaded_non_primary_chunk_keys.ordered_insert(chunk_key);
+        }
+    }
+    invalidate_candidate_cache();
+}
+
+void StreamingEvictionController::note_chunk_unloaded(uint32_t p_asset_id, uint32_t p_chunk_id) {
+    if (p_asset_id == GaussianStreamingSystem::PRIMARY_ASSET_ID) {
+        loaded_primary_chunks.erase(p_chunk_id);
+    } else {
+        loaded_non_primary_chunk_keys.erase(make_chunk_key(p_asset_id, p_chunk_id));
+    }
+    invalidate_candidate_cache();
+}
+
+void StreamingEvictionController::ensure_resident_tracking(GaussianStreamingSystem &system) {
+    if (!resident_tracking_dirty) {
+        return;
+    }
+
+    loaded_primary_chunks.clear();
+    loaded_non_primary_chunk_keys.clear();
+
+    for (uint32_t chunk_id = 0; chunk_id < system.chunks.size(); chunk_id++) {
+        if (system.chunks[chunk_id].is_loaded) {
+            loaded_primary_chunks.push_back(chunk_id);
+        }
+    }
+
+    for (uint32_t asset_id : system.asset_registry.atlas_asset_order) {
+        if (asset_id == GaussianStreamingSystem::PRIMARY_ASSET_ID) {
+            continue;
+        }
+        GaussianStreamingSystem::AtlasAssetState *asset = system._get_asset_state(asset_id);
+        if (!asset) {
+            continue;
+        }
+        LocalVector<GaussianStreamingSystem::StreamingChunk> &asset_chunks = system._get_asset_chunks(*asset);
+        for (uint32_t chunk_id = 0; chunk_id < asset_chunks.size(); chunk_id++) {
+            if (asset_chunks[chunk_id].is_loaded) {
+                loaded_non_primary_chunk_keys.push_back(make_chunk_key(asset_id, chunk_id));
+            }
+        }
+    }
+
+    resident_tracking_dirty = false;
+    invalidate_candidate_cache();
 }
 
 void StreamingEvictionController::record_eviction_result(EvictionResult p_result) {
@@ -45,10 +123,18 @@ void StreamingEvictionController::record_total_eviction() {
 
 StreamingEvictionController::EvictionResult StreamingEvictionController::evict_least_recently_used(
         GaussianStreamingSystem &system, bool p_allow_visible_eviction) {
+    ensure_resident_tracking(system);
+
     if (cached_eviction_frame != system.total_frame_count) {
         cached_visible_chunks.clear();
         cached_nonvisible_chunks.clear();
-        for (uint32_t i = 0; i < system.chunks.size(); i++) {
+        uint32_t resident_scan_count = 0;
+        uint32_t candidate_count = 0;
+        for (uint32_t i : loaded_primary_chunks) {
+            resident_scan_count++;
+            if (i >= system.chunks.size()) {
+                continue;
+            }
             const GaussianStreamingSystem::StreamingChunk &chunk = system.chunks[i];
             if (!chunk.is_loaded) {
                 continue;
@@ -62,8 +148,11 @@ StreamingEvictionController::EvictionResult StreamingEvictionController::evict_l
             } else {
                 cached_nonvisible_chunks.push_back(i);
             }
+            candidate_count++;
         }
         cached_eviction_frame = system.total_frame_count;
+        system.scheduler.last_primary_eviction_scan_count = resident_scan_count;
+        system.scheduler.last_primary_eviction_candidate_count = candidate_count;
     }
 
     uint32_t best_nonvis_idx = UINT32_MAX;
@@ -137,46 +226,50 @@ StreamingEvictionController::EvictionResult StreamingEvictionController::evict_n
         return EvictionResult::NoEviction;
     }
 
+    ensure_resident_tracking(system);
+
     if (cached_non_primary_lru_frame != system.total_frame_count) {
         cached_non_primary_lru_candidates.clear();
-        for (uint32_t asset_id : system.asset_registry.atlas_asset_order) {
-            if (asset_id == GaussianStreamingSystem::PRIMARY_ASSET_ID) {
-                continue;
-            }
+        uint32_t resident_scan_count = 0;
+        for (uint64_t chunk_key : loaded_non_primary_chunk_keys) {
+            resident_scan_count++;
+            const uint32_t asset_id = uint32_t(chunk_key >> 32);
+            const uint32_t chunk_id = uint32_t(chunk_key & 0xffffffffu);
             GaussianStreamingSystem::AtlasAssetState *asset = system._get_asset_state(asset_id);
             if (!asset) {
                 continue;
             }
             LocalVector<GaussianStreamingSystem::StreamingChunk> &asset_chunks = system._get_asset_chunks(*asset);
-            for (uint32_t chunk_id = 0; chunk_id < asset_chunks.size(); chunk_id++) {
-                const GaussianStreamingSystem::StreamingChunk &chunk = asset_chunks[chunk_id];
-                if (!chunk.is_loaded) {
-                    continue;
-                }
-                // Match the hysteresis filter primary LRU enforces. Without it,
-                // a sync-fallback drain that just loaded a non-primary chunk in
-                // this same frame can immediately re-evict it as the next
-                // admission victim — load-then-evict churn instead of forward
-                // progress.
-                if (eviction_hysteresis_frames > 0 &&
-                        system.total_frame_count - chunk.last_loaded_frame < eviction_hysteresis_frames) {
-                    continue;
-                }
-                // Skip explicitly-requested chunks. _unload_chunk() does not
-                // downgrade request status, so evicting one would leave the
-                // caller observing "requested = satisfied" while the chunk is
-                // already gone — breaking requested-residency semantics under
-                // multi-asset atlas pressure.
-                if (system._is_requested_chunk_in_current_generation(*asset, chunk_id)) {
-                    continue;
-                }
-                NonPrimaryEvictionCandidate candidate;
-                candidate.asset_id = asset_id;
-                candidate.chunk_id = chunk_id;
-                candidate.last_used_frame = chunk.last_used_frame;
-                candidate.distance = chunk.distance;
-                cached_non_primary_lru_candidates.push_back(candidate);
+            if (chunk_id >= asset_chunks.size()) {
+                continue;
             }
+            const GaussianStreamingSystem::StreamingChunk &chunk = asset_chunks[chunk_id];
+            if (!chunk.is_loaded) {
+                continue;
+            }
+            // Match the hysteresis filter primary LRU enforces. Without it,
+            // a sync-fallback drain that just loaded a non-primary chunk in
+            // this same frame can immediately re-evict it as the next
+            // admission victim — load-then-evict churn instead of forward
+            // progress.
+            if (eviction_hysteresis_frames > 0 &&
+                    system.total_frame_count - chunk.last_loaded_frame < eviction_hysteresis_frames) {
+                continue;
+            }
+            // Skip explicitly-requested chunks. _unload_chunk() does not
+            // downgrade request status, so evicting one would leave the
+            // caller observing "requested = satisfied" while the chunk is
+            // already gone — breaking requested-residency semantics under
+            // multi-asset atlas pressure.
+            if (system._is_requested_chunk_in_current_generation(*asset, chunk_id)) {
+                continue;
+            }
+            NonPrimaryEvictionCandidate candidate;
+            candidate.asset_id = asset_id;
+            candidate.chunk_id = chunk_id;
+            candidate.last_used_frame = chunk.last_used_frame;
+            candidate.distance = chunk.distance;
+            cached_non_primary_lru_candidates.push_back(candidate);
         }
         if (!cached_non_primary_lru_candidates.is_empty()) {
             NonPrimaryEvictionCandidate *candidate_ptr = cached_non_primary_lru_candidates.ptr();
@@ -196,7 +289,8 @@ StreamingEvictionController::EvictionResult StreamingEvictionController::evict_n
         }
         cached_non_primary_lru_cursor = 0;
         cached_non_primary_lru_frame = system.total_frame_count;
-        system.scheduler.last_non_primary_scan_count = cached_non_primary_lru_candidates.size();
+        system.scheduler.last_non_primary_scan_count = resident_scan_count;
+        system.scheduler.last_non_primary_eviction_candidate_count = cached_non_primary_lru_candidates.size();
     }
 
     while (cached_non_primary_lru_cursor < cached_non_primary_lru_candidates.size()) {
@@ -210,6 +304,9 @@ StreamingEvictionController::EvictionResult StreamingEvictionController::evict_n
             continue;
         }
         if (!asset_chunks[candidate.chunk_id].is_loaded) {
+            continue;
+        }
+        if (system._is_requested_chunk_in_current_generation(*asset, candidate.chunk_id)) {
             continue;
         }
 

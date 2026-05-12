@@ -21,6 +21,28 @@
 #include "../../../../servers/rendering/renderer_rd/shaders/scene_data_inc.glsl"
 #include "../../../../servers/rendering/renderer_rd/shaders/light_data_inc.glsl"
 
+// Tile resolve lighting ABI, set=2.
+// Host contract: TileResolveStage::create_lighting_uniform_set() must bind the
+// exact resources below. Binding numbers and conservative fallback buffer
+// minimums live in renderer/tile_lighting_abi.h so the C++ fallback path and
+// this shader bridge stay in lockstep without depending on private Godot
+// renderer structs.
+//
+// 0  std140 SceneDataBlock        SceneData data + SceneData prev_data
+// 1  std140 DirectionalLights     DirectionalLightData[]
+// 2  std430 OmniLights            LightData[]
+// 3  std430 SpotLights            LightData[]
+// 4  std430 ReflectionProbeData   ReflectionData[]
+// 5  texture2D decal_atlas_srgb
+// 6  textureCubeArray reflection_atlas
+// 7  sampler light_projector_sampler
+// 8  sampler DEFAULT_SAMPLER_LINEAR_WITH_MIPMAPS_CLAMP
+// 9  std430 ClusterBuffer         uint[] in Godot ClusterBuilderRD layout
+// 10 sampler shadow_sampler
+// 11 texture2D shadow_atlas
+// 12 texture2D directional_shadow_atlas
+// 13 sampler SAMPLER_LINEAR_CLAMP
+
 // ============================================================================
 // Compute shader compatibility shim
 // ============================================================================

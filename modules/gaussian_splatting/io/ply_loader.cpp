@@ -265,9 +265,7 @@ bool PLYLoader::try_load_cache(const String &p_source_path, uint64_t p_source_si
     // has been rewritten during the same editor session.
     ResourceFormatLoaderGaussianSplatWorld format_loader;
     Error load_err = OK;
-    Ref<Resource> resource = format_loader.load(cache_path, cache_path,
-            &load_err, false, nullptr, ResourceFormatLoader::CACHE_MODE_IGNORE);
-    Ref<GaussianSplatWorld> world = resource;
+    Ref<GaussianSplatWorld> world = format_loader.load_resident(cache_path, &load_err);
     if (world.is_null()) {
         return false;
     }

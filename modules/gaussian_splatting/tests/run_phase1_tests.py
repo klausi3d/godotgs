@@ -35,7 +35,12 @@ class TestRunner:
             "tests": {}
         }
 
-    def run_command(self, cmd: List[str], cwd: Optional[Path] = None) -> Tuple[int, str, str]:
+    def run_command(
+        self,
+        cmd: List[str],
+        cwd: Optional[Path] = None,
+        env: Optional[Dict[str, str]] = None,
+    ) -> Tuple[int, str, str]:
         """Run a command and return exit code, stdout, and stderr."""
         print(f"Running: {' '.join(cmd)}")
 
@@ -44,6 +49,7 @@ class TestRunner:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=cwd or self.project_path,
+            env=env,
             universal_newlines=True
         )
 
@@ -186,79 +192,148 @@ func _ready():
         return exit_code == 0
 
     def run_performance_benchmarks(self) -> bool:
-        """Run performance benchmarks."""
-        print("\n=== Running Performance Benchmarks ===")
+        """Run performance benchmarks.
 
-        benchmark_configs = [
-            {"splat_count": 1000, "frames": 100},
-            {"splat_count": 10000, "frames": 100},
-            {"splat_count": 100000, "frames": 100},
-            {"splat_count": 500000, "frames": 50}
+        The legacy C++ ``PerformanceBenchmark`` harness was removed (issue #289)
+        because it never linked: ``GaussianMemoryStream::get_sort_keys_buffer``
+        was declared but never defined, and the previous loader tried to
+        ``preload`` a header file as if it were a script. Delegate to the live
+        integration benchmark runner so this phase still executes real workload.
+        """
+        print("\n=== Performance Benchmarks ===")
+
+        integration_runner = self.module_path / "tests" / "run_integration_tests.py"
+        if not integration_runner.exists():
+            self.results["tests"]["benchmarks"] = []
+            self.results["tests"]["benchmarks_runner"] = {
+                "passed": False,
+                "error": f"Benchmark runner missing: {integration_runner}",
+            }
+            print(f"Benchmark runner missing: {integration_runner}")
+            return False
+
+        reports_dir = self.module_path / "tests"
+        reports_before = {
+            path: path.stat().st_mtime_ns
+            for path in reports_dir.glob("integration_report_*.json")
+        }
+        env = os.environ.copy()
+        godot_binary = self.godot_path / "bin" / self._get_godot_binary()
+        if godot_binary.exists():
+            env["GODOT_BINARY"] = str(godot_binary)
+
+        cmd = [sys.executable, str(integration_runner), "--benchmarks-only"]
+        start_time = time.time()
+        exit_code, stdout, stderr = self.run_command(cmd, self.project_path, env=env)
+        benchmark_time = time.time() - start_time
+
+        latest_report = None
+        candidate_reports = [
+            path
+            for path in reports_dir.glob("integration_report_*.json")
+            if path not in reports_before or path.stat().st_mtime_ns > reports_before[path]
         ]
+        if candidate_reports:
+            latest_report = max(candidate_reports, key=lambda path: path.stat().st_mtime)
 
         benchmark_results = []
+        report_error = None
+        try:
+            if latest_report is None:
+                raise FileNotFoundError("No integration benchmark report generated")
+            with open(latest_report, "r") as f:
+                integration_results = json.load(f)
 
-        for config in benchmark_configs:
-            print(f"\nBenchmarking {config['splat_count']} splats...")
-
-            benchmark_script = f"""
-extends Node
-
-func _ready():
-    var benchmark = preload("res://modules/gaussian_splatting/tests/performance_benchmark.h")
-    var runner = benchmark.PerformanceBenchmark.new()
-
-    var config = benchmark.BenchmarkConfig.new()
-    config.splat_count = {config['splat_count']}
-    config.frame_count = {config['frames']}
-
-    var result = runner.run_benchmark(config)
-    print(result.to_json())
-
-    get_tree().quit(0)
-"""
-
-            # Write temporary benchmark script
-            bench_script_path = self.test_output_dir / f"benchmark_{config['splat_count']}.gd"
-            bench_script_path.write_text(benchmark_script)
-
-            cmd = [
-                str(self.godot_path / "bin" / self._get_godot_binary()),
-                "--script",
-                str(bench_script_path),
-                "--headless"
-            ]
-
-            exit_code, stdout, stderr = self.run_command(cmd)
-
-            # Parse benchmark results
-            try:
-                # Extract JSON from output
-                json_start = stdout.find('{')
-                json_end = stdout.rfind('}') + 1
-                if json_start >= 0 and json_end > json_start:
-                    result_json = stdout[json_start:json_end]
-                    result = json.loads(result_json)
-                    benchmark_results.append(result)
-
-                    # Check performance targets
-                    if config['splat_count'] <= 100000:
-                        fps = result.get('metrics', {}).get('avg_fps', 0)
-                        if fps < 60:
-                            print(f"  WARNING: Failed to meet 60 FPS target ({fps:.1f} FPS)")
-            except json.JSONDecodeError:
-                print(f"  Failed to parse benchmark results")
+            performance_suite = integration_results.get("test_suites", {}).get("performance", {})
+            for benchmark in performance_suite.get("benchmarks", []):
+                benchmark_results.append(self._normalize_benchmark_result(benchmark))
+        except (OSError, json.JSONDecodeError, KeyError) as exc:
+            report_error = str(exc)
+            print(f"Failed to read benchmark report: {report_error}")
 
         self.results["tests"]["benchmarks"] = benchmark_results
+        self.results["tests"]["benchmarks_runner"] = {
+            "passed": exit_code == 0 and report_error is None,
+            "time_seconds": benchmark_time,
+            "report": str(latest_report) if latest_report else None,
+            "stdout_tail": stdout.splitlines()[-20:],
+            "stderr_tail": stderr.splitlines()[-20:] if stderr else [],
+            "error": report_error,
+        }
 
-        # Check if performance targets were met
-        targets_met = all(
-            r.get('metrics', {}).get('avg_fps', 0) >= 60
-            for r in benchmark_results
-            if r.get('config', {}).get('splat_count', 0) <= 100000
-        )
+        if exit_code != 0:
+            print("Benchmark runner failed")
+            if stderr:
+                print(stderr.strip())
+            return False
 
-        return targets_met
+        if report_error:
+            return False
+
+        if not benchmark_results:
+            print("Benchmark runner produced no benchmark results")
+            return False
+
+        failed_benchmarks = [b for b in benchmark_results if not b.get("passed")]
+        if failed_benchmarks:
+            print("Performance benchmarks failed:")
+            for benchmark in failed_benchmarks:
+                print(f"  {benchmark.get('name', 'unknown')}: {benchmark.get('error', 'Unknown error')}")
+            return False
+
+        print(f"Performance benchmarks: PASSED ({len(benchmark_results)} configurations)")
+        return True
+
+    def _normalize_benchmark_result(self, benchmark: dict) -> dict:
+        """Convert integration-runner benchmark output into phase1 result schema."""
+        config = benchmark.get("config", {})
+        metrics = benchmark.get("metrics", {})
+        requested_count = config.get("count", 0)
+        measured_count = metrics.get("total_splats")
+        output_matches_config = measured_count == requested_count
+        meets_absolute_target, target_error = self._benchmark_meets_absolute_targets(
+            requested_count, metrics)
+        error = benchmark.get("error")
+
+        if benchmark.get("completed", False) and not output_matches_config:
+            error = (
+                f"Benchmark output mismatch: expected {requested_count} splats, "
+                f"got {measured_count}"
+            )
+        elif benchmark.get("completed", False) and not meets_absolute_target:
+            error = target_error
+
+        return {
+            "name": benchmark.get("name"),
+            "passed": benchmark.get("completed", False) and output_matches_config and meets_absolute_target,
+            "error": error,
+            "config": {
+                "splat_count": requested_count,
+                "frame_count": config.get("frames", 0),
+            },
+            "metrics": metrics,
+        }
+
+    def _benchmark_meets_absolute_targets(self, splat_count: int, metrics: dict) -> Tuple[bool, Optional[str]]:
+        """Enforce a floor when no baseline is available for small benchmark configs."""
+        if splat_count > 100000:
+            return True, None
+
+        avg_fps = metrics.get("avg_fps", 0)
+        if avg_fps:
+            if avg_fps >= 60:
+                return True, None
+            return False, f"{splat_count} splats only achieved {avg_fps:.1f} FPS; target is 60 FPS"
+
+        populate_ms = metrics.get("populate_time_ms")
+        octree_ms = metrics.get("octree_build_time_ms")
+        if populate_ms is None or octree_ms is None:
+            return False, "Benchmark result lacks FPS or setup timing metrics for absolute target check"
+
+        setup_ms = populate_ms + octree_ms
+        if setup_ms <= 30000:
+            return True, None
+        return False, f"{splat_count} splat setup took {setup_ms:.1f}ms; target is <= 30000ms"
 
     def run_memory_validation(self) -> bool:
         """Run memory leak detection tests."""
@@ -420,44 +495,123 @@ func _ready():
         with open(baseline_file, 'r') as f:
             baseline = json.load(f)
 
-        # Compare current results with baseline
-        regressions = []
-
-        # Check benchmark regressions
-        if "benchmarks" in self.results.get("tests", {}):
-            for current in self.results["tests"]["benchmarks"]:
-                config = current.get("config", {})
-                splat_count = config.get("splat_count", 0)
-
-                # Find matching baseline
-                for base in baseline.get("tests", {}).get("benchmarks", []):
-                    if base.get("config", {}).get("splat_count") == splat_count:
-                        current_fps = current.get("metrics", {}).get("avg_fps", 0)
-                        base_fps = base.get("metrics", {}).get("avg_fps", 0)
-
-                        if base_fps > 0:
-                            regression = (base_fps - current_fps) / base_fps
-                            if regression > 0.1:  # 10% regression threshold
-                                regressions.append({
-                                    "test": f"benchmark_{splat_count}",
-                                    "baseline_fps": base_fps,
-                                    "current_fps": current_fps,
-                                    "regression_percent": regression * 100
-                                })
+        regressions, incompatible = self._collect_benchmark_regressions(baseline)
 
         self.results["regression"] = {
             "has_regression": len(regressions) > 0,
-            "regressions": regressions
+            "regressions": regressions,
+            "incompatible_benchmarks": incompatible,
         }
 
         if regressions:
             print("Performance regressions detected:")
             for reg in regressions:
-                print(f"  {reg['test']}: {reg['regression_percent']:.1f}% slower")
+                print(f"  {reg['test']} {reg['metric']}: {reg['regression_percent']:.1f}% slower")
             return False
         else:
+            for item in incompatible:
+                print(f"  Skipping incompatible benchmark baseline: {item['test']} ({item['reason']})")
             print("No regressions detected")
             return True
+
+    def _collect_benchmark_regressions(self, baseline: dict) -> Tuple[List[dict], List[dict]]:
+        """Compare benchmark results against baseline benchmark entries."""
+        current_benchmarks = self.results.get("tests", {}).get("benchmarks", [])
+        baseline_benchmarks = baseline.get("tests", {}).get("benchmarks", [])
+        regressions = []
+        incompatible = []
+
+        for current in current_benchmarks:
+            splat_count = current.get("config", {}).get("splat_count", 0)
+            base = self._find_baseline_benchmark(baseline_benchmarks, splat_count)
+            if base is not None:
+                result = self._compare_benchmark_metrics(current, base, splat_count)
+                regressions.extend(result[0])
+                incompatible.extend(result[1])
+
+        return regressions, incompatible
+
+    def _find_baseline_benchmark(self, benchmarks: List[dict], splat_count: int) -> Optional[dict]:
+        """Find the baseline entry matching a benchmark splat count."""
+        for benchmark in benchmarks:
+            if benchmark.get("config", {}).get("splat_count") == splat_count:
+                return benchmark
+        return None
+
+    def _compare_benchmark_metrics(self, current: dict, base: dict, splat_count: int) -> Tuple[List[dict], List[dict]]:
+        """Return regression records and incompatible schema notices."""
+        regressions = []
+        incompatible = []
+        comparable_metrics = False
+        current_metrics = current.get("metrics", {})
+        base_metrics = base.get("metrics", {})
+
+        comparable_metrics |= self._append_fps_regression(
+            regressions, current_metrics, base_metrics, splat_count)
+
+        for metric_name in ("populate_time_ms", "octree_build_time_ms"):
+            comparable_metrics |= self._append_timing_regression(
+                regressions, current_metrics, base_metrics, splat_count, metric_name)
+
+        if not comparable_metrics:
+            incompatible.append({
+                "test": f"benchmark_{splat_count}",
+                "metric": "benchmark_metrics",
+                "baseline": "present",
+                "current": "not comparable",
+                "reason": "No shared benchmark metrics between current result and baseline",
+            })
+
+        return regressions, incompatible
+
+    def _append_fps_regression(
+        self,
+        regressions: List[dict],
+        current_metrics: dict,
+        base_metrics: dict,
+        splat_count: int,
+    ) -> bool:
+        """Append an FPS regression if both benchmark entries are comparable."""
+        current_fps = current_metrics.get("avg_fps", 0)
+        base_fps = base_metrics.get("avg_fps", 0)
+        if base_fps <= 0 or current_fps <= 0:
+            return False
+
+        regression = (base_fps - current_fps) / base_fps
+        if regression > 0.1:
+            regressions.append({
+                "test": f"benchmark_{splat_count}",
+                "metric": "avg_fps",
+                "baseline": base_fps,
+                "current": current_fps,
+                "regression_percent": regression * 100
+            })
+        return True
+
+    def _append_timing_regression(
+        self,
+        regressions: List[dict],
+        current_metrics: dict,
+        base_metrics: dict,
+        splat_count: int,
+        metric_name: str,
+    ) -> bool:
+        """Append a timing regression if both benchmark entries are comparable."""
+        current_value = current_metrics.get(metric_name, 0)
+        base_value = base_metrics.get(metric_name, 0)
+        if base_value <= 0 or current_value <= 0:
+            return False
+
+        regression = (current_value - base_value) / base_value
+        if regression > 0.1:
+            regressions.append({
+                "test": f"benchmark_{splat_count}",
+                "metric": metric_name,
+                "baseline": base_value,
+                "current": current_value,
+                "regression_percent": regression * 100
+            })
+        return True
 
     def generate_report(self):
         """Generate test report in multiple formats."""
@@ -486,7 +640,14 @@ func _ready():
         report.append(f"**Platform**: {self.results['platform']}\n")
         report.append(f"**CPU**: {self.results['cpu']} ({self.results['cpu_count']} cores)\n")
 
-        # Build results
+        self._append_markdown_build_results(report)
+        self._append_markdown_test_results(report)
+        self._append_markdown_regression(report)
+
+        return ''.join(report)
+
+    def _append_markdown_build_results(self, report: List[str]) -> None:
+        """Append build results to the markdown report."""
         if "build" in self.results:
             report.append("\n## Build Results\n")
             build = self.results["build"]
@@ -494,65 +655,98 @@ func _ready():
             report.append(f"- **Configuration**: {build['config']}\n")
             report.append(f"- **Time**: {build['time_seconds']:.2f} seconds\n")
 
-        # Test results
-        if "tests" in self.results:
-            report.append("\n## Test Results\n")
+    def _append_markdown_test_results(self, report: List[str]) -> None:
+        """Append test result sections to the markdown report."""
+        tests = self.results.get("tests")
+        if not tests:
+            return
 
-            # Unit tests
-            if "unit_tests" in self.results["tests"]:
-                report.append("\n### Unit Tests\n")
-                for name, result in self.results["tests"]["unit_tests"].items():
-                    status = "✅" if result["passed"] else "❌"
-                    report.append(f"- **{name}**: {status} ")
-                    report.append(f"({result['tests_passed']} passed, {result['tests_failed']} failed, ")
-                    report.append(f"{result['time_seconds']:.2f}s)\n")
+        report.append("\n## Test Results\n")
+        self._append_markdown_unit_tests(report, tests)
+        self._append_markdown_integration(report, tests)
+        self._append_markdown_synthetic_baselines(report, tests)
+        self._append_markdown_benchmarks(report, tests)
+        self._append_markdown_memory(report, tests)
 
-            # Integration tests
-            if "integration" in self.results["tests"]:
-                report.append("\n### Integration Tests\n")
-                result = self.results["tests"]["integration"]
-                status = "✅ PASSED" if result["passed"] else "❌ FAILED"
-                report.append(f"- **Status**: {status}\n")
-                report.append(f"- **Time**: {result['time_seconds']:.2f} seconds\n")
+    def _append_markdown_unit_tests(self, report: List[str], tests: dict) -> None:
+        """Append unit test result rows to the markdown report."""
+        unit_tests = tests.get("unit_tests")
+        if not unit_tests:
+            return
 
-            if "synthetic_baselines" in self.results["tests"]:
-                report.append("\n### Synthetic Baseline Validation\n")
-                synthetic = self.results["tests"]["synthetic_baselines"]
-                status = "✅ PASSED" if synthetic.get("passed") else "❌ FAILED"
-                report.append(f"- **Status**: {status}\n")
-                report.append(f"- **Time**: {synthetic.get('time_seconds', 0.0):.2f} seconds\n")
+        report.append("\n### Unit Tests\n")
+        for name, result in unit_tests.items():
+            status = "✅" if result["passed"] else "❌"
+            report.append(f"- **{name}**: {status} ")
+            report.append(f"({result['tests_passed']} passed, {result['tests_failed']} failed, ")
+            report.append(f"{result['time_seconds']:.2f}s)\n")
 
-            # Benchmarks
-            if "benchmarks" in self.results["tests"]:
-                report.append("\n### Performance Benchmarks\n")
-                report.append("\n| Splat Count | Avg FPS | Frame Time (ms) | GPU Memory (MB) |\n")
-                report.append("|-------------|---------|-----------------|------------------|\n")
+    def _append_markdown_integration(self, report: List[str], tests: dict) -> None:
+        """Append integration test results to the markdown report."""
+        result = tests.get("integration")
+        if not result:
+            return
 
-                for bench in self.results["tests"]["benchmarks"]:
-                    config = bench.get("config", {})
-                    metrics = bench.get("metrics", {})
-                    report.append(f"| {config.get('splat_count', 0):,} | ")
-                    report.append(f"{metrics.get('avg_fps', 0):.1f} | ")
-                    report.append(f"{metrics.get('avg_frame_time_ms', 0):.2f} | ")
-                    report.append(f"{metrics.get('peak_gpu_memory_mb', 0):.1f} |\n")
+        status = "✅ PASSED" if result["passed"] else "❌ FAILED"
+        report.append("\n### Integration Tests\n")
+        report.append(f"- **Status**: {status}\n")
+        report.append(f"- **Time**: {result['time_seconds']:.2f} seconds\n")
 
-            # Memory validation
-            if "memory" in self.results["tests"]:
-                report.append("\n### Memory Validation\n")
-                mem = self.results["tests"]["memory"]
-                status = "✅ PASSED" if mem["passed"] else "❌ FAILED"
-                report.append(f"- **Status**: {status}\n")
+    def _append_markdown_synthetic_baselines(self, report: List[str], tests: dict) -> None:
+        """Append synthetic baseline validation results to the markdown report."""
+        synthetic = tests.get("synthetic_baselines")
+        if not synthetic:
+            return
 
-                if mem.get("report"):
-                    stats = mem["report"].get("stats", {})
-                    report.append(f"- **Peak CPU Memory**: {stats.get('peak_cpu_bytes', 0) / (1024*1024):.2f} MB\n")
-                    report.append(f"- **Peak GPU Memory**: {stats.get('peak_gpu_bytes', 0) / (1024*1024):.2f} MB\n")
+        status = "✅ PASSED" if synthetic.get("passed") else "❌ FAILED"
+        report.append("\n### Synthetic Baseline Validation\n")
+        report.append(f"- **Status**: {status}\n")
+        report.append(f"- **Time**: {synthetic.get('time_seconds', 0.0):.2f} seconds\n")
 
-                    if stats.get('leaked_allocations', 0) > 0:
-                        report.append(f"- **⚠️ Leaks**: {stats['leaked_allocations']} allocations ")
-                        report.append(f"({stats.get('leaked_bytes', 0) / 1024:.2f} KB)\n")
+    def _append_markdown_benchmarks(self, report: List[str], tests: dict) -> None:
+        """Append benchmark table rows to the markdown report."""
+        benchmarks = tests.get("benchmarks")
+        if not benchmarks:
+            return
 
-        # Regression check
+        report.append("\n### Performance Benchmarks\n")
+        report.append("\n| Splat Count | Avg FPS | Frame Time (ms) | GPU Memory (MB) |\n")
+        report.append("|-------------|---------|-----------------|------------------|\n")
+
+        for bench in benchmarks:
+            config = bench.get("config", {})
+            metrics = bench.get("metrics", {})
+            report.append(f"| {config.get('splat_count', 0):,} | ")
+            report.append(f"{metrics.get('avg_fps', 0):.1f} | ")
+            report.append(f"{metrics.get('avg_frame_time_ms', 0):.2f} | ")
+            report.append(f"{metrics.get('peak_gpu_memory_mb', 0):.1f} |\n")
+
+    def _append_markdown_memory(self, report: List[str], tests: dict) -> None:
+        """Append memory validation results to the markdown report."""
+        mem = tests.get("memory")
+        if not mem:
+            return
+
+        status = "✅ PASSED" if mem["passed"] else "❌ FAILED"
+        report.append("\n### Memory Validation\n")
+        report.append(f"- **Status**: {status}\n")
+        self._append_markdown_memory_stats(report, mem.get("report"))
+
+    def _append_markdown_memory_stats(self, report: List[str], memory_report: Optional[dict]) -> None:
+        """Append memory statistics when the memory validation produced a report."""
+        if not memory_report:
+            return
+
+        stats = memory_report.get("stats", {})
+        report.append(f"- **Peak CPU Memory**: {stats.get('peak_cpu_bytes', 0) / (1024*1024):.2f} MB\n")
+        report.append(f"- **Peak GPU Memory**: {stats.get('peak_gpu_bytes', 0) / (1024*1024):.2f} MB\n")
+
+        if stats.get('leaked_allocations', 0) > 0:
+            report.append(f"- **⚠️ Leaks**: {stats['leaked_allocations']} allocations ")
+            report.append(f"({stats.get('leaked_bytes', 0) / 1024:.2f} KB)\n")
+
+    def _append_markdown_regression(self, report: List[str]) -> None:
+        """Append regression analysis to the markdown report."""
         if "regression" in self.results:
             report.append("\n## Regression Analysis\n")
             reg = self.results["regression"]
@@ -565,8 +759,6 @@ func _ready():
                     report.append(f"  - {r['test']}: {r['regression_percent']:.1f}% slower\n")
             else:
                 report.append("- ✅ No regressions detected\n")
-
-        return ''.join(report)
 
     def _print_summary(self):
         """Print test summary to console."""

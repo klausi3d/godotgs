@@ -75,7 +75,7 @@ void GaussianSplatWorld3D::_bind_methods() {
             "set_use_frustum_culling", "is_frustum_culling_enabled");
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "rendering/async_upload_enabled"),
             "set_async_upload_enabled", "is_async_upload_enabled");
-    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rendering/opacity", PROPERTY_HINT_RANGE, "0.0,1.0,0.01"),
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rendering/opacity", PROPERTY_HINT_RANGE, "0.0,8.0,0.01"),
             "set_opacity", "get_opacity");
 }
 
@@ -213,7 +213,7 @@ void GaussianSplatWorld3D::set_async_upload_enabled(bool p_enabled) {
 }
 
 void GaussianSplatWorld3D::set_opacity(float p_opacity) {
-    opacity = CLAMP(p_opacity, 0.0f, 1.0f);
+    opacity = CLAMP(p_opacity, 0.0f, 8.0f);
     _resubmit_world_submission_if_registered();
 }
 
@@ -269,7 +269,8 @@ Dictionary GaussianSplatWorld3D::_build_desired_renderer_overrides() const {
         return overrides;
     }
 
-    overrides[StringName("max_splats")] = int64_t(MAX(1000, int(tier_config.max_splats)));
+    const int desired_max_splats = max_splat_count > 0 ? max_splat_count : int(tier_config.max_splats);
+    overrides[StringName("max_splats")] = int64_t(MAX(1000, MIN(int(tier_config.max_splats), desired_max_splats)));
 
     Dictionary streaming_overrides;
     streaming_overrides[StringName("override_prefetch")] = true;

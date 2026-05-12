@@ -51,9 +51,9 @@ struct RasterParams {
     // When enabled, reduces tile-Gaussian pairs by ~94% using opacity-based radius calculation
     bool opacity_aware_culling = true;
     float visibility_threshold = 1.0f / 255.0f;
-    // PlayCanvas alphaClip parity: per-splat hard cull at projection. Splats
-    // with opacity <= alpha_clip are rejected before binning work.
-    float alpha_clip = 0.3f;
+    // Optional per-splat hard cull at projection. Disabled by default; projects
+    // can opt into aggressive low-opacity splat removal.
+    float alpha_clip = 0.0f;
     bool distance_cull_enabled = true;
     float distance_cull_start = 30.0f;
     float distance_cull_max_rate = 0.5f;

@@ -28,6 +28,7 @@ enabled=PackedStringArray()
 gaussian_splatting/culling/visibility_threshold=0.00392156863
 
 gaussian_splatting/gpu_sorting/max_overlap_records=5000000
+gaussian_splatting/gpu_sorting/gpu_preset="custom"
 gaussian_splatting/gpu_sorting/key_bits=64
 gaussian_splatting/gpu_sorting/tile_bits=32
 gaussian_splatting/gpu_sorting/depth_bits=32

@@ -747,10 +747,9 @@ void main() {
     vec4 local_rotation = g.rotation;
 #endif
 
-    // Per-splat alpha clip — PlayCanvas alphaClip=0.3 reference behavior.
-    // Drops low-confidence "ghost" splats before any world transform, projection,
-    // or binning work. Fires before all other rejects so we save the most work
-    // on splats we'd drop anyway. See gs_get_alpha_clip() in gs_render_params.glsl.
+    // Optional per-splat alpha clip. It runs before world transform/projection
+    // only when projects opt into an aggressive threshold. The default stays 0
+    // so opacity_multiplier can still recover low-opacity real-scan splats.
     if (g.opacity <= gs_get_alpha_clip()) {
         return;
     }

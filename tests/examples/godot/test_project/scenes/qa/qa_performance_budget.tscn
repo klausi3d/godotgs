@@ -8,8 +8,8 @@
 script = ExtResource("perf_script")
 test_name = "Performance Budget"
 test_duration = 15.0
-min_fps = 30.0
-max_frame_time_ms = 33.3
+min_fps = 20.0
+max_frame_time_ms = 40.0
 
 [node name="SplatNode" type="GaussianSplatNode3D" parent="."]
 splat_asset = ExtResource("baseline_asset")

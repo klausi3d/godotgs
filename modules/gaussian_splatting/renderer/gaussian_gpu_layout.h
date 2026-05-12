@@ -429,7 +429,7 @@ struct alignas(16) TileRenderParamsGPU {
     // SH decode configuration is reserved; runtime decode now comes from per-gaussian metadata.
     float sh_decode_config[4];
     // Opacity-aware culling (FlashGS): x=enabled (bool), y=visibility_threshold (tau),
-    // z=alpha_clip (PlayCanvas alphaClip parity; per-splat hard cull at projection),
+    // z=alpha_clip (optional per-splat hard cull at projection),
     // w=reserved
     // When enabled, splat radii are calculated as: r = sqrt(2 * ln(alpha/tau) * lambda_max)
     // This reduces tile-Gaussian pairs by ~94% for low-opacity splats

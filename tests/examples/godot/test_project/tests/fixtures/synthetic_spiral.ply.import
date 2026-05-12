@@ -1,10 +1,10 @@
 [remap]
 
 importer="gaussian_splat_ply"
-importer_version=5
+importer_version=6
 type="GaussianSplatAsset"
 uid="uid://c55d8ehnx4ui8"
-path="res://.godot/imported/synthetic_spiral.ply-c298c30d74cc92ca79055883fc813c1e.tres"
+path="res://.godot/imported/synthetic_spiral.ply-c298c30d74cc92ca79055883fc813c1e.res"
 metadata={
 &"asset_type": 0,
 &"bounds": AABB(-9.296723, -8.493733, -13.358533, 18.558113, 16.841106, 18.801277),
@@ -86,10 +86,10 @@ metadata={
 
 [deps]
 
-files=["res://.godot/imported/synthetic_spiral.ply-c298c30d74cc92ca79055883fc813c1e.tres", "res://tests/fixtures/synthetic_spiral.gsplatcache"]
+files=["res://.godot/imported/synthetic_spiral.ply-c298c30d74cc92ca79055883fc813c1e.res", "res://tests/fixtures/synthetic_spiral.gsplatcache"]
 
 source_file="res://tests/fixtures/synthetic_spiral.ply"
-dest_files=["res://.godot/imported/synthetic_spiral.ply-c298c30d74cc92ca79055883fc813c1e.tres", "res://.godot/imported/synthetic_spiral.ply-c298c30d74cc92ca79055883fc813c1e.tres", "res://tests/fixtures/synthetic_spiral.gsplatcache"]
+dest_files=["res://.godot/imported/synthetic_spiral.ply-c298c30d74cc92ca79055883fc813c1e.res", "res://.godot/imported/synthetic_spiral.ply-c298c30d74cc92ca79055883fc813c1e.res", "res://tests/fixtures/synthetic_spiral.gsplatcache"]
 
 [params]
 

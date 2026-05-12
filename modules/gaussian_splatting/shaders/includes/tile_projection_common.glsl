@@ -62,7 +62,19 @@ uint gs_pack_normal_zw(vec3 normal) {
     return packHalf2x16(vec2(normal.z, 0.0));
 }
 
-// Legacy function kept for API compatibility
+// Legacy function kept for API compatibility.
+//
+// IMPORTANT: this packs `global_idx` into the high 16 bits and the rasterizer
+// (tile_raster_common.glsl, `if (stored_global_idx != sorted_idx) continue;`)
+// will silently reject any visible splat whose actual global_idx exceeds
+// UINT16_MAX = 65535. Callers must ensure `enable_packed_stage_data` is only
+// used when the packed-stage payload count is <= 65535. Runtime enforcement is
+// the TileRenderer disable gate (renderer/tile_renderer.cpp ~ line 415), which
+// has the scene payload count; PipelineFeatureSet only carries the shared
+// PACKED_STAGE_MAX_TOTAL_SPLATS = 65535 capability constant. The
+// GS_PACKED_STAGE_DATA define is emitted only after the TileRenderer gate.
+// Do not relax these without redesigning the packed payload to carry a full
+// 32-bit global_idx.
 uint gs_pack_conic_y_and_index(float conic_y, uint global_idx) {
     uint conic_y_bits = packHalf2x16(vec2(conic_y, 0.0)) & 0xFFFFu;
     uint idx_bits = (global_idx & 0xFFFFu);

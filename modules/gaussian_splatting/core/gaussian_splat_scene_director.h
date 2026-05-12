@@ -376,21 +376,22 @@ private:
     static uint32_t _build_scene_effector_mask_for_record(const InstanceRecord &p_record,
             const LocalVector<SphereEffectorSelection> &p_payload);
 
-    static bool _populate_gaussian_data_from_asset(const Ref<GaussianSplatAsset> &p_asset, Ref<GaussianData> &r_data);
-    static bool _retain_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint32_t p_asset_id);
-    static bool _refresh_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint32_t p_asset_id);
-    static void _release_asset_record(SharedWorld &p_world, uint32_t p_asset_id);
-    static bool _is_world_submission_owner_live(ObjectID p_owner_id);
-    static void _store_world_submission_record(SharedWorld::WorldSubmissionRecord &r_record, const WorldSubmission &p_submission);
-    static void _copy_world_submission_record(const SharedWorld &p_world, const SharedWorld::WorldSubmissionRecord &p_record,
-            WorldSubmission *r_submission);
-	    static GaussianSplatRenderer::WorldSubmissionContract _build_world_submission_contract(
-	            const GaussianSplatRenderer::WorldSubmissionRuntimeStateSnapshot &p_renderer_state,
-	            const SharedWorld::WorldSubmissionRecord &p_record);
-	    static void _restore_world_submission_renderer(SharedWorld &p_world,
-	            const GaussianSplatRenderer::WorldSubmissionRuntimeStateSnapshot &p_snapshot);
-	    static bool _apply_world_submission_to_renderer(SharedWorld &p_world, const SharedWorld::WorldSubmissionRecord &p_record,
-	            const GaussianSplatRenderer::WorldSubmissionRuntimeStateSnapshot &p_renderer_state);
+	static bool _populate_gaussian_data_from_asset(const Ref<GaussianSplatAsset> &p_asset, Ref<GaussianData> &r_data);
+	static bool _retain_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint32_t p_asset_id);
+	static bool _refresh_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint32_t p_asset_id);
+	static void _release_asset_record(SharedWorld &p_world, uint32_t p_asset_id);
+	static bool _is_world_submission_owner_live(ObjectID p_owner_id);
+	static void _store_world_submission_record(SharedWorld::WorldSubmissionRecord &r_record, const WorldSubmission &p_submission);
+	static bool _world_submission_record_has_renderable_payload(const SharedWorld::WorldSubmissionRecord &p_record);
+	static void _copy_world_submission_record(const SharedWorld &p_world, const SharedWorld::WorldSubmissionRecord &p_record,
+			WorldSubmission *r_submission);
+	static GaussianSplatRenderer::WorldSubmissionContract _build_world_submission_contract(
+			const GaussianSplatRenderer::WorldSubmissionRuntimeStateSnapshot &p_renderer_state,
+			const SharedWorld::WorldSubmissionRecord &p_record);
+	static void _restore_world_submission_renderer(SharedWorld &p_world,
+			const GaussianSplatRenderer::WorldSubmissionRuntimeStateSnapshot &p_snapshot);
+	static bool _apply_world_submission_to_renderer(SharedWorld &p_world, const SharedWorld::WorldSubmissionRecord &p_record,
+			const GaussianSplatRenderer::WorldSubmissionRuntimeStateSnapshot &p_renderer_state);
 	bool _should_prune_world(const SharedWorld &p_world) const;
 	void _prune_world_if_unused(const RID &p_scenario);
 };

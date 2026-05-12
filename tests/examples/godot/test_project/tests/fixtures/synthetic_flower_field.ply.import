@@ -1,10 +1,10 @@
 [remap]
 
 importer="gaussian_splat_ply"
-importer_version=5
+importer_version=6
 type="GaussianSplatAsset"
 uid="uid://vaj1qmbsg8m5"
-path="res://.godot/imported/synthetic_flower_field.ply-796a6dbe3a7c0c9168c5e041a71cd45a.tres"
+path="res://.godot/imported/synthetic_flower_field.ply-796a6dbe3a7c0c9168c5e041a71cd45a.res"
 metadata={
 &"asset_type": 0,
 &"bounds": AABB(-10.794538, -0.37440133, -14.774599, 21.656761, 2.5321097, 21.51073),
@@ -86,10 +86,10 @@ metadata={
 
 [deps]
 
-files=["res://.godot/imported/synthetic_flower_field.ply-796a6dbe3a7c0c9168c5e041a71cd45a.tres", "res://tests/fixtures/synthetic_flower_field.gsplatcache"]
+files=["res://.godot/imported/synthetic_flower_field.ply-796a6dbe3a7c0c9168c5e041a71cd45a.res", "res://tests/fixtures/synthetic_flower_field.gsplatcache"]
 
 source_file="res://tests/fixtures/synthetic_flower_field.ply"
-dest_files=["res://.godot/imported/synthetic_flower_field.ply-796a6dbe3a7c0c9168c5e041a71cd45a.tres", "res://.godot/imported/synthetic_flower_field.ply-796a6dbe3a7c0c9168c5e041a71cd45a.tres", "res://tests/fixtures/synthetic_flower_field.gsplatcache"]
+dest_files=["res://.godot/imported/synthetic_flower_field.ply-796a6dbe3a7c0c9168c5e041a71cd45a.res", "res://.godot/imported/synthetic_flower_field.ply-796a6dbe3a7c0c9168c5e041a71cd45a.res", "res://tests/fixtures/synthetic_flower_field.gsplatcache"]
 
 [params]
 

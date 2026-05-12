@@ -48,7 +48,7 @@ layout(set = 1, binding = 0, std140) uniform RenderParams {
     vec4 sh_decode_config;
     // Opacity-aware culling (FlashGS optimization):
     // x=enabled (1.0=true), y=visibility_threshold (tau),
-    // z=alpha_clip (PlayCanvas alphaClip parity; per-splat hard cull at projection),
+    // z=alpha_clip (optional per-splat hard cull at projection),
     // w=reserved
     // When enabled, splat radii are calculated as: r = sqrt(2 * ln(alpha/tau) * lambda_max)
     // This reduces tile-Gaussian pairs by ~94% for low-opacity splats
@@ -146,9 +146,9 @@ float gs_get_visibility_threshold() {
     return params.opacity_culling_config.y;
 }
 
-// PlayCanvas alphaClip parity: per-splat hard cull threshold. Splats with
-// opacity <= this value are dropped before any projection or binning work.
-// 0.0 disables the cull. CPU-side is clamped to [0, 0.99].
+// Optional per-splat hard cull threshold. Splats with opacity <= this value
+// are dropped before any projection or binning work. 0.0 disables the cull.
+// CPU-side is clamped to [0, 0.99].
 float gs_get_alpha_clip() {
     return params.opacity_culling_config.z;
 }

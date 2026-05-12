@@ -245,7 +245,7 @@ static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_re
 	const auto &scene_state = state_view.get_scene_state();
 	uint32_t total_splats = scene_state.gaussian_data.is_valid()
 			? scene_state.gaussian_data->get_count()
-			: 0;
+			: scene_state.payload_source_splat_count;
 	float cull_ms = p_stage_valid ? p_stage_metrics.cull.cull_time_ms : perf.culling_time_ms;
 	float sort_ms = p_stage_valid ? p_stage_metrics.sort.sort_time_ms : frame_state.sort_time_ms;
 	float raster_ms = p_stage_valid ? p_stage_metrics.raster.render_time_ms : frame_state.render_time_ms;
@@ -463,12 +463,17 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["streaming_effective_vram_budget_mb"] = streaming_state.get("effective_vram_budget_mb", int64_t(0));
 		r_metrics["streaming_effective_vram_min_chunks"] = streaming_state.get("effective_vram_min_chunks", int64_t(0));
 		r_metrics["streaming_effective_vram_max_chunks"] = streaming_state.get("effective_vram_max_chunks", int64_t(0));
+		r_metrics["streaming_requested_vram_budget_mb"] = streaming_state.get("requested_vram_budget_mb", int64_t(0));
 		r_metrics["streaming_cap_source_upload_mb_per_frame"] = streaming_state.get("cap_source_upload_mb_per_frame", String("project_default"));
 		r_metrics["streaming_cap_source_upload_mb_per_slice"] = streaming_state.get("cap_source_upload_mb_per_slice", String("project_default"));
 		r_metrics["streaming_cap_source_upload_mb_per_second"] = streaming_state.get("cap_source_upload_mb_per_second", String("project_default"));
 		r_metrics["streaming_cap_source_vram_budget_mb"] = streaming_state.get("cap_source_vram_budget_mb", String("project_default"));
+		r_metrics["streaming_requested_cap_source_vram_budget_mb"] = streaming_state.get("requested_cap_source_vram_budget_mb", String("project_default"));
 		r_metrics["streaming_cap_source_vram_min_chunks"] = streaming_state.get("cap_source_vram_min_chunks", String("project_default"));
 		r_metrics["streaming_cap_source_vram_max_chunks"] = streaming_state.get("cap_source_vram_max_chunks", String("project_default"));
+		r_metrics["streaming_vram_budget_capacity_verified"] = streaming_state.get("vram_budget_capacity_verified", false);
+		r_metrics["streaming_vram_budget_unknown_capacity_fallback"] = streaming_state.get("vram_budget_unknown_capacity_fallback", false);
+		r_metrics["streaming_vram_budget_unverified"] = streaming_state.get("vram_budget_unverified", false);
 		r_metrics["streaming_upload_frame_cap_hit"] = streaming_state.get("upload_frame_cap_hit", false);
 		r_metrics["streaming_upload_slice_cap_hit"] = streaming_state.get("upload_slice_cap_hit", false);
 		r_metrics["streaming_upload_bandwidth_cap_hit"] = streaming_state.get("upload_bandwidth_cap_hit", false);
@@ -490,12 +495,17 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["streaming_effective_vram_budget_mb"] = static_cast<int64_t>(0);
 		r_metrics["streaming_effective_vram_min_chunks"] = static_cast<int64_t>(0);
 		r_metrics["streaming_effective_vram_max_chunks"] = static_cast<int64_t>(0);
+		r_metrics["streaming_requested_vram_budget_mb"] = static_cast<int64_t>(0);
 		r_metrics["streaming_cap_source_upload_mb_per_frame"] = String("project_default");
 		r_metrics["streaming_cap_source_upload_mb_per_slice"] = String("project_default");
 		r_metrics["streaming_cap_source_upload_mb_per_second"] = String("project_default");
 		r_metrics["streaming_cap_source_vram_budget_mb"] = String("project_default");
+		r_metrics["streaming_requested_cap_source_vram_budget_mb"] = String("project_default");
 		r_metrics["streaming_cap_source_vram_min_chunks"] = String("project_default");
 		r_metrics["streaming_cap_source_vram_max_chunks"] = String("project_default");
+		r_metrics["streaming_vram_budget_capacity_verified"] = false;
+		r_metrics["streaming_vram_budget_unknown_capacity_fallback"] = false;
+		r_metrics["streaming_vram_budget_unverified"] = false;
 		r_metrics["streaming_upload_frame_cap_hit"] = false;
 		r_metrics["streaming_upload_slice_cap_hit"] = false;
 		r_metrics["streaming_upload_bandwidth_cap_hit"] = false;
@@ -1162,7 +1172,7 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 		_merge_dictionary(stats, diagnostics_state.last_telemetry_snapshot);
 	} else {
 		stats["visible_splats"] = frame_state.visible_splat_count.load(std::memory_order_acquire);
-		stats["total_splats"] = scene_state.gaussian_data.is_valid() ? scene_state.gaussian_data->get_count() : 0;
+		stats["total_splats"] = scene_state.gaussian_data.is_valid() ? scene_state.gaussian_data->get_count() : scene_state.payload_source_splat_count;
 		stats["sort_time_ms"] = frame_state.sort_time_ms;
 		stats["render_time_ms"] = frame_state.render_time_ms;
 		stats["frame_count"] = frame_state.frame_counter;
@@ -1759,6 +1769,7 @@ GaussianSplatRenderer::MonitorStreamingSnapshot GaussianSplatRenderer::get_monit
 	snapshot.metrics_rendered_splat_count = metrics.rendered_splat_count;
 	snapshot.frame_visible_splat_count = frame_state.visible_splat_count.load(std::memory_order_acquire);
 	snapshot.has_streaming_data = (scene_state.gaussian_data.is_valid() && scene_state.gaussian_data->get_count() > 0) ||
+			scene_state.payload_source_splat_count > 0 ||
 			scene_state.active_asset.is_valid();
 
 	const StreamingState &streaming_state = state_view.get_streaming_state();

@@ -53,6 +53,9 @@ inline const char *index_domain_to_string(IndexDomain p_domain) {
 struct SceneState {
 	Ref<::GaussianData> gaussian_data;
 	Ref<GaussianSplatAsset> active_asset;
+	uint32_t payload_source_splat_count = 0;
+	uint32_t payload_source_sh_degree = 0;
+	AABB payload_source_bounds;
 };
 
 struct CullStageOutput {

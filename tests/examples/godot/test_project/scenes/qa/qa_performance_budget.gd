@@ -2,8 +2,8 @@ extends "res://scripts/qa_test_base.gd"
 ## Performance Budget Test: Verifies rendering stays within timing budgets.
 ## Tracks FPS, frame time, and Gaussian Splatting specific metrics.
 
-@export var min_fps: float = 30.0
-@export var max_frame_time_ms: float = 33.3  # 30 FPS target
+@export var min_fps: float = 20.0
+@export var max_frame_time_ms: float = 40.0  # CI sanity target for Windows debug/dev builds.
 
 var fps_samples: Array[float] = []
 var frame_time_samples: Array[float] = []

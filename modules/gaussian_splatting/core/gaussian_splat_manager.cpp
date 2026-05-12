@@ -8,6 +8,7 @@
 #include "gaussian_data.h"
 #include "gs_project_settings.h"
 #include "quality_tier_config.h"
+#include "streaming_vram_regulator.h"
 #include "../renderer/sorting_settings_utils.h"
 #include "../nodes/gaussian_splat_node_3d.h"
 #include "../logger/gs_logger.h"
@@ -1050,11 +1051,11 @@ void GaussianSplatManager::initialize_module() {
 	GLOBAL_DEF("rendering/gaussian_splatting/culling/opacity_aware_bounds", true);     // Enable opacity-aware bounding
 	GLOBAL_DEF("rendering/gaussian_splatting/culling/visibility_threshold", 1.0f / 255.0f); // tau: minimum visible contribution
 
-	// Per-splat hard cull at projection — matches PlayCanvas alphaClip.
-	// Drops splats with opacity <= threshold BEFORE binning, suppressing low-
-	// confidence "ghost" splats from real-scan reconstructions. 0.3 matches
-	// PlayCanvas/SuperSplat default; lower for more permissive content.
-	GLOBAL_DEF("rendering/gaussian_splatting/culling/alpha_clip", 0.3f);
+	// Optional per-splat hard cull at projection. Keep disabled by default:
+	// real captures often rely on many low-opacity splats accumulating, and
+	// opacity-aware bounds already cull splats below visibility_threshold
+	// after per-node/global opacity multipliers are applied.
+	GLOBAL_DEF("rendering/gaussian_splatting/culling/alpha_clip", 0.0f);
 
 	// EXPERIMENTAL: overflow auto-tuner (disabled by default due to splat decay bug).
 	// Enable only for testing until the feedback loop is fixed.
@@ -1141,10 +1142,14 @@ void GaussianSplatManager::initialize_module() {
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/max_evictions_per_frame", 4);
 	// Async IO for gsplatworld sources.
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/async_io_enabled", false);
+	// Full packed-payload hashing is an O(chunk bytes) invariant check. Keep it
+	// opt-in for QA/debug captures; enable_all_debug also enables it at runtime.
+	GLOBAL_DEF("rendering/gaussian_splatting/streaming/validate_upload_payload_checksums", false);
 
 	// VRAM budget auto-regulation settings for streaming system (H3DGS-style).
-	// Enables graceful degradation when approaching memory limits.
-	GLOBAL_DEF("rendering/gaussian_splatting/streaming/vram_budget_mb", 12288);
+	// Default to the unknown-capacity fallback; larger budgets should come from
+	// explicit project overrides, runtime overrides, or quality tiers.
+	GLOBAL_DEF("rendering/gaussian_splatting/streaming/vram_budget_mb", STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB);
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/auto_regulate_enabled", true);
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/vram_warning_threshold_percent", 85);
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/min_chunks_in_vram", 4);

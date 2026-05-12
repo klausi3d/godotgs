@@ -10,9 +10,10 @@
 #ifndef GAUSSIAN_SPLAT_DEBUG_HUD_H
 #define GAUSSIAN_SPLAT_DEBUG_HUD_H
 
-#include "scene/gui/control.h"
 #include "core/object/ref_counted.h"
+#include "core/object/object_id.h"
 #include "core/templates/local_vector.h"
+#include "scene/gui/control.h"
 
 class GaussianSplatNode3D;
 class Font;
@@ -61,7 +62,7 @@ public:
 	};
 
 private:
-	GaussianSplatNode3D *splat_node = nullptr;
+	ObjectID splat_node_id = ObjectID();
 	Corner corner = CORNER_TOP_LEFT;
 	float update_interval = 0.1f;
 	float time_since_update = 0.0f;
@@ -84,6 +85,11 @@ private:
 	void _update_cached_stats();
 	void _draw_hud();
 	Vector2 _calculate_hud_position(const Vector2 &p_hud_size) const;
+	GaussianSplatNode3D *_resolve_splat_node() const;
+	void _disconnect_splat_node_tree_exiting();
+	void _clear_splat_node(bool p_queue_redraw = true);
+	void _on_splat_node_tree_exiting();
+	void _queue_hud_redraw();
 
 protected:
 	static void _bind_methods();
@@ -102,7 +108,7 @@ public:
 	/**
 	 * @brief Returns the linked GaussianSplatNode3D.
 	 */
-	GaussianSplatNode3D *get_splat_node() const { return splat_node; }
+	GaussianSplatNode3D *get_splat_node() const;
 
 	/**
 	 * @brief Sets which corner of the viewport the HUD appears in.

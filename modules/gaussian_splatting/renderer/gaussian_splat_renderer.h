@@ -273,6 +273,10 @@ public:
     struct WorldSubmissionRuntimeStateSnapshot {
         bool valid = false;
         Ref<GaussianData> gaussian_data;
+        Ref<ChunkPayloadSource> payload_source;
+        uint32_t payload_source_splat_count = 0;
+        uint32_t payload_source_sh_degree = 0;
+        AABB payload_source_bounds;
         Vector<StaticChunk> static_chunks;
         bool lod_enabled = true;
         float lod_bias = 1.0f;
@@ -627,11 +631,13 @@ public:
     void _initialize_on_render_thread(uint64_t p_request_id);
     void _teardown_resources();
     void _teardown_on_render_thread(uint64_t p_request_id);
+    void _release_resident_contract_buffers();
 #ifdef TESTS_ENABLED
     void _test_dispatch_noop_callback(uint64_t p_request_id);
 #endif
     void _set_max_splats_on_render_thread(int p_count, uint64_t p_request_id);
     void _set_gaussian_data_on_render_thread(const Ref<::GaussianData> &p_data, uint64_t p_request_id);
+    void _set_file_backed_payload_source_on_render_thread(const Ref<ChunkPayloadSource> &p_source, uint64_t p_request_id);
     void _force_sort_for_view_on_render_thread(const Transform3D &p_world_to_camera_transform, uint64_t p_request_id);
     RenderingDevice *_acquire_rendering_device();
     RenderingDevice *_get_main_rendering_device() const;
@@ -898,6 +904,7 @@ public:
      * directly.
      */
     Error set_gaussian_data(const Ref<::GaussianData> &p_data) override;
+    Error set_file_backed_payload_source(const Ref<ChunkPayloadSource> &p_source);
 
     /** @brief Returns the currently assigned resident direct-data binding. */
     Ref<::GaussianData> get_gaussian_data() const override { return get_scene_state().gaussian_data; }
@@ -956,11 +963,14 @@ public:
     /** @brief Enables or disables cached render reuse in the output compositor. */
     void set_cached_render_reuse_enabled(bool p_enabled);
 
-    /** @brief Returns true if cached render reuse is enabled. */
-    bool is_cached_render_reuse_enabled() const;
+	/** @brief Returns true if cached render reuse is enabled. */
+	bool is_cached_render_reuse_enabled() const;
 
-    /** @brief Invalidates cached final-frame reuse state in the output compositor. */
-    void invalidate_cached_render();
+	/** @brief Reloads global GPU sorting settings and rebuilds this renderer's sorter. */
+	void reload_gpu_sorting_config_from_project_settings();
+
+	/** @brief Invalidates cached final-frame reuse state in the output compositor. */
+	void invalidate_cached_render();
 
     /**
      * @brief Sets the painterly material for stylized rendering.

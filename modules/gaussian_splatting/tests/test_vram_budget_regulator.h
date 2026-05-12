@@ -3,7 +3,37 @@
 #include "test_macros.h"
 
 #include "../core/gaussian_streaming.h"
+#include "core/config/project_settings.h"
 #include "core/math/math_funcs.h"
+#include "gs_test_setting_guard.h"
+
+TEST_CASE("[GaussianSplatting][VRAMBudgetRegulator] Unknown capacity uses conservative project default") {
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    REQUIRE(project_settings != nullptr);
+
+    const String tier_apply_setting = "rendering/gaussian_splatting/quality/tier_apply_streaming_budgets";
+    const String vram_budget_setting = "rendering/gaussian_splatting/streaming/vram_budget_mb";
+    ProjectSettingGuard tier_apply_guard(project_settings, tier_apply_setting);
+    ProjectSettingGuard vram_budget_guard(project_settings, vram_budget_setting);
+
+    project_settings->set_setting(tier_apply_setting, false);
+    project_settings->set_setting(vram_budget_setting, STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB);
+
+    Ref<VRAMBudgetRegulator> regulator;
+    regulator.instantiate();
+    REQUIRE(regulator.is_valid());
+
+    regulator->initialize(nullptr);
+
+    Dictionary stats = regulator->get_debug_stats_dictionary();
+    CHECK_FALSE(bool(stats.get("device_capacity_known", true)));
+    CHECK(int64_t(stats.get("requested_budget_mb", int64_t(-1))) == int64_t(STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB));
+    CHECK(Math::is_equal_approx(float(stats.get("budget_mb", -1.0f)), float(STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB)));
+    CHECK(String(stats.get("requested_source_budget_mb", String())) == String("project_default"));
+    CHECK(String(stats.get("source_budget_mb", String())) == String("unknown_capacity_fallback"));
+    CHECK(bool(stats.get("budget_uses_unknown_capacity_fallback", false)));
+    CHECK_FALSE(bool(stats.get("budget_unverified", true)));
+}
 
 TEST_CASE("[GaussianSplatting][VRAMBudgetRegulator] Unknown device capacity remains explicit") {
     Ref<VRAMBudgetRegulator> regulator;
@@ -27,5 +57,38 @@ TEST_CASE("[GaussianSplatting][VRAMBudgetRegulator] Unknown device capacity rema
 
     const float budget_mb = float(stats.get("budget_mb", -1.0f));
     CHECK(Math::is_equal_approx(budget_mb, 1234.0f));
+    CHECK(int64_t(stats.get("requested_budget_mb", int64_t(-1))) == int64_t(1234));
+    CHECK(String(stats.get("source_budget_mb", String())) == String("runtime_override"));
+    CHECK(String(stats.get("requested_source_budget_mb", String())) == String("runtime_override"));
+    CHECK_FALSE(bool(stats.get("budget_uses_unknown_capacity_fallback", true)));
+    CHECK(bool(stats.get("budget_unverified", false)));
     CHECK(regulator->get_current_max_chunks() == 9u);
+}
+
+TEST_CASE("[GaussianSplatting][VRAMBudgetRegulator] Unknown capacity preserves project VRAM override") {
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    REQUIRE(project_settings != nullptr);
+
+    const String tier_apply_setting = "rendering/gaussian_splatting/quality/tier_apply_streaming_budgets";
+    const String vram_budget_setting = "rendering/gaussian_splatting/streaming/vram_budget_mb";
+    ProjectSettingGuard tier_apply_guard(project_settings, tier_apply_setting);
+    ProjectSettingGuard vram_budget_guard(project_settings, vram_budget_setting);
+
+    project_settings->set_setting(tier_apply_setting, false);
+    project_settings->set_setting(vram_budget_setting, 4096);
+
+    Ref<VRAMBudgetRegulator> regulator;
+    regulator.instantiate();
+    REQUIRE(regulator.is_valid());
+
+    regulator->initialize(nullptr);
+
+    Dictionary stats = regulator->get_debug_stats_dictionary();
+    CHECK_FALSE(bool(stats.get("device_capacity_known", true)));
+    CHECK(int64_t(stats.get("requested_budget_mb", int64_t(-1))) == int64_t(4096));
+    CHECK(Math::is_equal_approx(float(stats.get("budget_mb", -1.0f)), 4096.0f));
+    CHECK(String(stats.get("requested_source_budget_mb", String())) == String("project_override"));
+    CHECK(String(stats.get("source_budget_mb", String())) == String("project_override"));
+    CHECK_FALSE(bool(stats.get("budget_uses_unknown_capacity_fallback", true)));
+    CHECK(bool(stats.get("budget_unverified", false)));
 }
