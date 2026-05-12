@@ -130,16 +130,55 @@ static Array _production_metrics_contract() {
 	keys.push_back("render_ms");
 	keys.push_back("frame_time_ms");
 	keys.push_back("gpu_frame_ms");
+	keys.push_back("gpu_frame_valid");
+	keys.push_back("gpu_overlap_count_ms");
+	keys.push_back("gpu_overlap_count_valid");
+	keys.push_back("gpu_overlap_emit_ms");
+	keys.push_back("gpu_overlap_emit_valid");
+	keys.push_back("gpu_overlap_sort_ms");
+	keys.push_back("gpu_overlap_sort_valid");
+	keys.push_back("overlap_sort_cpu_dispatch_ms");
+	keys.push_back("overlap_sort_cpu_dispatch_valid");
 	keys.push_back("gpu_binning_ms");
 	keys.push_back("gpu_prefix_ms");
+	keys.push_back("gpu_prefix_valid");
+	keys.push_back("prefix_cpu_sync_fallback_ms");
+	keys.push_back("prefix_cpu_sync_fallback_valid");
 	keys.push_back("gpu_raster_ms");
+	keys.push_back("gpu_raster_valid");
 	keys.push_back("gpu_resolve_ms");
+	keys.push_back("gpu_resolve_valid");
 	keys.push_back("gpu_timing_frame_serial");
 	keys.push_back("gpu_timing_frames_behind");
 	keys.push_back("gpu_pass_breakdown_available");
 	keys.push_back("data_source");
 	keys.push_back("data_source_error");
 	keys.push_back("raster_path");
+	keys.push_back("raster_path_reason");
+	keys.push_back("raster_compute_allowed");
+	keys.push_back("raster_total_tiles");
+	keys.push_back("raster_empty_tiles");
+	keys.push_back("raster_overflow_tiles");
+	keys.push_back("raster_max_splats_per_tile");
+	keys.push_back("raster_avg_splats_per_tile");
+	keys.push_back("raster_occupancy_ratio");
+	keys.push_back("raster_dense_ratio");
+	keys.push_back("raster_overflow_ratio");
+	keys.push_back("raster_overlap_records");
+	keys.push_back("raster_overlap_record_budget");
+	keys.push_back("raster_overlap_record_budget_effective");
+	keys.push_back("raster_overlap_record_budget_configured");
+	keys.push_back("raster_overlap_thinning_keep_ratio");
+	keys.push_back("raster_feature_global_sort");
+	keys.push_back("raster_feature_packed_stage_data");
+	keys.push_back("raster_feature_tighter_bounds");
+	keys.push_back("raster_feature_sh_amortization");
+	keys.push_back("raster_sh_amortization_divisor");
+	keys.push_back("raster_feature_quantized_storage");
+	keys.push_back("raster_feature_debug_counters");
+	keys.push_back("raster_tile_splat_capacity");
+	keys.push_back("raster_max_raster_splats_per_tile");
+	keys.push_back("raster_shader_defines_hash");
 	keys.push_back("render_mode");
 	keys.push_back("stage_metrics_valid");
 	keys.push_back("stage_cull_status");
@@ -165,6 +204,35 @@ static bool _is_finite(float p_value) {
 	return !(Math::is_nan(p_value) || Math::is_inf(p_value));
 }
 
+static void _append_raster_specialization_metrics(const GaussianSplatRenderer::PerformanceMetrics &p_perf,
+		Dictionary &r_metrics) {
+	r_metrics["raster_path_reason"] = p_perf.raster_path_reason;
+	r_metrics["raster_compute_allowed"] = p_perf.raster_compute_allowed;
+	r_metrics["raster_total_tiles"] = static_cast<int64_t>(p_perf.raster_total_tiles);
+	r_metrics["raster_empty_tiles"] = static_cast<int64_t>(p_perf.raster_empty_tiles);
+	r_metrics["raster_overflow_tiles"] = static_cast<int64_t>(p_perf.raster_overflow_tiles);
+	r_metrics["raster_max_splats_per_tile"] = static_cast<int64_t>(p_perf.raster_max_splats_per_tile);
+	r_metrics["raster_avg_splats_per_tile"] = p_perf.raster_avg_splats_per_tile;
+	r_metrics["raster_occupancy_ratio"] = p_perf.raster_occupancy_ratio;
+	r_metrics["raster_dense_ratio"] = p_perf.raster_dense_ratio;
+	r_metrics["raster_overflow_ratio"] = p_perf.raster_overflow_ratio;
+	r_metrics["raster_overlap_records"] = static_cast<int64_t>(p_perf.raster_overlap_records);
+	r_metrics["raster_overlap_record_budget"] = static_cast<int64_t>(p_perf.raster_overlap_record_budget);
+	r_metrics["raster_overlap_record_budget_effective"] = static_cast<int64_t>(p_perf.raster_overlap_record_budget_effective);
+	r_metrics["raster_overlap_record_budget_configured"] = static_cast<int64_t>(p_perf.raster_overlap_record_budget_configured);
+	r_metrics["raster_overlap_thinning_keep_ratio"] = p_perf.raster_overlap_thinning_keep_ratio;
+	r_metrics["raster_feature_global_sort"] = p_perf.raster_feature_global_sort;
+	r_metrics["raster_feature_packed_stage_data"] = p_perf.raster_feature_packed_stage_data;
+	r_metrics["raster_feature_tighter_bounds"] = p_perf.raster_feature_tighter_bounds;
+	r_metrics["raster_feature_sh_amortization"] = p_perf.raster_feature_sh_amortization;
+	r_metrics["raster_sh_amortization_divisor"] = static_cast<int64_t>(p_perf.raster_sh_amortization_divisor);
+	r_metrics["raster_feature_quantized_storage"] = p_perf.raster_feature_quantized_storage;
+	r_metrics["raster_feature_debug_counters"] = p_perf.raster_feature_debug_counters;
+	r_metrics["raster_tile_splat_capacity"] = static_cast<int64_t>(p_perf.raster_tile_splat_capacity);
+	r_metrics["raster_max_raster_splats_per_tile"] = static_cast<int64_t>(p_perf.raster_max_raster_splats_per_tile);
+	r_metrics["raster_shader_defines_hash"] = String::num_uint64(p_perf.raster_shader_defines_hash);
+}
+
 static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_renderer,
 		const GaussianSplatRenderer::StageMetrics &p_stage_metrics, bool p_stage_valid, float p_frame_time_ms) {
 	Dictionary metrics;
@@ -177,7 +245,7 @@ static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_re
 	const auto &scene_state = state_view.get_scene_state();
 	uint32_t total_splats = scene_state.gaussian_data.is_valid()
 			? scene_state.gaussian_data->get_count()
-			: 0;
+			: scene_state.payload_source_splat_count;
 	float cull_ms = p_stage_valid ? p_stage_metrics.cull.cull_time_ms : perf.culling_time_ms;
 	float sort_ms = p_stage_valid ? p_stage_metrics.sort.sort_time_ms : frame_state.sort_time_ms;
 	float raster_ms = p_stage_valid ? p_stage_metrics.raster.render_time_ms : frame_state.render_time_ms;
@@ -195,13 +263,35 @@ static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_re
 	metrics["render_ms"] = frame_state.render_time_ms;
 	metrics["frame_time_ms"] = p_frame_time_ms;
 	metrics["gpu_frame_ms"] = perf.gpu_frame_time_ms;
+	metrics["gpu_frame_valid"] = perf.gpu_frame_time_valid;
+	metrics["gpu_overlap_count_ms"] = perf.gpu_tile_overlap_count_time_ms;
+	metrics["gpu_overlap_count_valid"] = perf.gpu_tile_overlap_count_time_valid;
+	metrics["gpu_overlap_emit_ms"] = perf.gpu_tile_overlap_emit_time_ms;
+	metrics["gpu_overlap_emit_valid"] = perf.gpu_tile_overlap_emit_time_valid;
+	metrics["gpu_overlap_sort_ms"] = perf.gpu_tile_overlap_sort_time_ms;
+	metrics["gpu_overlap_sort_valid"] = perf.gpu_tile_overlap_sort_time_valid;
+	metrics["overlap_sort_cpu_dispatch_ms"] = perf.tile_overlap_sort_cpu_dispatch_ms;
+	metrics["overlap_sort_cpu_dispatch_valid"] = perf.tile_overlap_sort_cpu_dispatch_valid;
 	metrics["gpu_binning_ms"] = perf.gpu_tile_binning_time_ms;
 	metrics["gpu_prefix_ms"] = perf.gpu_tile_prefix_time_ms;
+	metrics["gpu_prefix_valid"] = perf.gpu_tile_prefix_time_valid;
+	metrics["prefix_cpu_sync_fallback_ms"] = perf.tile_prefix_cpu_sync_fallback_ms;
+	metrics["prefix_cpu_sync_fallback_valid"] = perf.tile_prefix_cpu_sync_fallback_valid;
 	metrics["gpu_raster_ms"] = perf.gpu_tile_raster_time_ms;
+	metrics["gpu_raster_valid"] = perf.gpu_tile_raster_time_valid;
 	metrics["gpu_resolve_ms"] = perf.gpu_tile_resolve_time_ms;
+	metrics["gpu_resolve_valid"] = perf.gpu_tile_resolve_time_valid;
 	metrics["gpu_timing_frame_serial"] = static_cast<int64_t>(perf.gpu_timing_frame_serial);
 	metrics["gpu_timing_frames_behind"] = static_cast<int64_t>(perf.gpu_timing_frames_behind);
-	metrics["gpu_pass_breakdown_available"] = perf.gpu_tile_binning_time_ms > 0.0f ||
+	metrics["gpu_pass_breakdown_available"] = perf.gpu_tile_overlap_count_time_valid ||
+			perf.gpu_tile_overlap_emit_time_valid ||
+			perf.gpu_tile_overlap_sort_time_valid ||
+			perf.tile_overlap_sort_cpu_dispatch_valid ||
+			perf.gpu_tile_prefix_time_valid ||
+			perf.tile_prefix_cpu_sync_fallback_valid ||
+			perf.gpu_tile_raster_time_valid ||
+			perf.gpu_tile_resolve_time_valid ||
+			perf.gpu_tile_binning_time_ms > 0.0f ||
 			perf.gpu_tile_prefix_time_ms > 0.0f ||
 			perf.gpu_tile_raster_time_ms > 0.0f ||
 			perf.gpu_tile_resolve_time_ms > 0.0f;
@@ -215,6 +305,7 @@ static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_re
 		raster_path = "unknown";
 	}
 	metrics["raster_path"] = raster_path;
+	_append_raster_specialization_metrics(perf, metrics);
 	const auto &render_config = state_view.get_render_config_view();
 	metrics["render_mode"] = static_cast<int64_t>(render_config.render_mode);
 	metrics["stage_metrics_valid"] = p_stage_valid;
@@ -290,10 +381,24 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 	r_metrics["sort_cache_misses"] = static_cast<int64_t>(perf.sort_cache_misses);
 	r_metrics["gpu_utilization_percent"] = perf.gpu_utilization;
 	r_metrics["gpu_frame_time_ms"] = perf.gpu_frame_time_ms;
+	r_metrics["gpu_frame_time_valid"] = perf.gpu_frame_time_valid;
+	r_metrics["gpu_tile_overlap_count_time_ms"] = perf.gpu_tile_overlap_count_time_ms;
+	r_metrics["gpu_tile_overlap_count_time_valid"] = perf.gpu_tile_overlap_count_time_valid;
 	r_metrics["gpu_tile_binning_time_ms"] = perf.gpu_tile_binning_time_ms;
+	r_metrics["gpu_tile_overlap_emit_time_ms"] = perf.gpu_tile_overlap_emit_time_ms;
+	r_metrics["gpu_tile_overlap_emit_time_valid"] = perf.gpu_tile_overlap_emit_time_valid;
+	r_metrics["gpu_tile_overlap_sort_time_ms"] = perf.gpu_tile_overlap_sort_time_ms;
+	r_metrics["gpu_tile_overlap_sort_time_valid"] = perf.gpu_tile_overlap_sort_time_valid;
+	r_metrics["tile_overlap_sort_cpu_dispatch_ms"] = perf.tile_overlap_sort_cpu_dispatch_ms;
+	r_metrics["tile_overlap_sort_cpu_dispatch_valid"] = perf.tile_overlap_sort_cpu_dispatch_valid;
 	r_metrics["gpu_tile_raster_time_ms"] = perf.gpu_tile_raster_time_ms;
+	r_metrics["gpu_tile_raster_time_valid"] = perf.gpu_tile_raster_time_valid;
 	r_metrics["gpu_tile_prefix_time_ms"] = perf.gpu_tile_prefix_time_ms;
+	r_metrics["gpu_tile_prefix_time_valid"] = perf.gpu_tile_prefix_time_valid;
+	r_metrics["tile_prefix_cpu_sync_fallback_ms"] = perf.tile_prefix_cpu_sync_fallback_ms;
+	r_metrics["tile_prefix_cpu_sync_fallback_valid"] = perf.tile_prefix_cpu_sync_fallback_valid;
 	r_metrics["gpu_tile_resolve_time_ms"] = perf.gpu_tile_resolve_time_ms;
+	r_metrics["gpu_tile_resolve_time_valid"] = perf.gpu_tile_resolve_time_valid;
 	r_metrics["gpu_timing_frame_serial"] = static_cast<int64_t>(perf.gpu_timing_frame_serial);
 	r_metrics["gpu_timing_frames_behind"] = static_cast<int64_t>(perf.gpu_timing_frames_behind);
 	r_metrics["gpu_timeline_inflight_frames"] = static_cast<int64_t>(perf.gpu_timeline_inflight_frames);
@@ -336,6 +441,7 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 	r_metrics["stage_composite_is_error"] = p_stage_metrics.composite_result.is_error;
 	r_metrics["route_uid"] = debug_state.route_uid;
 	r_metrics["sort_route_uid"] = debug_state.sort_route_uid;
+	_append_raster_specialization_metrics(perf, r_metrics);
 
 	if (!perf.streaming_state.is_empty()) {
 		const Dictionary streaming_state = perf.streaming_state;
@@ -357,12 +463,17 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["streaming_effective_vram_budget_mb"] = streaming_state.get("effective_vram_budget_mb", int64_t(0));
 		r_metrics["streaming_effective_vram_min_chunks"] = streaming_state.get("effective_vram_min_chunks", int64_t(0));
 		r_metrics["streaming_effective_vram_max_chunks"] = streaming_state.get("effective_vram_max_chunks", int64_t(0));
+		r_metrics["streaming_requested_vram_budget_mb"] = streaming_state.get("requested_vram_budget_mb", int64_t(0));
 		r_metrics["streaming_cap_source_upload_mb_per_frame"] = streaming_state.get("cap_source_upload_mb_per_frame", String("project_default"));
 		r_metrics["streaming_cap_source_upload_mb_per_slice"] = streaming_state.get("cap_source_upload_mb_per_slice", String("project_default"));
 		r_metrics["streaming_cap_source_upload_mb_per_second"] = streaming_state.get("cap_source_upload_mb_per_second", String("project_default"));
 		r_metrics["streaming_cap_source_vram_budget_mb"] = streaming_state.get("cap_source_vram_budget_mb", String("project_default"));
+		r_metrics["streaming_requested_cap_source_vram_budget_mb"] = streaming_state.get("requested_cap_source_vram_budget_mb", String("project_default"));
 		r_metrics["streaming_cap_source_vram_min_chunks"] = streaming_state.get("cap_source_vram_min_chunks", String("project_default"));
 		r_metrics["streaming_cap_source_vram_max_chunks"] = streaming_state.get("cap_source_vram_max_chunks", String("project_default"));
+		r_metrics["streaming_vram_budget_capacity_verified"] = streaming_state.get("vram_budget_capacity_verified", false);
+		r_metrics["streaming_vram_budget_unknown_capacity_fallback"] = streaming_state.get("vram_budget_unknown_capacity_fallback", false);
+		r_metrics["streaming_vram_budget_unverified"] = streaming_state.get("vram_budget_unverified", false);
 		r_metrics["streaming_upload_frame_cap_hit"] = streaming_state.get("upload_frame_cap_hit", false);
 		r_metrics["streaming_upload_slice_cap_hit"] = streaming_state.get("upload_slice_cap_hit", false);
 		r_metrics["streaming_upload_bandwidth_cap_hit"] = streaming_state.get("upload_bandwidth_cap_hit", false);
@@ -384,12 +495,17 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["streaming_effective_vram_budget_mb"] = static_cast<int64_t>(0);
 		r_metrics["streaming_effective_vram_min_chunks"] = static_cast<int64_t>(0);
 		r_metrics["streaming_effective_vram_max_chunks"] = static_cast<int64_t>(0);
+		r_metrics["streaming_requested_vram_budget_mb"] = static_cast<int64_t>(0);
 		r_metrics["streaming_cap_source_upload_mb_per_frame"] = String("project_default");
 		r_metrics["streaming_cap_source_upload_mb_per_slice"] = String("project_default");
 		r_metrics["streaming_cap_source_upload_mb_per_second"] = String("project_default");
 		r_metrics["streaming_cap_source_vram_budget_mb"] = String("project_default");
+		r_metrics["streaming_requested_cap_source_vram_budget_mb"] = String("project_default");
 		r_metrics["streaming_cap_source_vram_min_chunks"] = String("project_default");
 		r_metrics["streaming_cap_source_vram_max_chunks"] = String("project_default");
+		r_metrics["streaming_vram_budget_capacity_verified"] = false;
+		r_metrics["streaming_vram_budget_unknown_capacity_fallback"] = false;
+		r_metrics["streaming_vram_budget_unverified"] = false;
 		r_metrics["streaming_upload_frame_cap_hit"] = false;
 		r_metrics["streaming_upload_slice_cap_hit"] = false;
 		r_metrics["streaming_upload_bandwidth_cap_hit"] = false;
@@ -405,11 +521,82 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["tile_grid_size"] = tile_grid;
 		r_metrics["tile_size"] = subsystem_state.rasterizer->get_tile_size();
 		RasterStats raster_stats = subsystem_state.rasterizer->get_render_stats();
+		r_metrics["raster_total_tiles"] = static_cast<int64_t>(raster_stats.total_tiles);
+		r_metrics["raster_empty_tiles"] = static_cast<int64_t>(raster_stats.empty_tiles);
+		r_metrics["raster_overflow_tiles"] = static_cast<int64_t>(raster_stats.tiles_with_overflow);
+		r_metrics["raster_max_splats_per_tile"] = static_cast<int64_t>(raster_stats.max_splats_in_tile);
+		r_metrics["raster_avg_splats_per_tile"] = raster_stats.average_splats_per_tile;
+		r_metrics["raster_occupancy_ratio"] = raster_stats.occupancy_ratio;
+		r_metrics["raster_dense_ratio"] = raster_stats.dense_ratio;
+		r_metrics["raster_overflow_ratio"] = raster_stats.overflow_ratio;
+		r_metrics["raster_path_reason"] = raster_stats.last_raster_choice_reason;
+		r_metrics["raster_compute_allowed"] = raster_stats.allow_compute_raster;
+		r_metrics["raster_feature_global_sort"] = raster_stats.global_sort_enabled;
+		r_metrics["raster_feature_packed_stage_data"] = raster_stats.feature_packed_stage_data;
+		r_metrics["raster_feature_tighter_bounds"] = raster_stats.feature_tighter_bounds;
+		r_metrics["raster_feature_sh_amortization"] = raster_stats.feature_sh_amortization;
+		r_metrics["raster_sh_amortization_divisor"] = static_cast<int64_t>(raster_stats.sh_amortization_divisor);
+		r_metrics["raster_feature_quantized_storage"] = raster_stats.feature_quantized_storage;
+		r_metrics["raster_feature_debug_counters"] = raster_stats.feature_debug_counters;
+		r_metrics["raster_tile_splat_capacity"] = static_cast<int64_t>(raster_stats.raster_tile_splat_capacity);
+		r_metrics["raster_max_raster_splats_per_tile"] = static_cast<int64_t>(raster_stats.max_raster_splats_per_tile);
+		r_metrics["raster_shader_defines_hash"] = String::num_uint64(raster_stats.shader_defines_hash);
 		r_metrics["overlap_records"] = static_cast<int64_t>(raster_stats.overlap_records);
 		r_metrics["overlap_record_budget"] = static_cast<int64_t>(raster_stats.overlap_record_budget);
 		r_metrics["overlap_record_budget_effective"] = static_cast<int64_t>(raster_stats.overlap_record_budget_effective);
 		r_metrics["overlap_record_budget_configured"] = static_cast<int64_t>(raster_stats.overlap_record_budget_configured);
 		r_metrics["overlap_thinning_keep_ratio"] = raster_stats.overlap_thinning_keep_ratio;
+		r_metrics["raster_overlap_records"] = static_cast<int64_t>(raster_stats.overlap_records);
+		r_metrics["raster_overlap_record_budget"] = static_cast<int64_t>(raster_stats.overlap_record_budget);
+		r_metrics["raster_overlap_record_budget_effective"] = static_cast<int64_t>(raster_stats.overlap_record_budget_effective);
+		r_metrics["raster_overlap_record_budget_configured"] = static_cast<int64_t>(raster_stats.overlap_record_budget_configured);
+		r_metrics["raster_overlap_thinning_keep_ratio"] = raster_stats.overlap_thinning_keep_ratio;
+		// Derived tile-density fields. raster_avg_splats_per_tile is reported
+		// by the renderer over ALL tiles including empties, which understates
+		// per-active-tile load by ~15x at typical occupancy. Expose explicit
+		// active-tile counts and a pessimistic per-pixel-ops estimate so the
+		// raster cost can be reasoned about directly.
+		const int64_t total_tiles_i = static_cast<int64_t>(raster_stats.total_tiles);
+		const int64_t empty_tiles_i = static_cast<int64_t>(raster_stats.empty_tiles);
+		const int64_t active_tiles_i = total_tiles_i > empty_tiles_i ? (total_tiles_i - empty_tiles_i) : 0;
+		r_metrics["raster_active_tiles"] = active_tiles_i;
+		const double records_d = double(raster_stats.overlap_records);
+		r_metrics["raster_avg_splats_per_active_tile"] = active_tiles_i > 0
+				? records_d / double(active_tiles_i)
+				: 0.0;
+		const int tile_size_px = subsystem_state.rasterizer->get_tile_size();
+		const double tile_pixel_count = double(tile_size_px) * double(tile_size_px);
+		r_metrics["raster_splat_pixel_ops_estimate"] = records_d * tile_pixel_count;
+		// Shader counter readback (populated when GS_COLLECT_RASTER_STATS is
+		// compiled in AND debug_flags[1] runtime flag is on -- HUD,
+		// splat-coverage overlay, or perf_capture_raster_shader_counters).
+		// Zero when shader counters are off; the perf-capture harness should
+		// flip set_perf_capture_raster_shader_counters(true) to populate.
+		RasterOverflowStats overflow = subsystem_state.rasterizer->get_overflow_stats();
+		r_metrics["raster_sample_count"] = static_cast<int64_t>(overflow.raster_sample_count);
+		r_metrics["raster_splats_iterated"] = static_cast<int64_t>(overflow.raster_splats_iterated);
+		r_metrics["raster_splats_contributed"] = static_cast<int64_t>(overflow.raster_splats_contributed);
+		r_metrics["raster_reject_sorted_idx_oob"] = static_cast<int64_t>(overflow.raster_reject_sorted_idx_oob);
+		r_metrics["raster_reject_gaussian_idx_oob"] = static_cast<int64_t>(overflow.raster_reject_gaussian_idx_oob);
+		r_metrics["raster_reject_base_opacity"] = static_cast<int64_t>(overflow.raster_reject_base_opacity);
+		r_metrics["raster_reject_nan_inf"] = static_cast<int64_t>(overflow.raster_reject_nan_inf);
+		r_metrics["raster_reject_weight"] = static_cast<int64_t>(overflow.raster_reject_weight);
+		r_metrics["raster_reject_alpha"] = static_cast<int64_t>(overflow.raster_reject_alpha);
+		r_metrics["raster_reject_index_mismatch"] = static_cast<int64_t>(overflow.raster_reject_index_mismatch);
+		r_metrics["raster_break_remaining_alpha"] = static_cast<int64_t>(overflow.raster_break_remaining_alpha);
+		r_metrics["raster_break_final_alpha"] = static_cast<int64_t>(overflow.raster_break_final_alpha);
+		r_metrics["raster_break_subgroup_early_exit"] = static_cast<int64_t>(overflow.raster_break_subgroup_early_exit);
+		r_metrics["raster_has_depth"] = static_cast<int64_t>(overflow.raster_has_depth);
+		r_metrics["raster_alpha_sum_q10"] = static_cast<int64_t>(overflow.raster_alpha_sum_q10);
+		// Previously-uninstrumented continue paths. Splits the "iterated but
+		// neither contributed nor rejected" bucket into measurable parts:
+		// (a) conic spatial-extent reject, (b) LOD-modulated opacity reject,
+		// (c) zero blend-alpha reject. Without these the inner-loop cost story
+		// can't distinguish "math wasted on low-contribution splats" from
+		// "spatial coverage too wide".
+		r_metrics["raster_reject_quadratic"] = static_cast<int64_t>(overflow.raster_reject_quadratic);
+		r_metrics["raster_reject_lod_opacity"] = static_cast<int64_t>(overflow.raster_reject_lod_opacity);
+		r_metrics["raster_reject_blend_alpha"] = static_cast<int64_t>(overflow.raster_reject_blend_alpha);
 		r_metrics["sorted_indices_blend_fallback_active"] = raster_stats.sorted_indices_blend_fallback_active;
 		r_metrics["sorted_indices_blend_fallback_reason"] = raster_stats.sorted_indices_blend_fallback_reason;
 	} else {
@@ -461,8 +648,24 @@ static Dictionary _validate_production_metrics(const Dictionary &p_metrics) {
 	const float gpu_prefix_ms = static_cast<float>(p_metrics.get("gpu_prefix_ms", -1.0f));
 	const float gpu_raster_ms = static_cast<float>(p_metrics.get("gpu_raster_ms", -1.0f));
 	const float gpu_resolve_ms = static_cast<float>(p_metrics.get("gpu_resolve_ms", -1.0f));
+	const float raster_avg_splats_per_tile = static_cast<float>(p_metrics.get("raster_avg_splats_per_tile", 0.0f));
+	const float raster_occupancy_ratio = static_cast<float>(p_metrics.get("raster_occupancy_ratio", 0.0f));
+	const float raster_dense_ratio = static_cast<float>(p_metrics.get("raster_dense_ratio", 0.0f));
+	const float raster_overflow_ratio = static_cast<float>(p_metrics.get("raster_overflow_ratio", 0.0f));
+	const float raster_overlap_thinning_keep_ratio = static_cast<float>(p_metrics.get("raster_overlap_thinning_keep_ratio", 1.0f));
 	const int64_t gpu_timing_frame_serial = p_metrics.get("gpu_timing_frame_serial", int64_t(-1));
 	const int64_t gpu_timing_frames_behind = p_metrics.get("gpu_timing_frames_behind", int64_t(-1));
+	const int64_t raster_total_tiles = p_metrics.get("raster_total_tiles", int64_t(-1));
+	const int64_t raster_empty_tiles = p_metrics.get("raster_empty_tiles", int64_t(-1));
+	const int64_t raster_overflow_tiles = p_metrics.get("raster_overflow_tiles", int64_t(-1));
+	const int64_t raster_max_splats_per_tile = p_metrics.get("raster_max_splats_per_tile", int64_t(-1));
+	const int64_t raster_overlap_records = p_metrics.get("raster_overlap_records", int64_t(-1));
+	const int64_t raster_overlap_record_budget = p_metrics.get("raster_overlap_record_budget", int64_t(-1));
+	const int64_t raster_overlap_record_budget_effective = p_metrics.get("raster_overlap_record_budget_effective", int64_t(-1));
+	const int64_t raster_overlap_record_budget_configured = p_metrics.get("raster_overlap_record_budget_configured", int64_t(-1));
+	const int64_t raster_sh_amortization_divisor = p_metrics.get("raster_sh_amortization_divisor", int64_t(-1));
+	const int64_t raster_tile_splat_capacity = p_metrics.get("raster_tile_splat_capacity", int64_t(-1));
+	const int64_t raster_max_raster_splats_per_tile = p_metrics.get("raster_max_raster_splats_per_tile", int64_t(-1));
 
 	if (cull_ms < 0.0f || !_is_finite(cull_ms)) {
 		issues.push_back("cull_ms_invalid");
@@ -505,6 +708,20 @@ static Dictionary _validate_production_metrics(const Dictionary &p_metrics) {
 	}
 	if (gpu_timing_frames_behind < 0) {
 		issues.push_back("gpu_timing_frames_behind_invalid");
+	}
+	if (raster_total_tiles < 0 || raster_empty_tiles < 0 || raster_overflow_tiles < 0 ||
+			raster_max_splats_per_tile < 0 || raster_overlap_records < 0 ||
+			raster_overlap_record_budget < 0 || raster_overlap_record_budget_effective < 0 ||
+			raster_overlap_record_budget_configured < 0 || raster_sh_amortization_divisor < 0 ||
+			raster_tile_splat_capacity < 0 || raster_max_raster_splats_per_tile < 0) {
+		issues.push_back("raster_counters_invalid");
+	}
+	if (!_is_finite(raster_avg_splats_per_tile) || raster_avg_splats_per_tile < 0.0f ||
+			!_is_finite(raster_occupancy_ratio) || raster_occupancy_ratio < 0.0f ||
+			!_is_finite(raster_dense_ratio) || raster_dense_ratio < 0.0f ||
+			!_is_finite(raster_overflow_ratio) || raster_overflow_ratio < 0.0f ||
+			!_is_finite(raster_overlap_thinning_keep_ratio) || raster_overlap_thinning_keep_ratio < 0.0f) {
+		issues.push_back("raster_ratios_invalid");
 	}
 
 	const bool stage_valid = bool(p_metrics.get("stage_metrics_valid", false));
@@ -554,7 +771,8 @@ static Dictionary _validate_production_metrics(const Dictionary &p_metrics) {
 	if (stage_valid && has_meaningful_workload && visible_splats > 0 && stage_raster_status == "success" && raster_ms <= 0.0f) {
 		issues.push_back("raster_ms_placeholder");
 	}
-	const bool has_gpu_breakdown = gpu_binning_ms > 0.0f ||
+	const bool has_gpu_breakdown = bool(p_metrics.get("gpu_pass_breakdown_available", false)) ||
+			gpu_binning_ms > 0.0f ||
 			gpu_prefix_ms > 0.0f ||
 			gpu_raster_ms > 0.0f ||
 			gpu_resolve_ms > 0.0f;
@@ -573,6 +791,10 @@ static Dictionary _validate_production_metrics(const Dictionary &p_metrics) {
 	const String raster_path = p_metrics.get("raster_path", String());
 	if (raster_path.is_empty()) {
 		issues.push_back("raster_path_empty");
+	}
+	const String raster_shader_defines_hash = p_metrics.get("raster_shader_defines_hash", String());
+	if (raster_shader_defines_hash.is_empty()) {
+		issues.push_back("raster_shader_defines_hash_empty");
 	}
 
 	String issues_text;
@@ -950,7 +1172,7 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 		_merge_dictionary(stats, diagnostics_state.last_telemetry_snapshot);
 	} else {
 		stats["visible_splats"] = frame_state.visible_splat_count.load(std::memory_order_acquire);
-		stats["total_splats"] = scene_state.gaussian_data.is_valid() ? scene_state.gaussian_data->get_count() : 0;
+		stats["total_splats"] = scene_state.gaussian_data.is_valid() ? scene_state.gaussian_data->get_count() : scene_state.payload_source_splat_count;
 		stats["sort_time_ms"] = frame_state.sort_time_ms;
 		stats["render_time_ms"] = frame_state.render_time_ms;
 		stats["frame_count"] = frame_state.frame_counter;
@@ -1004,7 +1226,7 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 	// GPU sorter state and metrics
 	const bool has_gpu_sorter = sorting_state.gpu_sorter.is_valid();
 	stats["gpu_sorter_initialized"] = has_gpu_sorter;
-	stats["gpu_sorter_async_pipeline_ready"] = false;
+	stats["gpu_sorter_async_pipeline_ready"] = sorting_pipeline && sorting_pipeline->is_ready();
 	stats["rendering_device_ready"] = rendering_device != nullptr;
 	stats["sort_active_algorithm"] = sorting_state.active_sort_algorithm;
 	stats["sort_switch_reason"] = sorting_state.sort_switch_reason;
@@ -1024,6 +1246,13 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 		stats["gpu_sorter_total_sorts"] = (int64_t)sorter_metrics.total_sorts;
 		stats["gpu_sorter_async_sorts"] = (int64_t)sorter_metrics.async_sorts;
 		stats["gpu_sorter_total_elements"] = (int64_t)sorter_metrics.total_elements_sorted;
+		stats["gpu_sorter_last_element_count"] = (int64_t)sorter_metrics.last_element_count;
+		stats["gpu_sorter_last_element_count_known"] = sorter_metrics.last_element_count_known;
+		stats["gpu_sorter_last_key_bits"] = (int64_t)sorter_metrics.last_key_bits;
+		stats["gpu_sorter_last_radix_bits"] = (int64_t)sorter_metrics.last_radix_bits;
+		stats["gpu_sorter_last_pass_count"] = (int64_t)sorter_metrics.last_pass_count;
+		stats["gpu_sorter_last_sort_indirect"] = sorter_metrics.last_sort_indirect;
+		stats["gpu_sorter_last_sort_async"] = sorter_metrics.last_sort_async;
 		stats["gpu_sorter_bandwidth_utilization"] = sorter_metrics.bandwidth_utilization;
 		stats["gpu_sorter_fallback_events"] = (int64_t)sorter_metrics.fallback_events;
 		stats["gpu_sorter_last_fallback_reason"] = sorter_metrics.last_fallback_reason;
@@ -1038,10 +1267,61 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 		stats["gpu_sorter_total_sorts"] = 0;
 		stats["gpu_sorter_async_sorts"] = 0;
 		stats["gpu_sorter_total_elements"] = 0;
+		stats["gpu_sorter_last_element_count"] = 0;
+		stats["gpu_sorter_last_element_count_known"] = false;
+		stats["gpu_sorter_last_key_bits"] = 0;
+		stats["gpu_sorter_last_radix_bits"] = 0;
+		stats["gpu_sorter_last_pass_count"] = 0;
+		stats["gpu_sorter_last_sort_indirect"] = false;
+		stats["gpu_sorter_last_sort_async"] = false;
 		stats["gpu_sorter_bandwidth_utilization"] = 0.0f;
 		stats["gpu_sorter_fallback_events"] = 0;
 		stats["gpu_sorter_last_fallback_reason"] = String();
 		stats["gpu_sorter_fallback_reason_counts"] = Dictionary();
+	}
+
+	SortingMetrics pipeline_metrics_for_overlap;
+	if (sorting_pipeline) {
+		pipeline_metrics_for_overlap = sorting_pipeline->get_metrics();
+		stats["sorting_pipeline_sorter_last_element_count"] = (int64_t)pipeline_metrics_for_overlap.last_element_count;
+		stats["sorting_pipeline_sorter_last_element_count_known"] = pipeline_metrics_for_overlap.last_element_count_known;
+		stats["sorting_pipeline_sorter_last_key_bits"] = (int64_t)pipeline_metrics_for_overlap.last_key_bits;
+		stats["sorting_pipeline_sorter_last_radix_bits"] = (int64_t)pipeline_metrics_for_overlap.last_radix_bits;
+		stats["sorting_pipeline_sorter_last_pass_count"] = (int64_t)pipeline_metrics_for_overlap.last_pass_count;
+		stats["sorting_pipeline_sorter_last_sort_indirect"] = pipeline_metrics_for_overlap.last_sort_indirect;
+		stats["sorting_pipeline_sorter_last_sort_async"] = pipeline_metrics_for_overlap.last_sort_async;
+	} else {
+		stats["sorting_pipeline_sorter_last_element_count"] = 0;
+		stats["sorting_pipeline_sorter_last_element_count_known"] = false;
+		stats["sorting_pipeline_sorter_last_key_bits"] = 0;
+		stats["sorting_pipeline_sorter_last_radix_bits"] = 0;
+		stats["sorting_pipeline_sorter_last_pass_count"] = 0;
+		stats["sorting_pipeline_sorter_last_sort_indirect"] = false;
+		stats["sorting_pipeline_sorter_last_sort_async"] = false;
+	}
+
+	// Explicit overlap-sort metadata. The instance pipeline runs its sort via
+	// sorting_pipeline; the standalone tile path runs it via the global
+	// gpu_sorter. Whichever one most recently produced output is the sorter
+	// that the gpu_overlap_sort_ms timestamp belongs to. Pick by non-zero
+	// pass_count — the unused sorter leaves zeros. Consumers should read
+	// these instead of trying to guess between sorting_pipeline_sorter_* and
+	// gpu_sorter_last_*.
+	{
+		const bool pipeline_ran = sorting_pipeline && pipeline_metrics_for_overlap.last_pass_count > 0;
+		SortingMetrics overlap_metrics;
+		if (pipeline_ran) {
+			overlap_metrics = pipeline_metrics_for_overlap;
+		} else if (has_gpu_sorter) {
+			overlap_metrics = sorting_state.gpu_sorter->get_metrics();
+		}
+		stats["overlap_sort_element_count"] = (int64_t)overlap_metrics.last_element_count;
+		stats["overlap_sort_element_count_known"] = overlap_metrics.last_element_count_known;
+		stats["overlap_sort_key_bits"] = (int64_t)overlap_metrics.last_key_bits;
+		stats["overlap_sort_radix_bits"] = (int64_t)overlap_metrics.last_radix_bits;
+		stats["overlap_sort_pass_count"] = (int64_t)overlap_metrics.last_pass_count;
+		stats["overlap_sort_indirect"] = overlap_metrics.last_sort_indirect;
+		stats["overlap_sort_async"] = overlap_metrics.last_sort_async;
 	}
 
 	// GPU buffer manager stats
@@ -1161,6 +1441,7 @@ Dictionary RenderDiagnosticsOrchestrator::get_last_sort_metrics_internal() const
 	GaussianSplatRenderer::FrameStateProvider state_provider(renderer);
 	const auto &performance_state = state_provider.get_performance_state_view();
 	const auto &sorting_state = state_provider.get_sorting_state_view();
+	GPUSortingPipeline *sorting_pipeline = state_provider.get_sorting_pipeline();
 	SortingStrategyConfig config = SortingStrategyConfig::load_from_project_settings();
 	if (!performance_state.sort_metrics_history.is_empty()) {
 		const GaussianSplatRenderer::SortFrameMetrics &sample =
@@ -1182,6 +1463,26 @@ Dictionary RenderDiagnosticsOrchestrator::get_last_sort_metrics_internal() const
 	metrics["override_force_cpu"] = sorting_state.override_force_cpu;
 	metrics["override_force_algorithm"] = sorting_state.override_force_algorithm;
 	metrics["override_forced_algorithm"] = sorting_state.override_forced_algorithm;
+	if (sorting_state.gpu_sorter.is_valid()) {
+		const SortingMetrics sorter_metrics = sorting_state.gpu_sorter->get_metrics();
+		metrics["sorter_last_element_count"] = (int64_t)sorter_metrics.last_element_count;
+		metrics["sorter_last_element_count_known"] = sorter_metrics.last_element_count_known;
+		metrics["sorter_last_key_bits"] = (int64_t)sorter_metrics.last_key_bits;
+		metrics["sorter_last_radix_bits"] = (int64_t)sorter_metrics.last_radix_bits;
+		metrics["sorter_last_pass_count"] = (int64_t)sorter_metrics.last_pass_count;
+		metrics["sorter_last_sort_indirect"] = sorter_metrics.last_sort_indirect;
+		metrics["sorter_last_sort_async"] = sorter_metrics.last_sort_async;
+	}
+	if (sorting_pipeline) {
+		const SortingMetrics pipeline_metrics = sorting_pipeline->get_metrics();
+		metrics["sorting_pipeline_sorter_last_element_count"] = (int64_t)pipeline_metrics.last_element_count;
+		metrics["sorting_pipeline_sorter_last_element_count_known"] = pipeline_metrics.last_element_count_known;
+		metrics["sorting_pipeline_sorter_last_key_bits"] = (int64_t)pipeline_metrics.last_key_bits;
+		metrics["sorting_pipeline_sorter_last_radix_bits"] = (int64_t)pipeline_metrics.last_radix_bits;
+		metrics["sorting_pipeline_sorter_last_pass_count"] = (int64_t)pipeline_metrics.last_pass_count;
+		metrics["sorting_pipeline_sorter_last_sort_indirect"] = pipeline_metrics.last_sort_indirect;
+		metrics["sorting_pipeline_sorter_last_sort_async"] = pipeline_metrics.last_sort_async;
+	}
 	return metrics;
 }
 
@@ -1372,10 +1673,24 @@ Dictionary RenderDiagnosticsOrchestrator::get_runtime_diagnostic_snapshot() cons
 	const auto &perf = performance_state.metrics;
 	gpu_performance["utilization_percent"] = perf.gpu_utilization;
 	gpu_performance["frame_gpu_ms"] = perf.gpu_frame_time_ms;
+	gpu_performance["frame_gpu_valid"] = perf.gpu_frame_time_valid;
+	gpu_performance["overlap_count_gpu_ms"] = perf.gpu_tile_overlap_count_time_ms;
+	gpu_performance["overlap_count_gpu_valid"] = perf.gpu_tile_overlap_count_time_valid;
 	gpu_performance["binning_gpu_ms"] = perf.gpu_tile_binning_time_ms;
+	gpu_performance["overlap_emit_gpu_ms"] = perf.gpu_tile_overlap_emit_time_ms;
+	gpu_performance["overlap_emit_gpu_valid"] = perf.gpu_tile_overlap_emit_time_valid;
+	gpu_performance["overlap_sort_gpu_ms"] = perf.gpu_tile_overlap_sort_time_ms;
+	gpu_performance["overlap_sort_gpu_valid"] = perf.gpu_tile_overlap_sort_time_valid;
+	gpu_performance["overlap_sort_cpu_dispatch_ms"] = perf.tile_overlap_sort_cpu_dispatch_ms;
+	gpu_performance["overlap_sort_cpu_dispatch_valid"] = perf.tile_overlap_sort_cpu_dispatch_valid;
 	gpu_performance["raster_gpu_ms"] = perf.gpu_tile_raster_time_ms;
+	gpu_performance["raster_gpu_valid"] = perf.gpu_tile_raster_time_valid;
 	gpu_performance["prefix_gpu_ms"] = perf.gpu_tile_prefix_time_ms;
+	gpu_performance["prefix_gpu_valid"] = perf.gpu_tile_prefix_time_valid;
+	gpu_performance["prefix_cpu_sync_fallback_ms"] = perf.tile_prefix_cpu_sync_fallback_ms;
+	gpu_performance["prefix_cpu_sync_fallback_valid"] = perf.tile_prefix_cpu_sync_fallback_valid;
 	gpu_performance["resolve_gpu_ms"] = perf.gpu_tile_resolve_time_ms;
+	gpu_performance["resolve_gpu_valid"] = perf.gpu_tile_resolve_time_valid;
 	gpu_performance["timing_frame_serial"] = (int64_t)perf.gpu_timing_frame_serial;
 	gpu_performance["timing_frames_behind"] = (int64_t)perf.gpu_timing_frames_behind;
 	gpu_performance["timeline_inflight_frames"] = (int64_t)perf.gpu_timeline_inflight_frames;
@@ -1384,6 +1699,11 @@ Dictionary RenderDiagnosticsOrchestrator::get_runtime_diagnostic_snapshot() cons
 	gpu_performance["timeline_stall_ms"] = perf.gpu_timeline_stall_ms;
 	gpu_performance["timeline_last_value"] = (int64_t)perf.gpu_timeline_last_value;
 	snapshot["gpu_performance"] = gpu_performance;
+
+	Dictionary raster_profile;
+	raster_profile["raster_path"] = perf.raster_path;
+	_append_raster_specialization_metrics(perf, raster_profile);
+	snapshot["raster_profile"] = raster_profile;
 
 	return snapshot;
 }
@@ -1449,6 +1769,7 @@ GaussianSplatRenderer::MonitorStreamingSnapshot GaussianSplatRenderer::get_monit
 	snapshot.metrics_rendered_splat_count = metrics.rendered_splat_count;
 	snapshot.frame_visible_splat_count = frame_state.visible_splat_count.load(std::memory_order_acquire);
 	snapshot.has_streaming_data = (scene_state.gaussian_data.is_valid() && scene_state.gaussian_data->get_count() > 0) ||
+			scene_state.payload_source_splat_count > 0 ||
 			scene_state.active_asset.is_valid();
 
 	const StreamingState &streaming_state = state_view.get_streaming_state();

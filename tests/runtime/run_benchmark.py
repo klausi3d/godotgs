@@ -77,6 +77,41 @@ LANES: list[LaneDefinition] = [
         weights={"quick": 10.0, "performance": 10.0, "showcase": 10.0},
     ),
     LaneDefinition(
+        lane_id="dense_resident_2m",
+        scene="res://scenes/benchmark_suite/lane_dense_resident_2m.tscn",
+        description="Dense resident path (~2M visible splats) for sort/raster timing",
+        durations={"performance": 25.0, "everything": 25.0},
+        weights={"performance": 0.0, "everything": 0.0},
+    ),
+    LaneDefinition(
+        lane_id="sort32_coplanar_alpha",
+        scene="res://scenes/benchmark_suite/lane_sort32_coplanar_alpha.tscn",
+        description="32-bit key coplanar/high-overlap alpha ordering stress",
+        durations={"sort32": 10.0},
+        weights={"sort32": 1.0, "quick": 0.0, "performance": 0.0, "everything": 0.0},
+    ),
+    LaneDefinition(
+        lane_id="sort32_near_camera_large",
+        scene="res://scenes/benchmark_suite/lane_sort32_near_camera_large.tscn",
+        description="32-bit key near-camera large-splat overlap stress",
+        durations={"sort32": 10.0},
+        weights={"sort32": 1.0, "quick": 0.0, "performance": 0.0, "everything": 0.0},
+    ),
+    LaneDefinition(
+        lane_id="sort32_depth_range",
+        scene="res://scenes/benchmark_suite/lane_sort32_depth_range.tscn",
+        description="32-bit key large depth-range quantization stress",
+        durations={"sort32": 10.0},
+        weights={"sort32": 1.0, "quick": 0.0, "performance": 0.0, "everything": 0.0},
+    ),
+    LaneDefinition(
+        lane_id="sort32_tile_bit_pressure",
+        scene="res://scenes/benchmark_suite/lane_sort32_tile_bit_pressure.tscn",
+        description="32-bit key lane with deliberately tight tile-bit budget",
+        durations={"sort32": 10.0},
+        weights={"sort32": 1.0, "quick": 0.0, "performance": 0.0, "everything": 0.0},
+    ),
+    LaneDefinition(
         lane_id="lighting_stress",
         scene="res://scenes/benchmark_suite/lane_lighting_stress.tscn",
         description="Animated light and shading stress",
@@ -284,6 +319,12 @@ PROFILE_DEFAULT_LANE_IDS: dict[str, tuple[str, ...]] = {
         "instance_pipeline_ab_serial",
         "instance_pipeline_ab_single_pass",
     ),
+    "sort32": (
+        "sort32_coplanar_alpha",
+        "sort32_near_camera_large",
+        "sort32_depth_range",
+        "sort32_tile_bit_pressure",
+    ),
     "steam-deck": (
         "deck_static_baseline",
         "deck_streaming_baseline",
@@ -299,6 +340,7 @@ PROFILE_WARMUP_SECONDS: dict[str, float] = {
     "everything": 5.0,
     "synthetic-only": 2.0,
     "ab-only": 5.0,
+    "sort32": 2.0,
     "showcase": 8.0,
     "parity": 5.0,
     "steam-deck": 3.0,
@@ -624,7 +666,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--profile",
-        choices=["everything", "quick", "performance", "synthetic-only", "ab-only", "steam-deck"],
+        choices=["everything", "quick", "performance", "synthetic-only", "ab-only", "sort32", "steam-deck"],
         default="everything",
         help="Suite profile controls lane durations and aggregate weights.",
     )
@@ -704,6 +746,28 @@ def _parse_args() -> argparse.Namespace:
         help="Require GPU timestamp availability for all lanes.",
     )
     parser.add_argument(
+        "--perf-capture",
+        action="store_true",
+        help="Include per-frame render-path perf rows in lane reports.",
+    )
+    parser.add_argument(
+        "--perf-capture-interval",
+        type=int,
+        default=1,
+        help="Frame interval for --perf-capture rows.",
+    )
+    parser.add_argument(
+        "--perf-capture-max-rows",
+        type=int,
+        default=600,
+        help="Maximum render-path perf rows kept per lane when --perf-capture is enabled.",
+    )
+    parser.add_argument(
+        "--perf-capture-trace-dump",
+        action="store_true",
+        help="Embed full pipeline trace JSON in each perf-capture row.",
+    )
+    parser.add_argument(
         "--no-headless-summary",
         action="store_true",
         help="Disable headless summary pass to Godot.",
@@ -729,9 +793,12 @@ def _ensure_duration_scale(value: float) -> float:
     return value
 
 
-def _select_lanes(requested: list[str]) -> list[LaneDefinition]:
+def _select_lanes(requested: list[str], profile: str) -> list[LaneDefinition]:
     if not requested:
-        return LANES
+        default_lane_ids = PROFILE_DEFAULT_LANE_IDS.get(profile)
+        if default_lane_ids is None:
+            return [lane for lane in LANES if profile in lane.durations]
+        requested = list(default_lane_ids)
     index = {lane.lane_id: lane for lane in LANES}
     selected: list[LaneDefinition] = []
     missing: list[str] = []
@@ -959,6 +1026,10 @@ def _generate_dummy_assets(project_path: Path, lanes: list[LaneDefinition], outp
         "city_flyover": 500_000,
         "long_soak": 250_000,
         "integrity_sentinel": 100_000,
+        "sort32_coplanar_alpha": 100_000,
+        "sort32_near_camera_large": 100_000,
+        "sort32_depth_range": 100_000,
+        "sort32_tile_bit_pressure": 100_000,
     }
     DEFAULT_SPLAT_COUNT = 100_000
     for lane in lanes:
@@ -985,6 +1056,10 @@ def _run_lane(
     benchmark_instancing_mode: str,
     capture_dir: Path | None,
     reference_dir: Path | None,
+    perf_capture: bool = False,
+    perf_capture_interval: int = 1,
+    perf_capture_max_rows: int = 600,
+    perf_capture_trace_dump: bool = False,
     timeout_scale: float | None = None,
     timeout_grace: int | None = None,
 ) -> dict[str, Any]:
@@ -1026,6 +1101,12 @@ def _run_lane(
         cmd.extend(["--benchmark-capture-tag", profile])
     if reference_dir is not None:
         cmd.extend(["--benchmark-reference-dir", str(reference_dir)])
+    if perf_capture:
+        cmd.append("--benchmark-perf-capture")
+        cmd.extend(["--benchmark-perf-capture-interval", str(max(1, int(perf_capture_interval)))])
+        cmd.extend(["--benchmark-perf-capture-max-rows", str(max(1, int(perf_capture_max_rows)))])
+        if perf_capture_trace_dump:
+            cmd.append("--benchmark-perf-capture-trace-dump")
 
     timed_out = False
     timeout_message = ""
@@ -1490,7 +1571,7 @@ def main() -> int:
         return 2
 
     try:
-        selected_lanes = _select_lanes(args.lane)
+        selected_lanes = _select_lanes(args.lane, args.profile)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -1622,6 +1703,10 @@ def main() -> int:
             benchmark_instancing_mode=args.benchmark_instancing_mode,
             capture_dir=capture_dir if lane.lane_id in capture_lane_ids else None,
             reference_dir=reference_dir if lane.lane_id in capture_lane_ids else None,
+            perf_capture=args.perf_capture,
+            perf_capture_interval=args.perf_capture_interval,
+            perf_capture_max_rows=args.perf_capture_max_rows,
+            perf_capture_trace_dump=args.perf_capture_trace_dump,
             timeout_scale=args.timeout_scale,
             timeout_grace=args.timeout_grace,
         )

@@ -117,6 +117,7 @@ uint64_t TileRenderer::TileBinningStage::dispatch_tile_binning(uint32_t p_gaussi
 	owner.timing_state.binning_timestamp.start_index = timestamp_base;
 	owner.timing_state.binning_timestamp.end_index = timestamp_base + 1;
 	owner.timing_state.binning_timestamp.label = binning_label;
+	owner.timing_state.overlap_emit_timestamp = owner.timing_state.binning_timestamp;
 
 	owner._queue_submission(submission_device, p_requires_sync);
 
@@ -187,6 +188,10 @@ uint64_t TileRenderer::TileBinningStage::dispatch_tile_binning_count(uint32_t p_
 	submission_device->compute_list_add_barrier(compute_list);
 	submission_device->compute_list_end();
 	submission_device->capture_timestamp(count_label + String("_End"));
+	owner.timing_state.overlap_count_timestamp.device = submission_device;
+	owner.timing_state.overlap_count_timestamp.start_index = timestamp_base;
+	owner.timing_state.overlap_count_timestamp.end_index = timestamp_base + 1;
+	owner.timing_state.overlap_count_timestamp.label = count_label;
 
 	owner._queue_submission(submission_device, p_requires_sync);
 

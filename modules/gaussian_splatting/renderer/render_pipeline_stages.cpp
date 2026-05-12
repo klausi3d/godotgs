@@ -591,6 +591,7 @@ static uint64_t _compute_cull_config_signature(const GaussianSplatRenderer &p_re
 	seed = _hash_float_bits(config.cull_far_tolerance, seed);
 	seed = _hash_bool(config.opacity_aware_culling, seed);
 	seed = _hash_float_bits(config.visibility_threshold, seed);
+	seed = _hash_float_bits(config.alpha_clip, seed);
 	seed = _hash_bool(config.distance_cull_enabled, seed);
 	seed = _hash_float_bits(config.distance_cull_start, seed);
 	seed = _hash_float_bits(config.distance_cull_max_rate, seed);
@@ -1639,11 +1640,50 @@ void RenderPipelineStages::reset_render_state_for_frame(const GaussianSplatRende
 	output_cache.last_viewport_copy_dest_size = Size2i();
 	GaussianSplatRenderer::PerformanceState &performance_state = state_mut.get_performance_state_mut();
 	auto &metrics = performance_state.metrics;
+	metrics.raster_path_reason = String();
+	metrics.raster_compute_allowed = false;
+	metrics.raster_total_tiles = 0;
+	metrics.raster_empty_tiles = 0;
+	metrics.raster_overflow_tiles = 0;
+	metrics.raster_max_splats_per_tile = 0;
+	metrics.raster_avg_splats_per_tile = 0.0f;
+	metrics.raster_occupancy_ratio = 0.0f;
+	metrics.raster_dense_ratio = 0.0f;
+	metrics.raster_overflow_ratio = 0.0f;
+	metrics.raster_overlap_records = 0;
+	metrics.raster_overlap_record_budget = 0;
+	metrics.raster_overlap_record_budget_effective = 0;
+	metrics.raster_overlap_record_budget_configured = 0;
+	metrics.raster_overlap_thinning_keep_ratio = 1.0f;
+	metrics.raster_feature_global_sort = false;
+	metrics.raster_feature_packed_stage_data = false;
+	metrics.raster_feature_tighter_bounds = false;
+	metrics.raster_feature_sh_amortization = false;
+	metrics.raster_sh_amortization_divisor = 1;
+	metrics.raster_feature_quantized_storage = false;
+	metrics.raster_feature_debug_counters = false;
+	metrics.raster_tile_splat_capacity = 0;
+	metrics.raster_max_raster_splats_per_tile = 0;
+	metrics.raster_shader_defines_hash = 0;
 	metrics.gpu_frame_time_ms = 0.0f;
+	metrics.gpu_frame_time_valid = false;
+	metrics.gpu_tile_overlap_count_time_ms = 0.0f;
+	metrics.gpu_tile_overlap_count_time_valid = false;
 	metrics.gpu_tile_binning_time_ms = 0.0f;
+	metrics.gpu_tile_overlap_emit_time_ms = 0.0f;
+	metrics.gpu_tile_overlap_emit_time_valid = false;
+	metrics.gpu_tile_overlap_sort_time_ms = 0.0f;
+	metrics.gpu_tile_overlap_sort_time_valid = false;
+	metrics.tile_overlap_sort_cpu_dispatch_ms = 0.0f;
+	metrics.tile_overlap_sort_cpu_dispatch_valid = false;
 	metrics.gpu_tile_raster_time_ms = 0.0f;
+	metrics.gpu_tile_raster_time_valid = false;
 	metrics.gpu_tile_prefix_time_ms = 0.0f;
+	metrics.gpu_tile_prefix_time_valid = false;
+	metrics.tile_prefix_cpu_sync_fallback_ms = 0.0f;
+	metrics.tile_prefix_cpu_sync_fallback_valid = false;
 	metrics.gpu_tile_resolve_time_ms = 0.0f;
+	metrics.gpu_tile_resolve_time_valid = false;
 	metrics.gpu_timeline_inflight_frames = 0;
 	metrics.gpu_timeline_completed_frames = 0;
 	metrics.gpu_timeline_stall_count = 0;
@@ -1965,11 +2005,28 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 		const GPUCuller::CullingState &cull_state = subsystem_state.gpu_culler->get_state();
 		render_params.opacity_aware_culling = cull_config.opacity_aware_culling;
 		render_params.visibility_threshold = cull_config.visibility_threshold;
+		render_params.alpha_clip = cull_config.alpha_clip;
 		render_params.distance_cull_enabled = cull_config.distance_cull_enabled;
 		render_params.distance_cull_start = cull_config.distance_cull_start;
 		render_params.distance_cull_max_rate = cull_config.distance_cull_max_rate;
 		// Subpixel splat culling - filter splats smaller than this radius in pixels
 		render_params.tiny_splat_screen_radius = cull_state.tiny_splat_screen_radius_px;
+	}
+
+	// Low-pass filter (project setting). Direct path otherwise inherits the 0.35
+	// RenderParams struct default while the project setting registered at
+	// gaussian_splat_manager.cpp:1045 is 0.05 — over-aggressive Mip-Splatting
+	// dilation produces a uniform soft halo on edges. Mirrors the read in
+	// painterly_renderer.cpp:1769-1776 so both paths agree.
+	{
+		float low_pass_filter = render_params.low_pass_filter;
+		if (ProjectSettings *ps = ProjectSettings::get_singleton()) {
+			static const StringName low_pass_filter_path("rendering/gaussian_splatting/rasterization/low_pass_filter");
+			if (ps->has_setting(low_pass_filter_path)) {
+				low_pass_filter = (float)ps->get_setting_with_override(low_pass_filter_path);
+			}
+		}
+		render_params.low_pass_filter = CLAMP(low_pass_filter, 0.05f, 2.0f);
 	}
 
 	// Apply Jacobian diagnostic toggles
@@ -1991,6 +2048,22 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 	// Handle zero splat count
 	if (render_params.splat_count == 0) {
 		performance_state.metrics.raster_path = "none";
+		performance_state.metrics.raster_path_reason = "No raster work";
+		performance_state.metrics.raster_compute_allowed =
+				render_params.compute_raster_policy != GaussianSplatting::ComputeRasterPolicy::ForceOff;
+		performance_state.metrics.raster_total_tiles = 0;
+		performance_state.metrics.raster_empty_tiles = 0;
+		performance_state.metrics.raster_overflow_tiles = 0;
+		performance_state.metrics.raster_max_splats_per_tile = 0;
+		performance_state.metrics.raster_avg_splats_per_tile = 0.0f;
+		performance_state.metrics.raster_occupancy_ratio = 0.0f;
+		performance_state.metrics.raster_dense_ratio = 0.0f;
+		performance_state.metrics.raster_overflow_ratio = 0.0f;
+		performance_state.metrics.raster_overlap_records = 0;
+		performance_state.metrics.raster_overlap_record_budget = 0;
+		performance_state.metrics.raster_overlap_record_budget_effective = 0;
+		performance_state.metrics.raster_overlap_record_budget_configured = 0;
+		performance_state.metrics.raster_overlap_thinning_keep_ratio = 1.0f;
 		RID color_output = subsystem_state.rasterizer->get_output_texture();
 		RID depth_output = subsystem_state.rasterizer->has_depth_output() ?
 			subsystem_state.rasterizer->get_depth_texture() : RID();
@@ -2024,6 +2097,31 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 
 	RasterStats raster_stats = subsystem_state.rasterizer->get_render_stats();
 	performance_state.metrics.raster_path = raster_stats.last_raster_used_compute ? "compute" : "fragment";
+	performance_state.metrics.raster_path_reason = raster_stats.last_raster_choice_reason;
+	performance_state.metrics.raster_compute_allowed = raster_stats.allow_compute_raster;
+	performance_state.metrics.raster_total_tiles = raster_stats.total_tiles;
+	performance_state.metrics.raster_empty_tiles = raster_stats.empty_tiles;
+	performance_state.metrics.raster_overflow_tiles = raster_stats.tiles_with_overflow;
+	performance_state.metrics.raster_max_splats_per_tile = raster_stats.max_splats_in_tile;
+	performance_state.metrics.raster_avg_splats_per_tile = raster_stats.average_splats_per_tile;
+	performance_state.metrics.raster_occupancy_ratio = raster_stats.occupancy_ratio;
+	performance_state.metrics.raster_dense_ratio = raster_stats.dense_ratio;
+	performance_state.metrics.raster_overflow_ratio = raster_stats.overflow_ratio;
+	performance_state.metrics.raster_overlap_records = raster_stats.overlap_records;
+	performance_state.metrics.raster_overlap_record_budget = raster_stats.overlap_record_budget;
+	performance_state.metrics.raster_overlap_record_budget_effective = raster_stats.overlap_record_budget_effective;
+	performance_state.metrics.raster_overlap_record_budget_configured = raster_stats.overlap_record_budget_configured;
+	performance_state.metrics.raster_overlap_thinning_keep_ratio = raster_stats.overlap_thinning_keep_ratio;
+	performance_state.metrics.raster_feature_global_sort = raster_stats.global_sort_enabled;
+	performance_state.metrics.raster_feature_packed_stage_data = raster_stats.feature_packed_stage_data;
+	performance_state.metrics.raster_feature_tighter_bounds = raster_stats.feature_tighter_bounds;
+	performance_state.metrics.raster_feature_sh_amortization = raster_stats.feature_sh_amortization;
+	performance_state.metrics.raster_sh_amortization_divisor = raster_stats.sh_amortization_divisor;
+	performance_state.metrics.raster_feature_quantized_storage = raster_stats.feature_quantized_storage;
+	performance_state.metrics.raster_feature_debug_counters = raster_stats.feature_debug_counters;
+	performance_state.metrics.raster_tile_splat_capacity = raster_stats.raster_tile_splat_capacity;
+	performance_state.metrics.raster_max_raster_splats_per_tile = raster_stats.max_raster_splats_per_tile;
+	performance_state.metrics.raster_shader_defines_hash = raster_stats.shader_defines_hash;
 	if (pipeline && pipeline->debug_state_orchestrator) {
 		pipeline->debug_state_orchestrator->update_raster_metrics(raster_perf, raster_stats);
 	}
@@ -2391,9 +2489,44 @@ void RenderPipelineStages::render_sorted_splats_with_context(const GaussianSplat
 	frame_state.render_time_ms = 0.0f;
 	auto &metrics = performance_state.metrics;
 	metrics.raster_path = "unknown";
+	metrics.raster_path_reason = String();
+	metrics.raster_compute_allowed = false;
+	metrics.raster_total_tiles = 0;
+	metrics.raster_empty_tiles = 0;
+	metrics.raster_overflow_tiles = 0;
+	metrics.raster_max_splats_per_tile = 0;
+	metrics.raster_avg_splats_per_tile = 0.0f;
+	metrics.raster_occupancy_ratio = 0.0f;
+	metrics.raster_dense_ratio = 0.0f;
+	metrics.raster_overflow_ratio = 0.0f;
+	metrics.raster_overlap_records = 0;
+	metrics.raster_overlap_record_budget = 0;
+	metrics.raster_overlap_record_budget_effective = 0;
+	metrics.raster_overlap_record_budget_configured = 0;
+	metrics.raster_overlap_thinning_keep_ratio = 1.0f;
+	metrics.raster_feature_global_sort = false;
+	metrics.raster_feature_packed_stage_data = false;
+	metrics.raster_feature_tighter_bounds = false;
+	metrics.raster_feature_sh_amortization = false;
+	metrics.raster_sh_amortization_divisor = 1;
+	metrics.raster_feature_quantized_storage = false;
+	metrics.raster_feature_debug_counters = false;
+	metrics.raster_tile_splat_capacity = 0;
+	metrics.raster_max_raster_splats_per_tile = 0;
+	metrics.raster_shader_defines_hash = 0;
 	metrics.gpu_frame_time_ms = 0.0f;
+	metrics.gpu_frame_time_valid = false;
+	metrics.gpu_tile_overlap_count_time_ms = 0.0f;
+	metrics.gpu_tile_overlap_count_time_valid = false;
 	metrics.gpu_tile_binning_time_ms = 0.0f;
+	metrics.gpu_tile_overlap_emit_time_ms = 0.0f;
+	metrics.gpu_tile_overlap_emit_time_valid = false;
+	metrics.gpu_tile_overlap_sort_time_ms = 0.0f;
+	metrics.gpu_tile_overlap_sort_time_valid = false;
+	metrics.tile_overlap_sort_cpu_dispatch_ms = 0.0f;
+	metrics.tile_overlap_sort_cpu_dispatch_valid = false;
 	metrics.gpu_tile_raster_time_ms = 0.0f;
+	metrics.gpu_tile_raster_time_valid = false;
 	const GaussianSplatRenderer::RenderFramePlan *frame_plan = state_view.get_frame_plan();
 	DEV_ASSERT(frame_plan);
 	ERR_FAIL_COND_MSG(!frame_plan, "RenderFramePlan missing in render_sorted_splats_with_context.");

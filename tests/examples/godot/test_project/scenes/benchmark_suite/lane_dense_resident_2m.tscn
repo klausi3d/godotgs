@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/benchmark_suite/lane_template.tscn" id="1"]
+
+[node name="LaneDenseResident2M" instance=ExtResource("1")]
+lane_id = "dense_resident_2m"
+lane_name = "Dense Resident 2M"
+lane_description = "Resident-pipeline lane with ~2M visible splats (81 x synthetic_spiral) for sort/raster timing under load."
+lane_preset = "dense_resident_2m"
+default_duration_s = 25.0

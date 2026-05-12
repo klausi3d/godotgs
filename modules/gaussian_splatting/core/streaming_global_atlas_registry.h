@@ -28,6 +28,16 @@ public:
 		uint32_t dirty_count = 0;
 		uint32_t contiguous_range_count = 0;
 	};
+	struct SyncDiagnostics {
+		uint32_t topology_scan_asset_count = 0;
+		uint32_t topology_scan_chunk_count = 0;
+		uint32_t cached_total_chunks = 0;
+		uint32_t chunk_meta_dirty_count = 0;
+		uint32_t chunk_meta_range_count = 0;
+		bool used_cached_topology = false;
+		bool forced_full_rebuild = false;
+		bool chunk_meta_full_update = false;
+	};
 
 	void cleanup(RenderingDevice *p_rd);
 	void mark_asset_registry_dirty() { asset_registry_dirty = true; }
@@ -43,21 +53,38 @@ public:
 	uint64_t get_auxiliary_vram_overhead_bytes() const;
 	const GlobalAtlasState &get_global_atlas_state() const { return global_atlas_state; }
 	uint64_t get_atlas_generation() const { return global_atlas_state.atlas_generation; }
+	const SyncDiagnostics &get_last_sync_diagnostics() const { return last_sync_diagnostics; }
 #if defined(TESTS_ENABLED)
 	static ChunkMetaUploadPlan _test_plan_chunk_meta_uploads(
 			const LocalVector<uint32_t> &p_dirty_indices, uint32_t p_total_chunks);
+	ChunkMetaUploadPlan _test_plan_chunk_meta_sync(GaussianStreamingSystem &system);
+	void _test_clear_cpu_dirty_state();
 #endif
 
 private:
+	struct SyncPreparation {
+		bool atlas_dirty = false;
+		bool rebuild_cpu_state = false;
+		uint32_t dense_count = 0;
+		uint32_t total_chunks = 0;
+	};
+
 	void _invalidate_chunk_meta_tracking();
 	void _invalidate_published_buffers();
+	void _reset_sync_diagnostics();
+	bool _has_stable_cached_topology(uint32_t p_dense_count) const;
+	uint32_t _scan_total_chunks_for_sync(GaussianStreamingSystem &system);
+	SyncPreparation _prepare_sync_state(GaussianStreamingSystem &system, bool p_quantization_rebuild);
 	static ChunkMetaUploadPlan _plan_chunk_meta_uploads(
 			LocalVector<uint32_t> &r_dirty_indices, uint32_t p_total_chunks);
 
 	GlobalAtlasState global_atlas_state;
+	SyncDiagnostics last_sync_diagnostics;
 	uint32_t max_chunk_count_per_asset = 0;
 	uint32_t max_chunk_splats = 0;
 	uint32_t atlas_published_chunk_count = 0;
+	uint32_t cached_total_chunks = 0;
+	uint32_t cached_dense_count = 0;
 	RID asset_meta_buffer;
 	RID chunk_meta_buffer;
 	RID asset_chunk_index_buffer;
@@ -73,6 +100,7 @@ private:
 	bool asset_chunk_index_dirty = false;
 	bool chunk_meta_dirty_all = false;
 	bool asset_registry_dirty = false;
+	bool cpu_state_valid = false;
 };
 
 #endif // STREAMING_GLOBAL_ATLAS_REGISTRY_H

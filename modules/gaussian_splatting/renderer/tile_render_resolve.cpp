@@ -35,6 +35,7 @@
 #include "pipeline_io_contracts.h"
 #include "shader_compilation_helper.h"
 #include "sh_config.h"
+#include "tile_lighting_abi.h"
 #include "tile_prefix_scan_utils.h"
 #include "../interfaces/sync_policy.h"
 #include "../shaders/tile_resolve.glsl.gen.h"
@@ -49,10 +50,11 @@ using GaussianSplatting::ScopedGpuMarkerEx;
 
 namespace {
 
-static constexpr uint32_t kFallbackSceneUniformBytes = 8192; // SceneDataBlock (SceneData + prev_data) ~6KB; pad for safety.
-static constexpr uint32_t kFallbackDirectionalUniformBytes = 2048; // One DirectionalLightData entry (std140), padded.
-static constexpr uint32_t kFallbackLightStorageBytes = 1024; // Minimal SSBO for omni/spot/reflection arrays.
-static constexpr uint32_t kFallbackClusterStorageBytes = 1024; // Minimal SSBO for cluster data.
+static constexpr uint32_t kFallbackSceneUniformBytes = GaussianSplatting::TileLightingSetABI::MIN_SCENE_DATA_UNIFORM_BYTES;
+static constexpr uint32_t kFallbackDirectionalUniformBytes = GaussianSplatting::TileLightingSetABI::MIN_DIRECTIONAL_LIGHT_UNIFORM_BYTES;
+static constexpr uint32_t kFallbackLightStorageBytes = GaussianSplatting::TileLightingSetABI::MIN_LIGHT_STORAGE_BYTES;
+static constexpr uint32_t kFallbackReflectionStorageBytes = GaussianSplatting::TileLightingSetABI::MIN_REFLECTION_STORAGE_BYTES;
+static constexpr uint32_t kFallbackClusterStorageBytes = GaussianSplatting::TileLightingSetABI::MIN_CLUSTER_STORAGE_BYTES;
 static constexpr int32_t kFallbackDecalTextureSize = 4;
 static constexpr int32_t kFallbackReflectionTextureSize = 4;
 static constexpr int32_t kFallbackShadowTextureSize = 1;
@@ -104,6 +106,23 @@ static bool _is_resolve_contract_fallback_accepted(RD::DataFormat p_requested, R
 			break;
 	}
 	return false;
+}
+
+static void _warn_lighting_binding_fallback_once(uint32_t p_binding, const char *p_resource, const char *p_reason, uint64_t p_min_bytes = 0) {
+	String message = vformat("[TileRenderer] Resolve lighting set 2 binding %d (%s) using fallback: %s",
+			p_binding, String(p_resource ? p_resource : "resource"), String(p_reason ? p_reason : "resource unavailable"));
+	if (p_min_bytes > 0) {
+		message += vformat("; shader ABI minimum=%d bytes", int64_t(p_min_bytes));
+	}
+	WARN_PRINT_ONCE(message);
+}
+
+static void _append_lighting_uniform(Vector<RD::Uniform> &r_uniforms, RD::UniformType p_type, uint32_t p_binding, RID p_rid) {
+	RD::Uniform uniform;
+	uniform.uniform_type = p_type;
+	uniform.binding = p_binding;
+	uniform.append_id(p_rid);
+	r_uniforms.push_back(uniform);
 }
 
 } // namespace
@@ -558,6 +577,9 @@ void TileRenderer::TileResolveStage::free_fallback_lighting_buffers(RenderingDev
         fallback_cluster_buffer = RID();
         fallback_decal_texture = RID();
         fallback_reflection_texture = RID();
+        fallback_shadow_texture = RID();
+        fallback_directional_shadow_texture = RID();
+        fallback_cluster_buffer_bytes = 0;
         fallback_lighting_owner.clear();
         return;
     }
@@ -579,11 +601,19 @@ void TileRenderer::TileResolveStage::free_fallback_lighting_buffers(RenderingDev
     free_resource(fallback_reflection_texture);
     free_resource(fallback_shadow_texture);
     free_resource(fallback_directional_shadow_texture);
+    fallback_cluster_buffer_bytes = 0;
     fallback_lighting_owner.clear();
 }
 
-bool TileRenderer::TileResolveStage::ensure_fallback_lighting_buffers(RenderingDevice *p_device) {
+bool TileRenderer::TileResolveStage::ensure_fallback_lighting_buffers(RenderingDevice *p_device, uint64_t p_min_cluster_storage_bytes) {
     if (!p_device) {
+        return false;
+    }
+
+    const uint64_t required_cluster_storage_bytes = std::max<uint64_t>(
+            uint64_t(kFallbackClusterStorageBytes), p_min_cluster_storage_bytes);
+    if (required_cluster_storage_bytes > UINT32_MAX) {
+        WARN_PRINT_ONCE(vformat("[TileRenderer] Resolve lighting fallback cluster buffer request is too large: requested=%d bytes", int64_t(required_cluster_storage_bytes)));
         return false;
     }
 
@@ -594,6 +624,7 @@ bool TileRenderer::TileResolveStage::ensure_fallback_lighting_buffers(RenderingD
             fallback_spot_light_buffer.is_valid() &&
             fallback_reflection_buffer.is_valid() &&
             fallback_cluster_buffer.is_valid() &&
+            fallback_cluster_buffer_bytes >= required_cluster_storage_bytes &&
             fallback_decal_texture.is_valid() &&
             fallback_reflection_texture.is_valid() &&
             fallback_shadow_texture.is_valid() &&
@@ -639,6 +670,8 @@ bool TileRenderer::TileResolveStage::ensure_fallback_lighting_buffers(RenderingD
     }
     p_device->set_resource_name(fallback_spot_light_buffer, "GS_TileResolve_FallbackSpotSSBO");
 
+    zero_data.resize(kFallbackReflectionStorageBytes);
+    zero_data.fill(0);
     fallback_reflection_buffer = p_device->storage_buffer_create(zero_data.size(), zero_data);
     if (!fallback_reflection_buffer.is_valid()) {
         free_fallback_lighting_buffers(p_device);
@@ -646,13 +679,14 @@ bool TileRenderer::TileResolveStage::ensure_fallback_lighting_buffers(RenderingD
     }
     p_device->set_resource_name(fallback_reflection_buffer, "GS_TileResolve_FallbackReflectionSSBO");
 
-    zero_data.resize(kFallbackClusterStorageBytes);
+    zero_data.resize(uint32_t(required_cluster_storage_bytes));
     zero_data.fill(0);
     fallback_cluster_buffer = p_device->storage_buffer_create(zero_data.size(), zero_data);
     if (!fallback_cluster_buffer.is_valid()) {
         free_fallback_lighting_buffers(p_device);
         return false;
     }
+    fallback_cluster_buffer_bytes = required_cluster_storage_bytes;
     p_device->set_resource_name(fallback_cluster_buffer, "GS_TileResolve_FallbackClusterSSBO");
 
     RD::TextureFormat decal_format;
@@ -758,17 +792,18 @@ RID TileRenderer::TileResolveStage::create_lighting_uniform_set(RenderingDevice 
     }
     if (!ensure_shadow_sampler(p_device)) {
         return RID();
-    }
+	}
 
-    RID scene_buffer = p_params.scene_uniform_buffer;
-    bool using_fallback_scene = false;
-    if (!scene_buffer.is_valid()) {
+	RID scene_buffer = p_params.scene_uniform_buffer;
+	if (!scene_buffer.is_valid()) {
+		_warn_lighting_binding_fallback_once(GaussianSplatting::TileLightingSetABI::BINDING_SCENE_DATA,
+				"SceneDataBlock", "scene_uniform_buffer RID is invalid",
+				GaussianSplatting::TileLightingSetABI::MIN_SCENE_DATA_UNIFORM_BYTES);
         if (!ensure_fallback_lighting_buffers(p_device)) {
-            return RID();
-        }
-        scene_buffer = fallback_scene_uniform_buffer;
-        using_fallback_scene = true;
-    }
+			return RID();
+		}
+		scene_buffer = fallback_scene_uniform_buffer;
+	}
 
     RendererRD::LightStorage *light_storage = RendererRD::LightStorage::get_singleton();
     RID directional_buffer = p_params.directional_light_buffer;
@@ -776,6 +811,9 @@ RID TileRenderer::TileResolveStage::create_lighting_uniform_set(RenderingDevice 
         directional_buffer = light_storage ? light_storage->get_directional_light_buffer() : RID();
     }
     if (!directional_buffer.is_valid()) {
+        _warn_lighting_binding_fallback_once(GaussianSplatting::TileLightingSetABI::BINDING_DIRECTIONAL_LIGHTS,
+                "DirectionalLightData", "directional light buffer RID is invalid",
+                GaussianSplatting::TileLightingSetABI::MIN_DIRECTIONAL_LIGHT_UNIFORM_BYTES);
         if (!ensure_fallback_lighting_buffers(p_device)) {
             return RID();
         }
@@ -784,6 +822,9 @@ RID TileRenderer::TileResolveStage::create_lighting_uniform_set(RenderingDevice 
 
     RID omni_buffer = light_storage ? light_storage->get_omni_light_buffer() : RID();
     if (!omni_buffer.is_valid()) {
+        _warn_lighting_binding_fallback_once(GaussianSplatting::TileLightingSetABI::BINDING_OMNI_LIGHTS,
+                "LightData omni array", "LightStorage omni buffer RID is invalid",
+                GaussianSplatting::TileLightingSetABI::MIN_LIGHT_STORAGE_BYTES);
         if (!ensure_fallback_lighting_buffers(p_device)) {
             return RID();
         }
@@ -792,6 +833,9 @@ RID TileRenderer::TileResolveStage::create_lighting_uniform_set(RenderingDevice 
 
     RID spot_buffer = light_storage ? light_storage->get_spot_light_buffer() : RID();
     if (!spot_buffer.is_valid()) {
+        _warn_lighting_binding_fallback_once(GaussianSplatting::TileLightingSetABI::BINDING_SPOT_LIGHTS,
+                "LightData spot array", "LightStorage spot buffer RID is invalid",
+                GaussianSplatting::TileLightingSetABI::MIN_LIGHT_STORAGE_BYTES);
         if (!ensure_fallback_lighting_buffers(p_device)) {
             return RID();
         }
@@ -800,14 +844,25 @@ RID TileRenderer::TileResolveStage::create_lighting_uniform_set(RenderingDevice 
 
     RID reflection_buffer = light_storage ? light_storage->get_reflection_probe_buffer() : RID();
     if (!reflection_buffer.is_valid()) {
+        _warn_lighting_binding_fallback_once(GaussianSplatting::TileLightingSetABI::BINDING_REFLECTIONS,
+                "ReflectionData array", "LightStorage reflection buffer RID is invalid",
+                GaussianSplatting::TileLightingSetABI::MIN_REFLECTION_STORAGE_BYTES);
         if (!ensure_fallback_lighting_buffers(p_device)) {
             return RID();
         }
         reflection_buffer = fallback_reflection_buffer;
     }
 
+    const GaussianSplatting::TileLightingClusterABIConfig cluster_config =
+            GaussianSplatting::TileLightingSetABI::compute_cluster_config(p_params.viewport_size,
+                    p_params.cluster_size, p_params.cluster_max_elements, p_params.cluster_buffer.is_valid());
     RID cluster_buffer = p_params.cluster_buffer;
-    if (!cluster_buffer.is_valid()) {
+    if (!cluster_config.enabled) {
+        if (p_params.cluster_buffer.is_valid() || p_params.cluster_size != 0 || p_params.cluster_max_elements != 0) {
+            _warn_lighting_binding_fallback_once(GaussianSplatting::TileLightingSetABI::BINDING_CLUSTER_BUFFER,
+                    "ClusterBuffer", cluster_config.disabled_reason,
+                    GaussianSplatting::TileLightingSetABI::MIN_CLUSTER_STORAGE_BYTES);
+        }
         if (!ensure_fallback_lighting_buffers(p_device)) {
             return RID();
         }
@@ -871,182 +926,46 @@ RID TileRenderer::TileResolveStage::create_lighting_uniform_set(RenderingDevice 
     }
 
     Vector<RD::Uniform> uniforms;
-    RD::Uniform scene_uniform;
-    scene_uniform.uniform_type = RD::UNIFORM_TYPE_UNIFORM_BUFFER;
-    scene_uniform.binding = 0;
-    scene_uniform.append_id(scene_buffer);
-    uniforms.push_back(scene_uniform);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_UNIFORM_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_SCENE_DATA, scene_buffer);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_UNIFORM_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_DIRECTIONAL_LIGHTS, directional_buffer);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_STORAGE_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_OMNI_LIGHTS, omni_buffer);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_STORAGE_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_SPOT_LIGHTS, spot_buffer);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_STORAGE_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_REFLECTIONS, reflection_buffer);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_STORAGE_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_CLUSTER_BUFFER, cluster_buffer);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_TEXTURE, GaussianSplatting::TileLightingSetABI::BINDING_DECAL_ATLAS, decal_texture);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_TEXTURE, GaussianSplatting::TileLightingSetABI::BINDING_REFLECTION_ATLAS, reflection_texture);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_SAMPLER, GaussianSplatting::TileLightingSetABI::BINDING_LIGHT_PROJECTOR_SAMPLER, resolve_sampler);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_SAMPLER, GaussianSplatting::TileLightingSetABI::BINDING_DEFAULT_SAMPLER_LINEAR_MIPMAPS_CLAMP, resolve_sampler);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_SAMPLER, GaussianSplatting::TileLightingSetABI::BINDING_SHADOW_SAMPLER, shadow_sampler);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_TEXTURE, GaussianSplatting::TileLightingSetABI::BINDING_SHADOW_ATLAS, shadow_atlas_texture);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_TEXTURE, GaussianSplatting::TileLightingSetABI::BINDING_DIRECTIONAL_SHADOW_ATLAS, directional_shadow_texture);
+    _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_SAMPLER, GaussianSplatting::TileLightingSetABI::BINDING_SAMPLER_LINEAR_CLAMP, resolve_sampler);
 
-    RD::Uniform directional_uniform;
-    directional_uniform.uniform_type = RD::UNIFORM_TYPE_UNIFORM_BUFFER;
-    directional_uniform.binding = 1;
-    directional_uniform.append_id(directional_buffer);
-    uniforms.push_back(directional_uniform);
-
-    RD::Uniform omni_uniform;
-    omni_uniform.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
-    omni_uniform.binding = 2;
-    omni_uniform.append_id(omni_buffer);
-    uniforms.push_back(omni_uniform);
-
-    RD::Uniform spot_uniform;
-    spot_uniform.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
-    spot_uniform.binding = 3;
-    spot_uniform.append_id(spot_buffer);
-    uniforms.push_back(spot_uniform);
-
-    RD::Uniform reflection_uniform;
-    reflection_uniform.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
-    reflection_uniform.binding = 4;
-    reflection_uniform.append_id(reflection_buffer);
-    uniforms.push_back(reflection_uniform);
-
-    RD::Uniform cluster_uniform;
-    cluster_uniform.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
-    cluster_uniform.binding = 9;
-    cluster_uniform.append_id(cluster_buffer);
-    uniforms.push_back(cluster_uniform);
-
-    RD::Uniform decal_uniform;
-    decal_uniform.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
-    decal_uniform.binding = 5;
-    decal_uniform.append_id(decal_texture);
-    uniforms.push_back(decal_uniform);
-
-    RD::Uniform reflection_atlas_uniform;
-    reflection_atlas_uniform.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
-    reflection_atlas_uniform.binding = 6;
-    reflection_atlas_uniform.append_id(reflection_texture);
-    uniforms.push_back(reflection_atlas_uniform);
-
-    RD::Uniform projector_sampler_uniform;
-    projector_sampler_uniform.uniform_type = RD::UNIFORM_TYPE_SAMPLER;
-    projector_sampler_uniform.binding = 7;
-    projector_sampler_uniform.append_id(resolve_sampler);
-    uniforms.push_back(projector_sampler_uniform);
-
-    RD::Uniform default_sampler_uniform;
-    default_sampler_uniform.uniform_type = RD::UNIFORM_TYPE_SAMPLER;
-    default_sampler_uniform.binding = 8;
-    default_sampler_uniform.append_id(resolve_sampler);
-    uniforms.push_back(default_sampler_uniform);
-
-    RD::Uniform shadow_sampler_uniform;
-    shadow_sampler_uniform.uniform_type = RD::UNIFORM_TYPE_SAMPLER;
-    shadow_sampler_uniform.binding = 10;
-    shadow_sampler_uniform.append_id(shadow_sampler);
-    uniforms.push_back(shadow_sampler_uniform);
-
-    RD::Uniform shadow_atlas_uniform;
-    shadow_atlas_uniform.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
-    shadow_atlas_uniform.binding = 11;
-    shadow_atlas_uniform.append_id(shadow_atlas_texture);
-    uniforms.push_back(shadow_atlas_uniform);
-
-    RD::Uniform directional_shadow_uniform;
-    directional_shadow_uniform.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
-    directional_shadow_uniform.binding = 12;
-    directional_shadow_uniform.append_id(directional_shadow_texture);
-    uniforms.push_back(directional_shadow_uniform);
-
-    RD::Uniform linear_clamp_uniform;
-    linear_clamp_uniform.uniform_type = RD::UNIFORM_TYPE_SAMPLER;
-    linear_clamp_uniform.binding = 13;
-    linear_clamp_uniform.append_id(resolve_sampler);
-    uniforms.push_back(linear_clamp_uniform);
-
-    RID lighting_uniform_set = p_device->uniform_set_create(uniforms, owner.shader_resources.tile_resolve_shader, 2);
+    RID lighting_uniform_set = p_device->uniform_set_create(uniforms, owner.shader_resources.tile_resolve_shader, GaussianSplatting::TileLightingSetABI::SET);
     if (!lighting_uniform_set.is_valid()) {
-        if (!ensure_fallback_lighting_buffers(p_device)) {
+        WARN_PRINT_ONCE("[TileRenderer] Resolve lighting set 2 rejected by RenderingDevice; retrying with all fallback buffers/textures");
+        const uint64_t retry_cluster_storage_bytes = cluster_config.enabled ? cluster_config.required_storage_bytes : 0;
+        if (!ensure_fallback_lighting_buffers(p_device, retry_cluster_storage_bytes)) {
             return RID();
         }
         uniforms.clear();
 
-        RD::Uniform fallback_scene_uniform;
-        fallback_scene_uniform.uniform_type = RD::UNIFORM_TYPE_UNIFORM_BUFFER;
-        fallback_scene_uniform.binding = 0;
-        fallback_scene_uniform.append_id(fallback_scene_uniform_buffer);
-        uniforms.push_back(fallback_scene_uniform);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_UNIFORM_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_SCENE_DATA, fallback_scene_uniform_buffer);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_UNIFORM_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_DIRECTIONAL_LIGHTS, fallback_directional_light_buffer);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_STORAGE_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_OMNI_LIGHTS, fallback_omni_light_buffer);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_STORAGE_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_SPOT_LIGHTS, fallback_spot_light_buffer);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_STORAGE_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_REFLECTIONS, fallback_reflection_buffer);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_STORAGE_BUFFER, GaussianSplatting::TileLightingSetABI::BINDING_CLUSTER_BUFFER, fallback_cluster_buffer);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_TEXTURE, GaussianSplatting::TileLightingSetABI::BINDING_DECAL_ATLAS, fallback_decal_texture);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_TEXTURE, GaussianSplatting::TileLightingSetABI::BINDING_REFLECTION_ATLAS, fallback_reflection_texture);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_SAMPLER, GaussianSplatting::TileLightingSetABI::BINDING_LIGHT_PROJECTOR_SAMPLER, resolve_sampler);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_SAMPLER, GaussianSplatting::TileLightingSetABI::BINDING_DEFAULT_SAMPLER_LINEAR_MIPMAPS_CLAMP, resolve_sampler);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_SAMPLER, GaussianSplatting::TileLightingSetABI::BINDING_SHADOW_SAMPLER, shadow_sampler);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_TEXTURE, GaussianSplatting::TileLightingSetABI::BINDING_SHADOW_ATLAS, fallback_shadow_texture);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_TEXTURE, GaussianSplatting::TileLightingSetABI::BINDING_DIRECTIONAL_SHADOW_ATLAS, fallback_directional_shadow_texture);
+        _append_lighting_uniform(uniforms, RD::UNIFORM_TYPE_SAMPLER, GaussianSplatting::TileLightingSetABI::BINDING_SAMPLER_LINEAR_CLAMP, resolve_sampler);
 
-        RD::Uniform fallback_directional_uniform;
-        fallback_directional_uniform.uniform_type = RD::UNIFORM_TYPE_UNIFORM_BUFFER;
-        fallback_directional_uniform.binding = 1;
-        fallback_directional_uniform.append_id(fallback_directional_light_buffer);
-        uniforms.push_back(fallback_directional_uniform);
-
-        RD::Uniform fallback_omni_uniform;
-        fallback_omni_uniform.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
-        fallback_omni_uniform.binding = 2;
-        fallback_omni_uniform.append_id(fallback_omni_light_buffer);
-        uniforms.push_back(fallback_omni_uniform);
-
-        RD::Uniform fallback_spot_uniform;
-        fallback_spot_uniform.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
-        fallback_spot_uniform.binding = 3;
-        fallback_spot_uniform.append_id(fallback_spot_light_buffer);
-        uniforms.push_back(fallback_spot_uniform);
-
-        RD::Uniform fallback_reflection_uniform;
-        fallback_reflection_uniform.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
-        fallback_reflection_uniform.binding = 4;
-        fallback_reflection_uniform.append_id(fallback_reflection_buffer);
-        uniforms.push_back(fallback_reflection_uniform);
-
-        RD::Uniform fallback_cluster_uniform;
-        fallback_cluster_uniform.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
-        fallback_cluster_uniform.binding = 9;
-        fallback_cluster_uniform.append_id(fallback_cluster_buffer);
-        uniforms.push_back(fallback_cluster_uniform);
-
-        RD::Uniform fallback_decal_uniform;
-        fallback_decal_uniform.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
-        fallback_decal_uniform.binding = 5;
-        fallback_decal_uniform.append_id(decal_texture);
-        uniforms.push_back(fallback_decal_uniform);
-
-        RD::Uniform fallback_reflection_atlas_uniform;
-        fallback_reflection_atlas_uniform.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
-        fallback_reflection_atlas_uniform.binding = 6;
-        fallback_reflection_atlas_uniform.append_id(reflection_texture);
-        uniforms.push_back(fallback_reflection_atlas_uniform);
-
-        RD::Uniform fallback_projector_sampler_uniform;
-        fallback_projector_sampler_uniform.uniform_type = RD::UNIFORM_TYPE_SAMPLER;
-        fallback_projector_sampler_uniform.binding = 7;
-        fallback_projector_sampler_uniform.append_id(resolve_sampler);
-        uniforms.push_back(fallback_projector_sampler_uniform);
-
-        RD::Uniform fallback_default_sampler_uniform;
-        fallback_default_sampler_uniform.uniform_type = RD::UNIFORM_TYPE_SAMPLER;
-        fallback_default_sampler_uniform.binding = 8;
-        fallback_default_sampler_uniform.append_id(resolve_sampler);
-        uniforms.push_back(fallback_default_sampler_uniform);
-
-        RD::Uniform fallback_shadow_sampler_uniform;
-        fallback_shadow_sampler_uniform.uniform_type = RD::UNIFORM_TYPE_SAMPLER;
-        fallback_shadow_sampler_uniform.binding = 10;
-        fallback_shadow_sampler_uniform.append_id(shadow_sampler);
-        uniforms.push_back(fallback_shadow_sampler_uniform);
-
-        RD::Uniform fallback_shadow_atlas_uniform;
-        fallback_shadow_atlas_uniform.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
-        fallback_shadow_atlas_uniform.binding = 11;
-        fallback_shadow_atlas_uniform.append_id(fallback_shadow_texture);
-        uniforms.push_back(fallback_shadow_atlas_uniform);
-
-        RD::Uniform fallback_directional_shadow_uniform;
-        fallback_directional_shadow_uniform.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
-        fallback_directional_shadow_uniform.binding = 12;
-        fallback_directional_shadow_uniform.append_id(fallback_directional_shadow_texture);
-        uniforms.push_back(fallback_directional_shadow_uniform);
-
-        RD::Uniform fallback_linear_clamp_uniform;
-        fallback_linear_clamp_uniform.uniform_type = RD::UNIFORM_TYPE_SAMPLER;
-        fallback_linear_clamp_uniform.binding = 13;
-        fallback_linear_clamp_uniform.append_id(resolve_sampler);
-        uniforms.push_back(fallback_linear_clamp_uniform);
-
-        lighting_uniform_set = p_device->uniform_set_create(uniforms, owner.shader_resources.tile_resolve_shader, 2);
+        lighting_uniform_set = p_device->uniform_set_create(uniforms, owner.shader_resources.tile_resolve_shader, GaussianSplatting::TileLightingSetABI::SET);
     }
     if (lighting_uniform_set.is_valid()) {
         p_device->set_resource_name(lighting_uniform_set, "GS_TileRenderer_ResolveLightingSet");

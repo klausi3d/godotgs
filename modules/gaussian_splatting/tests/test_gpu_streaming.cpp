@@ -1927,9 +1927,64 @@ TEST_CASE("[Streaming Pipeline] Invalid chunk meta dirty marks force a safe atla
     CHECK(system->get_asset_chunk_index_buffer().is_valid());
 }
 
+TEST_CASE("[Streaming Pipeline] Sparse chunk meta sync planning uses cached topology") {
+	Ref<GaussianStreamingSystem> system;
+	system.instantiate();
+	system->initialize_empty(nullptr);
+
+    constexpr uint32_t asset_count = 64;
+    constexpr uint32_t first_asset_id = 9000;
+    for (uint32_t i = 0; i < asset_count; i++) {
+        system->register_asset(first_asset_id + i, create_test_gaussian_data(1));
+    }
+
+    system->_test_build_global_atlas_cpu_state();
+    system->_test_clear_atlas_cpu_dirty_state();
+
+    system->_test_mark_chunk_meta_dirty(first_asset_id + 3, 0);
+    system->_test_mark_chunk_meta_dirty(first_asset_id + 17, 0);
+    system->_test_mark_chunk_meta_dirty(first_asset_id + 51, 0);
+
+    const StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan plan = system->_test_plan_chunk_meta_sync();
+    const StreamingGlobalAtlasRegistry::SyncDiagnostics diagnostics = system->_test_get_atlas_sync_diagnostics();
+
+    CHECK(plan.dirty_count == 3);
+    CHECK(plan.contiguous_range_count == 3);
+    CHECK_FALSE(plan.full_update);
+    CHECK(diagnostics.used_cached_topology);
+    CHECK_FALSE(diagnostics.forced_full_rebuild);
+    CHECK(diagnostics.topology_scan_asset_count == 0);
+    CHECK(diagnostics.topology_scan_chunk_count == 0);
+    CHECK(diagnostics.chunk_meta_dirty_count == 3);
+	CHECK(diagnostics.chunk_meta_range_count == 3);
+	CHECK_FALSE(diagnostics.chunk_meta_full_update);
+}
+
+TEST_CASE("[Streaming Pipeline] Full chunk meta sync planning reports full-update diagnostics") {
+	Ref<GaussianStreamingSystem> system;
+	system.instantiate();
+	system->initialize_empty(nullptr);
+
+	constexpr uint32_t asset_id = 9060;
+	system->register_asset(asset_id, create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE * 2));
+
+	system->_test_build_global_atlas_cpu_state();
+
+	const StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan plan = system->_test_plan_chunk_meta_sync();
+	const StreamingGlobalAtlasRegistry::SyncDiagnostics diagnostics = system->_test_get_atlas_sync_diagnostics();
+
+	CHECK(system->_test_get_chunk_meta_dirty_all());
+	CHECK(plan.full_update);
+	CHECK(plan.dirty_count == 2);
+	CHECK(plan.contiguous_range_count == 1);
+	CHECK(diagnostics.chunk_meta_full_update);
+	CHECK(diagnostics.chunk_meta_dirty_count == 2);
+	CHECK(diagnostics.chunk_meta_range_count == 1);
+}
+
 TEST_CASE("[Streaming Pipeline] Dirty atlas publication is invalidated when GPU sync is skipped") {
-    RenderingServer *rs = RenderingServer::get_singleton();
-    if (!rs) {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (!rs) {
         MESSAGE("Skipping - Rendering server unavailable");
         return;
     }
@@ -3169,6 +3224,157 @@ TEST_CASE("[Streaming Pipeline] LOD debug stats track transitions_this_frame acr
     system->update_streaming(far_camera_transform, projection);
     Dictionary stable_stats = system->get_lod_debug_stats();
     CHECK(int(stable_stats.get("transitions_this_frame", -1)) == 0);
+}
+
+TEST_CASE("[Streaming Pipeline] Large-world LOD updates scan visible working set after warmup") {
+    const uint32_t chunk_count = 80;
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+
+    GaussianStreamingSystem::ConfigOverrides overrides;
+    overrides.override_lod_config = true;
+    overrides.lod_config.enabled = true;
+    overrides.lod_config.num_levels = 4;
+    overrides.lod_config.base_threshold = 4.0f;
+    overrides.lod_config.max_distance = 80.0f;
+    system->set_config_overrides(overrides);
+    system->set_lod_blend_enabled(true);
+
+    LocalVector<GaussianStreamingTypes::StreamingChunk> &chunks = system->_test_get_primary_chunks();
+    chunks.resize(chunk_count);
+    for (uint32_t i = 0; i < chunk_count; i++) {
+        const bool near_camera = i < 8;
+        const Vector3 center = near_camera
+                ? Vector3(float(i) * 0.25f, 0.0f, 0.0f)
+                : Vector3(1000.0f + float(i), 0.0f, 0.0f);
+        GaussianStreamingTypes::StreamingChunk &chunk = chunks[i];
+        chunk.start_idx = i;
+        chunk.count = 1;
+        chunk.center = center;
+        chunk.bounds = AABB(center - Vector3(0.05f, 0.05f, 0.05f), Vector3(0.1f, 0.1f, 0.1f));
+        chunk.max_radius = 0.05f;
+        chunk.distance = 0.0f;
+        chunk.is_loaded = false;
+        chunk.is_visible = true;
+        chunk.upload_pending = false;
+        chunk.buffer_slot = UINT32_MAX;
+        chunk.current_lod_level = 0;
+        chunk.target_lod_level = 0;
+        chunk.sh_band_level = 3;
+        chunk.splat_skip_factor = 1;
+        chunk.opacity_multiplier = 1.0f;
+        chunk.effective_count = chunk.count;
+    }
+
+    Projection projection;
+    projection.set_perspective(60.0f, 1.0f, 0.1f, 100.0f);
+    Transform3D camera_transform;
+    camera_transform.origin = Vector3(0.0f, 0.0f, 5.0f);
+    StreamingVisibilityController &visibility = system->_test_get_visibility_controller();
+
+    visibility.update_chunk_visibility(*system.ptr(), camera_transform, projection);
+    visibility.update_chunk_lod_parameters(*system.ptr(), camera_transform.origin);
+    visibility.update_chunk_lod_blend_factors(*system.ptr(), camera_transform.origin);
+    Dictionary warmup_stats = system->get_chunk_culling_stats();
+    CHECK(int(warmup_stats.get("total_chunks", 0)) == int(chunk_count));
+    CHECK(int(warmup_stats.get("lod_parameter_update_scan_count", 0)) == int(chunk_count));
+
+    visibility.update_chunk_visibility(*system.ptr(), camera_transform, projection);
+    visibility.update_chunk_lod_parameters(*system.ptr(), camera_transform.origin);
+    visibility.update_chunk_lod_blend_factors(*system.ptr(), camera_transform.origin);
+    Dictionary steady_stats = system->get_chunk_culling_stats();
+    const int visible_chunks = int(steady_stats.get("visible_chunks", 0));
+    const int lod_parameter_scans = int(steady_stats.get("lod_parameter_update_scan_count", 0));
+    const int lod_blend_scans = int(steady_stats.get("lod_blend_update_scan_count", 0));
+
+    CHECK(visible_chunks > 0);
+    CHECK(visible_chunks < int(chunk_count));
+    CHECK(lod_parameter_scans >= visible_chunks);
+    CHECK(lod_parameter_scans < int(chunk_count));
+    CHECK(lod_blend_scans >= visible_chunks);
+    CHECK(lod_blend_scans < int(chunk_count));
+}
+
+TEST_CASE("[Streaming Pipeline] Primary eviction scans resident chunks instead of total chunks") {
+    const uint32_t chunk_count = 100;
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+
+    LocalVector<GaussianStreamingTypes::StreamingChunk> &chunks = system->_test_get_primary_chunks();
+    chunks.resize(chunk_count);
+    for (uint32_t i = 0; i < chunk_count; i++) {
+        GaussianStreamingTypes::StreamingChunk &chunk = chunks[i];
+        chunk.start_idx = i;
+        chunk.count = 1;
+        chunk.center = Vector3(float(i), 0.0f, 0.0f);
+        chunk.bounds = AABB(chunk.center, Vector3(0.1f, 0.1f, 0.1f));
+        chunk.is_loaded = false;
+        chunk.is_visible = false;
+        chunk.upload_pending = false;
+        chunk.buffer_slot = UINT32_MAX;
+	}
+	system->_test_register_primary_asset_for_chunks();
+	system->_test_reset_atlas_allocator(chunk_count);
+	for (int i = 0; i < 10; i++) {
+		system->begin_frame();
+	}
+
+    system->_test_mark_chunk_loaded_for_eviction(0, 7, false, 0, 30, 10.0f);
+    system->_test_mark_chunk_loaded_for_eviction(0, 20, false, 0, 10, 5.0f);
+    system->_test_mark_chunk_loaded_for_eviction(0, 88, true, 0, 1, 100.0f);
+
+    const auto result = system->_test_evict_least_recently_used(false);
+
+    CHECK(result == StreamingEvictionController::EvictionResult::EvictedNonVisible);
+    CHECK_FALSE(chunks[20].is_loaded);
+    CHECK(chunks[88].is_loaded);
+    CHECK(system->_test_get_primary_eviction_scan_count() == 3);
+    CHECK(system->_test_get_primary_eviction_candidate_count() == 3);
+}
+
+TEST_CASE("[Streaming Pipeline] Non-primary eviction scans resident chunks and preserves request exclusions") {
+    const uint32_t asset_id = 777;
+    const uint32_t chunk_count = 100;
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->register_asset(asset_id, create_test_gaussian_data(1));
+
+	auto *asset = system->_test_get_asset_state(asset_id);
+	REQUIRE(asset != nullptr);
+	system->_test_reset_atlas_allocator(chunk_count);
+	LocalVector<GaussianStreamingTypes::StreamingChunk> &asset_chunks = system->_test_get_asset_chunks(*asset);
+    asset_chunks.resize(chunk_count);
+    for (uint32_t i = 0; i < chunk_count; i++) {
+        GaussianStreamingTypes::StreamingChunk &chunk = asset_chunks[i];
+        chunk.start_idx = i;
+        chunk.count = 1;
+        chunk.center = Vector3(float(i), 0.0f, 0.0f);
+        chunk.bounds = AABB(chunk.center, Vector3(0.1f, 0.1f, 0.1f));
+        chunk.is_loaded = false;
+        chunk.is_visible = false;
+        chunk.upload_pending = false;
+        chunk.buffer_slot = UINT32_MAX;
+    }
+
+    system->begin_residency_requests();
+    CHECK(system->request_chunk_residency(asset_id, 33, 0) == OK);
+    system->finalize_residency_requests();
+    for (int i = 0; i < 10; i++) {
+        system->begin_frame();
+    }
+
+    system->_test_mark_chunk_loaded_for_eviction(asset_id, 10, false, 0, 40, 10.0f);
+    system->_test_mark_chunk_loaded_for_eviction(asset_id, 33, false, 0, 1, 99.0f);
+    system->_test_mark_chunk_loaded_for_eviction(asset_id, 44, false, 0, 20, 20.0f);
+    system->_test_mark_chunk_loaded_for_eviction(asset_id, 80, true, 0, 30, 30.0f);
+
+    const auto result = system->_test_evict_non_primary_lru();
+
+    CHECK(result == StreamingEvictionController::EvictionResult::EvictedNonVisible);
+    CHECK(asset_chunks[33].is_loaded);
+    CHECK_FALSE(asset_chunks[44].is_loaded);
+    CHECK(system->_test_get_non_primary_eviction_scan_count() == 4);
+    CHECK(system->_test_get_non_primary_eviction_candidate_count() == 3);
 }
 
 TEST_CASE("[Streaming Pipeline] Renderer renders streamed non-zero chunk") {

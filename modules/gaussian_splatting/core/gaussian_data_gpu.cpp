@@ -12,9 +12,11 @@
 
 #include "gaussian_data.h"
 #include "core/math/math_funcs.h"
+#include "core/os/os.h"
 #include "core/templates/span.h"
 #include "servers/rendering/rendering_device.h"
 #include "../interfaces/sync_policy.h"
+#include "../logger/gs_logger.h"
 #include "../renderer/gaussian_gpu_layout.h"
 
 // ---------------------------------------------------------------------------
@@ -135,6 +137,10 @@ bool GaussianData::_validate_gpu_payload_locked(String *r_error_message) const {
 // ---------------------------------------------------------------------------
 
 RID GaussianData::create_gpu_buffer(RenderingDevice *p_rd) const {
+    const uint64_t total_start_usec = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : 0;
+    uint64_t pack_start_usec = total_start_usec;
+    uint64_t pack_end_usec = total_start_usec;
+
     // Create GPU buffer on the caller-provided owner device.
     // Callers must use the same RenderingDevice when releasing the returned RID.
     RenderingDevice *rd = p_rd;
@@ -171,6 +177,7 @@ RID GaussianData::create_gpu_buffer(RenderingDevice *p_rd) const {
     SHCompressionMetrics metrics;
     uint32_t gaussian_count = 0;
     {
+        pack_start_usec = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : 0;
         RWLockRead lock(data_rwlock);
         gaussian_count = gaussians.size();
         if (gaussian_count == 0) {
@@ -189,6 +196,7 @@ RID GaussianData::create_gpu_buffer(RenderingDevice *p_rd) const {
                 sh_coeff_ptr,
                 sh_first_order_count,
                 sh_high_order_count);
+        pack_end_usec = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : pack_start_usec;
     }
 
     if (packed_gaussians.is_empty()) {
@@ -203,8 +211,27 @@ RID GaussianData::create_gpu_buffer(RenderingDevice *p_rd) const {
     uint64_t buffer_size_64 = (uint64_t)sizeof(PackedGaussian) * (uint64_t)packed_gaussians.size();
     uint32_t buffer_size = (uint32_t)buffer_size_64;
     Span<const PackedGaussian> packed_span(packed_gaussians.ptr(), packed_gaussians.size());
+    const uint64_t upload_start_usec = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : pack_end_usec;
     RID buffer = rd->storage_buffer_create(buffer_size, packed_span.reinterpret<uint8_t>());
     rd->set_resource_name(buffer, "GS_GaussianData_PackedGaussianBuffer");
+    const uint64_t end_usec = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : upload_start_usec;
+
+    const double pack_ms = pack_start_usec > 0 && pack_end_usec >= pack_start_usec
+            ? double(pack_end_usec - pack_start_usec) / 1000.0
+            : 0.0;
+    const double upload_ms = upload_start_usec > 0 && end_usec >= upload_start_usec
+            ? double(end_usec - upload_start_usec) / 1000.0
+            : 0.0;
+    const double total_ms = total_start_usec > 0 && end_usec >= total_start_usec
+            ? double(end_usec - total_start_usec) / 1000.0
+            : pack_ms + upload_ms;
+    GS_LOG_STREAMING_INFO(vformat(
+            "[LoadTiming][GaussianData] create_gpu_buffer splats=%d bytes=%.2fMB pack_ms=%.2f upload_ms=%.2f total_ms=%.2f",
+            gaussian_count,
+            buffer_size_64 / (1024.0 * 1024.0),
+            pack_ms,
+            upload_ms,
+            total_ms));
     return buffer;
 }
 

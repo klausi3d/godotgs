@@ -31,8 +31,11 @@
 #include "test_logger_rate_limit.h"
 #include "test_vram_budget_regulator.h"
 #include "test_renderer_pipeline.h"
+#include "test_tile_lighting_abi.h"
+#include "test_tile_descriptor_cache.h"
 #include "test_sort_fallback_policy.h"
 #include "test_sort_benchmark_metrics.h"
+#include "test_sorter_metrics_metadata.h"
 #include "test_gaussian_splat_world_io.h"
 #include "test_view_transform.h"
 #include "test_memory_leak_detection.h"
@@ -44,6 +47,7 @@
 #include "test_synthetic_mandelbrot_generator.h"
 #include "test_synthetic_bml_traffic_generator.h"
 #include "test_gaussian_splat_node.h"
+#include "test_debug_hud_lifecycle.h"
 #include "test_node_bootstrap.h"
 #include "test_node_surface_cleanup.h"
 #include "test_shadow_instance_subset.h"
@@ -51,8 +55,10 @@
 #include "test_sentinel_tier_defaults.h"
 #include "generate_synthetic_ply_fixtures.h"
 
-extern "C" int test_gpu_streaming_cpp_force_link();
-static const volatile int test_gpu_streaming_cpp_force_link_anchor = test_gpu_streaming_cpp_force_link();
+	extern "C" int test_gpu_streaming_cpp_force_link();
+	static const volatile int test_gpu_streaming_cpp_force_link_anchor = test_gpu_streaming_cpp_force_link();
+	extern "C" int test_gaussian_streaming_lifecycle_cpp_force_link();
+	static const volatile int test_gaussian_streaming_lifecycle_cpp_force_link_anchor = test_gaussian_streaming_lifecycle_cpp_force_link();
 
 namespace TestGaussianSplatting {
 

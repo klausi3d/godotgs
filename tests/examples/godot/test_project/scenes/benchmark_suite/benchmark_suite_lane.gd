@@ -52,7 +52,12 @@ const PROJECT_SETTING_KEYS := [
 	"rendering/gaussian_splatting/gpu_sorting/debug_validate_prefix",
 	"rendering/gaussian_splatting/gpu_sorting/enable_prefix_readback",
 	"rendering/gaussian_splatting/gpu_sorting/profiling_preserve_gpu_timestamps",
+	"rendering/gaussian_splatting/gpu_sorting/gpu_preset",
 	"rendering/gaussian_splatting/gpu_sorting/max_overlap_records",
+	"rendering/gaussian_splatting/gpu_sorting/key_bits",
+	"rendering/gaussian_splatting/gpu_sorting/tile_bits",
+	"rendering/gaussian_splatting/gpu_sorting/depth_bits",
+	"rendering/gaussian_splatting/gpu_sorting/enable_tie_breaker",
 	"rendering/gaussian_splatting/lod/splat_skip_enabled",
 	"rendering/gaussian_splatting/lod/sh_reduction_enabled",
 	"rendering/gaussian_splatting/lod/opacity_fade_enabled",
@@ -109,11 +114,34 @@ const RENDER_TELEMETRY_KEYS := [
 	"sort_identity_fallback_count",
 	"sort_cull_order_fallback_count",
 	"sort_total_route_fallback_count",
+	"gpu_sorter_last_key_bits",
+	"gpu_sorter_last_radix_bits",
+	"gpu_sorter_last_pass_count",
+	"gpu_sorter_last_sort_indirect",
+	"gpu_sorter_last_element_count_known",
+	"sorting_pipeline_sorter_last_key_bits",
+	"sorting_pipeline_sorter_last_radix_bits",
+	"sorting_pipeline_sorter_last_pass_count",
+	"sorting_pipeline_sorter_last_sort_indirect",
 	"gpu_frame_time_ms",
+	"gpu_frame_time_valid",
+	"gpu_tile_overlap_count_time_ms",
+	"gpu_tile_overlap_count_time_valid",
 	"gpu_tile_binning_time_ms",
+	"gpu_tile_overlap_emit_time_ms",
+	"gpu_tile_overlap_emit_time_valid",
+	"gpu_tile_overlap_sort_time_ms",
+	"gpu_tile_overlap_sort_time_valid",
+	"tile_overlap_sort_cpu_dispatch_ms",
+	"tile_overlap_sort_cpu_dispatch_valid",
 	"gpu_tile_prefix_time_ms",
+	"gpu_tile_prefix_time_valid",
+	"tile_prefix_cpu_sync_fallback_ms",
+	"tile_prefix_cpu_sync_fallback_valid",
 	"gpu_tile_raster_time_ms",
+	"gpu_tile_raster_time_valid",
 	"gpu_tile_resolve_time_ms",
+	"gpu_tile_resolve_time_valid",
 	"gpu_timing_frame_serial",
 	"gpu_timing_available",
 	"gpu_frame_estimate_ms",
@@ -173,6 +201,10 @@ var reference_dir := ""
 var capture_tag := ""
 var visual_ssim_threshold := DEFAULT_VISUAL_SSIM_THRESHOLD
 var visual_psnr_threshold := DEFAULT_VISUAL_PSNR_THRESHOLD
+var perf_capture_enabled := false
+var perf_capture_interval_frames := 1
+var perf_capture_max_rows := 600
+var perf_capture_include_trace_dump := false
 
 var _elapsed_s := 0.0
 var _frame_ms: Array = []
@@ -197,6 +229,8 @@ var _max_total_visible_splats := 0
 var _lane_config: Dictionary = {}
 var _capture_targets: Array[Dictionary] = []
 var _capture_records: Array[Dictionary] = []
+var _render_perf_rows: Array[Dictionary] = []
+var _render_perf_sample_index := 0
 var _pending_contract: Dictionary = {}
 var _orchestrated := false
 var _latest_renderer_stats: Dictionary = {}
@@ -242,7 +276,9 @@ func _ready() -> void:
 	_lane_config = _config_for_preset(lane_preset)
 	_apply_lane_project_settings(_lane_config)
 	_build_instances(_lane_config)
+	_reload_renderer_gpu_sorting_config()
 	_apply_renderer_overrides_from_config()
+	_apply_perf_capture_renderer_settings()
 	_focus_point = _resolve_focus_point()
 	performance_overlay.visible = true
 	print("[BENCH-LANE] start | lane=%s preset=%s duration=%.1fs output=%s asset=%s" % [
@@ -307,6 +343,10 @@ func _apply_contract() -> void:
 		"instancing_mode": "auto",
 		"ssim_threshold": DEFAULT_VISUAL_SSIM_THRESHOLD,
 		"psnr_threshold": DEFAULT_VISUAL_PSNR_THRESHOLD,
+		"perf_capture": false,
+		"perf_capture_interval_frames": 1,
+		"perf_capture_max_rows": 600,
+		"perf_capture_include_trace_dump": false,
 	}
 	var contract := BenchmarkSceneContract.resolve_contract(scene_id, defaults, _pending_contract)
 	_orchestrated = bool(contract.get("orchestrated", false))
@@ -327,6 +367,10 @@ func _apply_contract() -> void:
 	instancing_mode = _normalize_instancing_mode(str(contract.get("instancing_mode", "auto")))
 	visual_ssim_threshold = maxf(0.0, minf(1.0, float(contract.get("ssim_threshold", DEFAULT_VISUAL_SSIM_THRESHOLD))))
 	visual_psnr_threshold = maxf(0.0, float(contract.get("psnr_threshold", DEFAULT_VISUAL_PSNR_THRESHOLD)))
+	perf_capture_enabled = bool(contract.get("perf_capture", false))
+	perf_capture_interval_frames = max(1, int(contract.get("perf_capture_interval_frames", 1)))
+	perf_capture_max_rows = max(1, int(contract.get("perf_capture_max_rows", 600)))
+	perf_capture_include_trace_dump = bool(contract.get("perf_capture_include_trace_dump", false))
 
 func _initialize_capture_targets() -> void:
 	_capture_targets.clear()
@@ -355,6 +399,8 @@ func _setup_runtime_state() -> void:
 	Engine.max_fps = 0
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	_latest_renderer_stats.clear()
+	_render_perf_rows.clear()
+	_render_perf_sample_index = 0
 	_proof_first_visible_ms = -1.0
 	_proof_visibility_metric_available = false
 	_proof_queue_pressure_available = false
@@ -430,6 +476,50 @@ func _config_for_preset(preset: String) -> Dictionary:
 				"orbit_radius": 48.0,
 				"orbit_height": 14.0,
 				"orbit_speed": 0.32,
+			}
+		"dense_resident_2m":
+			# TEMPORARY: force 64-bit sort keys until the 32-bit packing has a
+			# proper bit-budget (current 16 tile / 8 depth / 8 tie produces
+			# wrong-depth-sort artifacts that visibly worsen on camera orbit
+			# at this density). Restoring 32-bit needs either tile_bits=13 to
+			# free 3 bits for tie+depth or a fundamentally different packing.
+			# Per-instance LOD floor is min_splats_per_frame=10000 (see
+			# modules/gaussian_splatting/core/gaussian_splat_quality_config.h:18),
+			# so each instance contributes ~10k visible regardless of the asset's
+			# loaded count. 14x14 = 196 instances thus yields ~1.96M visible,
+			# close to the requested 2M-splat target. Distance/LOD/screen culling
+			# are disabled and lod_bias is raised so the floor stays the cap.
+			# Camera is pulled back enough that the full 196-instance grid fits
+			# inside the frustum.
+			return {
+				"camera_mode": "orbit",
+				"cols": 14,
+				"rows": 14,
+				"spacing": 12.0,
+				"max_splats": 32000,
+				"lod_bias": 2.0,
+				"lod_max_distance": 4000.0,
+				"rotate_instances": false,
+				"rotate_speed": 0.0,
+				"lighting_animate": false,
+				"wind_enabled": false,
+				"wind_strength": 0.0,
+				"effects_enabled": false,
+				"orbit_radius": 240.0,
+				"orbit_height": 150.0,
+				"orbit_speed": 0.08,
+				"sort_key_bits": 64,
+				"sort_tile_bits": 32,
+				"sort_depth_bits": 32,
+				"splat_skip_enabled": false,
+				"sh_reduction_enabled": false,
+				"opacity_fade_enabled": false,
+				"distance_cull_enabled": false,
+				"distance_cull_start": 4000.0,
+				"distance_cull_max_rate": 0.0,
+				"tiny_splat_screen_radius": 0.1,
+				"overflow_autotune_enabled": false,
+				"max_overlap_records": 50000000,
 			}
 		"lighting_stress":
 			return {
@@ -560,6 +650,151 @@ func _config_for_preset(preset: String) -> Dictionary:
 				"overflow_autotune_enabled": false,
 				"max_overlap_records": 200000000,
 			}
+		"sort32_coplanar_alpha":
+			return {
+				"camera_mode": "fixed",
+				"cols": 4,
+				"rows": 4,
+				"spacing": 0.0,
+				"max_splats": 45000,
+				"lod_bias": 2.0,
+				"lod_max_distance": 500.0,
+				"rotate_instances": false,
+				"rotate_speed": 0.0,
+				"lighting_animate": false,
+				"wind_enabled": false,
+				"wind_strength": 0.0,
+				"effects_enabled": false,
+				"route_policy": 0,
+				"fixed_camera_position": Vector3(0.0, 6.0, 18.0),
+				"fixed_camera_look_at": Vector3(0.0, 1.6, 0.0),
+				"camera_near": 0.03,
+				"camera_far": 400.0,
+				"camera_fov": 55.0,
+				"splat_skip_enabled": false,
+				"sh_reduction_enabled": false,
+				"opacity_fade_enabled": false,
+				"distance_cull_enabled": false,
+				"distance_cull_start": 500.0,
+				"distance_cull_max_rate": 0.0,
+				"tiny_splat_screen_radius": 0.1,
+				"overflow_autotune_enabled": false,
+				"max_overlap_records": 12000000,
+				"sort_key_bits": 32,
+				"sort_tile_bits": 16,
+				"sort_depth_bits": 16,
+				"sort_enable_tie_breaker": false,
+			}
+		"sort32_near_camera_large":
+			return {
+				"camera_mode": "fixed",
+				"cols": 2,
+				"rows": 2,
+				"spacing": 1.0,
+				"max_splats": 60000,
+				"lod_bias": 2.0,
+				"lod_max_distance": 500.0,
+				"rotate_instances": false,
+				"rotate_speed": 0.0,
+				"lighting_animate": false,
+				"wind_enabled": false,
+				"wind_strength": 0.0,
+				"effects_enabled": false,
+				"route_policy": 0,
+				"instance_scale": 5.0,
+				"fixed_camera_position": Vector3(0.0, 1.5, 5.5),
+				"fixed_camera_look_at": Vector3(0.0, 1.2, 0.0),
+				"camera_near": 0.01,
+				"camera_far": 300.0,
+				"camera_fov": 70.0,
+				"splat_skip_enabled": false,
+				"sh_reduction_enabled": false,
+				"opacity_fade_enabled": false,
+				"distance_cull_enabled": false,
+				"distance_cull_start": 500.0,
+				"distance_cull_max_rate": 0.0,
+				"tiny_splat_screen_radius": 0.1,
+				"overflow_autotune_enabled": false,
+				"max_overlap_records": 18000000,
+				"sort_key_bits": 32,
+				"sort_tile_bits": 16,
+				"sort_depth_bits": 16,
+				"sort_enable_tie_breaker": false,
+			}
+		"sort32_depth_range":
+			return {
+				"camera_mode": "fixed",
+				"cols": 1,
+				"rows": 8,
+				"spacing": 1.0,
+				"max_splats": 35000,
+				"lod_bias": 2.0,
+				"lod_max_distance": 2500.0,
+				"rotate_instances": false,
+				"rotate_speed": 0.0,
+				"lighting_animate": false,
+				"wind_enabled": false,
+				"wind_strength": 0.0,
+				"effects_enabled": false,
+				"route_policy": 0,
+				"depth_stack_start_z": -4.0,
+				"depth_stack_step_z": -130.0,
+				"focus_offset_z": -260.0,
+				"fixed_camera_position": Vector3(0.0, 5.0, 12.0),
+				"fixed_camera_look_at": Vector3(0.0, 2.0, -420.0),
+				"camera_near": 0.02,
+				"camera_far": 1800.0,
+				"camera_fov": 42.0,
+				"splat_skip_enabled": false,
+				"sh_reduction_enabled": false,
+				"opacity_fade_enabled": false,
+				"distance_cull_enabled": false,
+				"distance_cull_start": 2500.0,
+				"distance_cull_max_rate": 0.0,
+				"tiny_splat_screen_radius": 0.1,
+				"overflow_autotune_enabled": false,
+				"max_overlap_records": 12000000,
+				"sort_key_bits": 32,
+				"sort_tile_bits": 12,
+				"sort_depth_bits": 20,
+				"sort_enable_tie_breaker": false,
+			}
+		"sort32_tile_bit_pressure":
+			return {
+				"camera_mode": "fixed",
+				"cols": 2,
+				"rows": 2,
+				"spacing": 8.0,
+				"max_splats": 40000,
+				"lod_bias": 2.0,
+				"lod_max_distance": 600.0,
+				"rotate_instances": false,
+				"rotate_speed": 0.0,
+				"lighting_animate": false,
+				"wind_enabled": false,
+				"wind_strength": 0.0,
+				"effects_enabled": false,
+				"route_policy": 0,
+				"instance_pipeline_enabled": false,
+				"fixed_camera_position": Vector3(0.0, 7.0, 24.0),
+				"fixed_camera_look_at": Vector3(0.0, 2.0, 0.0),
+				"camera_near": 0.03,
+				"camera_far": 500.0,
+				"camera_fov": 60.0,
+				"splat_skip_enabled": false,
+				"sh_reduction_enabled": false,
+				"opacity_fade_enabled": false,
+				"distance_cull_enabled": false,
+				"distance_cull_start": 600.0,
+				"distance_cull_max_rate": 0.0,
+				"tiny_splat_screen_radius": 0.1,
+				"overflow_autotune_enabled": false,
+				"max_overlap_records": 12000000,
+				"sort_key_bits": 32,
+				"sort_tile_bits": 8,
+				"sort_depth_bits": 24,
+				"sort_enable_tie_breaker": false,
+			}
 		_:
 			return {
 				"camera_mode": "orbit",
@@ -598,6 +833,9 @@ func _build_instances(config: Dictionary) -> void:
 	var max_splats := int(config.get("max_splats", 50000))
 	var lod_bias := float(config.get("lod_bias", 1.1))
 	var max_render_distance := float(config.get("lod_max_distance", 400.0))
+	var instance_scale := float(config.get("instance_scale", 1.0))
+	var depth_stack_start_z := float(config.get("depth_stack_start_z", 0.0))
+	var depth_stack_step_z := float(config.get("depth_stack_step_z", 0.0))
 	var asset_path := _resolved_asset_path()
 	var splat_asset := _load_scene_asset(asset_path)
 	if splat_asset == null:
@@ -606,6 +844,7 @@ func _build_instances(config: Dictionary) -> void:
 
 	for row in range(rows):
 		for col in range(cols):
+			var instance_index := row * cols + col
 			var node := GaussianSplatNode3D.new()
 			node.name = "Lane_%02d_%02d" % [row, col]
 			node.splat_asset = splat_asset
@@ -614,6 +853,10 @@ func _build_instances(config: Dictionary) -> void:
 				0.0,
 				(float(row) - float(rows - 1) * 0.5) * spacing
 			)
+			if not is_zero_approx(depth_stack_step_z) or not is_zero_approx(depth_stack_start_z):
+				node.position = Vector3(node.position.x, node.position.y, depth_stack_start_z + float(instance_index) * depth_stack_step_z)
+			if not is_equal_approx(instance_scale, 1.0):
+				node.scale = Vector3.ONE * instance_scale
 			node.set("quality/preset", GaussianSplatNode3D.QUALITY_CUSTOM)
 			node.set("quality/max_splat_count", max_splats)
 			node.set("quality/lod_bias", lod_bias)
@@ -624,10 +867,21 @@ func _build_instances(config: Dictionary) -> void:
 				_primary_renderer_owner = node
 
 func _resolve_focus_point() -> Vector3:
-	return instance_root.global_position + Vector3(0.0, 2.0, 0.0)
+	return instance_root.global_position + Vector3(
+		float(_lane_config.get("focus_offset_x", 0.0)),
+		float(_lane_config.get("focus_offset_y", 2.0)),
+		float(_lane_config.get("focus_offset_z", 0.0))
+	)
 
 func _update_camera() -> void:
 	var camera_mode := str(_lane_config.get("camera_mode", "orbit"))
+
+	if camera_mode == "fixed":
+		var fixed_position: Vector3 = _lane_config.get("fixed_camera_position", _focus_point + Vector3(0.0, 8.0, 28.0))
+		var fixed_look_at: Vector3 = _lane_config.get("fixed_camera_look_at", _focus_point)
+		camera.global_position = fixed_position
+		camera.look_at(fixed_look_at, Vector3.UP)
+		return
 
 	if camera_mode == "corridor":
 		var length := float(_lane_config.get("corridor_length", 80.0))
@@ -778,6 +1032,35 @@ func _sample_metrics(delta: float) -> void:
 		if renderer_stats is Dictionary:
 			_latest_renderer_stats = renderer_stats
 			_sample_proof_metrics(renderer_stats)
+	_capture_render_perf_row(renderer, frame_ms, fps)
+
+func _capture_render_perf_row(renderer: Object, frame_ms: float, fps: float) -> void:
+	if not perf_capture_enabled:
+		return
+	if renderer == null:
+		return
+	if _render_perf_rows.size() >= perf_capture_max_rows:
+		return
+	var frame_index := _frame_ms.size()
+	if frame_index <= 0 or ((frame_index - 1) % perf_capture_interval_frames) != 0:
+		return
+	var phase := "warmup" if _elapsed_s < benchmark_warmup else "steady"
+	var row := BenchmarkMetricsUtil.capture_render_perf_row(renderer, {
+		"lane_id": lane_id,
+		"lane_name": lane_name,
+		"lane_preset": lane_preset,
+		"phase": phase,
+		"sample_index": _render_perf_sample_index,
+		"elapsed_s": _elapsed_s,
+		"frame_ms": frame_ms,
+		"fps": fps,
+		"camera_mode": str(_lane_config.get("camera_mode", "orbit")),
+		"capture_tag": _resolved_capture_tag(),
+	}, {
+		"include_pipeline_trace_dump": perf_capture_include_trace_dump,
+	})
+	_render_perf_rows.append(row)
+	_render_perf_sample_index += 1
 
 func _update_monitor_peak(target: Dictionary, key: String, value: float) -> void:
 	if not target.has(key) or value > float(target[key]):
@@ -964,6 +1247,39 @@ func _get_primary_renderer():
 		return _primary_renderer_owner.get_renderer()
 	return null
 
+# Enable per-renderer settings that perf-capture relies on. Two switches:
+# (1) tile-renderer runtime statistics readback, so raster_total_tiles /
+#     overlap_records / max_splats_per_tile / occupancy populate. The readback
+#     is async (1-2 frame latency); it would otherwise be gated to HUD/tile-
+#     grid/density overlays only.
+# (2) pipeline trace events, gated behind --perf-capture-trace-dump so the
+#     dump payload is only included when explicitly requested.
+# Subclasses that override _build_instances should call this after their own
+# renderer setup completes.
+func _apply_perf_capture_renderer_settings() -> void:
+	if not perf_capture_enabled:
+		return
+	for node in _instance_nodes:
+		if node == null:
+			continue
+		if not node.has_method("get_renderer"):
+			continue
+		var renderer = node.get_renderer()
+		if renderer == null:
+			continue
+		if renderer.has_method("set_perf_capture_force_runtime_statistics"):
+			renderer.set_perf_capture_force_runtime_statistics(true)
+		# Shader-internal raster counters explain the per-pixel raster loop's
+		# cost (iterations, contributions, alpha-break breakdown). Toggling
+		# this flag triggers a raster shader recompile (GS_COLLECT_RASTER_STATS
+		# is a compile-time define), so the first frame after enabling will
+		# pay the recompile cost; subsequent frames carry only the per-pixel
+		# atomic-counter overhead.
+		if renderer.has_method("set_perf_capture_raster_shader_counters"):
+			renderer.set_perf_capture_raster_shader_counters(true)
+		if perf_capture_include_trace_dump and renderer.has_method("set_debug_pipeline_trace_enabled"):
+			renderer.set_debug_pipeline_trace_enabled(true)
+
 func _collect_primary_node_quality() -> Dictionary:
 	var out := {}
 	if _primary_renderer_owner == null:
@@ -1113,6 +1429,16 @@ func _build_report() -> Dictionary:
 		"steady_score": steady_score,
 		"proof_metrics": proof_metrics,
 		"captures": _capture_records,
+		"render_perf_capture": {
+			"enabled": perf_capture_enabled,
+			"interval_frames": perf_capture_interval_frames,
+			"max_rows": perf_capture_max_rows,
+			"include_trace_dump": perf_capture_include_trace_dump,
+			"row_count": _render_perf_rows.size(),
+			"row_schema_version": BenchmarkMetricsUtil.RENDER_PERF_ROW_SCHEMA_VERSION,
+			"fields": BenchmarkMetricsUtil.render_perf_row_fields(),
+		},
+		"render_perf_rows": _render_perf_rows,
 		"visual_summary": visual_summary,
 		"recommendations": recommendations,
 	}
@@ -1162,8 +1488,8 @@ func _setting_snapshot_value_or_default(key: String, fallback):
 	return fallback
 
 func _apply_lane_project_settings(config: Dictionary) -> void:
-	_set_project_setting("rendering/gaussian_splatting/streaming/route_policy", 1)
-	_set_project_setting("rendering/gaussian_splatting/instance_pipeline/enabled", true)
+	_set_project_setting("rendering/gaussian_splatting/streaming/route_policy", int(config.get("route_policy", 1)))
+	_set_project_setting("rendering/gaussian_splatting/instance_pipeline/enabled", bool(config.get("instance_pipeline_enabled", true)))
 	var bench_serial_multi_asset_default := bool(_setting_snapshot_value_or_default(INSTANCE_BENCH_SERIAL_MULTI_ASSET_SETTING, false))
 	_set_project_setting(INSTANCE_BENCH_SERIAL_MULTI_ASSET_SETTING, bench_serial_multi_asset_default)
 	if instancing_mode == "serial":
@@ -1178,8 +1504,13 @@ func _apply_lane_project_settings(config: Dictionary) -> void:
 	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/debug_validate_prefix", false)
 	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/enable_prefix_readback", false)
 	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/profiling_preserve_gpu_timestamps", true)
+	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/gpu_preset", "custom")
 	var overlap_budget_default := int(_setting_snapshot_value_or_default("rendering/gaussian_splatting/gpu_sorting/max_overlap_records", 100000000))
 	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/max_overlap_records", int(config.get("max_overlap_records", overlap_budget_default)))
+	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/key_bits", int(config.get("sort_key_bits", _setting_snapshot_value_or_default("rendering/gaussian_splatting/gpu_sorting/key_bits", 32))))
+	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/tile_bits", int(config.get("sort_tile_bits", _setting_snapshot_value_or_default("rendering/gaussian_splatting/gpu_sorting/tile_bits", 16))))
+	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/depth_bits", int(config.get("sort_depth_bits", _setting_snapshot_value_or_default("rendering/gaussian_splatting/gpu_sorting/depth_bits", 16))))
+	_set_project_setting("rendering/gaussian_splatting/gpu_sorting/enable_tie_breaker", bool(config.get("sort_enable_tie_breaker", _setting_snapshot_value_or_default("rendering/gaussian_splatting/gpu_sorting/enable_tie_breaker", false))))
 	var splat_skip_default := bool(_setting_snapshot_value_or_default("rendering/gaussian_splatting/lod/splat_skip_enabled", true))
 	var sh_reduction_default := bool(_setting_snapshot_value_or_default("rendering/gaussian_splatting/lod/sh_reduction_enabled", true))
 	var opacity_fade_default := bool(_setting_snapshot_value_or_default("rendering/gaussian_splatting/lod/opacity_fade_enabled", true))
@@ -1213,6 +1544,22 @@ func _apply_lane_project_settings(config: Dictionary) -> void:
 	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_center_x", 0.0)
 	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_center_y", 2.0)
 	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_center_z", 0.0)
+	if config.has("camera_near"):
+		camera.near = float(config.get("camera_near"))
+	if config.has("camera_far"):
+		camera.far = float(config.get("camera_far"))
+	if config.has("camera_fov"):
+		camera.fov = float(config.get("camera_fov"))
+
+func _reload_renderer_gpu_sorting_config() -> void:
+	for node in _instance_nodes:
+		if node == null or not node.has_method("get_renderer"):
+			continue
+		var renderer = node.get_renderer()
+		if renderer == null:
+			continue
+		if renderer.has_method("reload_gpu_sorting_config_from_project_settings"):
+			renderer.reload_gpu_sorting_config_from_project_settings()
 
 func _restore_project_settings() -> void:
 	if _settings_restored:

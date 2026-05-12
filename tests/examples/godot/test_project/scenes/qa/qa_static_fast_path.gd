@@ -2,6 +2,7 @@ extends "res://scripts/qa_test_base.gd"
 ## Static Fast-Path Test: Verifies identity flags recorded for static instances.
 
 @export var capture_delay_frames: int = 10
+@export var capture_timeout_frames: int = 60
 
 var renderer: Object
 var capture_frame_count := 0
@@ -14,18 +15,11 @@ func _ready():
 	test_name = "Static Fast-Path"
 	test_duration = 5.0
 	warmup_frames = 10
+	_enable_trace_settings()
 	super._ready()
 
 func _on_test_start():
-	_prev_debug_settings["rendering/gaussian_splatting/debug/enable_pipeline_trace"] = ProjectSettings.get_setting(
-		"rendering/gaussian_splatting/debug/enable_pipeline_trace"
-	)
-	_prev_debug_settings["rendering/gaussian_splatting/debug/enable_data_logging"] = ProjectSettings.get_setting(
-		"rendering/gaussian_splatting/debug/enable_data_logging"
-	)
-
-	ProjectSettings.set_setting("rendering/gaussian_splatting/debug/enable_pipeline_trace", true)
-	ProjectSettings.set_setting("rendering/gaussian_splatting/debug/enable_data_logging", true)
+	_enable_trace_settings()
 	renderer = get_gs_renderer("StaticInstance")
 	if renderer != null and renderer.has_method("set_debug_pipeline_trace_enabled"):
 		renderer.set_debug_pipeline_trace_enabled(true)
@@ -48,10 +42,11 @@ func _on_test_frame(_delta: float):
 	var data_flow: Dictionary = snapshot.get("data_flow", {})
 	var flags: Dictionary = data_flow.get("instance_flags", {})
 	if flags.is_empty():
-		_result_pass = false
-		_result_message = "No instance flag data in pipeline trace"
-		_result_ready = true
-		_finish_test()
+		if capture_frame_count >= capture_timeout_frames:
+			_result_pass = false
+			_result_message = "No instance flag data in pipeline trace"
+			_result_ready = true
+			_finish_test()
 		return
 
 	var total = int(flags.get("total", 0))
@@ -84,3 +79,12 @@ func _on_test_complete():
 	else:
 		_test_result = false
 		_test_message = "No result captured"
+
+func _enable_trace_settings() -> void:
+	_store_and_set_debug_setting("rendering/gaussian_splatting/debug/enable_pipeline_trace", true)
+	_store_and_set_debug_setting("rendering/gaussian_splatting/debug/enable_data_logging", true)
+
+func _store_and_set_debug_setting(key: String, value: Variant) -> void:
+	if not _prev_debug_settings.has(key):
+		_prev_debug_settings[key] = ProjectSettings.get_setting(key)
+	ProjectSettings.set_setting(key, value)

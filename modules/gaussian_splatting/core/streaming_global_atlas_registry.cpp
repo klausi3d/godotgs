@@ -94,6 +94,66 @@ void StreamingGlobalAtlasRegistry::_invalidate_published_buffers() {
 	global_atlas_state.quantization_buffer = RID();
 }
 
+void StreamingGlobalAtlasRegistry::_reset_sync_diagnostics() {
+	last_sync_diagnostics = SyncDiagnostics();
+	last_sync_diagnostics.cached_total_chunks = cached_total_chunks;
+}
+
+bool StreamingGlobalAtlasRegistry::_has_stable_cached_topology(uint32_t p_dense_count) const {
+	return cpu_state_valid &&
+			cached_dense_count == p_dense_count &&
+			asset_meta_cpu.size() == p_dense_count &&
+			chunk_meta_cpu.size() == cached_total_chunks &&
+			asset_chunk_index_cpu.size() == cached_total_chunks &&
+			chunk_meta_dirty_flags.size() == cached_total_chunks;
+}
+
+uint32_t StreamingGlobalAtlasRegistry::_scan_total_chunks_for_sync(GaussianStreamingSystem &system) {
+	uint32_t total_chunks = 0;
+	for (uint32_t asset_id : system.asset_registry.atlas_asset_order) {
+		last_sync_diagnostics.topology_scan_asset_count++;
+		GaussianStreamingSystem::AtlasAssetState *asset = system._get_asset_state(asset_id);
+		if (!asset) {
+			continue;
+		}
+		const uint32_t chunk_count = system._get_asset_chunks(*asset).size();
+		total_chunks += chunk_count;
+		last_sync_diagnostics.topology_scan_chunk_count += chunk_count;
+	}
+	return total_chunks;
+}
+
+StreamingGlobalAtlasRegistry::SyncPreparation StreamingGlobalAtlasRegistry::_prepare_sync_state(
+		GaussianStreamingSystem &system, bool p_quantization_rebuild) {
+	SyncPreparation prep;
+	prep.dense_count = system.asset_registry.dense_to_asset_id.size();
+	prep.atlas_dirty = p_quantization_rebuild || asset_registry_dirty || asset_meta_dirty ||
+			asset_chunk_index_dirty || chunk_meta_dirty_all || !chunk_meta_dirty_indices.is_empty();
+
+	const bool partial_chunk_meta_only_dirty = !asset_registry_dirty &&
+			!p_quantization_rebuild &&
+			!asset_meta_dirty &&
+			!asset_chunk_index_dirty &&
+			!chunk_meta_dirty_all &&
+			!chunk_meta_dirty_indices.is_empty();
+	const bool can_use_cached_topology = _has_stable_cached_topology(prep.dense_count);
+	if (partial_chunk_meta_only_dirty && can_use_cached_topology) {
+		prep.total_chunks = cached_total_chunks;
+		last_sync_diagnostics.used_cached_topology = true;
+		return prep;
+	}
+
+	prep.total_chunks = _scan_total_chunks_for_sync(system);
+	prep.rebuild_cpu_state = asset_registry_dirty ||
+			p_quantization_rebuild ||
+			!cpu_state_valid ||
+			asset_meta_cpu.size() != prep.dense_count ||
+			chunk_meta_cpu.size() != prep.total_chunks ||
+			asset_chunk_index_cpu.size() != prep.total_chunks;
+	last_sync_diagnostics.forced_full_rebuild = prep.rebuild_cpu_state;
+	return prep;
+}
+
 StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan StreamingGlobalAtlasRegistry::_plan_chunk_meta_uploads(
 		LocalVector<uint32_t> &r_dirty_indices, uint32_t p_total_chunks) {
 	ChunkMetaUploadPlan plan;
@@ -140,6 +200,42 @@ StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan StreamingGlobalAtlasRegistry::
 	LocalVector<uint32_t> dirty_indices = p_dirty_indices;
 	return _plan_chunk_meta_uploads(dirty_indices, p_total_chunks);
 }
+
+StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan StreamingGlobalAtlasRegistry::_test_plan_chunk_meta_sync(GaussianStreamingSystem &system) {
+	_reset_sync_diagnostics();
+	const SyncPreparation prep = _prepare_sync_state(system, system.quantization_dirty);
+	if (prep.rebuild_cpu_state) {
+		return ChunkMetaUploadPlan();
+	}
+	if (chunk_meta_dirty_all) {
+		ChunkMetaUploadPlan plan;
+		plan.full_update = prep.total_chunks > 0;
+		plan.dirty_count = prep.total_chunks;
+		plan.contiguous_range_count = prep.total_chunks > 0 ? 1 : 0;
+		last_sync_diagnostics.chunk_meta_dirty_count = plan.dirty_count;
+		last_sync_diagnostics.chunk_meta_range_count = plan.contiguous_range_count;
+		last_sync_diagnostics.chunk_meta_full_update = plan.full_update;
+		return plan;
+	}
+	if (chunk_meta_dirty_indices.is_empty()) {
+		return ChunkMetaUploadPlan();
+	}
+
+	LocalVector<uint32_t> dirty_indices = chunk_meta_dirty_indices;
+	ChunkMetaUploadPlan plan = _plan_chunk_meta_uploads(dirty_indices, prep.total_chunks);
+	last_sync_diagnostics.chunk_meta_dirty_count = plan.dirty_count;
+	last_sync_diagnostics.chunk_meta_range_count = plan.contiguous_range_count;
+	last_sync_diagnostics.chunk_meta_full_update = plan.full_update;
+	return plan;
+}
+
+void StreamingGlobalAtlasRegistry::_test_clear_cpu_dirty_state() {
+	asset_meta_dirty = false;
+	asset_chunk_index_dirty = false;
+	chunk_meta_dirty_all = false;
+	chunk_meta_dirty_indices.clear();
+	_clear_dirty_flags(chunk_meta_dirty_flags);
+}
 #endif
 
 void StreamingGlobalAtlasRegistry::cleanup(RenderingDevice *p_rd) {
@@ -172,6 +268,10 @@ void StreamingGlobalAtlasRegistry::cleanup(RenderingDevice *p_rd) {
 	asset_chunk_index_dirty = false;
 	chunk_meta_dirty_all = false;
 	asset_registry_dirty = false;
+	cpu_state_valid = false;
+	cached_total_chunks = 0;
+	cached_dense_count = 0;
+	last_sync_diagnostics = SyncDiagnostics();
 	global_atlas_state.atlas_gaussian_buffer = RID();
 	global_atlas_state.atlas_gaussian_count = 0;
 	global_atlas_state.asset_meta_buffer = RID();
@@ -202,6 +302,9 @@ void StreamingGlobalAtlasRegistry::build_cpu_state(GaussianStreamingSystem &syst
 		}
 	}
 	const uint32_t dense_count = system.asset_registry.dense_to_asset_id.size();
+	cached_total_chunks = total_chunks;
+	cached_dense_count = dense_count;
+	cpu_state_valid = true;
 	asset_meta_cpu.resize(dense_count);
 	for (uint32_t i = 0; i < dense_count; i++) {
 		asset_meta_cpu[i] = {};
@@ -450,6 +553,7 @@ void StreamingGlobalAtlasRegistry::mark_chunk_meta_dirty(GaussianStreamingSystem
 }
 
 void StreamingGlobalAtlasRegistry::sync_to_gpu(GaussianStreamingSystem &system, RenderingDevice *p_rd) {
+	_reset_sync_diagnostics();
 	global_atlas_state.atlas_gaussian_buffer = system.persistent_buffer;
 	global_atlas_state.atlas_gaussian_count = system.get_buffer_capacity_splats();
 	global_atlas_state.quantization_buffer = system.is_per_chunk_quantization_enabled() ? system.quantization_buffer : RID();
@@ -470,24 +574,12 @@ void StreamingGlobalAtlasRegistry::sync_to_gpu(GaussianStreamingSystem &system, 
 		system.quantization_dirty = false;
 	}
 
-	uint32_t total_chunks = 0;
-	for (uint32_t asset_id : system.asset_registry.atlas_asset_order) {
-		GaussianStreamingSystem::AtlasAssetState *asset = system._get_asset_state(asset_id);
-		if (!asset) {
-			continue;
-		}
-		total_chunks += system._get_asset_chunks(*asset).size();
-	}
-	const uint32_t dense_count = system.asset_registry.dense_to_asset_id.size();
-
-	if (asset_registry_dirty ||
-			quantization_rebuild ||
-			asset_meta_cpu.is_empty() ||
-			asset_meta_cpu.size() != dense_count ||
-			chunk_meta_cpu.size() != total_chunks ||
-			asset_chunk_index_cpu.size() != total_chunks) {
+	const SyncPreparation sync_prep = _prepare_sync_state(system, quantization_rebuild);
+	atlas_dirty = atlas_dirty || sync_prep.atlas_dirty;
+	if (sync_prep.rebuild_cpu_state) {
 		atlas_dirty = true;
 		build_cpu_state(system);
+		last_sync_diagnostics.cached_total_chunks = cached_total_chunks;
 	}
 
 	if (!p_rd) {
@@ -537,12 +629,18 @@ void StreamingGlobalAtlasRegistry::sync_to_gpu(GaussianStreamingSystem &system, 
 			chunk_meta_buffer = p_rd->storage_buffer_create(chunk_meta_size, chunk_span.reinterpret<uint8_t>());
 			p_rd->set_resource_name(chunk_meta_buffer, "GS_Streaming_ChunkMetaBuffer");
 			chunk_meta_buffer_size = chunk_meta_size;
+			last_sync_diagnostics.chunk_meta_dirty_count = chunk_meta_cpu.size();
+			last_sync_diagnostics.chunk_meta_range_count = 1;
+			last_sync_diagnostics.chunk_meta_full_update = true;
 			chunk_meta_dirty_all = false;
 			chunk_meta_dirty_indices.clear();
 			_clear_dirty_flags(chunk_meta_dirty_flags);
 			atlas_dirty = true;
 		} else if (chunk_meta_dirty_all) {
 			p_rd->buffer_update(chunk_meta_buffer, 0, chunk_meta_size, chunk_span.reinterpret<uint8_t>().ptr());
+			last_sync_diagnostics.chunk_meta_dirty_count = chunk_meta_cpu.size();
+			last_sync_diagnostics.chunk_meta_range_count = 1;
+			last_sync_diagnostics.chunk_meta_full_update = true;
 			chunk_meta_dirty_all = false;
 			chunk_meta_dirty_indices.clear();
 			_clear_dirty_flags(chunk_meta_dirty_flags);
@@ -550,6 +648,9 @@ void StreamingGlobalAtlasRegistry::sync_to_gpu(GaussianStreamingSystem &system, 
 		} else if (!chunk_meta_dirty_indices.is_empty()) {
 			const ChunkMetaUploadPlan upload_plan =
 					_plan_chunk_meta_uploads(chunk_meta_dirty_indices, chunk_meta_cpu.size());
+			last_sync_diagnostics.chunk_meta_dirty_count = upload_plan.dirty_count;
+			last_sync_diagnostics.chunk_meta_range_count = upload_plan.contiguous_range_count;
+			last_sync_diagnostics.chunk_meta_full_update = upload_plan.full_update;
 			if (upload_plan.dirty_count == 0) {
 				chunk_meta_dirty_indices.clear();
 			} else if (upload_plan.full_update) {

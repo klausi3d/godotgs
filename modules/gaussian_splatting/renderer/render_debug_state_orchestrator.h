@@ -98,6 +98,10 @@ public:
 	bool get_debug_binning_counters_enabled() const;
 	void set_debug_pipeline_trace_enabled(bool p_enabled);
 	bool get_debug_pipeline_trace_enabled() const;
+	void set_perf_capture_force_runtime_statistics(bool p_enabled);
+	bool get_perf_capture_force_runtime_statistics() const;
+	void set_perf_capture_raster_shader_counters(bool p_enabled);
+	bool get_perf_capture_raster_shader_counters() const;
 	void set_debug_state_guardrails_enabled(bool p_enabled);
 	bool get_debug_state_guardrails_enabled() const;
 	void set_debug_cull_guardrails_enabled(bool p_enabled);

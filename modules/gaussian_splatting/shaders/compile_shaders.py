@@ -32,6 +32,7 @@ ISSUE_RUNTIME_MATRIX = "#1267/#1318"
 ISSUE_ABI = "#1320"
 ISSUE_COUNTER_INIT = "#1322"
 ISSUE_DIAGNOSTICS = "#1324"
+ISSUE_RASTER_BOUNDS = "#51"
 
 SECTION_TAG_RE = re.compile(r"^\s*#\[(compute|vertex|fragment)\]\s*$")
 VERSION_DEFINES_RE = re.compile(r"^\s*#VERSION_DEFINES\s*$")
@@ -421,6 +422,34 @@ RUNTIME_SHADER_MATRIX: tuple[ShaderMatrixEntry, ...] = (
 
 
 ABI_CONTRACTS: tuple[ValidationContract, ...] = (
+    ValidationContract(
+        key="tile_raster_indirect_count_clamp",
+        issue_id=ISSUE_RASTER_BOUNDS,
+        description="Tile rasterizers clamp GPU indirect overlap counts to the bound sorted-value buffer capacity.",
+        files=(
+            FilePatternSet(
+                path=SHADERS_DIR / "includes" / "tile_raster_common.glsl",
+                patterns=(
+                    r"uint gs_get_sorted_value_capacity\(\)",
+                    r"sorted_values\.values\.length\(\)",
+                    r"uint gs_get_clamped_overlap_record_count\(\)",
+                    r"min\(indirect_dispatch\.element_count, gs_get_sorted_value_capacity\(\)\)",
+                ),
+            ),
+            FilePatternSet(
+                path=SHADERS_DIR / "tile_rasterizer_compute.glsl",
+                patterns=(
+                    r"uint record_count = gs_get_clamped_overlap_record_count\(\);",
+                ),
+            ),
+            FilePatternSet(
+                path=SHADERS_DIR / "tile_rasterizer.glsl",
+                patterns=(
+                    r"uint record_count = gs_get_clamped_overlap_record_count\(\);",
+                ),
+            ),
+        ),
+    ),
     ValidationContract(
         key="indirect_dispatch_layout",
         issue_id=ISSUE_ABI,

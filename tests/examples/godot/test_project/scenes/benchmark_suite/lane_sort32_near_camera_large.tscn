@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/benchmark_suite/lane_template.tscn" id="1"]
+
+[node name="LaneSort32NearCameraLarge" instance=ExtResource("1")]
+lane_id = "sort32_near_camera_large"
+lane_name = "Sort32 Near Camera Large"
+lane_description = "Opt-in 32-bit key lane with large near-camera splats and dense tile coverage."
+lane_preset = "sort32_near_camera_large"
+default_duration_s = 10.0

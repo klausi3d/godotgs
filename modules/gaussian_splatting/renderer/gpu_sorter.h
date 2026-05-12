@@ -80,6 +80,17 @@ struct SortingMetrics {
     uint32_t fallback_events = 0;
     String last_fallback_reason;
     Dictionary fallback_reason_counts;
+
+    // Metadata for the most recently submitted sort. For GPU-driven indirect
+    // sorts, last_element_count remains 0 unless the CPU path already had a
+    // count; last_element_count_known makes that contract explicit.
+    uint32_t last_element_count = 0;
+    bool last_element_count_known = false;
+    uint32_t last_key_bits = 0;
+    uint32_t last_radix_bits = 0;
+    uint32_t last_pass_count = 0;
+    bool last_sort_indirect = false;
+    bool last_sort_async = false;
 };
 
 enum class SortPreflightError : uint8_t {
@@ -105,8 +116,12 @@ struct SortPreflightResult {
 // Helper for consistent metrics tracking.
 class SortingMetricsCollector {
 public:
-    void record_sort(uint32_t element_count, float time_ms, bool used_gpu);
-    void record_async_sort(uint32_t element_count, float time_ms);
+    void record_sort(uint32_t element_count, float time_ms, bool used_gpu,
+            uint32_t key_bits = 0, uint32_t radix_bits = 0, uint32_t pass_count = 0,
+            bool indirect = false, bool sort_async = false, bool element_count_known = true);
+    void record_async_sort(uint32_t element_count, float time_ms,
+            uint32_t key_bits = 0, uint32_t radix_bits = 0, uint32_t pass_count = 0,
+            bool indirect = false, bool element_count_known = true);
     void record_fallback(const String &reason);
     SortingMetrics get_metrics() const { return metrics; }
     float last_sort_time_ms() const { return metrics.last_sort_time_ms; }
@@ -119,6 +134,17 @@ private:
     SortingMetrics metrics;
 };
 
+// GPU timestamp range covering a single sort dispatch. Populated by sorters
+// that bracket their compute work in capture_timestamp() calls; consumers can
+// resolve the duration via the same path used by other tile passes. Default
+// instance is invalid (valid=false) and reads zero duration.
+struct LastSortGpuTimestamp {
+    RenderingDevice *device = nullptr;
+    uint32_t start_index = 0;
+    uint32_t end_index = 0;
+    bool valid = false;
+};
+
 // Abstract interface for GPU sorting algorithms
 class IGPUSorter : public RefCounted {
     GDCLASS(IGPUSorter, RefCounted);
@@ -129,6 +155,11 @@ protected:
     SortingMetricsCollector metrics_collector;
     std::atomic<bool> is_sorting{false};
     uint32_t max_elements = 0;
+
+    // Frame serial used in GPU timestamp labels for the next sort dispatch.
+    // Caller (tile renderer) sets this so the sort timestamps share a serial
+    // with the surrounding pass timestamps and resolve to the same frame entry.
+    uint64_t pending_frame_label_serial = 0;
 
     // CPU-side timing utilities for measuring command recording/submission time.
     // WARNING: These measure wall-clock time on the CPU, NOT actual GPU execution time.
@@ -168,6 +199,20 @@ public:
     virtual uint64_t sort_async(RID keys_buffer, RID values_buffer, uint32_t count) = 0;
     virtual bool is_ready() const = 0;
     virtual void wait_for_completion() = 0;
+
+    // Set the frame serial used to label this sorter's next GPU-timestamp
+    // capture. The tile renderer calls this immediately before invoking
+    // sort_indirect_async so the begin/end labels match the surrounding pass
+    // labels for the same frame and resolve into the same frame entry. Sorters
+    // that do not emit GPU timestamps may ignore this.
+    virtual void set_pending_frame_label_serial(uint64_t p_frame_serial) {
+        pending_frame_label_serial = p_frame_serial;
+    }
+
+    // Last completed sort dispatch's GPU-timestamp range. Default-invalid for
+    // sorters that don't capture timestamps. Consumers may resolve the
+    // duration directly via the rendering device the sort dispatched on.
+    virtual LastSortGpuTimestamp get_last_sort_gpu_timestamp() const { return {}; }
 
     // Performance queries
     virtual float get_last_sort_time_ms() const { return metrics_collector.last_sort_time_ms(); }
@@ -333,6 +378,10 @@ private:
     RID indirect_dispatch_shader;
     RID indirect_dispatch_pipeline;
 
+    // GPU timestamp range covering the most recent sort_indirect_async dispatch.
+    // Captured on the device that ran the sort; stays invalid on early-exit paths.
+    LastSortGpuTimestamp last_sort_gpu_timestamp;
+
 protected:
     static void _bind_methods();
 
@@ -372,6 +421,7 @@ public:
     bool supports_indirect() const override { return true; } // RadixSort supports indirect
     bool supports_true_async() const override { return true; }
     SortPreflightError get_last_preflight_error() const override { return last_preflight_error; }
+    LastSortGpuTimestamp get_last_sort_gpu_timestamp() const override { return last_sort_gpu_timestamp; }
 
     void set_key_config(const SortKeyConfig &p_cfg) { key_config = p_cfg; }
 

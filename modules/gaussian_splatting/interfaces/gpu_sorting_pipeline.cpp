@@ -670,11 +670,19 @@ void GPUSortingPipeline::rebuild_sorter(uint32_t p_capacity) {
         gpu_sorter.unref();
     }
 
+    // Honor project settings for key_bits so 32-bit perf wins are opt-in via
+    // project.godot (gpu_sorting/key_bits=32 or 64). The instance pipeline
+    // sorts globally by depth (no tile prefix), so tile_bits=0 and the depth
+    // half spans the full key width.
     SortKeyConfig sort_key_config = SortKeyConfig::from_settings();
-    sort_key_config.key_bits = 32;
     sort_key_config.tile_bits = 0;
     sort_key_config.depth_bits = sort_key_config.key_bits;
-    sort_key_config.enable_tie_breaker = false;
+    // 32-bit depth-only keys MUST have tie-break to avoid flicker on coplanar
+    // splats (the 16/16 split in tile_binning.glsl gs_pack_sort_key handles
+    // this; without enable_tie_breaker the radix sort assumes stable input
+    // order, which the GPU atomic-emit path does not provide). 64-bit keys
+    // have plenty of bits for tie-break unconditionally.
+    sort_key_config.enable_tie_breaker = (sort_key_config.key_bits == 32);
 
     Ref<IGPUSorter> new_sorter = GPUSorterFactory::create_sorter(forced_sort_algorithm, rd, capacity, sort_key_config);
     if (!new_sorter.is_valid()) {

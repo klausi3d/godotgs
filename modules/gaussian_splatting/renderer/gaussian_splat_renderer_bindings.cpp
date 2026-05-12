@@ -24,6 +24,7 @@ void GaussianSplatRenderer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("is_static_sort_cache_enabled"), &GaussianSplatRenderer::is_static_sort_cache_enabled);
     ClassDB::bind_method(D_METHOD("set_cached_render_reuse_enabled", "enabled"), &GaussianSplatRenderer::set_cached_render_reuse_enabled);
     ClassDB::bind_method(D_METHOD("is_cached_render_reuse_enabled"), &GaussianSplatRenderer::is_cached_render_reuse_enabled);
+    ClassDB::bind_method(D_METHOD("reload_gpu_sorting_config_from_project_settings"), &GaussianSplatRenderer::reload_gpu_sorting_config_from_project_settings);
 
     // Performance controls
     ClassDB::bind_method(D_METHOD("set_lod_enabled", "enabled"), &GaussianSplatRenderer::set_lod_enabled);
@@ -147,6 +148,10 @@ void GaussianSplatRenderer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_debug_binning_counters_enabled"), &GaussianSplatRenderer::get_debug_binning_counters_enabled);
 	ClassDB::bind_method(D_METHOD("set_debug_pipeline_trace_enabled", "enabled"), &GaussianSplatRenderer::set_debug_pipeline_trace_enabled);
 	ClassDB::bind_method(D_METHOD("get_debug_pipeline_trace_enabled"), &GaussianSplatRenderer::get_debug_pipeline_trace_enabled);
+	ClassDB::bind_method(D_METHOD("set_perf_capture_force_runtime_statistics", "enabled"), &GaussianSplatRenderer::set_perf_capture_force_runtime_statistics);
+	ClassDB::bind_method(D_METHOD("get_perf_capture_force_runtime_statistics"), &GaussianSplatRenderer::get_perf_capture_force_runtime_statistics);
+	ClassDB::bind_method(D_METHOD("set_perf_capture_raster_shader_counters", "enabled"), &GaussianSplatRenderer::set_perf_capture_raster_shader_counters);
+	ClassDB::bind_method(D_METHOD("get_perf_capture_raster_shader_counters"), &GaussianSplatRenderer::get_perf_capture_raster_shader_counters);
 	ClassDB::bind_method(D_METHOD("set_debug_state_guardrails_enabled", "enabled"), &GaussianSplatRenderer::set_debug_state_guardrails_enabled);
 	ClassDB::bind_method(D_METHOD("get_debug_state_guardrails_enabled"), &GaussianSplatRenderer::get_debug_state_guardrails_enabled);
 	ClassDB::bind_method(D_METHOD("set_debug_cull_guardrails_enabled", "enabled"), &GaussianSplatRenderer::set_debug_cull_guardrails_enabled);
@@ -189,7 +194,7 @@ void GaussianSplatRenderer::_bind_methods() {
                  "set_painterly_material", "get_painterly_material");
     ADD_PROPERTY(PropertyInfo(Variant::INT, "render_mode", PROPERTY_HINT_ENUM, "3D,2D,Hybrid"),
             "set_render_mode", "get_render_mode");
-    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "render/opacity_multiplier", PROPERTY_HINT_RANGE, "0,1,0.01"),
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "render/opacity_multiplier", PROPERTY_HINT_RANGE, "0,8,0.01"),
             "set_opacity_multiplier", "get_opacity_multiplier");
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "sort/static_cache_enabled"),
                  "set_static_sort_cache_enabled", "is_static_sort_cache_enabled");
@@ -208,7 +213,7 @@ void GaussianSplatRenderer::_bind_methods() {
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cull/far_tolerance", PROPERTY_HINT_RANGE, "0.0,1.0,0.001"), "set_cull_far_tolerance", "get_cull_far_tolerance");
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cull/tiny_splat_screen_radius", PROPERTY_HINT_RANGE, "0.0,10.0,0.05"), "set_tiny_splat_screen_radius", "get_tiny_splat_screen_radius");
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "cull/opacity_aware_culling"), "set_opacity_aware_culling", "is_opacity_aware_culling");
-    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cull/visibility_threshold", PROPERTY_HINT_RANGE, "0.001,0.1,0.001"), "set_visibility_threshold", "get_visibility_threshold");
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cull/visibility_threshold", PROPERTY_HINT_RANGE, "0.0001,0.1,0.0001"), "set_visibility_threshold", "get_visibility_threshold");
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "cull/distance_cull_enabled"), "set_distance_cull_enabled", "is_distance_cull_enabled");
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cull/distance_cull_start", PROPERTY_HINT_RANGE, "0.0,1000.0,1.0"), "set_distance_cull_start", "get_distance_cull_start");
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cull/distance_cull_max_rate", PROPERTY_HINT_RANGE, "0.0,1.0,0.01"), "set_distance_cull_max_rate", "get_distance_cull_max_rate");

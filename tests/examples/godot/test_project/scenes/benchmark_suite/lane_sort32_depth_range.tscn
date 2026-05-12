@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/benchmark_suite/lane_template.tscn" id="1"]
+
+[node name="LaneSort32DepthRange" instance=ExtResource("1")]
+lane_id = "sort32_depth_range"
+lane_name = "Sort32 Depth Range"
+lane_description = "Opt-in 32-bit key lane spanning a large near/far depth range."
+lane_preset = "sort32_depth_range"
+default_duration_s = 10.0

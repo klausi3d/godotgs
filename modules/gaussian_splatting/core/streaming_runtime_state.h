@@ -57,7 +57,10 @@ struct SchedulerState {
     uint32_t last_visible_scan_count = 0;
     uint32_t last_visible_scan_budget_effective = 0;
     uint32_t last_load_candidate_count = 0;
+    uint32_t last_primary_eviction_scan_count = 0;
+    uint32_t last_primary_eviction_candidate_count = 0;
     uint32_t last_non_primary_scan_count = 0;
+    uint32_t last_non_primary_eviction_candidate_count = 0;
     uint32_t last_prefetch_scan_count = 0;
     uint32_t last_prefetch_scan_budget_effective = 0;
     uint32_t last_prefetch_candidate_count = 0;

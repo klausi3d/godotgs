@@ -183,6 +183,18 @@ static func _parse_cmdline_contract() -> Dictionary:
 				i += 1
 				if i < args.size():
 					out["capture_tag"] = str(args[i])
+			"--benchmark-perf-capture":
+				out["perf_capture"] = true
+			"--benchmark-perf-capture-interval":
+				i += 1
+				if i < args.size():
+					out["perf_capture_interval_frames"] = int(args[i])
+			"--benchmark-perf-capture-max-rows":
+				i += 1
+				if i < args.size():
+					out["perf_capture_max_rows"] = int(args[i])
+			"--benchmark-perf-capture-trace-dump":
+				out["perf_capture_include_trace_dump"] = true
 			"--benchmark-instancing-mode":
 				i += 1
 				if i < args.size():
@@ -236,6 +248,14 @@ static func _parse_cmdline_contract() -> Dictionary:
 					out["reference_dir"] = arg.substr(len("--benchmark-reference-dir="))
 				elif arg.begins_with("--benchmark-capture-tag="):
 					out["capture_tag"] = arg.substr(len("--benchmark-capture-tag="))
+				elif arg == "--benchmark-perf-capture":
+					out["perf_capture"] = true
+				elif arg.begins_with("--benchmark-perf-capture-interval="):
+					out["perf_capture_interval_frames"] = int(arg.substr(len("--benchmark-perf-capture-interval=")))
+				elif arg.begins_with("--benchmark-perf-capture-max-rows="):
+					out["perf_capture_max_rows"] = int(arg.substr(len("--benchmark-perf-capture-max-rows=")))
+				elif arg == "--benchmark-perf-capture-trace-dump":
+					out["perf_capture_include_trace_dump"] = true
 				elif arg.begins_with("--benchmark-instancing-mode="):
 					out["instancing_mode"] = arg.substr(len("--benchmark-instancing-mode="))
 				elif arg.begins_with("--benchmark-camera-mode="):

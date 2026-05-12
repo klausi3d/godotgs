@@ -1763,6 +1763,7 @@ Error PainterlyRenderer::populate_painterly_gbuffer(GaussianSplatRenderer *p_ren
     render_params.tiny_splat_screen_radius = subsystem_state.gpu_culler->get_state().tiny_splat_screen_radius_px;
     render_params.opacity_aware_culling = subsystem_state.gpu_culler->get_config().opacity_aware_culling;
     render_params.visibility_threshold = subsystem_state.gpu_culler->get_config().visibility_threshold;
+    render_params.alpha_clip = subsystem_state.gpu_culler->get_config().alpha_clip;
     render_params.distance_cull_enabled = subsystem_state.gpu_culler->get_config().distance_cull_enabled;
     render_params.distance_cull_start = subsystem_state.gpu_culler->get_config().distance_cull_start;
     render_params.distance_cull_max_rate = subsystem_state.gpu_culler->get_config().distance_cull_max_rate;

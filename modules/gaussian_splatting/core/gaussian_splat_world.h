@@ -20,6 +20,11 @@ private:
     Vector<GaussianSplatRenderer::StaticChunk> static_chunks;
     AABB bounds;
     Dictionary metadata;
+    uint32_t splat_count_metadata = 0;
+    uint32_t sh_degree_metadata = 0;
+    uint32_t sh_first_order_count_metadata = 0;
+    uint32_t sh_high_order_count_metadata = 0;
+    bool is_2d_metadata = false;
 
 protected:
     static void _bind_methods();
@@ -29,6 +34,7 @@ protected:
 public:
     void set_gaussian_data(const Ref<GaussianData> &p_data);
     Ref<GaussianData> get_gaussian_data() const { return gaussian_data; }
+    bool has_resident_gaussian_data() const;
 
     void set_bounds(const AABB &p_bounds);
     AABB get_bounds() const { return bounds; }
@@ -39,8 +45,20 @@ public:
     void set_static_chunks(const Vector<GaussianSplatRenderer::StaticChunk> &p_chunks);
     const Vector<GaussianSplatRenderer::StaticChunk> &get_static_chunks() const { return static_chunks; }
 
-    void set_chunk_payload_source(const Ref<ChunkPayloadSource> &p_source) { chunk_payload_source = p_source; }
+    void set_chunk_payload_source(const Ref<ChunkPayloadSource> &p_source);
     Ref<ChunkPayloadSource> get_chunk_payload_source() const { return chunk_payload_source; }
+    bool has_chunk_payload_source() const;
+    bool is_payload_source_backed() const;
+    bool has_renderable_payload() const;
+
+    void set_payload_metadata(uint32_t p_splat_count, uint32_t p_sh_degree,
+            uint32_t p_sh_first_order_count, uint32_t p_sh_high_order_count, bool p_is_2d);
+    uint32_t get_splat_count() const;
+    uint32_t get_sh_degree() const;
+    uint32_t get_sh_first_order_count() const;
+    uint32_t get_sh_high_order_count() const;
+    bool get_2d_mode() const;
+    Error materialize_resident_gaussian_data();
 
     int get_chunk_count() const;
     PackedInt32Array get_chunk_sizes() const;

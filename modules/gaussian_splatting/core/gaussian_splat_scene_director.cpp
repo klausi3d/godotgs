@@ -811,6 +811,16 @@ void GaussianSplatSceneDirector::_store_world_submission_record(SharedWorld::Wor
 	r_record.active = true;
 }
 
+bool GaussianSplatSceneDirector::_world_submission_record_has_renderable_payload(
+		const SharedWorld::WorldSubmissionRecord &p_record) {
+	const bool has_resident_data = p_record.gaussian_data.is_valid() &&
+			p_record.gaussian_data->get_count() > 0;
+	const bool has_file_backed_payload = p_record.payload_source.is_valid() &&
+			p_record.payload_source->is_valid() &&
+			p_record.payload_source->get_count() > 0;
+	return has_resident_data || has_file_backed_payload;
+}
+
 void GaussianSplatSceneDirector::_copy_world_submission_record(const SharedWorld &p_world,
 		const SharedWorld::WorldSubmissionRecord &p_record, WorldSubmission *r_submission) {
 	ERR_FAIL_NULL(r_submission);
@@ -1603,8 +1613,7 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 	// fallback shim that render_streaming_orchestrator previously injected.
 	if (world->instances.is_empty()) {
 		if (world->world_submission.active &&
-				world->world_submission.gaussian_data.is_valid() &&
-				world->world_submission.gaussian_data->get_count() > 0) {
+				_world_submission_record_has_renderable_payload(world->world_submission)) {
 			InstanceDataGPU entry = {};
 			entry.rotation[3] = 1.0f;
 			entry.inv_rotation[3] = 1.0f;
@@ -1812,8 +1821,7 @@ void GaussianSplatSceneDirector::build_instance_grading_buffer_for_renderer(cons
 	// grading buffer indexable at splat_ref.instance_id == 0.
 	if (world->instances.is_empty()) {
 		if (world->world_submission.active &&
-				world->world_submission.gaussian_data.is_valid() &&
-				world->world_submission.gaussian_data->get_count() > 0) {
+				_world_submission_record_has_renderable_payload(world->world_submission)) {
 			InstanceGradingGPU entry = {};
 			GaussianSplatSceneDirector::fill_instance_grading_entry(renderer_default, entry);
 			out.push_back(entry);
@@ -2690,8 +2698,7 @@ bool GaussianSplatSceneDirector::has_world_submission_for_renderer(const Gaussia
 		return false;
 	}
 
-	return world->world_submission.gaussian_data.is_valid() &&
-			world->world_submission.gaussian_data->get_count() > 0;
+	return _world_submission_record_has_renderable_payload(world->world_submission);
 }
 
 bool GaussianSplatSceneDirector::get_submission_residency_hint_for_renderer(const GaussianSplatRenderer *p_renderer,
@@ -2701,8 +2708,7 @@ bool GaussianSplatSceneDirector::get_submission_residency_hint_for_renderer(cons
 	MutexLock lock(world_mutex);
 	if (const SharedWorld *world = _find_world_for_renderer(p_renderer)) {
 		const bool world_submission_has_renderable_data =
-				world->world_submission.gaussian_data.is_valid() &&
-				world->world_submission.gaussian_data->get_count() > 0;
+				_world_submission_record_has_renderable_payload(world->world_submission);
 		if (world->world_submission.active && world_submission_has_renderable_data &&
 				world->world_submission.has_desired_residency_hint) {
 			*r_hint = world->world_submission.desired_residency_hint;

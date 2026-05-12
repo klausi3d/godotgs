@@ -277,6 +277,7 @@ RasterResult TileRasterizer::render(const RasterParams &p_params) {
     render_params.low_pass_filter = p_params.low_pass_filter;
     render_params.opacity_aware_culling = p_params.opacity_aware_culling;
     render_params.visibility_threshold = p_params.visibility_threshold;
+    render_params.alpha_clip = p_params.alpha_clip;
     render_params.distance_cull_enabled = p_params.distance_cull_enabled;
     render_params.distance_cull_start = p_params.distance_cull_start;
     render_params.distance_cull_max_rate = p_params.distance_cull_max_rate;
@@ -557,6 +558,21 @@ RasterOverflowStats TileRasterizer::get_overflow_stats() const {
     stats.raster_sample_count = snapshot.raster_sample_count;
     stats.raster_splats_iterated = snapshot.raster_splats_iterated;
     stats.raster_splats_contributed = snapshot.raster_splats_contributed;
+    stats.raster_reject_sorted_idx_oob = snapshot.raster_reject_sorted_idx_oob;
+    stats.raster_reject_gaussian_idx_oob = snapshot.raster_reject_gaussian_idx_oob;
+    stats.raster_reject_base_opacity = snapshot.raster_reject_base_opacity;
+    stats.raster_reject_nan_inf = snapshot.raster_reject_nan_inf;
+    stats.raster_reject_weight = snapshot.raster_reject_weight;
+    stats.raster_reject_alpha = snapshot.raster_reject_alpha;
+    stats.raster_reject_index_mismatch = snapshot.raster_reject_index_mismatch;
+    stats.raster_break_remaining_alpha = snapshot.raster_break_remaining_alpha;
+    stats.raster_break_final_alpha = snapshot.raster_break_final_alpha;
+    stats.raster_break_subgroup_early_exit = snapshot.raster_break_subgroup_early_exit;
+    stats.raster_has_depth = snapshot.raster_has_depth;
+    stats.raster_alpha_sum_q10 = snapshot.raster_alpha_sum_q10;
+    stats.raster_reject_quadratic = snapshot.raster_reject_quadratic;
+    stats.raster_reject_lod_opacity = snapshot.raster_reject_lod_opacity;
+    stats.raster_reject_blend_alpha = snapshot.raster_reject_blend_alpha;
     // Stamp with the frame serial from the async GPU readback so consumers
     // (e.g. the overflow auto-tuner) can detect stale stats.
     stats.frame_number = tile_renderer->get_overflow_stats_frame_serial();
@@ -588,8 +604,21 @@ RasterStats TileRasterizer::get_render_stats() const {
     stats.compute_raster_frames = renderer_stats.compute_raster_frames;
     stats.fragment_raster_frames = renderer_stats.fragment_raster_frames;
     stats.last_raster_used_compute = renderer_stats.last_raster_used_compute;
+    stats.last_raster_choice_initialized = renderer_stats.last_raster_choice_initialized;
+    stats.last_raster_choice_reason = renderer_stats.last_raster_choice_reason;
     stats.sorted_indices_blend_fallback_active = renderer_stats.sorted_indices_blend_fallback_active;
     stats.sorted_indices_blend_fallback_reason = renderer_stats.sorted_indices_blend_fallback_reason;
+    stats.global_sort_enabled = renderer_stats.global_sort_enabled;
+    stats.allow_compute_raster = renderer_stats.allow_compute_raster;
+    stats.feature_packed_stage_data = renderer_stats.feature_packed_stage_data;
+    stats.feature_tighter_bounds = renderer_stats.feature_tighter_bounds;
+    stats.feature_sh_amortization = renderer_stats.feature_sh_amortization;
+    stats.sh_amortization_divisor = renderer_stats.sh_amortization_divisor;
+    stats.feature_quantized_storage = renderer_stats.feature_quantized_storage;
+    stats.feature_debug_counters = renderer_stats.feature_debug_counters;
+    stats.raster_tile_splat_capacity = renderer_stats.raster_tile_splat_capacity;
+    stats.max_raster_splats_per_tile = renderer_stats.max_raster_splats_per_tile;
+    stats.shader_defines_hash = renderer_stats.shader_defines_hash;
 
     return stats;
 }
@@ -603,11 +632,25 @@ RasterPerformance TileRasterizer::get_performance() const {
     perf.tile_assignment_ms = tile_renderer->get_tile_assignment_time();
     perf.rasterization_ms = tile_renderer->get_rasterization_time();
     perf.submission_cpu_ms = tile_renderer->get_last_submission_cpu_ms();
+    perf.overlap_count_gpu_ms = tile_renderer->get_last_gpu_overlap_count_time_ms();
+    perf.overlap_count_gpu_valid = tile_renderer->is_last_gpu_overlap_count_time_valid();
     perf.binning_gpu_ms = tile_renderer->get_last_gpu_binning_time_ms();
+    perf.overlap_emit_gpu_ms = tile_renderer->get_last_gpu_overlap_emit_time_ms();
+    perf.overlap_emit_gpu_valid = tile_renderer->is_last_gpu_overlap_emit_time_valid();
+    perf.overlap_sort_gpu_ms = tile_renderer->get_last_gpu_overlap_sort_time_ms();
+    perf.overlap_sort_gpu_valid = tile_renderer->is_last_gpu_overlap_sort_time_valid();
+    perf.overlap_sort_cpu_dispatch_ms = tile_renderer->get_last_overlap_sort_cpu_dispatch_time_ms();
+    perf.overlap_sort_cpu_dispatch_valid = tile_renderer->is_last_overlap_sort_cpu_dispatch_time_valid();
     perf.raster_gpu_ms = tile_renderer->get_last_gpu_raster_time_ms();
+    perf.raster_gpu_valid = tile_renderer->is_last_gpu_raster_time_valid();
     perf.prefix_gpu_ms = tile_renderer->get_last_gpu_prefix_time_ms();
+    perf.prefix_gpu_valid = tile_renderer->is_last_gpu_prefix_time_valid();
+    perf.prefix_cpu_sync_fallback_ms = tile_renderer->get_last_prefix_cpu_sync_fallback_time_ms();
+    perf.prefix_cpu_sync_fallback_valid = tile_renderer->is_last_prefix_cpu_sync_fallback_time_valid();
     perf.resolve_gpu_ms = tile_renderer->get_last_gpu_resolve_time_ms();
+    perf.resolve_gpu_valid = tile_renderer->is_last_gpu_resolve_time_valid();
     perf.frame_gpu_ms = tile_renderer->get_last_gpu_frame_time_ms();
+    perf.frame_gpu_valid = tile_renderer->is_last_gpu_frame_time_valid();
     perf.sort_sync_fallback_count = tile_renderer->get_sort_sync_fallback_count();
     perf.timing_frame_serial = tile_renderer->get_gpu_timing_frame_serial();
     perf.timing_frames_behind = tile_renderer->get_gpu_timing_frames_behind();

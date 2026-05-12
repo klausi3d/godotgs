@@ -1,0 +1,114 @@
+[remap]
+
+importer="gaussian_splat_ply"
+importer_version=6
+type="GaussianSplatAsset"
+uid="uid://dn2tmp3c3pckv"
+path="res://.godot/imported/synthetic_cloud.ply-f733b0a98cdaf71dff5dbc591f48ac53.res"
+metadata={
+&"asset_type": 0,
+&"bounds": AABB(-12.082072, 0.15310723, -12.628657, 24.017673, 7.7208586, 17.103289),
+&"compression_flags": 15,
+&"dc_encoding": "linear_rgb",
+&"density_multiplier": 0.4,
+&"enable_lod": true,
+&"import_time": {
+"day": 3,
+"dst": true,
+"hour": 0,
+"minute": 18,
+"month": 5,
+"second": 59,
+"weekday": 0,
+"year": 2026
+},
+&"loader_statistics": {
+"bounds_max": Vector3(11.935601, 7.8739657, 4.4746313),
+"bounds_min": Vector3(-12.082072, 0.15310723, -12.628657),
+"cache_hit": true,
+"cache_time_ms": 23.975,
+"format": "binary",
+"header_time_ms": 0.838,
+"load_time_ms": 26.264,
+"parse_time_ms": 0.0,
+"properties": 14,
+"splat_count": 4096
+},
+&"max_splats": 250000,
+&"memory_breakdown_mb": {
+&"colors_mb": 0.006248474,
+&"positions_mb": 0.009372711,
+&"rotations_mb": 0.012496948,
+&"scales_mb": 0.009372711,
+&"total_mb": 0.037490845
+},
+&"memory_estimate_mb": 0.037490845,
+&"normalize_opacity": true,
+&"optimize_for_gpu": true,
+&"options": {
+&"compression/pack_opacity": false,
+&"compression/quantize_colors": true,
+&"compression/quantize_positions": true,
+&"compression/quantize_rotations": true,
+&"compression/quantize_scales": true,
+&"general/asset_type": 0,
+&"metadata/include_memory_estimate": true,
+&"metadata/include_statistics": true,
+&"preview/generate_thumbnail": true,
+&"preview/thumbnail_size": 96,
+&"preview/thumbnail_style": 1,
+&"processing/normalize_opacity": true,
+&"processing/sort_by_opacity": false,
+&"quality/customized": false,
+&"quality/density_multiplier": 0.4,
+&"quality/enable_lod": true,
+&"quality/max_splats": 250000,
+&"quality/optimize_for_gpu": true,
+&"quality/preset": "mobile",
+&"validation/validate_required_properties": true,
+&"validation/warn_missing_optional": true
+},
+&"original_splat_count": 4096,
+&"preset_display": "Mobile",
+&"quality_customized": false,
+&"quality_preset": "mobile",
+&"sort_by_opacity": false,
+&"source_file": "res://tests/fixtures/synthetic_cloud.ply",
+&"source_path": "res://tests/fixtures/synthetic_cloud.ply",
+&"splat_count": 1638,
+&"thumbnail_generated": true,
+&"thumbnail_size": 96,
+&"thumbnail_style": 1,
+&"thumbnail_style_name": "Density",
+&"validate_required": true,
+&"warn_missing_optional": true
+}
+
+[deps]
+
+files=["res://.godot/imported/synthetic_cloud.ply-f733b0a98cdaf71dff5dbc591f48ac53.res", "res://tests/fixtures/synthetic_cloud.gsplatcache"]
+
+source_file="res://tests/fixtures/synthetic_cloud.ply"
+dest_files=["res://.godot/imported/synthetic_cloud.ply-f733b0a98cdaf71dff5dbc591f48ac53.res", "res://.godot/imported/synthetic_cloud.ply-f733b0a98cdaf71dff5dbc591f48ac53.res", "res://tests/fixtures/synthetic_cloud.gsplatcache"]
+
+[params]
+
+quality/preset="mobile"
+general/asset_type=0
+quality/max_splats=250000
+quality/density_multiplier=0.4
+quality/enable_lod=true
+quality/optimize_for_gpu=true
+validation/validate_required_properties=true
+validation/warn_missing_optional=true
+processing/normalize_opacity=true
+processing/sort_by_opacity=false
+compression/quantize_positions=true
+compression/quantize_colors=true
+compression/quantize_scales=true
+compression/quantize_rotations=true
+preview/generate_thumbnail=true
+preview/thumbnail_style=1
+preview/thumbnail_size=96
+metadata/include_statistics=true
+metadata/include_memory_estimate=true

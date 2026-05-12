@@ -551,7 +551,7 @@ TEST_CASE("[GaussianSplatting][Importer] PLY importer produces metadata and prev
         return;
     }
 
-    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + String(".tres"));
+    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + String(".res"));
     CHECK_MESSAGE(asset.is_valid(), "Imported GaussianSplatAsset should be loadable from disk.");
     if (!asset.is_valid()) {
         return;
@@ -616,7 +616,7 @@ TEST_CASE("[GaussianSplatting][Importer] Reimport updates quality options") {
         return;
     }
 
-    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + String(".tres"));
+    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + String(".res"));
     CHECK(asset.is_valid());
     if (!asset.is_valid()) {
         return;
@@ -668,10 +668,10 @@ TEST_CASE("[GaussianSplatting][Importer] Ultra quality preset preserves full PLY
         return;
     }
 
-    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + String(".tres"));
+    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + String(".res"));
     CHECK_MESSAGE(asset.is_valid(), "Ultra preset import should produce a loadable asset.");
     if (asset.is_null()) {
-        _remove_user_file(save_base_path + ".tres");
+        _remove_user_file(save_base_path + ".res");
         return;
     }
 
@@ -684,7 +684,7 @@ TEST_CASE("[GaussianSplatting][Importer] Ultra quality preset preserves full PLY
     CHECK(String(metadata.get(StringName("quality_preset"), String())) == String("ultra"));
 
     _remove_user_file(source_path);
-    _remove_user_file(save_base_path + ".tres");
+    _remove_user_file(save_base_path + ".res");
 }
 
 TEST_CASE("[GaussianSplatting][Importer] Ultra import initializes fresh node runtime from imported fidelity") {
@@ -728,7 +728,7 @@ TEST_CASE("[GaussianSplatting][Importer] Ultra import initializes fresh node run
             nullptr, nullptr, &metadata_variant);
     REQUIRE_MESSAGE(import_err == OK, "Ultra preset import should succeed for node runtime fidelity regression.");
 
-    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + String(".tres"));
+    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + String(".res"));
     REQUIRE_MESSAGE(asset.is_valid(), "Imported asset should be loadable for node runtime fidelity regression.");
     REQUIRE_MESSAGE(int(asset->get_splat_count()) == source_count, "Imported asset should preserve the full source count.");
 
@@ -748,7 +748,7 @@ TEST_CASE("[GaussianSplatting][Importer] Ultra import initializes fresh node run
 
     memdelete(node);
     _remove_user_file(source_path);
-    _remove_user_file(save_base_path + ".tres");
+    _remove_user_file(save_base_path + ".res");
 }
 
 TEST_CASE("[GaussianSplatting][Importer] Imported fidelity defaults do not override customized node quality") {
@@ -780,7 +780,7 @@ TEST_CASE("[GaussianSplatting][Importer] Imported fidelity defaults do not overr
             nullptr, nullptr, &metadata_variant);
     REQUIRE_MESSAGE(import_err == OK, "Ultra preset import should succeed for customized node regression.");
 
-    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + String(".tres"));
+    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + String(".res"));
     REQUIRE_MESSAGE(asset.is_valid(), "Imported asset should be loadable for customized node regression.");
 
     GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
@@ -793,7 +793,7 @@ TEST_CASE("[GaussianSplatting][Importer] Imported fidelity defaults do not overr
 
     memdelete(node);
     _remove_user_file(source_path);
-    _remove_user_file(save_base_path + ".tres");
+    _remove_user_file(save_base_path + ".res");
 }
 
 TEST_CASE("[GaussianSplatting][Importer] Missing required PLY properties fail consistently across strict paths") {
@@ -838,7 +838,7 @@ TEST_CASE("[GaussianSplatting][Importer] Missing required PLY properties fail co
             "GaussianSplatAsset::load_from_file should reject the same malformed PLY file.");
 
     _remove_user_file(source_path);
-    _remove_user_file(save_base_path + ".tres");
+    _remove_user_file(save_base_path + ".res");
 }
 
 TEST_CASE("[GaussianSplatting][Thumbnail] Generator produces preview images for each style") {
@@ -1079,7 +1079,7 @@ TEST_CASE("[GaussianSplatting][Importer] SPZ importer basic configuration") {
     CHECK(importer->get_importer_name() == "gaussian_splat_spz");
     CHECK(importer->get_visible_name() == "Gaussian Splat SPZ");
     CHECK(importer->get_resource_type() == "GaussianSplatAsset");
-    CHECK(importer->get_save_extension() == "tres");
+    CHECK(importer->get_save_extension() == "res");
     CHECK(importer->can_import_threaded() == true);
 
     List<String> extensions;
@@ -1229,7 +1229,7 @@ TEST_CASE("[GaussianSplatting][Importer] SPZ importer persists linear DC encodin
             nullptr, nullptr, &metadata_variant);
     REQUIRE_MESSAGE(import_err == OK, "SPZ importer should succeed for linear-DC fixture");
 
-    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + ".tres");
+    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + ".res");
     REQUIRE_MESSAGE(asset.is_valid(), "SPZ importer should emit a loadable GaussianSplatAsset");
 
     const Dictionary metadata = asset->get_import_metadata();
@@ -1245,7 +1245,7 @@ TEST_CASE("[GaussianSplatting][Importer] SPZ importer persists linear DC encodin
     CHECK(gaussian_get_dc_encoding(g.render_meta) == GAUSSIAN_DC_ENCODING_LINEAR_RGB);
 
     _remove_user_file(source_path);
-    _remove_user_file(save_base_path + ".tres");
+    _remove_user_file(save_base_path + ".res");
 }
 
 TEST_CASE("[GaussianSplatting][Importer] PLY importer tags new assets as linear DC by default") {
@@ -1272,7 +1272,7 @@ TEST_CASE("[GaussianSplatting][Importer] PLY importer tags new assets as linear 
             nullptr, nullptr, nullptr);
     REQUIRE_MESSAGE(import_err == OK, "PLY importer should succeed for minimal fixture");
 
-    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + ".tres");
+    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + ".res");
     REQUIRE_MESSAGE(asset.is_valid(), "PLY importer should emit a loadable GaussianSplatAsset");
 
     const Dictionary metadata = asset->get_import_metadata();
@@ -1288,7 +1288,7 @@ TEST_CASE("[GaussianSplatting][Importer] PLY importer tags new assets as linear 
     CHECK(gaussian_get_dc_encoding(g.render_meta) == GAUSSIAN_DC_ENCODING_LINEAR_RGB);
 
     _remove_user_file(source_path);
-    _remove_user_file(save_base_path + ".tres");
+    _remove_user_file(save_base_path + ".res");
 }
 
 TEST_CASE("[GaussianSplatting][Importer] PLY importer propagates SH band-1 coefficients into asset") {
@@ -1308,7 +1308,7 @@ TEST_CASE("[GaussianSplatting][Importer] PLY importer propagates SH band-1 coeff
             nullptr, nullptr, nullptr);
     REQUIRE_MESSAGE(import_err == OK, "PLY importer should succeed for band-1 SH fixture");
 
-    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + ".tres");
+    Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + ".res");
     REQUIRE_MESSAGE(asset.is_valid(), "PLY importer should emit a loadable GaussianSplatAsset");
 
     // Band 1 = 3 first-order terms; layout is per-splat, per-term, RGB triplet.
@@ -1344,7 +1344,7 @@ TEST_CASE("[GaussianSplatting][Importer] PLY importer propagates SH band-1 coeff
     CHECK(Math::is_equal_approx(round_tripped.sh_1[2].z, 0.90f));
 
     _remove_user_file(source_path);
-    _remove_user_file(save_base_path + ".tres");
+    _remove_user_file(save_base_path + ".res");
 }
 
 TEST_CASE("[GaussianSplatting][Importer] PLY ASCII loader hard-fails on malformed rows") {
@@ -1814,6 +1814,10 @@ TEST_CASE("[GaussianSplatting][Importer] gsplatworld importer preserves payload 
     Ref<GaussianSplatWorld> imported_world = ResourceLoader::load(imported_path, "GaussianSplatWorld");
     CHECK_MESSAGE(imported_world.is_valid(), "Imported gsplatworld should be loadable.");
     if (imported_world.is_valid()) {
+        CHECK_FALSE(imported_world->has_resident_gaussian_data());
+        CHECK(imported_world->has_chunk_payload_source());
+        CHECK(imported_world->get_splat_count() == 2);
+        CHECK(imported_world->materialize_resident_gaussian_data() == OK);
         Ref<GaussianData> imported_data = imported_world->get_gaussian_data();
         CHECK(imported_data.is_valid());
         if (imported_data.is_valid()) {

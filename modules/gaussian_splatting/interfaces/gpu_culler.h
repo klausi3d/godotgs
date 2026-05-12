@@ -69,7 +69,11 @@ public:
         // Opacity-aware bounding (FlashGS optimization)
         // When enabled, reduces tile-Gaussian pairs by ~94% using opacity-based radius
         bool opacity_aware_culling = true;
-        float visibility_threshold = 0.01f; // tau: minimum visible contribution
+        float visibility_threshold = 1.0f / 255.0f; // tau: minimum visible contribution
+        // Optional per-splat hard cull at projection. Disabled by default so
+        // low-opacity splats can still be boosted by opacity multipliers before
+        // opacity-aware bounds make the final visibility decision.
+        float alpha_clip = 0.0f;
 
         // Distance-based probabilistic culling (tile binning)
         bool distance_cull_enabled = true;

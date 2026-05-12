@@ -1,8 +1,28 @@
 #include "streaming_chunk_payload_source.h"
 
-#include "core/io/file_access.h"
 #include "core/error/error_macros.h"
 #include "../logger/gs_logger.h"
+
+namespace {
+
+constexpr uint32_t INDEXED_CONTIGUOUS_READ_MAX_OVERREAD_FACTOR = 2;
+
+struct IndexedReadRequest {
+	uint32_t index = 0;
+	uint32_t output = 0;
+};
+
+struct IndexedReadRequestComparator {
+	_FORCE_INLINE_ bool operator()(const IndexedReadRequest &p_a, const IndexedReadRequest &p_b) const {
+		return p_a.index == p_b.index ? p_a.output < p_b.output : p_a.index < p_b.index;
+	}
+};
+
+_FORCE_INLINE_ bool _indexed_request_extends_run(uint32_t p_index, uint32_t p_run_end) {
+	return p_index == p_run_end || (p_run_end < UINT32_MAX && p_index == p_run_end + 1);
+}
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // ChunkPayloadSource
@@ -70,6 +90,7 @@ void StagedFileChunkPayloadSource::configure(const String &p_path,
 		uint32_t p_sh_first_order,
 		uint32_t p_sh_high_order,
 		const AABB &p_bounds) {
+	MutexLock lock(file_mutex);
 	file_path = p_path;
 	gaussian_data_offset = p_gaussian_offset;
 	sh_data_offset = p_sh_offset;
@@ -78,6 +99,78 @@ void StagedFileChunkPayloadSource::configure(const String &p_path,
 	sh_first_order = p_sh_first_order;
 	sh_high_order = p_sh_high_order;
 	bounds = p_bounds;
+	cached_files.clear();
+	bytes_requested = 0;
+	bytes_read = 0;
+	file_open_count = 0;
+}
+
+Ref<FileAccess> StagedFileChunkPayloadSource::_get_thread_file() const {
+	const Thread::ID thread_id = Thread::get_caller_id();
+	MutexLock lock(file_mutex);
+
+	Ref<FileAccess> *cached_file = cached_files.getptr(thread_id);
+	if (cached_file && cached_file->is_valid()) {
+		return *cached_file;
+	}
+
+	Ref<FileAccess> file = FileAccess::open(file_path, FileAccess::READ);
+	if (file.is_null()) {
+		ERR_PRINT(vformat("[StagedFileSource] Cannot open staged world file: %s", file_path));
+		return Ref<FileAccess>();
+	}
+	cached_files.insert(thread_id, file);
+	file_open_count++;
+	return file;
+}
+
+bool StagedFileChunkPayloadSource::_read_exact(FileAccess *p_file, uint64_t p_offset, void *p_dst, uint64_t p_bytes, const char *p_label, uint64_t *r_bytes_read) const {
+	if (p_bytes == 0) {
+		if (r_bytes_read) {
+			*r_bytes_read = 0;
+		}
+		return true;
+	}
+
+	p_file->seek(p_offset);
+	const uint64_t got = p_file->get_buffer(reinterpret_cast<uint8_t *>(p_dst), p_bytes);
+	if (r_bytes_read) {
+		*r_bytes_read = got;
+	}
+	if (got != p_bytes) {
+		ERR_PRINT(vformat("[StagedFileSource] Short read on %s: expected %d got %d",
+				p_label, p_bytes, got));
+		return false;
+	}
+	return true;
+}
+
+void StagedFileChunkPayloadSource::_record_io_counters(uint64_t p_bytes_requested, uint64_t p_bytes_read) const {
+	MutexLock lock(file_mutex);
+	bytes_requested += p_bytes_requested;
+	bytes_read += p_bytes_read;
+}
+
+uint64_t StagedFileChunkPayloadSource::get_bytes_requested() const {
+	MutexLock lock(file_mutex);
+	return bytes_requested;
+}
+
+uint64_t StagedFileChunkPayloadSource::get_bytes_read() const {
+	MutexLock lock(file_mutex);
+	return bytes_read;
+}
+
+uint64_t StagedFileChunkPayloadSource::get_file_open_count() const {
+	MutexLock lock(file_mutex);
+	return file_open_count;
+}
+
+void StagedFileChunkPayloadSource::reset_io_counters() {
+	MutexLock lock(file_mutex);
+	bytes_requested = 0;
+	bytes_read = 0;
+	file_open_count = 0;
 }
 
 bool StagedFileChunkPayloadSource::capture_chunk_snapshot(uint32_t p_start, uint32_t p_count,
@@ -94,28 +187,23 @@ bool StagedFileChunkPayloadSource::capture_chunk_snapshot(uint32_t p_start, uint
 		return false;
 	}
 
-	// Each call opens its own FileAccess handle. The OS handles concurrent
-	// reads on separate handles efficiently; no cross-thread mutex needed.
-	// Serializing all pack workers on a single mutex was the primary source
-	// of pack throughput stalls under bounded-VRAM corridor churn.
-	Ref<FileAccess> file = FileAccess::open(file_path, FileAccess::READ);
+	Ref<FileAccess> file = _get_thread_file();
 	if (file.is_null()) {
-		ERR_PRINT(vformat("[StagedFileSource] Cannot open staged world file: %s", file_path));
 		return false;
 	}
 
 	// Read gaussian data.
 	const uint64_t gaussian_byte_offset = gaussian_data_offset + uint64_t(p_start) * sizeof(Gaussian);
 	const uint64_t gaussian_byte_count = uint64_t(p_count) * sizeof(Gaussian);
-	file->seek(gaussian_byte_offset);
 
 	r_gaussians.resize(p_count);
-	uint64_t got = file->get_buffer(reinterpret_cast<uint8_t *>(r_gaussians.ptr()), gaussian_byte_count);
-	if (got != gaussian_byte_count) {
-		ERR_PRINT(vformat("[StagedFileSource] Short read on gaussians: expected %d got %d",
-				gaussian_byte_count, got));
+	uint64_t physical_bytes_read = 0;
+	uint64_t got = 0;
+	if (!_read_exact(file.ptr(), gaussian_byte_offset, r_gaussians.ptr(), gaussian_byte_count, "gaussians", &got)) {
 		return false;
 	}
+	physical_bytes_read += got;
+	uint64_t logical_bytes_requested = gaussian_byte_count;
 
 	// Read SH high-order coefficients if present.
 	r_sh_first_order_count = sh_first_order;
@@ -125,19 +213,18 @@ bool StagedFileChunkPayloadSource::capture_chunk_snapshot(uint32_t p_start, uint
 		const uint64_t sh_per_splat = uint64_t(sh_high_order);
 		const uint64_t sh_byte_offset = sh_data_offset + uint64_t(p_start) * sh_per_splat * sizeof(Vector3);
 		const uint64_t sh_byte_count = uint64_t(p_count) * sh_per_splat * sizeof(Vector3);
-		file->seek(sh_byte_offset);
 
 		r_sh_high_order_out.resize(uint32_t(p_count * sh_per_splat));
-		got = file->get_buffer(reinterpret_cast<uint8_t *>(r_sh_high_order_out.ptr()), sh_byte_count);
-		if (got != sh_byte_count) {
-			ERR_PRINT(vformat("[StagedFileSource] Short read on SH data: expected %d got %d",
-					sh_byte_count, got));
+		if (!_read_exact(file.ptr(), sh_byte_offset, r_sh_high_order_out.ptr(), sh_byte_count, "SH data", &got)) {
 			return false;
 		}
+		logical_bytes_requested += sh_byte_count;
+		physical_bytes_read += got;
 	} else {
 		r_sh_high_order_out.clear();
 	}
 
+	_record_io_counters(logical_bytes_requested, physical_bytes_read);
 	return true;
 }
 
@@ -164,65 +251,134 @@ bool StagedFileChunkPayloadSource::capture_indexed_chunk_snapshot(const uint32_t
 	}
 
 	const uint32_t range_count = max_idx - min_idx + 1;
+	const bool use_contiguous_range = uint64_t(range_count) <= uint64_t(p_count) * INDEXED_CONTIGUOUS_READ_MAX_OVERREAD_FACTOR;
 
-	// No mutex: see capture_chunk_snapshot above. Independent file handles
-	// per call allow parallel reads from the staged world file.
-	Ref<FileAccess> file = FileAccess::open(file_path, FileAccess::READ);
+	LocalVector<IndexedReadRequest> sparse_requests;
+	if (!use_contiguous_range) {
+		sparse_requests.resize(p_count);
+		for (uint32_t i = 0; i < p_count; i++) {
+			sparse_requests[i].index = p_indices[i];
+			sparse_requests[i].output = i;
+		}
+		sparse_requests.sort_custom<IndexedReadRequestComparator>();
+	}
+
+	Ref<FileAccess> file = _get_thread_file();
 	if (file.is_null()) {
-		ERR_PRINT(vformat("[StagedFileSource] Cannot open staged world file: %s", file_path));
 		return false;
 	}
 
-	// Read the contiguous gaussian range covering all requested indices.
-	const uint64_t gaussian_byte_offset = gaussian_data_offset + uint64_t(min_idx) * sizeof(Gaussian);
-	const uint64_t gaussian_byte_count = uint64_t(range_count) * sizeof(Gaussian);
-	file->seek(gaussian_byte_offset);
-
-	LocalVector<Gaussian> range_buf;
-	range_buf.resize(range_count);
-	uint64_t got = file->get_buffer(reinterpret_cast<uint8_t *>(range_buf.ptr()), gaussian_byte_count);
-	if (got != gaussian_byte_count) {
-		ERR_PRINT(vformat("[StagedFileSource] Short read on gaussians: expected %d got %d",
-				gaussian_byte_count, got));
-		return false;
-	}
-
-	// Extract the requested gaussians.
 	r_gaussians.resize(p_count);
-	for (uint32_t i = 0; i < p_count; i++) {
-		r_gaussians[i] = range_buf[p_indices[i] - min_idx];
-	}
-
-	// Read SH data.
 	r_sh_first_order_count = sh_first_order;
 	r_sh_high_order_count = sh_high_order;
+	uint64_t logical_bytes_requested = uint64_t(p_count) * sizeof(Gaussian);
+	uint64_t physical_bytes_read = 0;
+	uint64_t got = 0;
+
+	if (use_contiguous_range) {
+		// Read the dense gaussian range covering all requested indices.
+		const uint64_t gaussian_byte_offset = gaussian_data_offset + uint64_t(min_idx) * sizeof(Gaussian);
+		const uint64_t gaussian_byte_count = uint64_t(range_count) * sizeof(Gaussian);
+
+		LocalVector<Gaussian> range_buf;
+		range_buf.resize(range_count);
+		if (!_read_exact(file.ptr(), gaussian_byte_offset, range_buf.ptr(), gaussian_byte_count, "gaussians", &got)) {
+			return false;
+		}
+		physical_bytes_read += got;
+
+		for (uint32_t i = 0; i < p_count; i++) {
+			r_gaussians[i] = range_buf[p_indices[i] - min_idx];
+		}
+	} else {
+		LocalVector<Gaussian> run_buf;
+		for (uint32_t i = 0; i < sparse_requests.size();) {
+			const uint32_t run_start = sparse_requests[i].index;
+			uint32_t run_end = run_start;
+			uint32_t j = i + 1;
+			while (j < sparse_requests.size() && _indexed_request_extends_run(sparse_requests[j].index, run_end)) {
+				if (sparse_requests[j].index > run_end) {
+					run_end = sparse_requests[j].index;
+				}
+				j++;
+			}
+
+			const uint32_t run_count = run_end - run_start + 1;
+			const uint64_t gaussian_byte_offset = gaussian_data_offset + uint64_t(run_start) * sizeof(Gaussian);
+			const uint64_t gaussian_byte_count = uint64_t(run_count) * sizeof(Gaussian);
+			run_buf.resize(run_count);
+			if (!_read_exact(file.ptr(), gaussian_byte_offset, run_buf.ptr(), gaussian_byte_count, "gaussians", &got)) {
+				return false;
+			}
+			physical_bytes_read += got;
+
+			for (uint32_t k = i; k < j; k++) {
+				r_gaussians[sparse_requests[k].output] = run_buf[sparse_requests[k].index - run_start];
+			}
+			i = j;
+		}
+	}
 
 	if (sh_high_order > 0 && sh_data_offset > 0) {
 		const uint64_t sh_per_splat = uint64_t(sh_high_order);
-		const uint64_t sh_byte_offset = sh_data_offset + uint64_t(min_idx) * sh_per_splat * sizeof(Vector3);
-		const uint64_t sh_byte_count = uint64_t(range_count) * sh_per_splat * sizeof(Vector3);
-		file->seek(sh_byte_offset);
-
-		LocalVector<Vector3> sh_range_buf;
-		sh_range_buf.resize(uint32_t(range_count * sh_per_splat));
-		got = file->get_buffer(reinterpret_cast<uint8_t *>(sh_range_buf.ptr()), sh_byte_count);
-		if (got != sh_byte_count) {
-			ERR_PRINT(vformat("[StagedFileSource] Short read on SH data: expected %d got %d",
-					sh_byte_count, got));
-			return false;
-		}
-
+		const uint64_t logical_sh_byte_count = uint64_t(p_count) * sh_per_splat * sizeof(Vector3);
 		r_sh_high_order_out.resize(uint32_t(p_count * sh_per_splat));
-		for (uint32_t i = 0; i < p_count; i++) {
-			const uint32_t src_base = (p_indices[i] - min_idx) * uint32_t(sh_per_splat);
-			const uint32_t dst_base = i * uint32_t(sh_per_splat);
-			for (uint32_t c = 0; c < uint32_t(sh_per_splat); c++) {
-				r_sh_high_order_out[dst_base + c] = sh_range_buf[src_base + c];
+		logical_bytes_requested += logical_sh_byte_count;
+
+		if (use_contiguous_range) {
+			const uint64_t sh_byte_offset = sh_data_offset + uint64_t(min_idx) * sh_per_splat * sizeof(Vector3);
+			const uint64_t sh_byte_count = uint64_t(range_count) * sh_per_splat * sizeof(Vector3);
+
+			LocalVector<Vector3> sh_range_buf;
+			sh_range_buf.resize(uint32_t(range_count * sh_per_splat));
+			if (!_read_exact(file.ptr(), sh_byte_offset, sh_range_buf.ptr(), sh_byte_count, "SH data", &got)) {
+				return false;
+			}
+			physical_bytes_read += got;
+
+			for (uint32_t i = 0; i < p_count; i++) {
+				const uint32_t src_base = (p_indices[i] - min_idx) * uint32_t(sh_per_splat);
+				const uint32_t dst_base = i * uint32_t(sh_per_splat);
+				for (uint32_t c = 0; c < uint32_t(sh_per_splat); c++) {
+					r_sh_high_order_out[dst_base + c] = sh_range_buf[src_base + c];
+				}
+			}
+		} else {
+			LocalVector<Vector3> sh_run_buf;
+			for (uint32_t i = 0; i < sparse_requests.size();) {
+				const uint32_t run_start = sparse_requests[i].index;
+				uint32_t run_end = run_start;
+				uint32_t j = i + 1;
+				while (j < sparse_requests.size() && _indexed_request_extends_run(sparse_requests[j].index, run_end)) {
+					if (sparse_requests[j].index > run_end) {
+						run_end = sparse_requests[j].index;
+					}
+					j++;
+				}
+
+				const uint32_t run_count = run_end - run_start + 1;
+				const uint64_t sh_byte_offset = sh_data_offset + uint64_t(run_start) * sh_per_splat * sizeof(Vector3);
+				const uint64_t sh_byte_count = uint64_t(run_count) * sh_per_splat * sizeof(Vector3);
+				sh_run_buf.resize(uint32_t(uint64_t(run_count) * sh_per_splat));
+				if (!_read_exact(file.ptr(), sh_byte_offset, sh_run_buf.ptr(), sh_byte_count, "SH data", &got)) {
+					return false;
+				}
+				physical_bytes_read += got;
+
+				for (uint32_t k = i; k < j; k++) {
+					const uint32_t src_base = (sparse_requests[k].index - run_start) * uint32_t(sh_per_splat);
+					const uint32_t dst_base = sparse_requests[k].output * uint32_t(sh_per_splat);
+					for (uint32_t c = 0; c < uint32_t(sh_per_splat); c++) {
+						r_sh_high_order_out[dst_base + c] = sh_run_buf[src_base + c];
+					}
+				}
+				i = j;
 			}
 		}
 	} else {
 		r_sh_high_order_out.clear();
 	}
 
+	_record_io_counters(logical_bytes_requested, physical_bytes_read);
 	return true;
 }

@@ -19,6 +19,7 @@
 #include "../renderer/sorting_settings_utils.h"
 #include "../renderer/gpu_sorter.h"
 #include "../core/gaussian_splat_quality_config.h"
+#include "../core/streaming_vram_regulator.h"
 #include "../interfaces/gpu_culler.h"
 #include "../lod/lod_config.h"
 
@@ -61,14 +62,19 @@ TEST_CASE("[GaussianSplatting][Config] Hidden runtime-affecting ProjectSettings 
 	const StringName renderdoc_key("rendering/gaussian_splatting/renderdoc_compatibility");
 	const StringName depth_test_key("rendering/gaussian_splatting/composite/depth_test");
 	const StringName effector_frequency_key("rendering/gaussian_splatting/effects/sphere_effector_frequency");
+	const StringName vram_budget_key("rendering/gaussian_splatting/streaming/vram_budget_mb");
 
 	CHECK(ps->has_setting(renderdoc_key));
 	CHECK(ps->has_setting(depth_test_key));
 	CHECK(ps->has_setting(effector_frequency_key));
+	CHECK(ps->has_setting(vram_budget_key));
 
 	CHECK_FALSE(bool(ps->get_setting(renderdoc_key)));
 	CHECK(bool(ps->get_setting(depth_test_key)));
 	CHECK(Math::is_equal_approx(double(ps->get_setting(effector_frequency_key)), 2.0));
+	if (ps->property_can_revert(vram_budget_key)) {
+		CHECK(int64_t(ps->property_get_revert(vram_budget_key)) == int64_t(STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB));
+	}
 }
 
 TEST_CASE("[GaussianSplatting][Config] GPUSortingConfig rejects invalid target_sort_time_ms") {
@@ -314,6 +320,116 @@ TEST_CASE("[GaussianSplatting][Config] GPUSortingConfig rejects invalid key_bits
 			CHECK(config.get_validation_errors().contains("Key bits must be 32 or 64"));
 		}
 	}
+}
+
+TEST_CASE("[GaussianSplatting][Config] Project settings apply preset layouts unless preset is custom") {
+	ProjectSettings *project_settings = ProjectSettings::get_singleton();
+	REQUIRE(project_settings != nullptr);
+
+	const GPUSortingConfig previous_global_config = g_gpu_sorting_config;
+	const String preset_path = GPUSortingConfig::GPU_PRESET_PATH;
+	const String key_bits_path = GPUSortingConfig::KEY_BITS_PATH;
+	const String tile_bits_path = GPUSortingConfig::TILE_BITS_PATH;
+	const String depth_bits_path = GPUSortingConfig::DEPTH_BITS_PATH;
+	const String tie_breaker_path = GPUSortingConfig::ENABLE_TIE_BREAKER_PATH;
+	const String stale_use_32bit_keys_path = GPUSortingConfig::SECTION_PATH + "use_32bit_keys";
+	ProjectSettingGuard preset_guard(project_settings, preset_path);
+	ProjectSettingGuard key_bits_guard(project_settings, key_bits_path);
+	ProjectSettingGuard tile_bits_guard(project_settings, tile_bits_path);
+	ProjectSettingGuard depth_bits_guard(project_settings, depth_bits_path);
+	ProjectSettingGuard tie_breaker_guard(project_settings, tie_breaker_path);
+	ProjectSettingGuard stale_use_32bit_keys_guard(project_settings, stale_use_32bit_keys_path);
+
+	auto apply_explicit_32bit_layout = [&]() {
+		project_settings->set_setting(key_bits_path, 32);
+		project_settings->set_setting(tile_bits_path, 16);
+		project_settings->set_setting(depth_bits_path, 16);
+		project_settings->set_setting(tie_breaker_path, true);
+	};
+
+	auto check_loaded_32bit_layout = [&]() {
+		g_gpu_sorting_config.load_from_project_settings();
+		CHECK(g_gpu_sorting_config.key_bits == 32);
+		CHECK(g_gpu_sorting_config.tile_bits == 16);
+		CHECK(g_gpu_sorting_config.depth_bits == 16);
+		CHECK(g_gpu_sorting_config.enable_tie_breaker);
+
+		const SortKeyConfig sort_key_config = SortKeyConfig::from_settings();
+		CHECK(sort_key_config.key_bits == 32);
+		CHECK(sort_key_config.tile_bits == 16);
+		CHECK(sort_key_config.depth_bits == 16);
+		CHECK(sort_key_config.enable_tie_breaker);
+	};
+
+	SUBCASE("Named presets keep their own key layout") {
+		struct PresetExpectation {
+			const char *name;
+			uint32_t key_bits;
+			uint32_t tile_bits;
+			uint32_t depth_bits;
+			bool tie_breaker;
+		};
+		const PresetExpectation preset_expectations[] = {
+			{ "low", 32, 16, 16, false },
+			{ "medium", 64, 32, 32, false },
+			{ "high", 64, 32, 32, false },
+			{ "ultra", 64, 32, 32, true },
+		};
+		for (const PresetExpectation &preset : preset_expectations) {
+			project_settings->set_setting(preset_path, preset.name);
+			apply_explicit_32bit_layout();
+
+			g_gpu_sorting_config.load_from_project_settings();
+			CHECK(g_gpu_sorting_config.key_bits == preset.key_bits);
+			CHECK(g_gpu_sorting_config.tile_bits == preset.tile_bits);
+			CHECK(g_gpu_sorting_config.depth_bits == preset.depth_bits);
+			CHECK(g_gpu_sorting_config.enable_tie_breaker == preset.tie_breaker);
+
+			const SortKeyConfig sort_key_config = SortKeyConfig::from_settings();
+			CHECK(sort_key_config.key_bits == preset.key_bits);
+			CHECK(sort_key_config.tile_bits == preset.tile_bits);
+			CHECK(sort_key_config.depth_bits == preset.depth_bits);
+			CHECK(sort_key_config.enable_tie_breaker == preset.tie_breaker);
+		}
+
+		project_settings->set_setting(preset_path, "ultra");
+		g_gpu_sorting_config.load_from_project_settings();
+		CHECK(g_gpu_sorting_config.key_bits == 64);
+		CHECK(g_gpu_sorting_config.tile_bits == 32);
+		CHECK(g_gpu_sorting_config.depth_bits == 32);
+		CHECK(g_gpu_sorting_config.enable_tie_breaker);
+	}
+
+	SUBCASE("Custom loading honors explicit key-layout settings") {
+		project_settings->set_setting(preset_path, "custom");
+		apply_explicit_32bit_layout();
+		check_loaded_32bit_layout();
+	}
+
+	SUBCASE("Stale boolean key-width setting is ignored in favor of canonical key_bits") {
+		project_settings->set_setting(preset_path, "custom");
+
+		project_settings->set_setting(key_bits_path, 64);
+		project_settings->set_setting(tile_bits_path, 32);
+		project_settings->set_setting(depth_bits_path, 32);
+		project_settings->set_setting(tie_breaker_path, false);
+		project_settings->set_setting(stale_use_32bit_keys_path, true);
+		g_gpu_sorting_config.load_from_project_settings();
+		CHECK(g_gpu_sorting_config.key_bits == 64);
+		CHECK(g_gpu_sorting_config.tile_bits == 32);
+		CHECK(g_gpu_sorting_config.depth_bits == 32);
+		CHECK_FALSE(g_gpu_sorting_config.enable_tie_breaker);
+		CHECK(SortKeyConfig::from_settings().key_bits == 64);
+
+		project_settings->set_setting(key_bits_path, 32);
+		project_settings->set_setting(tile_bits_path, 16);
+		project_settings->set_setting(depth_bits_path, 16);
+		project_settings->set_setting(tie_breaker_path, true);
+		project_settings->set_setting(stale_use_32bit_keys_path, false);
+		check_loaded_32bit_layout();
+	}
+
+	g_gpu_sorting_config = previous_global_config;
 }
 
 TEST_CASE("[GaussianSplatting][Config] GPUSortingConfig validates tile/depth bit allocation") {

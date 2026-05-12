@@ -1257,6 +1257,8 @@ void GaussianSplatRenderer::_teardown_resources() {
         get_sorting_state().gpu_sorter.unref();
     }
 
+    _release_resident_contract_buffers();
+
     // Clean up GPU resources
     if (get_device_state().rd) {
         ResourceState &resource_state = get_resource_state();
@@ -1302,6 +1304,36 @@ void GaussianSplatRenderer::_teardown_resources() {
 void GaussianSplatRenderer::_teardown_on_render_thread(uint64_t p_request_id) {
     _teardown_resources();
     _notify_render_thread_dispatch_completed(p_request_id);
+}
+
+void GaussianSplatRenderer::_release_resident_contract_buffers() {
+    ResourceState &resource_state = get_resource_state();
+
+    auto release_owned_resident_buffer = [this](RID &r_buffer, uint32_t &r_buffer_size) {
+        if (r_buffer.is_valid()) {
+            RenderingDevice *owner = get_resource_owner(r_buffer, nullptr);
+            if (owner != nullptr) {
+                _free_owned_resource(owner, r_buffer);
+            } else {
+                r_buffer = RID();
+            }
+        }
+        r_buffer_size = 0;
+    };
+
+    release_owned_resident_buffer(resource_state.resident_atlas_gaussian_buffer,
+            resource_state.resident_atlas_gaussian_buffer_size);
+    release_owned_resident_buffer(resource_state.resident_asset_meta_buffer,
+            resource_state.resident_asset_meta_buffer_size);
+    release_owned_resident_buffer(resource_state.resident_chunk_meta_buffer,
+            resource_state.resident_chunk_meta_buffer_size);
+    release_owned_resident_buffer(resource_state.resident_asset_chunk_index_buffer,
+            resource_state.resident_asset_chunk_index_buffer_size);
+
+    resource_state.instance_pipeline_atlas_generation = 0;
+    resource_state.resident_atlas_gaussian_count = 0;
+    resource_state.resident_dispatch_chunk_count = 0;
+    resource_state.resident_max_chunk_splats = 0;
 }
 
 void GaussianSplatRenderer::_release_shared_dynamic_asset() {
@@ -1360,16 +1392,13 @@ GaussianSplatRenderer::RuntimeFidelityPolicy GaussianSplatRenderer::build_runtim
     policy.preserve_source_fidelity =
             _renderer_requests_conservative_full_fidelity_runtime(this, p_scene_state.active_asset);
 
-    if (!p_scene_state.gaussian_data.is_valid()) {
-        policy.runtime_budget_splats = 0;
-        return policy;
-    }
-
-    const uint32_t real_count = uint32_t(MAX(0, p_scene_state.gaussian_data->get_count()));
-    if (real_count == 0) {
-        policy.runtime_budget_splats = 0;
-        return policy;
-    }
+	const uint32_t real_count = p_scene_state.gaussian_data.is_valid()
+			? uint32_t(MAX(0, p_scene_state.gaussian_data->get_count()))
+			: p_scene_state.payload_source_splat_count;
+	if (real_count == 0) {
+		policy.runtime_budget_splats = 0;
+		return policy;
+	}
 
     if (policy.preserve_source_fidelity || p_performance_settings.max_splats <= 0) {
         policy.runtime_budget_splats = real_count;
@@ -1381,43 +1410,53 @@ GaussianSplatRenderer::RuntimeFidelityPolicy GaussianSplatRenderer::build_runtim
 }
 
 GaussianSplatRenderer::FrameBackendPlan GaussianSplatRenderer::build_frame_backend_plan(bool p_streaming_ready) const {
-    FrameBackendPlan plan;
-    plan.runtime_policy = build_runtime_fidelity_policy(get_scene_state(), get_performance_settings());
-    plan.streaming_requested = (plan.runtime_policy.requested_route_policy == gs::settings::GS_ROUTE_STREAMING);
-    plan.prefer_resident_backend = plan.runtime_policy.prefer_resident_backend;
-    plan.streaming_ready = p_streaming_ready;
-    plan.should_attempt_streaming_bootstrap =
-            plan.streaming_requested && !plan.prefer_resident_backend && !plan.streaming_ready;
-    // World submissions (gsplatworld) own the streaming cull/sort/raster
-    // contract directly. Carry that ownership bit in the backend plan so
-    // the streaming path can reject empty-instance bootstrap instead of
-    // inventing a synthetic primary-data instance on the fly. The
-    // contract-active flag comes from apply_world_submission_contract(),
-    // and the director-side probe catches the case where the contract has
-    // not yet been observed by this renderer but a submission is already
-    // published.
-    const bool world_submission_active = world_submission_contract_active;
-    bool director_has_submission = false;
-    if (!world_submission_active) {
-        if (const GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
-            director_has_submission = director->has_world_submission_for_renderer(this);
-        }
-    }
-    const bool any_world_submission = world_submission_active || director_has_submission;
-    plan.has_active_world_submission = any_world_submission;
-    plan.resident_backend_reason = plan.runtime_policy.backend_preference_reason;
-    plan.streaming_backend_reason = plan.runtime_policy.backend_preference_reason;
+	FrameBackendPlan plan;
+	plan.runtime_policy = build_runtime_fidelity_policy(get_scene_state(), get_performance_settings());
+	const SceneState &scene_state = get_scene_state();
+	const bool has_file_backed_payload =
+			!scene_state.gaussian_data.is_valid() &&
+			scene_state.payload_source_splat_count > 0;
+	plan.streaming_requested = (plan.runtime_policy.requested_route_policy == gs::settings::GS_ROUTE_STREAMING) ||
+			has_file_backed_payload;
+	plan.prefer_resident_backend = plan.runtime_policy.prefer_resident_backend;
+	plan.resident_backend_reason = plan.runtime_policy.backend_preference_reason;
+	plan.streaming_backend_reason = plan.runtime_policy.backend_preference_reason;
+	if (has_file_backed_payload && plan.prefer_resident_backend) {
+		plan.prefer_resident_backend = false;
+		plan.streaming_backend_reason = "file_backed_payload_requires_streaming";
+		plan.resident_backend_reason = "file_backed_payload_requires_streaming";
+	}
+	plan.streaming_ready = p_streaming_ready;
+	plan.should_attempt_streaming_bootstrap =
+			plan.streaming_requested && !plan.prefer_resident_backend && !plan.streaming_ready;
+	// World submissions (gsplatworld) own the streaming cull/sort/raster
+	// contract directly. Carry that ownership bit in the backend plan so
+	// the streaming path can reject empty-instance bootstrap instead of
+	// inventing a synthetic primary-data instance on the fly. The
+	// contract-active flag comes from apply_world_submission_contract(),
+	// and the director-side probe catches the case where the contract has
+	// not yet been observed by this renderer but a submission is already
+	// published.
+	const bool world_submission_active = world_submission_contract_active;
+	bool director_has_submission = false;
+	if (!world_submission_active) {
+		if (const GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
+			director_has_submission = director->has_world_submission_for_renderer(this);
+		}
+	}
+	const bool any_world_submission = world_submission_active || director_has_submission;
+	plan.has_active_world_submission = any_world_submission;
 
-    // Direct-data callers (`set_gaussian_data()` on a standalone renderer
-    // without any SceneDirector / world submission, e.g. tests, tools,
-    // editor preview) have no instance to populate
-    // `instance_pipeline_instance_cache`. Under the default streaming route
-    // policy the streaming backend would then run with an empty instance
-    // cache and emit zero splats — the fallback bootstrap instance that
-    // used to cover this case was removed when the synthetic-instance shim
-    // was pruned (commit de71685b08). Force resident here when we observe
-    // direct data on the renderer with no submission, so callers don't
-    // need to manually pin `route_policy=resident`.
+	// Direct-data callers (`set_gaussian_data()` on a standalone renderer
+	// without any SceneDirector / world submission, e.g. tests, tools,
+	// editor preview) have no instance to populate
+	// `instance_pipeline_instance_cache`. Under the default streaming route
+	// policy the streaming backend would then run with an empty instance
+	// cache and emit zero splats — the fallback bootstrap instance that
+	// used to cover this case was removed when the synthetic-instance shim
+	// was pruned (commit de71685b08). Force resident here when we observe
+	// direct data on the renderer with no submission, so callers don't
+	// need to manually pin `route_policy=resident`.
     if (!plan.prefer_resident_backend && !any_world_submission) {
         const Ref<::GaussianData> &direct_data = get_scene_state().gaussian_data;
         if (direct_data.is_valid() && direct_data->get_count() > 0) {
@@ -2604,6 +2643,12 @@ bool GaussianSplatRenderer::_publish_resident_direct_data_contract(String *r_rea
 void GaussianSplatRenderer::publish_instance_pipeline_contract(const InstancePipelineBuffers &p_buffers,
         const PublishedInstanceAssetRemap &p_remap, InstanceBackendPolicy p_backend_policy,
         uint64_t p_source_generation, const String &p_contract_shape) {
+    if (instance_pipeline_buffers_valid &&
+            instance_backend_policy == InstanceBackendPolicy::RESIDENT &&
+            p_backend_policy != InstanceBackendPolicy::RESIDENT) {
+        _release_resident_contract_buffers();
+    }
+
     instance_pipeline_buffers = p_buffers;
     instance_asset_remap = p_remap;
     instance_backend_policy = p_backend_policy;
@@ -2629,6 +2674,7 @@ void GaussianSplatRenderer::set_instance_pipeline_buffers(const InstancePipeline
 }
 
 void GaussianSplatRenderer::clear_instance_pipeline_buffers() {
+    _release_resident_contract_buffers();
     instance_pipeline_buffers = InstancePipelineBuffers();
     instance_asset_remap.clear();
     instance_pipeline_buffers_valid = false;

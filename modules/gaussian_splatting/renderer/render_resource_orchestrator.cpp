@@ -512,11 +512,25 @@ void RenderResourceOrchestrator::update_gpu_pass_metrics_from_tile_renderer() {
 	GaussianSplatRenderer::PerformanceMetrics &metrics = state_mut.get_performance_state_mut().metrics;
 
 	if (!tile_renderer_state->renderer.is_valid()) {
+		metrics.gpu_tile_overlap_count_time_ms = 0.0f;
+		metrics.gpu_tile_overlap_count_time_valid = false;
 		metrics.gpu_tile_binning_time_ms = 0.0f;
+		metrics.gpu_tile_overlap_emit_time_ms = 0.0f;
+		metrics.gpu_tile_overlap_emit_time_valid = false;
+		metrics.gpu_tile_overlap_sort_time_ms = 0.0f;
+		metrics.gpu_tile_overlap_sort_time_valid = false;
+		metrics.tile_overlap_sort_cpu_dispatch_ms = 0.0f;
+		metrics.tile_overlap_sort_cpu_dispatch_valid = false;
 		metrics.gpu_tile_raster_time_ms = 0.0f;
+		metrics.gpu_tile_raster_time_valid = false;
 		metrics.gpu_tile_prefix_time_ms = 0.0f;
+		metrics.gpu_tile_prefix_time_valid = false;
+		metrics.tile_prefix_cpu_sync_fallback_ms = 0.0f;
+		metrics.tile_prefix_cpu_sync_fallback_valid = false;
 		metrics.gpu_tile_resolve_time_ms = 0.0f;
+		metrics.gpu_tile_resolve_time_valid = false;
 		metrics.gpu_frame_time_ms = 0.0f;
+		metrics.gpu_frame_time_valid = false;
 		metrics.gpu_utilization = 0.0f;
 		metrics.gpu_timing_frame_serial = 0;
 		metrics.gpu_timing_frames_behind = 0;
@@ -533,11 +547,25 @@ void RenderResourceOrchestrator::update_gpu_pass_metrics_from_tile_renderer() {
 	state_view.get_subsystem_state_view().rasterizer->resolve_gpu_timestamps_async();
 	RasterPerformance perf = state_view.get_subsystem_state_view().rasterizer->get_performance();
 
+	metrics.gpu_tile_overlap_count_time_ms = perf.overlap_count_gpu_ms;
+	metrics.gpu_tile_overlap_count_time_valid = perf.overlap_count_gpu_valid;
 	metrics.gpu_tile_binning_time_ms = perf.binning_gpu_ms;
+	metrics.gpu_tile_overlap_emit_time_ms = perf.overlap_emit_gpu_ms;
+	metrics.gpu_tile_overlap_emit_time_valid = perf.overlap_emit_gpu_valid;
+	metrics.gpu_tile_overlap_sort_time_ms = perf.overlap_sort_gpu_ms;
+	metrics.gpu_tile_overlap_sort_time_valid = perf.overlap_sort_gpu_valid;
+	metrics.tile_overlap_sort_cpu_dispatch_ms = perf.overlap_sort_cpu_dispatch_ms;
+	metrics.tile_overlap_sort_cpu_dispatch_valid = perf.overlap_sort_cpu_dispatch_valid;
 	metrics.gpu_tile_raster_time_ms = perf.raster_gpu_ms;
+	metrics.gpu_tile_raster_time_valid = perf.raster_gpu_valid;
 	metrics.gpu_tile_prefix_time_ms = perf.prefix_gpu_ms;
+	metrics.gpu_tile_prefix_time_valid = perf.prefix_gpu_valid;
+	metrics.tile_prefix_cpu_sync_fallback_ms = perf.prefix_cpu_sync_fallback_ms;
+	metrics.tile_prefix_cpu_sync_fallback_valid = perf.prefix_cpu_sync_fallback_valid;
 	metrics.gpu_tile_resolve_time_ms = perf.resolve_gpu_ms;
+	metrics.gpu_tile_resolve_time_valid = perf.resolve_gpu_valid;
 	metrics.gpu_frame_time_ms = perf.frame_gpu_ms;
+	metrics.gpu_frame_time_valid = perf.frame_gpu_valid;
 	metrics.tile_sort_sync_fallback_count = perf.sort_sync_fallback_count;
 	metrics.gpu_timing_frame_serial = perf.timing_frame_serial;
 	metrics.gpu_timing_frames_behind = perf.timing_frames_behind;

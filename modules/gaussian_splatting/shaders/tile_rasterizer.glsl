@@ -87,6 +87,9 @@ layout(set = 0, binding = 3, std430) buffer OverflowStatisticsBuffer {
     uint raster_alpha_sum_q10;
     uint raster_reject_index_mismatch;
     uint raster_break_subgroup_early_exit;  // Tiles where all pixels were alpha-saturated
+    uint raster_reject_quadratic;     // quadratic > GS_RASTER_ALPHA_REJECT_Q (spatial extent)
+    uint raster_reject_lod_opacity;   // base_opacity * lod_blend <= GS_RASTER_ALPHA_THRESHOLD
+    uint raster_reject_blend_alpha;   // blend_alpha <= 0 after remaining-alpha multiply
 } overflow_stats;
 
 layout(set = 0, binding = 4, std430) readonly buffer ProjectionBuffer {
@@ -136,8 +139,8 @@ void main() {
     uint total_splat_count = range.y;
     uint original_splat_count = total_splat_count;
 
-    // Use GPU's current-frame element_count instead of stale CPU uniform
-    uint record_count = indirect_dispatch.element_count;
+    // Use GPU's current-frame element_count, capped to the actual sorted_values buffer capacity.
+    uint record_count = gs_get_clamped_overlap_record_count();
 
     // Clamp to available records first.
     if (range_start >= record_count) {

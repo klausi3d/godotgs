@@ -50,7 +50,10 @@ struct RasterParams {
     // Opacity-aware bounding (FlashGS optimization)
     // When enabled, reduces tile-Gaussian pairs by ~94% using opacity-based radius calculation
     bool opacity_aware_culling = true;
-    float visibility_threshold = 0.01f;
+    float visibility_threshold = 1.0f / 255.0f;
+    // Optional per-splat hard cull at projection. Disabled by default; projects
+    // can opt into aggressive low-opacity splat removal.
+    float alpha_clip = 0.0f;
     bool distance_cull_enabled = true;
     float distance_cull_start = 30.0f;
     float distance_cull_max_rate = 0.5f;
@@ -60,16 +63,15 @@ struct RasterParams {
     float lod_blend_factor = 1.0f;
     float lod_blend_distance = 5.0f;
     // Hotspot-aware pre-raster cull (shared by COUNT and EMIT via tile_counts ping-pong).
-    // Prunes marginal (gaussian, tile) pairs from tiles whose previous-frame count
-    // exceeded hotspot_pressure_threshold. Conservative defaults: the per-tile gate
-    // is no-op unless last-frame tile count >4096 (normal scenes stay well below),
-    // and within a hot tile only well-sub-pixel minor-axis splats
-    // (raw_min_radius_px < 0.7) are pruned. The 0.7 floor was chosen after the
-    // initial 1.0 default pruned some contrib%-positive splats on the corridor
-    // proof; 0.7 keeps the bulk of the pruning benefit while preserving
-    // contributors with near-pixel-wide minor axes. Set either to 0 to disable.
-    uint32_t hotspot_pressure_threshold = 4096;
-    float hotspot_min_radius_px = 0.7f;
+    // Disabled by default (threshold == 0) because reading prev_tile_counts from a
+    // ping-pong buffer creates a closed-loop oscillator: dense tile receives 5000
+    // splats -> EMIT writes 5000 -> next frame prev=5000 > threshold -> pruning fires
+    // -> 500 written -> next frame prev=500 < threshold -> pruning skipped -> 5000
+    // again. Steady-state oscillation produces dense-tile flicker where the dropped
+    // frames look 90% darker. Set both to non-zero (e.g. 4096 and 0.7) to opt in if
+    // a future revision adds hysteresis to break the loop.
+    uint32_t hotspot_pressure_threshold = 0;
+    float hotspot_min_radius_px = 0.0f;
 
     // Compute raster selection (defaults to global config).
     GaussianSplatting::ComputeRasterPolicy compute_raster_policy = GaussianSplatting::ComputeRasterPolicy::Default;
@@ -129,6 +131,28 @@ struct RasterOverflowStats {
     uint32_t raster_sample_count = 0;
     uint32_t raster_splats_iterated = 0;
     uint32_t raster_splats_contributed = 0;
+    // Per-pixel rejection / break counters from gs_rasterize_pixel(). Populated
+    // when GS_COLLECT_RASTER_STATS is compiled into the shader and the
+    // sample_raster_stats runtime flag is on (HUD, splat-coverage overlay, or
+    // the perf_capture_raster_shader_counters flag).
+    uint32_t raster_reject_sorted_idx_oob = 0;
+    uint32_t raster_reject_gaussian_idx_oob = 0;
+    uint32_t raster_reject_base_opacity = 0;
+    uint32_t raster_reject_nan_inf = 0;
+    uint32_t raster_reject_weight = 0;
+    uint32_t raster_reject_alpha = 0;
+    uint32_t raster_reject_index_mismatch = 0;
+    uint32_t raster_break_remaining_alpha = 0;
+    uint32_t raster_break_final_alpha = 0;
+    uint32_t raster_break_subgroup_early_exit = 0;
+    uint32_t raster_has_depth = 0;
+    uint32_t raster_alpha_sum_q10 = 0;
+    // Previously-uninstrumented continue paths that used to lump together as
+    // "iterated but not contributed/rejected". Splitting them is what makes
+    // the inner-loop cost story actionable.
+    uint32_t raster_reject_quadratic = 0;
+    uint32_t raster_reject_lod_opacity = 0;
+    uint32_t raster_reject_blend_alpha = 0;
     // Frame number when these stats were captured. Used by the auto-tuner to detect
     // stale stats from async GPU readback. 0 means the frame number is unknown.
     uint64_t frame_number = 0;
@@ -153,8 +177,21 @@ struct RasterStats {
     uint64_t compute_raster_frames = 0;
     uint64_t fragment_raster_frames = 0;
     bool last_raster_used_compute = false;
+    bool last_raster_choice_initialized = false;
+    String last_raster_choice_reason;
     bool sorted_indices_blend_fallback_active = false;
     String sorted_indices_blend_fallback_reason;
+    bool global_sort_enabled = false;
+    bool allow_compute_raster = false;
+    bool feature_packed_stage_data = false;
+    bool feature_tighter_bounds = false;
+    bool feature_sh_amortization = false;
+    uint32_t sh_amortization_divisor = 1;
+    bool feature_quantized_storage = false;
+    bool feature_debug_counters = false;
+    uint32_t raster_tile_splat_capacity = 0;
+    uint32_t max_raster_splats_per_tile = 0;
+    uint64_t shader_defines_hash = 0;
 };
 
 // Performance timing
@@ -162,11 +199,25 @@ struct RasterPerformance {
     float tile_assignment_ms = 0.0f;
     float rasterization_ms = 0.0f;
     float submission_cpu_ms = 0.0f;
+    float overlap_count_gpu_ms = 0.0f;
+    bool overlap_count_gpu_valid = false;
     float binning_gpu_ms = 0.0f;
+    float overlap_emit_gpu_ms = 0.0f;
+    bool overlap_emit_gpu_valid = false;
+    float overlap_sort_gpu_ms = 0.0f;
+    bool overlap_sort_gpu_valid = false;
+    float overlap_sort_cpu_dispatch_ms = 0.0f;
+    bool overlap_sort_cpu_dispatch_valid = false;
     float raster_gpu_ms = 0.0f;
+    bool raster_gpu_valid = false;
     float prefix_gpu_ms = 0.0f;
+    bool prefix_gpu_valid = false;
+    float prefix_cpu_sync_fallback_ms = 0.0f;
+    bool prefix_cpu_sync_fallback_valid = false;
     float resolve_gpu_ms = 0.0f;
+    bool resolve_gpu_valid = false;
     float frame_gpu_ms = 0.0f;
+    bool frame_gpu_valid = false;
     uint64_t sort_sync_fallback_count = 0;
     uint64_t timing_frame_serial = 0;
     uint32_t timing_frames_behind = 0;

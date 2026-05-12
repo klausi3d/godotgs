@@ -349,8 +349,12 @@ bool TileRenderer::TilePrefixScanStage::update_global_tile_ranges(const RID &p_g
 
 	const PrefixOverflowMode overflow_mode = decide_overflow_mode(p_allow_sync_readback, false);
 	const bool allow_sync_readback = overflow_mode == PrefixOverflowMode::DETERMINISTIC_SYNC_READBACK;
+	owner.timing_state.prefix_gpu_timing_valid = false;
+	owner.timing_state.last_prefix_gpu_ms = 0.0f;
+	owner.timing_state.prefix_cpu_sync_fallback_valid = false;
+	owner.timing_state.last_prefix_cpu_sync_fallback_ms = 0.0f;
 
-	// Measure prefix scan time (CPU wall-clock including GPU sync when enabled).
+	// Measure explicit CPU fallback time when deterministic readback forces a sync.
 	uint64_t prefix_start_usec = allow_sync_readback ? OS::get_singleton()->get_ticks_usec() : 0;
 
 	uint32_t prefix_timestamp_base = device->get_captured_timestamps_count();
@@ -417,9 +421,8 @@ bool TileRenderer::TilePrefixScanStage::update_global_tile_ranges(const RID &p_g
 	if (allow_sync_readback) {
 		owner._flush_pending_submission(true);
 		uint64_t prefix_end_usec = OS::get_singleton()->get_ticks_usec();
-		owner.timing_state.last_prefix_gpu_ms = float(prefix_end_usec - prefix_start_usec) / 1000.0f;
-	} else {
-		owner.timing_state.last_prefix_gpu_ms = 0.0f;
+		owner.timing_state.last_prefix_cpu_sync_fallback_ms = float(prefix_end_usec - prefix_start_usec) / 1000.0f;
+		owner.timing_state.prefix_cpu_sync_fallback_valid = true;
 	}
 
 	struct IndirectDispatchReadback {

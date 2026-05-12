@@ -776,6 +776,228 @@ TEST_CASE("[GaussianSplatting] Clearing the published instance contract also cle
     CHECK(renderer->get_instance_asset_remap().generation == 0u);
 }
 
+TEST_CASE("[GaussianSplatting] Clearing a resident instance contract drops resident atlas ownership state") {
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate();
+	CHECK(renderer.is_valid());
+	if (!renderer.is_valid()) {
+		return;
+	}
+
+	GaussianSplatRenderer::ResourceState &resource_state = renderer->get_resource_state();
+	resource_state.resident_atlas_gaussian_buffer = RID::from_uint64(0x29801u);
+	resource_state.resident_atlas_gaussian_buffer_size = 128;
+	resource_state.resident_asset_meta_buffer = RID::from_uint64(0x29802u);
+	resource_state.resident_asset_meta_buffer_size = 64;
+	resource_state.resident_chunk_meta_buffer = RID::from_uint64(0x29803u);
+	resource_state.resident_chunk_meta_buffer_size = 96;
+	resource_state.resident_asset_chunk_index_buffer = RID::from_uint64(0x29804u);
+	resource_state.resident_asset_chunk_index_buffer_size = 32;
+	resource_state.instance_pipeline_atlas_generation = 17;
+	resource_state.resident_atlas_gaussian_count = 11;
+	resource_state.resident_dispatch_chunk_count = 3;
+	resource_state.resident_max_chunk_splats = 7;
+
+	GaussianRenderPipeline::InstancePipelineBuffers buffers;
+	buffers.atlas_gaussian_buffer = resource_state.resident_atlas_gaussian_buffer;
+	buffers.asset_meta_buffer = resource_state.resident_asset_meta_buffer;
+	buffers.chunk_meta_buffer = resource_state.resident_chunk_meta_buffer;
+	buffers.asset_chunk_index_buffer = resource_state.resident_asset_chunk_index_buffer;
+	buffers.atlas_gaussian_count = resource_state.resident_atlas_gaussian_count;
+
+	GaussianRenderPipeline::PublishedInstanceAssetRemap remap;
+	remap.asset_to_dense_id.insert(0u, 0u);
+	remap.generation = 17;
+	remap.valid = true;
+
+	renderer->publish_instance_pipeline_contract(
+			buffers,
+			remap,
+			GaussianRenderPipeline::InstanceBackendPolicy::RESIDENT,
+			remap.generation,
+			"atlas_emulation");
+
+	renderer->clear_instance_pipeline_buffers();
+
+	CHECK_FALSE(resource_state.resident_atlas_gaussian_buffer.is_valid());
+	CHECK_FALSE(resource_state.resident_asset_meta_buffer.is_valid());
+	CHECK_FALSE(resource_state.resident_chunk_meta_buffer.is_valid());
+	CHECK_FALSE(resource_state.resident_asset_chunk_index_buffer.is_valid());
+	CHECK(resource_state.resident_atlas_gaussian_buffer_size == 0u);
+	CHECK(resource_state.resident_asset_meta_buffer_size == 0u);
+	CHECK(resource_state.resident_chunk_meta_buffer_size == 0u);
+	CHECK(resource_state.resident_asset_chunk_index_buffer_size == 0u);
+	CHECK(resource_state.instance_pipeline_atlas_generation == 0u);
+	CHECK(resource_state.resident_atlas_gaussian_count == 0u);
+	CHECK(resource_state.resident_dispatch_chunk_count == 0u);
+	CHECK(resource_state.resident_max_chunk_splats == 0u);
+	CHECK_FALSE(renderer->has_instance_pipeline_buffers());
+}
+
+TEST_CASE("[GaussianSplatting][RequiresGPU] Clearing a resident instance contract frees tracked resident atlas buffers") {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (rs == nullptr) {
+		MESSAGE("Skipping test - Rendering server unavailable");
+		return;
+	}
+
+	ScopedGaussianManagerPipeline manager_scope;
+	GaussianSplatManager *manager = manager_scope.get();
+	if (manager == nullptr) {
+		MESSAGE("Skipping test - GaussianSplatManager unavailable");
+		return;
+	}
+
+	ScopedRenderingDeviceLease device_lease;
+	RenderingDevice *primary_rd = device_lease.acquire(rs, manager);
+	if (primary_rd == nullptr) {
+		MESSAGE("Skipping test - Rendering device unavailable");
+		return;
+	}
+
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate(primary_rd);
+	CHECK(renderer.is_valid());
+	if (!renderer.is_valid()) {
+		return;
+	}
+	renderer->initialize();
+
+	const RID atlas_buffer = primary_rd->storage_buffer_create(128);
+	const RID asset_meta_buffer = primary_rd->storage_buffer_create(64);
+	const RID chunk_meta_buffer = primary_rd->storage_buffer_create(96);
+	const RID asset_chunk_index_buffer = primary_rd->storage_buffer_create(32);
+	REQUIRE(atlas_buffer.is_valid());
+	REQUIRE(asset_meta_buffer.is_valid());
+	REQUIRE(chunk_meta_buffer.is_valid());
+	REQUIRE(asset_chunk_index_buffer.is_valid());
+	renderer->track_resource_owner(atlas_buffer, primary_rd, true, "test_resident_atlas_gaussian_buffer");
+	renderer->track_resource_owner(asset_meta_buffer, primary_rd, true, "test_resident_asset_meta_buffer");
+	renderer->track_resource_owner(chunk_meta_buffer, primary_rd, true, "test_resident_chunk_meta_buffer");
+	renderer->track_resource_owner(asset_chunk_index_buffer, primary_rd, true, "test_resident_asset_chunk_index_buffer");
+
+	GaussianSplatRenderer::ResourceState &resource_state = renderer->get_resource_state();
+	resource_state.resident_atlas_gaussian_buffer = atlas_buffer;
+	resource_state.resident_asset_meta_buffer = asset_meta_buffer;
+	resource_state.resident_chunk_meta_buffer = chunk_meta_buffer;
+	resource_state.resident_asset_chunk_index_buffer = asset_chunk_index_buffer;
+	resource_state.resident_atlas_gaussian_buffer_size = 128;
+	resource_state.resident_asset_meta_buffer_size = 64;
+	resource_state.resident_chunk_meta_buffer_size = 96;
+	resource_state.resident_asset_chunk_index_buffer_size = 32;
+	resource_state.instance_pipeline_atlas_generation = 41;
+	resource_state.resident_atlas_gaussian_count = 23;
+	resource_state.resident_dispatch_chunk_count = 5;
+	resource_state.resident_max_chunk_splats = 9;
+
+	GaussianRenderPipeline::InstancePipelineBuffers buffers;
+	buffers.atlas_gaussian_buffer = atlas_buffer;
+	buffers.asset_meta_buffer = asset_meta_buffer;
+	buffers.chunk_meta_buffer = chunk_meta_buffer;
+	buffers.asset_chunk_index_buffer = asset_chunk_index_buffer;
+	buffers.atlas_gaussian_count = resource_state.resident_atlas_gaussian_count;
+
+	GaussianRenderPipeline::PublishedInstanceAssetRemap remap;
+	remap.asset_to_dense_id.insert(0u, 0u);
+	remap.generation = 41;
+	remap.valid = true;
+
+	renderer->publish_instance_pipeline_contract(
+			buffers,
+			remap,
+			GaussianRenderPipeline::InstanceBackendPolicy::RESIDENT,
+			remap.generation,
+			"atlas_emulation");
+
+	renderer->clear_instance_pipeline_buffers();
+
+	CHECK_FALSE(resource_state.resident_atlas_gaussian_buffer.is_valid());
+	CHECK_FALSE(resource_state.resident_asset_meta_buffer.is_valid());
+	CHECK_FALSE(resource_state.resident_chunk_meta_buffer.is_valid());
+	CHECK_FALSE(resource_state.resident_asset_chunk_index_buffer.is_valid());
+	CHECK_FALSE(primary_rd->buffer_is_valid(atlas_buffer));
+	CHECK_FALSE(primary_rd->buffer_is_valid(asset_meta_buffer));
+	CHECK_FALSE(primary_rd->buffer_is_valid(chunk_meta_buffer));
+	CHECK_FALSE(primary_rd->buffer_is_valid(asset_chunk_index_buffer));
+	CHECK(resource_state.resident_atlas_gaussian_buffer_size == 0u);
+	CHECK(resource_state.resident_asset_meta_buffer_size == 0u);
+	CHECK(resource_state.resident_chunk_meta_buffer_size == 0u);
+	CHECK(resource_state.resident_asset_chunk_index_buffer_size == 0u);
+	CHECK(resource_state.instance_pipeline_atlas_generation == 0u);
+	CHECK(resource_state.resident_atlas_gaussian_count == 0u);
+	CHECK(resource_state.resident_dispatch_chunk_count == 0u);
+	CHECK(resource_state.resident_max_chunk_splats == 0u);
+	CHECK_FALSE(renderer->has_instance_pipeline_buffers());
+}
+
+TEST_CASE("[GaussianSplatting] Publishing a streaming instance contract supersedes resident atlas buffers") {
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate();
+	CHECK(renderer.is_valid());
+	if (!renderer.is_valid()) {
+		return;
+	}
+
+	GaussianSplatRenderer::ResourceState &resource_state = renderer->get_resource_state();
+	resource_state.resident_atlas_gaussian_buffer = RID::from_uint64(0x29811u);
+	resource_state.resident_atlas_gaussian_buffer_size = 128;
+	resource_state.resident_asset_meta_buffer = RID::from_uint64(0x29812u);
+	resource_state.resident_asset_meta_buffer_size = 64;
+	resource_state.resident_chunk_meta_buffer = RID::from_uint64(0x29813u);
+	resource_state.resident_chunk_meta_buffer_size = 96;
+	resource_state.resident_asset_chunk_index_buffer = RID::from_uint64(0x29814u);
+	resource_state.resident_asset_chunk_index_buffer_size = 32;
+	resource_state.instance_pipeline_atlas_generation = 29;
+	resource_state.resident_atlas_gaussian_count = 13;
+	resource_state.resident_dispatch_chunk_count = 4;
+	resource_state.resident_max_chunk_splats = 8;
+
+	GaussianRenderPipeline::PublishedInstanceAssetRemap resident_remap;
+	resident_remap.asset_to_dense_id.insert(0u, 0u);
+	resident_remap.generation = 29;
+	resident_remap.valid = true;
+
+	GaussianRenderPipeline::InstancePipelineBuffers resident_buffers;
+	resident_buffers.atlas_gaussian_buffer = resource_state.resident_atlas_gaussian_buffer;
+	resident_buffers.asset_meta_buffer = resource_state.resident_asset_meta_buffer;
+	resident_buffers.chunk_meta_buffer = resource_state.resident_chunk_meta_buffer;
+	resident_buffers.asset_chunk_index_buffer = resource_state.resident_asset_chunk_index_buffer;
+	resident_buffers.atlas_gaussian_count = resource_state.resident_atlas_gaussian_count;
+	renderer->publish_instance_pipeline_contract(
+			resident_buffers,
+			resident_remap,
+			GaussianRenderPipeline::InstanceBackendPolicy::RESIDENT,
+			resident_remap.generation,
+			"atlas_emulation");
+	CHECK(renderer->get_instance_backend_policy() == GaussianRenderPipeline::InstanceBackendPolicy::RESIDENT);
+
+	GaussianRenderPipeline::PublishedInstanceAssetRemap streaming_remap;
+	streaming_remap.asset_to_dense_id.insert(5u, 1u);
+	streaming_remap.generation = 30;
+	streaming_remap.valid = true;
+
+	GaussianRenderPipeline::InstancePipelineBuffers streaming_buffers;
+	streaming_buffers.instance_count = 2;
+	streaming_buffers.max_visible_splats = 64;
+	renderer->publish_instance_pipeline_contract(
+			streaming_buffers,
+			streaming_remap,
+			GaussianRenderPipeline::InstanceBackendPolicy::STREAMING,
+			streaming_remap.generation,
+			"atlas_emulation");
+
+	CHECK(renderer->has_instance_pipeline_buffers());
+	CHECK(renderer->get_instance_backend_policy() == GaussianRenderPipeline::InstanceBackendPolicy::STREAMING);
+	CHECK(renderer->get_instance_pipeline_buffers().instance_count == 2u);
+	CHECK(renderer->get_instance_pipeline_buffers().max_visible_splats == 64u);
+	CHECK_FALSE(resource_state.resident_atlas_gaussian_buffer.is_valid());
+	CHECK_FALSE(resource_state.resident_asset_meta_buffer.is_valid());
+	CHECK_FALSE(resource_state.resident_chunk_meta_buffer.is_valid());
+	CHECK_FALSE(resource_state.resident_asset_chunk_index_buffer.is_valid());
+	CHECK(resource_state.instance_pipeline_atlas_generation == 0u);
+	CHECK(resource_state.resident_atlas_gaussian_count == 0u);
+}
+
 TEST_CASE("[GaussianSplatting][RequiresGPU] Direct gaussian data publishes a resident atlas-shaped instance contract without a streaming system") {
     RenderingServer *rs = RenderingServer::get_singleton();
     if (rs == nullptr) {
@@ -2433,7 +2655,7 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Production metrics contract and perf
     project_settings->set_setting(tier_apply_streaming_setting, true);
     project_settings->set_setting(tier_preset_setting, "low");
     project_settings->set_setting(upload_frame_cap_setting, 128);
-    project_settings->set_setting(vram_budget_setting, 12288);
+    project_settings->set_setting(vram_budget_setting, STREAMING_UNKNOWN_CAPACITY_FALLBACK_VRAM_BUDGET_MB);
 
     ScopedGaussianManagerPipeline manager_scope;
     GaussianSplatManager *manager = manager_scope.get();
@@ -2499,18 +2721,33 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Production metrics contract and perf
     CHECK_MESSAGE(production_metrics.has("stage_total_ms"), "Expected stage_total_ms in production_metrics");
     CHECK_MESSAGE(stats.has("streaming_effective_upload_cap_mb_per_frame"), "Expected streaming effective upload cap in render stats");
     CHECK_MESSAGE(stats.has("streaming_effective_vram_budget_mb"), "Expected streaming effective VRAM budget in render stats");
+    CHECK_MESSAGE(stats.has("streaming_requested_vram_budget_mb"), "Expected streaming requested VRAM budget in render stats");
     CHECK_MESSAGE(stats.has("streaming_cap_source_upload_mb_per_frame"), "Expected streaming upload cap source in render stats");
     CHECK_MESSAGE(stats.has("streaming_cap_source_vram_budget_mb"), "Expected streaming VRAM cap source in render stats");
+    CHECK_MESSAGE(stats.has("streaming_requested_cap_source_vram_budget_mb"), "Expected streaming requested VRAM cap source in render stats");
+    CHECK_MESSAGE(stats.has("streaming_vram_budget_capacity_verified"), "Expected streaming VRAM capacity verification flag in render stats");
+    CHECK_MESSAGE(stats.has("streaming_vram_budget_unknown_capacity_fallback"), "Expected streaming unknown-capacity fallback flag in render stats");
+    CHECK_MESSAGE(stats.has("streaming_vram_budget_unverified"), "Expected streaming unverified VRAM budget flag in render stats");
     CHECK_MESSAGE(stats.has("streaming_upload_frame_cap_hit"), "Expected streaming upload frame cap indicator in render stats");
     CHECK_MESSAGE(stats.has("streaming_queue_pressure_active"), "Expected streaming queue pressure indicator in render stats");
     CHECK_MESSAGE(int64_t(stats.get("streaming_effective_upload_cap_mb_per_frame", int64_t(-1))) == 32,
             "Expected low-tier effective upload frame cap");
     CHECK_MESSAGE(int64_t(stats.get("streaming_effective_vram_budget_mb", int64_t(-1))) == 2048,
             "Expected low-tier effective VRAM budget");
+    CHECK_MESSAGE(int64_t(stats.get("streaming_requested_vram_budget_mb", int64_t(-1))) == 2048,
+            "Expected low-tier requested VRAM budget");
     CHECK_MESSAGE(String(stats.get("streaming_cap_source_upload_mb_per_frame", String())) == String("tier_preset"),
             "Expected upload cap source to report tier preset");
     CHECK_MESSAGE(String(stats.get("streaming_cap_source_vram_budget_mb", String())) == String("tier_preset"),
             "Expected VRAM cap source to report tier preset");
+    CHECK_MESSAGE(String(stats.get("streaming_requested_cap_source_vram_budget_mb", String())) == String("tier_preset"),
+            "Expected requested VRAM cap source to report tier preset");
+    CHECK_MESSAGE(!bool(stats.get("streaming_vram_budget_capacity_verified", true)),
+            "Expected test rendering device capacity to remain unknown");
+    CHECK_MESSAGE(!bool(stats.get("streaming_vram_budget_unknown_capacity_fallback", true)),
+            "Expected tier-selected budget, not unknown-capacity project default fallback");
+    CHECK_MESSAGE(bool(stats.get("streaming_vram_budget_unverified", false)),
+            "Expected tier-selected budget to be marked unverified while capacity is unknown");
 
     Dictionary validation = stats.get("production_metrics_validation", Dictionary());
     CHECK_MESSAGE(bool(validation.get("valid", false)), "Expected production_metrics_validation to be valid");
@@ -4005,6 +4242,32 @@ TEST_CASE("[GaussianSplatting] frame backend plan preserves resident request sem
 	CHECK(backend_plan.resident_backend_reason == String("requested_resident_policy"));
 }
 
+TEST_CASE("[GaussianSplatting] file-backed payload forces streaming backend even when resident is requested") {
+	ProjectSettings *project_settings = ProjectSettings::get_singleton();
+	if (project_settings == nullptr) {
+		MESSAGE("Skipping test - ProjectSettings unavailable");
+		return;
+	}
+
+	ScopedGaussianManagerPipeline manager_guard;
+	const String route_policy_setting = "rendering/gaussian_splatting/streaming/route_policy";
+	ScopedProjectSetting route_guard(project_settings, route_policy_setting);
+	project_settings->set_setting(route_policy_setting, int64_t(gs::settings::GS_ROUTE_RESIDENT));
+
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate();
+	REQUIRE(renderer.is_valid());
+
+	GaussianSplatRenderer::SceneState &scene_state = renderer->get_scene_state();
+	scene_state.payload_source_splat_count = 32;
+
+	const GaussianSplatRenderer::FrameBackendPlan backend_plan = renderer->build_frame_backend_plan(false);
+	CHECK(backend_plan.streaming_requested);
+	CHECK_FALSE(backend_plan.prefer_resident_backend);
+	CHECK(backend_plan.should_attempt_streaming_bootstrap);
+	CHECK(backend_plan.streaming_backend_reason == String("file_backed_payload_requires_streaming"));
+}
+
 TEST_CASE("[GaussianSplatting] get_streaming_route_policy defaults to STREAMING when unset") {
 	ProjectSettings *project_settings = ProjectSettings::get_singleton();
 	if (project_settings == nullptr) {
@@ -4055,6 +4318,47 @@ TEST_CASE("[GaussianSplatting][Pipeline] ChunkCullingStats tracks resident_chunk
 	stats.reset();
 	CHECK(stats.loaded_chunks == 0);
 	CHECK(stats.resident_chunks == 0);
+}
+
+TEST_CASE("[GaussianSplatting][Pipeline] Chunk culling stats scope loaded counts to primary chunks") {
+	LocalVector<Gaussian> primary_gaussians;
+	fill_gaussians(primary_gaussians, GaussianStreamingSystem::CHUNK_SIZE + 128);
+	Ref<::GaussianData> primary_data;
+	primary_data.instantiate();
+	primary_data->set_gaussians(primary_gaussians);
+
+	Ref<GaussianStreamingSystem> system;
+	system.instantiate();
+	system->initialize(primary_data);
+	system->_test_reset_atlas_allocator(8);
+
+	LocalVector<GaussianStreamingTypes::StreamingChunk> &primary_chunks = system->_test_get_primary_chunks();
+	REQUIRE(primary_chunks.size() >= 1);
+
+	system->_test_mark_chunk_loaded_for_eviction(0, 0, true, 1, 1, 10.0f);
+
+	LocalVector<Gaussian> secondary_gaussians;
+	fill_gaussians(secondary_gaussians, 128);
+	Ref<::GaussianData> secondary_data;
+	secondary_data.instantiate();
+	secondary_data->set_gaussians(secondary_gaussians);
+	system->register_asset(42, secondary_data);
+	system->_test_mark_chunk_loaded_for_eviction(42, 0, true, 1, 1, 10.0f);
+
+	CHECK(system->get_loaded_chunks() == 2);
+
+	Projection projection;
+	projection.set_perspective(70.0f, 1.0f, 0.1f, 100.0f);
+	Transform3D camera_transform;
+	camera_transform.origin = Vector3(0.0f, 0.0f, 10.0f);
+	system->_test_get_visibility_controller().update_chunk_visibility(*system.ptr(), camera_transform, projection);
+
+	const Dictionary scoped_stats = system->get_chunk_culling_stats();
+	CHECK(uint32_t(int(scoped_stats["total_chunks"])) == primary_chunks.size());
+	CHECK(int(scoped_stats["loaded_chunks"]) == 1);
+	CHECK(int(scoped_stats["resident_chunks"]) == 1);
+	CHECK(int(scoped_stats["loaded_chunks"]) <= int(scoped_stats["total_chunks"]));
+	CHECK(int(scoped_stats["resident_chunks"]) <= int(scoped_stats["total_chunks"]));
 }
 
 TEST_CASE("[GaussianSplatting][Pipeline] StreamingGlobalAtlasRegistry exposes atlas_published_chunk_count") {

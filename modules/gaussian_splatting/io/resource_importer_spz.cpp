@@ -130,7 +130,7 @@ void ResourceImporterSPZ::get_recognized_extensions(List<String> *p_extensions) 
 }
 
 String ResourceImporterSPZ::get_save_extension() const {
-    return "tres";
+    return "res";
 }
 
 String ResourceImporterSPZ::get_resource_type() const {
@@ -312,6 +312,8 @@ Error ResourceImporterSPZ::import(ResourceUID::ID p_source_id, const String &p_s
 
     PackedFloat32Array sh_first_order;
     PackedFloat32Array sh_high_order;
+    PackedFloat32Array opacity_logits;
+    opacity_logits.resize(final_count);
     if (sh_first_terms > 0) {
         sh_first_order.resize(int(final_count) * int(sh_first_terms) * 3);
     }
@@ -343,6 +345,12 @@ Error ResourceImporterSPZ::import(ResourceUID::ID p_source_id, const String &p_s
         Color color = g.sh_dc;
         color.a = normalize_opacity ? CLAMP(g.opacity, 0.0f, 1.0f) : g.opacity;
         colors_ptr[i] = color;
+        // Populate opacity_logits in lockstep with color.a. _ensure_buffer_sizes
+        // zero-fills opacity_logits to splat_count, and get_opacities() prefers
+        // logits over color.a — leaving them unwritten yields sigmoid(0)=0.5
+        // for every splat regardless of the actual stored alpha.
+        const float clamped_op = CLAMP(g.opacity, 0.0001f, 0.9999f);
+        opacity_logits.write[i] = Math::log(clamped_op / (1.0f - clamped_op));
 
         int scale_base = i * 3;
         scales_ptr[scale_base + 0] = g.scale.x;
@@ -387,6 +395,7 @@ Error ResourceImporterSPZ::import(ResourceUID::ID p_source_id, const String &p_s
     asset->set_colors(colors);
     asset->set_scales(scales);
     asset->set_rotations(rotations);
+    asset->set_opacity_logits(opacity_logits);
     if (sh_first_terms > 0) {
         asset->set_sh_first_order_coefficients(sh_first_order);
     }

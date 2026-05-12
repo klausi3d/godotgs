@@ -286,6 +286,14 @@ public:
     uint64_t get_atlas_generation() const { return global_atlas_registry.get_atlas_generation(); }
 #if defined(TESTS_ENABLED)
     void _test_sync_global_atlas_state(RenderingDevice *p_rd) { global_atlas_registry.sync_to_gpu(*this, p_rd); }
+    void _test_build_global_atlas_cpu_state() { global_atlas_registry.build_cpu_state(*this); }
+    StreamingGlobalAtlasRegistry::ChunkMetaUploadPlan _test_plan_chunk_meta_sync() {
+        return global_atlas_registry._test_plan_chunk_meta_sync(*this);
+    }
+    StreamingGlobalAtlasRegistry::SyncDiagnostics _test_get_atlas_sync_diagnostics() const {
+        return global_atlas_registry.get_last_sync_diagnostics();
+    }
+    void _test_clear_atlas_cpu_dirty_state() { global_atlas_registry._test_clear_cpu_dirty_state(); }
     void _test_mark_chunk_meta_dirty(uint32_t asset_id, uint32_t chunk_idx) {
         global_atlas_registry.mark_chunk_meta_dirty(*this, asset_id, chunk_idx);
     }
@@ -297,6 +305,8 @@ public:
     // core templates and triggers GCC ODR errors.
     AtlasAssetState *_test_get_asset_state(uint32_t p_asset_id) { return _get_asset_state(p_asset_id); }
     LocalVector<StreamingChunk> &_test_get_asset_chunks(AtlasAssetState &p_asset) { return _get_asset_chunks(p_asset); }
+    LocalVector<StreamingChunk> &_test_get_primary_chunks() { return chunks; }
+    StreamingVisibilityController &_test_get_visibility_controller() { return visibility; }
     uint64_t _test_make_chunk_key(uint32_t p_asset_id, uint32_t p_chunk_id) const {
         return _make_chunk_key(p_asset_id, p_chunk_id);
     }
@@ -307,6 +317,18 @@ public:
     void _test_evict_unrequested_chunks(uint32_t p_asset_id, AtlasAssetState &p_asset, LocalVector<StreamingChunk> &p_asset_chunks) {
         _evict_unrequested_chunks(p_asset_id, p_asset, p_asset_chunks);
     }
+    void _test_register_primary_asset_for_chunks() { _register_primary_asset(); }
+	void _test_mark_chunk_loaded_for_eviction(uint32_t p_asset_id, uint32_t p_chunk_id, bool p_visible,
+			uint64_t p_last_loaded_frame, uint64_t p_last_used_frame, float p_distance);
+	void _test_reset_atlas_allocator(uint32_t p_capacity) { atlas_allocator.reset(p_capacity); }
+	EvictionResult _test_evict_least_recently_used(bool p_allow_visible_eviction) {
+		return _evict_least_recently_used(p_allow_visible_eviction);
+	}
+    EvictionResult _test_evict_non_primary_lru() { return _evict_non_primary_lru(); }
+    uint32_t _test_get_primary_eviction_scan_count() const { return scheduler.last_primary_eviction_scan_count; }
+    uint32_t _test_get_primary_eviction_candidate_count() const { return scheduler.last_primary_eviction_candidate_count; }
+    uint32_t _test_get_non_primary_eviction_scan_count() const { return scheduler.last_non_primary_scan_count; }
+    uint32_t _test_get_non_primary_eviction_candidate_count() const { return scheduler.last_non_primary_eviction_candidate_count; }
     // Field-level accessors for the global atlas registry. Returning the
     // registry by reference would expose private fields the registry's
     // friendship with this class doesn't grant onward — these forward only
@@ -329,6 +351,7 @@ public:
 private:
     bool _create_chunks();
     void _build_chunks_for_data(const Ref<GaussianData> &p_data, LocalVector<StreamingChunk> &out_chunks);
+    void _build_chunks_for_payload_source(const Ref<ChunkPayloadSource> &p_source, LocalVector<StreamingChunk> &out_chunks);
     bool _build_primary_chunks_from_layout_hints(const Ref<GaussianData> &p_data, const Vector<ChunkLayoutHint> &p_hints,
             const LocalVector<uint32_t> &p_source_indices, LocalVector<StreamingChunk> &out_chunks);
     bool _build_chunks_from_layout_hints(const Ref<GaussianData> &p_data, const Vector<ChunkLayoutHint> &p_hints, LocalVector<StreamingChunk> &out_chunks);

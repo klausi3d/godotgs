@@ -1,0 +1,19 @@
+[remap]
+
+importer="gaussian_splat_world"
+importer_version=2
+type="GaussianSplatWorld"
+uid="uid://bwkhbgx2wo2pb"
+path="res://.godot/imported/test_splats.gsplatworld-e5ed64cc6db571c864e625c59b04812d.gsplatworld"
+metadata={
+&"resource_path": "res://.godot/imported/test_splats.gsplatworld-e5ed64cc6db571c864e625c59b04812d.gsplatworld",
+&"source_path": "res://tests/fixtures/test_splats.gsplatworld"
+}
+
+[deps]
+
+source_file="res://tests/fixtures/test_splats.gsplatworld"
+dest_files=["res://.godot/imported/test_splats.gsplatworld-e5ed64cc6db571c864e625c59b04812d.gsplatworld"]
+
+[params]
+

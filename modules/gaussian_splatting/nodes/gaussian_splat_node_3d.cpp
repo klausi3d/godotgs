@@ -162,7 +162,7 @@ void GaussianSplatNode3D::_bind_methods() {
 
     ClassDB::bind_method(D_METHOD("set_opacity", "opacity"), &GaussianSplatNode3D::set_opacity);
     ClassDB::bind_method(D_METHOD("get_opacity"), &GaussianSplatNode3D::get_opacity);
-    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rendering/opacity", PROPERTY_HINT_RANGE, "0.0,1.0,0.01"), "set_opacity", "get_opacity");
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "rendering/opacity", PROPERTY_HINT_RANGE, "0.0,8.0,0.01"), "set_opacity", "get_opacity");
 
     ClassDB::bind_method(D_METHOD("set_effect_position_scale", "scale"), &GaussianSplatNode3D::set_effect_position_scale);
     ClassDB::bind_method(D_METHOD("get_effect_position_scale"), &GaussianSplatNode3D::get_effect_position_scale);
@@ -478,13 +478,18 @@ void GaussianSplatNode3D::_validate_property(PropertyInfo &p_property) const {
     if (_is_renderer_shared_with_other_content(renderer)) {
         // Color grading stays visible on every node even when the renderer is
         // shared: each node pushes its own grading to the renderer (last
-        // write wins until per-submission grading lands). Painterly and
-        // debug overlays remain renderer-wide and are still hidden here.
+        // write wins until per-submission grading lands). Painterly, debug
+        // overlays, and renderer-wide quality knobs (lod_bias, max_splats)
+        // remain renderer-wide and are hidden here on non-owner peers —
+        // see gaussian_splat_node_helpers.cpp:1284-1378 for the
+        // ownership/silent-drop logic these match.
         if (p_property.name.begins_with("painterly/") ||
                 p_property.name == "debug/show_tile_grid" ||
                 p_property.name == "debug/show_density_heatmap" ||
                 p_property.name == "debug/show_performance_hud" ||
-                p_property.name == "debug/show_residency_hud") {
+                p_property.name == "debug/show_residency_hud" ||
+                p_property.name == "quality/lod_bias" ||
+                p_property.name == "quality/max_splat_count") {
             p_property.usage = PROPERTY_USAGE_NO_EDITOR;
             return;
         }
@@ -1089,7 +1094,10 @@ void GaussianSplatNode3D::set_opacity(float p_opacity) {
         WARN_PRINT("[GaussianSplatNode3D] Ignoring non-finite opacity; resetting to 1.0.");
         next_opacity = 1.0f;
     }
-    opacity = CLAMP(next_opacity, 0.0f, 1.0f);
+    // Allow >1.0 for SuperSplat-style "overfill" — boost weak splats so dense
+    // regions cover more aggressively. Per-splat alpha is still capped at 0.99
+    // in tile_binning.glsl so back-to-front compositing stays well-defined.
+    opacity = CLAMP(next_opacity, 0.0f, 8.0f);
     _mark_render_state_dirty();
     _update_instance_params_in_director();
 }
