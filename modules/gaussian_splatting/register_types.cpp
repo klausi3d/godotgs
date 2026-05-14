@@ -219,6 +219,7 @@ void uninitialize_gaussian_splatting_module(ModuleInitializationLevel p_level) {
             }
             // Cleanup Custom Performance Monitors
             GaussianSplattingPerformanceMonitors::destroy_singleton();
+            GaussianRenderingDiagnostics::destroy_singleton();
             break;
 
 #ifdef TOOLS_ENABLED

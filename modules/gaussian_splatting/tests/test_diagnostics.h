@@ -35,6 +35,21 @@ TEST_CASE("[Gaussian Diagnostics] Singleton initialization is idempotent") {
     CHECK(second == first);
 }
 
+TEST_CASE("[Gaussian Diagnostics] destroy_singleton releases the instance and is idempotent") {
+    GaussianRenderingDiagnostics::ensure_singleton();
+    REQUIRE(GaussianRenderingDiagnostics::get_singleton() != nullptr);
+
+    GaussianRenderingDiagnostics::destroy_singleton();
+    CHECK(GaussianRenderingDiagnostics::get_singleton() == nullptr);
+
+    GaussianRenderingDiagnostics::destroy_singleton();
+    CHECK(GaussianRenderingDiagnostics::get_singleton() == nullptr);
+
+    // Re-arm so later tests/state in the same suite observe a live singleton again.
+    GaussianRenderingDiagnostics::ensure_singleton();
+    CHECK(GaussianRenderingDiagnostics::get_singleton() != nullptr);
+}
+
 TEST_CASE("[Gaussian Diagnostics] Null renderer notifications are safe no-ops") {
     GaussianRenderingDiagnostics::ensure_singleton();
     GaussianRenderingDiagnostics *diagnostics = GaussianRenderingDiagnostics::get_singleton();
