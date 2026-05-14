@@ -15,6 +15,7 @@ class GaussianRenderingDiagnostics {
 public:
     static GaussianRenderingDiagnostics *get_singleton();
     static void ensure_singleton();
+    static void destroy_singleton();
 
     void process_command_line_requests();
     void register_renderer(GaussianSplatRenderer *p_renderer);
