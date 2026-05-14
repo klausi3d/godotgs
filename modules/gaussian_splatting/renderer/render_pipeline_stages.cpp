@@ -929,7 +929,23 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 		&state_view
 	};
 	GaussianSplatRenderer::CullStageOutput cull_output;
-	execute_cull_stage(cull_input, cull_output);
+	const GaussianSplatRenderer::StageResult cull_result = execute_cull_stage(cull_input, cull_output);
+	if (cull_result.is_error || cull_result.status == GaussianSplatRenderer::StageResult::StageStatus::FAILED) {
+		// Cull failed: stage already recorded its own metrics/route_uid. Mark sort
+		// SKIPPED so the failure cascade is visible instead of a stale SUCCESS,
+		// then render empty. Snapshot stays at the zero-safe defaults set above.
+		if (frame_context.metrics) {
+			frame_context.metrics->sort = GaussianSplatRenderer::SortStageOutput();
+			frame_context.metrics->sort_result = _make_stage_result(
+					GaussianSplatRenderer::StageResult::StageStatus::SKIPPED,
+					"Sort skipped: cull failed",
+					false,
+					GaussianSplatRenderer::RenderFallbackReason::NONE);
+		}
+		update_counts_from_snapshot();
+		render_sorted_splats_with_context(frame_context);
+		return;
+	}
 	GaussianSplatRenderer::SortStageInput sort_input{
 		frame_context.frame_id,
 		frame_context.world_to_camera_transform,
@@ -939,7 +955,13 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 		cull_output.visible_domain
 	};
 	GaussianSplatRenderer::SortStageOutput sort_output;
-	execute_sort_stage(sort_input, sort_output);
+	const GaussianSplatRenderer::StageResult sort_result = execute_sort_stage(sort_input, sort_output);
+	if (sort_result.is_error || sort_result.status == GaussianSplatRenderer::StageResult::StageStatus::FAILED) {
+		frame_context.snapshot.cull_visible_domain = cull_output.visible_domain;
+		update_counts_from_snapshot();
+		render_sorted_splats_with_context(frame_context);
+		return;
+	}
 	frame_context.snapshot.cull_visible_domain = cull_output.visible_domain;
 	frame_context.snapshot.sorted_index_domain = sort_output.output_domain;
 	if (sort_output.output_domain == GaussianSplatRenderer::IndexDomain::SPLAT_REF) {
