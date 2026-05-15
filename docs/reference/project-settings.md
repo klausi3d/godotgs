@@ -770,10 +770,6 @@ These keys are used by module code but are not registered with `GLOBAL_DEF(...)`
 | `rendering/gaussian_splatting/debug/enable_state_guardrails` | `modules/gaussian_splatting/renderer/render_debug_state_orchestrator.cpp:326` |
 | `rendering/gaussian_splatting/debug/force_unclustered_lights` | `modules/gaussian_splatting/renderer/gpu_debug_utils.h:74` |
 | `rendering/gaussian_splatting/debug/layout_hint_validation_strict` | `modules/gaussian_splatting/core/gaussian_streaming.cpp:166` |
-| `rendering/gaussian_splatting/debug/show_density_heatmap` | `modules/gaussian_splatting/core/gaussian_splat_settings_manager.cpp:10` |
-| `rendering/gaussian_splatting/debug/show_performance_hud` | `modules/gaussian_splatting/core/gaussian_splat_settings_manager.cpp:11` |
-| `rendering/gaussian_splatting/debug/show_residency_hud` | `modules/gaussian_splatting/core/gaussian_splat_settings_manager.cpp:12` |
-| `rendering/gaussian_splatting/debug/show_tile_grid` | `modules/gaussian_splatting/core/gaussian_splat_settings_manager.cpp:9` |
 | `rendering/gaussian_splatting/debug/splat_audit_sample_count` | `modules/gaussian_splatting/renderer/render_debug_state_orchestrator.cpp:369` |
 | `rendering/gaussian_splatting/lighting/dc_logit` | `modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp:119` |
 | `rendering/gaussian_splatting/lighting/direct_light_scale` | `modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp:116` |

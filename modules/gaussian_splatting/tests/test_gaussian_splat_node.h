@@ -231,12 +231,15 @@ void set_single_splat_rotation(const Ref<GaussianSplatAsset> &p_asset, const Qua
 
 } // namespace
 
-TEST_CASE("[GaussianSplatting][Node] Debug flag persistence mirrors project settings") {
-    // NOTE: Debug flag persistence to ProjectSettings is now editor-only.
-    // At runtime (non-editor), flags are applied to the renderer but NOT saved.
-    // This test verifies the runtime behavior where settings are read but not written.
+TEST_CASE("[GaussianSplatting][Node] Debug HUD toggles are pure per-node state") {
+    // The four debug HUD toggles (show_tile_grid / show_density_heatmap /
+    // show_performance_hud / show_residency_hud) are pure per-node properties.
+    // They MUST default to false on every new node and MUST NOT round-trip
+    // through ProjectSettings -- the old GaussianSplatSettingsManager
+    // persistence caused one inspector click to contaminate every other
+    // scene's default and has been deleted.
     ProjectSettings *project_settings = ProjectSettings::get_singleton();
-    CHECK_MESSAGE(project_settings != nullptr, "ProjectSettings singleton must exist for GaussianSplatNode3D persistence test");
+    CHECK_MESSAGE(project_settings != nullptr, "ProjectSettings singleton must exist for GaussianSplatNode3D defaults test");
     if (project_settings == nullptr) {
         return;
     }
@@ -244,15 +247,14 @@ TEST_CASE("[GaussianSplatting][Node] Debug flag persistence mirrors project sett
     const String tile_setting = "rendering/gaussian_splatting/debug/show_tile_grid";
     const String heatmap_setting = "rendering/gaussian_splatting/debug/show_density_heatmap";
     const String hud_setting = "rendering/gaussian_splatting/debug/show_performance_hud";
+    const String residency_setting = "rendering/gaussian_splatting/debug/show_residency_hud";
 
-    ProjectSettingGuard tile_guard(project_settings, tile_setting);
-    ProjectSettingGuard heatmap_guard(project_settings, heatmap_setting);
-    ProjectSettingGuard hud_guard(project_settings, hud_setting);
-
-    project_settings->set_setting(tile_setting, false);
-    project_settings->set_setting(heatmap_setting, false);
-    project_settings->set_setting(hud_setting, false);
-    CHECK_EQ(project_settings->save(), OK);
+    // Confirm the deleted GLOBAL_DEFs are gone -- ProjectSettings should not
+    // know about these paths any more.
+    CHECK_FALSE(project_settings->has_setting(tile_setting));
+    CHECK_FALSE(project_settings->has_setting(heatmap_setting));
+    CHECK_FALSE(project_settings->has_setting(hud_setting));
+    CHECK_FALSE(project_settings->has_setting(residency_setting));
 
     GaussianSplatNode3D *initial_node = memnew(GaussianSplatNode3D);
     CHECK(initial_node != nullptr);
@@ -260,49 +262,45 @@ TEST_CASE("[GaussianSplatting][Node] Debug flag persistence mirrors project sett
         return;
     }
 
-    // Verify initial state is loaded from project settings
+    // A fresh node defaults all four HUD toggles to false.
     CHECK_FALSE(initial_node->is_showing_tile_grid());
     CHECK_FALSE(initial_node->is_showing_density_heatmap());
     CHECK_FALSE(initial_node->is_showing_performance_hud());
+    CHECK_FALSE(initial_node->is_showing_residency_hud());
 
-    // Change the flags
+    // Mutating the flags updates the local node state...
     initial_node->set_show_tile_grid(true);
     initial_node->set_show_density_heatmap(true);
     initial_node->set_show_performance_hud(true);
+    initial_node->set_show_residency_hud(true);
 
-    // Verify the node's local state changed
     CHECK(initial_node->is_showing_tile_grid());
     CHECK(initial_node->is_showing_density_heatmap());
     CHECK(initial_node->is_showing_performance_hud());
+    CHECK(initial_node->is_showing_residency_hud());
 
-    // At runtime (non-editor), settings should NOT be persisted to ProjectSettings.
-    // In editor, they would be. Since tests run in non-editor mode, project settings
-    // should remain unchanged.
-#ifndef TOOLS_ENABLED
-    CHECK_FALSE((bool)project_settings->get_setting(tile_setting));
-    CHECK_FALSE((bool)project_settings->get_setting(heatmap_setting));
-    CHECK_FALSE((bool)project_settings->get_setting(hud_setting));
-#else
-    // In editor builds running tests, we can't easily distinguish editor vs runtime,
-    // so we skip the persistence check. The important thing is that the node's
-    // local state is correctly set.
-#endif
+    // ...but MUST NOT register or write the old debug/show_* ProjectSettings
+    // paths under any build configuration (editor or runtime).
+    CHECK_FALSE(project_settings->has_setting(tile_setting));
+    CHECK_FALSE(project_settings->has_setting(heatmap_setting));
+    CHECK_FALSE(project_settings->has_setting(hud_setting));
+    CHECK_FALSE(project_settings->has_setting(residency_setting));
 
     memdelete(initial_node);
 
-    // Verify new nodes still read from project settings (not from previous node)
+    // A second node constructed afterwards must NOT inherit the previous
+    // node's toggles -- the manager-mediated leak is gone, so each new
+    // node starts clean.
     GaussianSplatNode3D *fresh_node = memnew(GaussianSplatNode3D);
     CHECK(fresh_node != nullptr);
     if (fresh_node == nullptr) {
         return;
     }
 
-    // Since we didn't persist above (runtime mode), fresh node should read original values
-#ifndef TOOLS_ENABLED
     CHECK_FALSE(fresh_node->is_showing_tile_grid());
     CHECK_FALSE(fresh_node->is_showing_density_heatmap());
     CHECK_FALSE(fresh_node->is_showing_performance_hud());
-#endif
+    CHECK_FALSE(fresh_node->is_showing_residency_hud());
 
     memdelete(fresh_node);
 }

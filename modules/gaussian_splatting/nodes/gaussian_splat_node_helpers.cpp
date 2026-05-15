@@ -2,7 +2,6 @@
 
 #include "gaussian_splat_node_3d.h"
 #include "../core/effective_config_snapshot.h"
-#include "../core/gaussian_splat_settings_manager.h"
 #include "../core/gaussian_splat_scene_director.h"
 #include "../core/gaussian_streaming.h"
 #include "../core/quality_tier_config.h"
@@ -623,8 +622,6 @@ void GaussianSplatNodeDebugHelper::set_show_tile_grid(bool p_show) {
 
     owner.show_tile_grid = p_show;
 
-    GaussianSplatSettingsManager::set_debug_show_tile_grid(owner.show_tile_grid);
-
     if (owner.renderer.is_valid() && owner.renderer_helper.can_apply_renderer_settings() &&
             !_is_renderer_shared_with_other_content(owner)) {
         owner.renderer->set_debug_show_tile_grid(owner.show_tile_grid);
@@ -638,8 +635,6 @@ void GaussianSplatNodeDebugHelper::set_show_density_heatmap(bool p_show) {
 
     owner.show_density_heatmap = p_show;
 
-    GaussianSplatSettingsManager::set_debug_show_density_heatmap(owner.show_density_heatmap);
-
     if (owner.renderer.is_valid() && owner.renderer_helper.can_apply_renderer_settings() &&
             !_is_renderer_shared_with_other_content(owner)) {
         owner.renderer->set_debug_show_density_heatmap(owner.show_density_heatmap);
@@ -652,8 +647,6 @@ void GaussianSplatNodeDebugHelper::set_show_performance_hud(bool p_show) {
     }
 
     owner.show_performance_hud = p_show;
-
-    GaussianSplatSettingsManager::set_debug_show_performance_hud(owner.show_performance_hud);
 
     if (owner.renderer.is_valid() && owner.renderer_helper.can_apply_renderer_settings() &&
             !_is_renderer_shared_with_other_content(owner)) {
@@ -743,8 +736,6 @@ void GaussianSplatNodeDebugHelper::set_show_residency_hud(bool p_show) {
     }
 
     owner.show_residency_hud = p_show;
-
-    GaussianSplatSettingsManager::set_debug_show_residency_hud(owner.show_residency_hud);
 
     if (owner.renderer.is_valid() && owner.renderer_helper.can_apply_renderer_settings() &&
             !_is_renderer_shared_with_other_content(owner)) {

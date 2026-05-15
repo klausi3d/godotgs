@@ -37,7 +37,7 @@ Use this workflow to import `.ply`/`.spz` assets, iterate with inspector brush t
 | `GaussianData.revert_runtime_changes()` | Discards staged runtime buffers without clearing recorded brush history. | `modules/gaussian_splatting/core/gaussian_data.cpp:848`, `modules/gaussian_splatting/core/gaussian_data.cpp:957` |
 | `GaussianData.get_brush_strokes()` | Returns recorded strokes as dictionaries for tooling/serialization hooks. | `modules/gaussian_splatting/core/gaussian_data.cpp:948` |
 | `GaussianSplatNode3D.set_runtime_preview_enabled(enabled)` | Switches renderer preview mode to runtime modifications and restores prior mode when disabled. | `modules/gaussian_splatting/nodes/gaussian_splat_node_helpers.cpp:682`, `modules/gaussian_splatting/nodes/gaussian_splat_node_helpers.cpp:694` |
-| `GaussianSplatNode3D.set_show_residency_hud(show)` | Toggles renderer residency HUD and persists the preference into project settings. | `modules/gaussian_splatting/nodes/gaussian_splat_node_helpers.cpp:701`, `modules/gaussian_splatting/core/gaussian_splat_settings_manager.cpp:114` |
+| `GaussianSplatNode3D.set_show_residency_hud(show)` | Toggles renderer residency HUD on this node only; defaults to off on every new node and persists exclusively in the node's serialized `.tscn` state. | `modules/gaussian_splatting/nodes/gaussian_splat_node_helpers.cpp:740` |
 | `GaussianSplatNode3D.bake_color_grading()` / `restore_color_grading()` | Bakes grading into SH DC colors, disables live grading after bake, and restores original colors on demand. | `modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:1794`, `modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:1813`, `modules/gaussian_splatting/nodes/gaussian_splat_node_3d.cpp:1821` |
 
 ## Examples

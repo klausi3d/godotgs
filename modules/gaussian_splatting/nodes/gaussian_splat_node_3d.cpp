@@ -3,7 +3,6 @@
 #include "../core/gs_project_settings.h"
 #include "../core/gaussian_data.h"
 #include "../core/gaussian_splat_manager.h"
-#include "../core/gaussian_splat_settings_manager.h"
 #include "../core/gaussian_splat_scene_director.h"
 #include "../core/gaussian_splat_source_path.h"
 #include "../core/quality_tier_config.h"
@@ -315,12 +314,12 @@ GaussianSplatNode3D::GaussianSplatNode3D() :
     world_aabb = local_aabb;
     _ensure_gaussian_base();
 
-    GaussianSplatSettingsManager::DebugOverlaySettings debug_settings =
-            GaussianSplatSettingsManager::load_debug_overlay_settings();
-    show_tile_grid = debug_settings.show_tile_grid;
-    show_density_heatmap = debug_settings.show_density_heatmap;
-    show_performance_hud = debug_settings.show_performance_hud;
-    show_residency_hud = debug_settings.show_residency_hud;
+    // The four debug HUD toggles (show_tile_grid / show_density_heatmap /
+    // show_performance_hud / show_residency_hud) are pure per-node properties.
+    // They default to false via their field initializers in the header and
+    // only persist through the node's own serialized .tscn state -- never
+    // through ProjectSettings. This avoids leaking one node's HUD choice into
+    // every other scene's default.
 
     // Apply default quality preset
     _apply_quality_preset();
