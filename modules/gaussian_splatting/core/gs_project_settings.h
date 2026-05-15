@@ -18,7 +18,6 @@
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
 #include "core/math/math_funcs.h"
-#include "core/math/vector3.h"
 #include "core/variant/variant.h"
 
 namespace gs {
@@ -168,20 +167,6 @@ enum GSStreamingRoutePolicy {
 	GS_ROUTE_STREAMING = 1,
 };
 
-struct GSSphereEffectorSettings {
-	int max_effectors = 1;
-	bool enabled = false;
-	Vector3 center = Vector3();
-	float radius = 0.0f;
-	float strength = 0.0f;
-	float falloff = 2.0f;
-	float frequency = 2.0f;
-	bool affect_position = true;
-	bool affect_opacity = false;
-	float opacity_strength = 1.0f;
-	float target_opacity = 0.0f;
-};
-
 static inline const char *get_streaming_route_policy_token(int p_policy) {
 	switch (p_policy) {
 		case GS_ROUTE_RESIDENT:
@@ -221,39 +206,6 @@ static inline int get_streaming_route_policy(ProjectSettings *p_ps) {
 	}
 	return (int)get_uint(p_ps, "rendering/gaussian_splatting/streaming/route_policy",
 			(uint32_t)GS_ROUTE_STREAMING);
-}
-
-static inline GSSphereEffectorSettings get_sphere_effector_settings(ProjectSettings *p_ps, bool p_warn_on_clamp = false) {
-	GSSphereEffectorSettings settings;
-	if (!p_ps) {
-		return settings;
-	}
-
-	const int requested_max_effectors = get_int(p_ps, "rendering/gaussian_splatting/effects/max_effectors", settings.max_effectors);
-	settings.max_effectors = CLAMP(requested_max_effectors, 0, 1);
-	if (p_warn_on_clamp && requested_max_effectors > 1) {
-		WARN_PRINT_ONCE("[GaussianSplatting] Only one sphere effector is currently supported. "
-				"'rendering/gaussian_splatting/effects/max_effectors' was clamped to 1.");
-	}
-
-	settings.enabled = get_bool(p_ps, "rendering/gaussian_splatting/effects/sphere_effector_enabled", settings.enabled);
-	settings.center.x = get_float(p_ps, "rendering/gaussian_splatting/effects/sphere_effector_center_x", settings.center.x);
-	settings.center.y = get_float(p_ps, "rendering/gaussian_splatting/effects/sphere_effector_center_y", settings.center.y);
-	settings.center.z = get_float(p_ps, "rendering/gaussian_splatting/effects/sphere_effector_center_z", settings.center.z);
-	settings.radius = MAX(get_float(p_ps, "rendering/gaussian_splatting/effects/sphere_effector_radius", settings.radius), 0.0f);
-	settings.strength = get_float(p_ps, "rendering/gaussian_splatting/effects/sphere_effector_strength", settings.strength);
-	settings.falloff = MAX(get_float(p_ps, "rendering/gaussian_splatting/effects/sphere_effector_falloff", settings.falloff), 0.001f);
-	settings.frequency = MAX(get_float(p_ps, "rendering/gaussian_splatting/effects/sphere_effector_frequency", settings.frequency), 0.1f);
-	settings.affect_position = get_bool(p_ps, "rendering/gaussian_splatting/effects/sphere_effector_affect_position", settings.affect_position);
-	settings.affect_opacity = get_bool(p_ps, "rendering/gaussian_splatting/effects/sphere_effector_affect_opacity", settings.affect_opacity);
-	settings.opacity_strength = CLAMP(
-			get_float(p_ps, "rendering/gaussian_splatting/effects/sphere_effector_opacity_strength", settings.opacity_strength),
-			0.0f, 1.0f);
-	settings.target_opacity = CLAMP(
-			get_float(p_ps, "rendering/gaussian_splatting/effects/sphere_effector_target_opacity", settings.target_opacity),
-			0.0f, 1.0f);
-	settings.enabled = settings.enabled && settings.max_effectors > 0;
-	return settings;
 }
 
 } // namespace settings

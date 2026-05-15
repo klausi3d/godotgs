@@ -80,14 +80,6 @@ static float _get_float_setting(ProjectSettings *ps, const StringName &name, flo
     return gs::settings::get_float(ps, name, fallback);
 }
 
-static float _sanitize_effector_float(float p_value, float p_fallback) {
-    return Math::is_finite(p_value) ? p_value : p_fallback;
-}
-
-static bool _is_valid_effector_center(const Vector3 &p_center) {
-    return Math::is_finite(p_center.x) && Math::is_finite(p_center.y) && Math::is_finite(p_center.z);
-}
-
 static void _clear_effector_slot(float (&r_sphere)[4], float (&r_config)[4], float (&r_opacity)[4]) {
     r_sphere[0] = 0.0f;
     r_sphere[1] = 0.0f;
@@ -101,59 +93,6 @@ static void _clear_effector_slot(float (&r_sphere)[4], float (&r_config)[4], flo
     r_opacity[1] = 0.0f;
     r_opacity[2] = 1.0f;
     r_opacity[3] = 0.0f;
-}
-
-static bool _pack_effector_slot(const gs::settings::GSSphereEffectorSettings &p_source,
-        float (&r_sphere)[4], float (&r_config)[4], float (&r_opacity)[4]) {
-    if (!p_source.enabled) {
-        return false;
-    }
-    if (!_is_valid_effector_center(p_source.center)) {
-        WARN_PRINT_ONCE("[GPU Sort] Ignoring sphere effector with non-finite center.");
-        return false;
-    }
-    const float radius = MAX(0.0f, _sanitize_effector_float(p_source.radius, 0.0f));
-    if (radius <= 0.0f) {
-        return false;
-    }
-
-    r_sphere[0] = p_source.center.x;
-    r_sphere[1] = p_source.center.y;
-    r_sphere[2] = p_source.center.z;
-    r_sphere[3] = radius;
-    r_config[0] = 1.0f;
-    r_config[1] = _sanitize_effector_float(p_source.strength, 0.0f);
-    r_config[2] = MAX(0.001f, _sanitize_effector_float(p_source.falloff, 2.0f));
-    r_config[3] = MAX(0.1f, _sanitize_effector_float(p_source.frequency, 2.0f));
-    r_opacity[0] = p_source.affect_position ? 1.0f : 0.0f;
-    r_opacity[1] = p_source.affect_opacity ? 1.0f : 0.0f;
-    r_opacity[2] = CLAMP(_sanitize_effector_float(p_source.opacity_strength, 1.0f), 0.0f, 1.0f);
-    r_opacity[3] = CLAMP(_sanitize_effector_float(p_source.target_opacity, 0.0f), 0.0f, 1.0f);
-    return true;
-}
-
-static void _build_effector_payload_from_settings(const gs::settings::GSSphereEffectorSettings &p_settings,
-        float (&r_meta)[4], float (&r_spheres)[GS_MAX_SPHERE_EFFECTORS][4],
-        float (&r_configs)[GS_MAX_SPHERE_EFFECTORS][4], float (&r_opacity_configs)[GS_MAX_SPHERE_EFFECTORS][4]) {
-    for (uint32_t i = 0; i < GS_MAX_SPHERE_EFFECTORS; i++) {
-        _clear_effector_slot(r_spheres[i], r_configs[i], r_opacity_configs[i]);
-    }
-
-    const uint32_t bounded_limit = MIN<uint32_t>(MAX(p_settings.max_effectors, 0), GS_MAX_SPHERE_EFFECTORS);
-    if (p_settings.max_effectors > int(GS_MAX_SPHERE_EFFECTORS)) {
-        WARN_PRINT_ONCE(vformat("[GPU Sort] ProjectSettings requests %d sphere effectors, but this runtime supports at most %d per pass.",
-                p_settings.max_effectors, GS_MAX_SPHERE_EFFECTORS));
-    }
-
-    uint32_t active_count = 0u;
-    if (bounded_limit > 0u && _pack_effector_slot(p_settings, r_spheres[0], r_configs[0], r_opacity_configs[0])) {
-        active_count = 1u;
-    }
-
-    r_meta[0] = float(active_count);
-    r_meta[1] = float(GS_MAX_SPHERE_EFFECTORS);
-    r_meta[2] = float(bounded_limit);
-    r_meta[3] = 0.0f; // ProjectSettings fallback path, not explicit scene bindings.
 }
 
 static bool _build_effector_payload_from_scene_bindings(const GaussianSplatRenderer *p_renderer,
@@ -2410,7 +2349,7 @@ bool GPUSortingPipeline::_sort_instance_pipeline(const Transform3D &p_cam_transf
     params.effector_meta[1] = float(GS_MAX_SPHERE_EFFECTORS);
     params.effector_meta[2] = 0.0f;
     params.effector_meta[3] = 0.0f;
-    const bool scene_effector_payload_applied = _build_effector_payload_from_scene_bindings(inputs.owner_renderer, params.effector_meta,
+    _build_effector_payload_from_scene_bindings(inputs.owner_renderer, params.effector_meta,
             params.effector_spheres, params.effector_configs, params.effector_opacity_configs);
     if (ProjectSettings *ps = ProjectSettings::get_singleton()) {
         static const StringName wind_enabled_path("rendering/gaussian_splatting/animation/wind_enabled");
@@ -2436,12 +2375,6 @@ bool GPUSortingPipeline::_sort_instance_pipeline(const Transform3D &p_cam_transf
         params.wind_time_config[1] = MAX(_get_float_setting(ps, wind_frequency_path, 1.0f), 0.0f);
         params.wind_time_config[2] = _get_float_setting(ps, wind_spatial_frequency_path, 0.1f);
         params.wind_time_config[3] = wind_enabled ? 1.0f : 0.0f;
-
-        if (!scene_effector_payload_applied) {
-            const gs::settings::GSSphereEffectorSettings sphere_effector_settings = gs::settings::get_sphere_effector_settings(ps, true);
-            _build_effector_payload_from_settings(sphere_effector_settings, params.effector_meta,
-                    params.effector_spheres, params.effector_configs, params.effector_opacity_configs);
-        }
     }
 
     Projection projection = sort_ctx.view.camera_projection;

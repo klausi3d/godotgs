@@ -155,47 +155,6 @@ public:
     }
 };
 
-TEST_CASE("[GaussianSplatting][Settings] Sphere effector project settings stay registered with production defaults") {
-    ScopedGaussianManagerPipeline manager;
-    REQUIRE_MESSAGE(manager.get() != nullptr, "GaussianSplatManager required to register Gaussian Splatting settings");
-
-    ProjectSettings *project_settings = ProjectSettings::get_singleton();
-    REQUIRE_MESSAGE(project_settings != nullptr, "ProjectSettings singleton required");
-
-    ScopedProjectSetting max_effectors_guard(project_settings, "rendering/gaussian_splatting/effects/max_effectors");
-    ScopedProjectSetting enabled_guard(project_settings, "rendering/gaussian_splatting/effects/sphere_effector_enabled");
-    ScopedProjectSetting radius_guard(project_settings, "rendering/gaussian_splatting/effects/sphere_effector_radius");
-    ScopedProjectSetting strength_guard(project_settings, "rendering/gaussian_splatting/effects/sphere_effector_strength");
-    ScopedProjectSetting falloff_guard(project_settings, "rendering/gaussian_splatting/effects/sphere_effector_falloff");
-    ScopedProjectSetting frequency_guard(project_settings, "rendering/gaussian_splatting/effects/sphere_effector_frequency");
-    ScopedProjectSetting opacity_strength_guard(project_settings, "rendering/gaussian_splatting/effects/sphere_effector_opacity_strength");
-    ScopedProjectSetting target_opacity_guard(project_settings, "rendering/gaussian_splatting/effects/sphere_effector_target_opacity");
-    ScopedProjectSetting affect_position_guard(project_settings, "rendering/gaussian_splatting/effects/sphere_effector_affect_position");
-    ScopedProjectSetting affect_opacity_guard(project_settings, "rendering/gaussian_splatting/effects/sphere_effector_affect_opacity");
-
-    CHECK(project_settings->has_setting("rendering/gaussian_splatting/effects/max_effectors"));
-    CHECK(project_settings->has_setting("rendering/gaussian_splatting/effects/sphere_effector_enabled"));
-    CHECK(project_settings->has_setting("rendering/gaussian_splatting/effects/sphere_effector_radius"));
-    CHECK(project_settings->has_setting("rendering/gaussian_splatting/effects/sphere_effector_strength"));
-    CHECK(project_settings->has_setting("rendering/gaussian_splatting/effects/sphere_effector_falloff"));
-    CHECK(project_settings->has_setting("rendering/gaussian_splatting/effects/sphere_effector_frequency"));
-    CHECK(project_settings->has_setting("rendering/gaussian_splatting/effects/sphere_effector_affect_position"));
-    CHECK(project_settings->has_setting("rendering/gaussian_splatting/effects/sphere_effector_affect_opacity"));
-    CHECK(project_settings->has_setting("rendering/gaussian_splatting/effects/sphere_effector_opacity_strength"));
-    CHECK(project_settings->has_setting("rendering/gaussian_splatting/effects/sphere_effector_target_opacity"));
-
-    CHECK_EQ(int(project_settings->get_setting("rendering/gaussian_splatting/effects/max_effectors")), 1);
-    CHECK_FALSE(bool(project_settings->get_setting("rendering/gaussian_splatting/effects/sphere_effector_enabled")));
-    CHECK(double(project_settings->get_setting("rendering/gaussian_splatting/effects/sphere_effector_radius")) == doctest::Approx(0.0));
-    CHECK(double(project_settings->get_setting("rendering/gaussian_splatting/effects/sphere_effector_strength")) == doctest::Approx(0.0));
-    CHECK(double(project_settings->get_setting("rendering/gaussian_splatting/effects/sphere_effector_falloff")) == doctest::Approx(2.0));
-    CHECK(double(project_settings->get_setting("rendering/gaussian_splatting/effects/sphere_effector_frequency")) == doctest::Approx(2.0));
-    CHECK(bool(project_settings->get_setting("rendering/gaussian_splatting/effects/sphere_effector_affect_position")));
-    CHECK_FALSE(bool(project_settings->get_setting("rendering/gaussian_splatting/effects/sphere_effector_affect_opacity")));
-    CHECK(double(project_settings->get_setting("rendering/gaussian_splatting/effects/sphere_effector_opacity_strength")) == doctest::Approx(1.0));
-    CHECK(double(project_settings->get_setting("rendering/gaussian_splatting/effects/sphere_effector_target_opacity")) == doctest::Approx(0.0));
-}
-
 static void fill_gaussians(LocalVector<Gaussian> &p_gaussians, uint32_t p_count) {
     p_gaussians.resize(p_count);
     for (uint32_t i = 0; i < p_count; i++) {

@@ -1012,19 +1012,6 @@ void GaussianSplatManager::initialize_module() {
     GLOBAL_DEF("rendering/gaussian_splatting/animation/wind_frequency", 1.0f);
     GLOBAL_DEF("rendering/gaussian_splatting/animation/wind_spatial_frequency", 0.1f);
     GLOBAL_DEF("rendering/gaussian_splatting/animation/wind_time_scale", 1.0f);
-    GLOBAL_DEF("rendering/gaussian_splatting/effects/max_effectors", 1);
-    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_enabled", false);
-    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_center_x", 0.0f);
-    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_center_y", 0.0f);
-    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_center_z", 0.0f);
-    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_radius", 0.0f);
-    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_strength", 0.0f);
-    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_falloff", 2.0f);
-    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_frequency", 2.0f);
-    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_affect_position", true);
-    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_affect_opacity", false);
-    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_opacity_strength", 1.0f);
-    GLOBAL_DEF("rendering/gaussian_splatting/effects/sphere_effector_target_opacity", 0.0f);
 
     // Culling and LOD settings from PR #146
     GLOBAL_DEF("rendering/gaussian_splatting/culling/octree_max_depth", 8);

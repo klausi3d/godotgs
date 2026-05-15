@@ -146,7 +146,6 @@ through one of the two canonical scene nodes.
 - `SphereEffector3D` defaults to `Parent Subtree` scope, so an effector affects sibling/descendant splat nodes under the same parent without touching unrelated parts of the world.
 - `rendering/scene_effectors_enabled`, `rendering/scene_effector_layer_mask`, and `rendering/scene_effector_scope_root` let each `GaussianSplatNode3D` opt out, filter, or narrow which scene effectors it follows.
 - Runtime support is bounded to `4` scene-authored effectors per renderer pass. If more effectors match one node, the renderer binds the highest-priority deterministic four and the rest remain matched but unbound.
-- ProjectSettings remain as a backward-compatible fallback when no scene-authored sphere effectors are active. That fallback still uses the legacy single-global effector path, so `rendering/gaussian_splatting/effects/max_effectors` is clamped to `0..1`.
 - The practical runtime control surface is:
   - use `SphereEffector3D` to author center, radius, strength, falloff, frequency, scope, and opacity modulation in the scene
   - use `rendering/effect_position_scale` and `rendering/effect_opacity_scale` per node to blend each node's response

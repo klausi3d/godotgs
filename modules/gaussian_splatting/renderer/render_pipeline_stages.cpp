@@ -431,7 +431,6 @@ static uint64_t _compute_lighting_signature(const RenderDataRD *p_render_data, u
 	float wind_spatial_frequency = 0.1f;
 	float wind_time_scale = 1.0f;
 	Vector3 wind_direction = Vector3(1.0f, 0.0f, 0.0f);
-	gs::settings::GSSphereEffectorSettings sphere_effector_settings;
 	if (ProjectSettings *ps = ProjectSettings::get_singleton()) {
 		static const StringName direct_path("rendering/gaussian_splatting/lighting/direct_light_scale");
 		static const StringName indirect_path("rendering/gaussian_splatting/lighting/indirect_sh_scale");
@@ -462,8 +461,6 @@ static uint64_t _compute_lighting_signature(const RenderDataRD *p_render_data, u
 		wind_frequency = _get_float_setting(ps, wind_frequency_path, wind_frequency);
 		wind_spatial_frequency = _get_float_setting(ps, wind_spatial_frequency_path, wind_spatial_frequency);
 		wind_time_scale = _get_float_setting(ps, wind_time_scale_path, wind_time_scale);
-
-		sphere_effector_settings = gs::settings::get_sphere_effector_settings(ps, true);
 	}
 	seed = _hash_float_bits(direct_light_scale, seed);
 	seed = _hash_float_bits(indirect_sh_scale, seed);
@@ -478,24 +475,7 @@ static uint64_t _compute_lighting_signature(const RenderDataRD *p_render_data, u
 	seed = _hash_float_bits(wind_spatial_frequency, seed);
 	seed = _hash_float_bits(wind_time_scale, seed);
 	const uint32_t total_scene_effectors = _populate_scene_effector_payload_for_renderer(p_renderer, nullptr, &seed);
-	if (total_scene_effectors == 0u) {
-		const uint32_t capped_effectors = MIN<uint32_t>(MAX(sphere_effector_settings.max_effectors, 0), GS_MAX_SPHERE_EFFECTORS);
-		if (sphere_effector_settings.max_effectors > int(GS_MAX_SPHERE_EFFECTORS)) {
-			WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] ProjectSettings requests %d sphere effectors, but this runtime supports at most %d per pass.",
-					sphere_effector_settings.max_effectors, GS_MAX_SPHERE_EFFECTORS));
-		}
-		seed = _hash_u64(static_cast<uint64_t>(capped_effectors), seed);
-		seed = _hash_bool(sphere_effector_settings.enabled && capped_effectors > 0u, seed);
-		seed = _hash_vector3(sphere_effector_settings.center, seed);
-		seed = _hash_float_bits(sphere_effector_settings.radius, seed);
-		seed = _hash_float_bits(sphere_effector_settings.strength, seed);
-		seed = _hash_float_bits(sphere_effector_settings.falloff, seed);
-		seed = _hash_float_bits(sphere_effector_settings.frequency, seed);
-		seed = _hash_bool(sphere_effector_settings.affect_position, seed);
-		seed = _hash_bool(sphere_effector_settings.affect_opacity, seed);
-		seed = _hash_float_bits(sphere_effector_settings.opacity_strength, seed);
-		seed = _hash_float_bits(sphere_effector_settings.target_opacity, seed);
-	} else if (total_scene_effectors > GS_MAX_SPHERE_EFFECTORS) {
+	if (total_scene_effectors > GS_MAX_SPHERE_EFFECTORS) {
 		WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Scene matched %d sphere effectors, but this runtime binds at most %d per pass. Highest-priority deterministic entries are used.",
 				total_scene_effectors, GS_MAX_SPHERE_EFFECTORS));
 	}
@@ -1848,7 +1828,6 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 	float wind_frequency = 1.0f;
 	float wind_spatial_frequency = 0.1f;
 	float wind_time_scale = 1.0f;
-	gs::settings::GSSphereEffectorSettings sphere_effector_settings;
 	if (ProjectSettings *ps = ProjectSettings::get_singleton()) {
 		static const StringName direct_path("rendering/gaussian_splatting/lighting/direct_light_scale");
 		static const StringName indirect_path("rendering/gaussian_splatting/lighting/indirect_sh_scale");
@@ -1878,7 +1857,6 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 		wind_frequency = _get_float_setting(ps, wind_frequency_path, wind_frequency);
 		wind_spatial_frequency = _get_float_setting(ps, wind_spatial_frequency_path, wind_spatial_frequency);
 		wind_time_scale = _get_float_setting(ps, wind_time_scale_path, wind_time_scale);
-		sphere_effector_settings = gs::settings::get_sphere_effector_settings(ps, true);
 	}
 	render_params.direct_light_scale = CLAMP(direct_light_scale, 0.0f, 4.0f);
 	render_params.indirect_sh_scale = CLAMP(indirect_sh_scale, 0.0f, 4.0f);
@@ -1902,24 +1880,7 @@ Error RenderPipelineStages::RasterStage::render_tile_fallback(const Size2i &p_vi
 			double(MAX(wind_time_scale, 0.0f)));
 	render_params.sphere_effector_count = 0u;
 	const uint32_t total_scene_effectors = _populate_scene_effector_payload_for_renderer(renderer, &render_params, nullptr);
-	if (total_scene_effectors == 0u) {
-		const uint32_t capped_effectors = MIN<uint32_t>(MAX(sphere_effector_settings.max_effectors, 0), GS_MAX_SPHERE_EFFECTORS);
-		if (sphere_effector_settings.max_effectors > int(GS_MAX_SPHERE_EFFECTORS)) {
-			WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] ProjectSettings requests %d sphere effectors, but this runtime supports at most %d per pass.",
-					sphere_effector_settings.max_effectors, GS_MAX_SPHERE_EFFECTORS));
-		}
-		render_params.sphere_effector_max_active = capped_effectors;
-		render_params.sphere_effector_enabled = sphere_effector_settings.enabled && capped_effectors > 0u;
-		render_params.sphere_effector_center = sphere_effector_settings.center;
-		render_params.sphere_effector_radius = sphere_effector_settings.radius;
-		render_params.sphere_effector_strength = sphere_effector_settings.strength;
-		render_params.sphere_effector_falloff = sphere_effector_settings.falloff;
-		render_params.sphere_effector_frequency = sphere_effector_settings.frequency;
-		render_params.sphere_effector_affect_position = sphere_effector_settings.affect_position;
-		render_params.sphere_effector_affect_opacity = sphere_effector_settings.affect_opacity;
-		render_params.sphere_effector_opacity_strength = sphere_effector_settings.opacity_strength;
-		render_params.sphere_effector_target_opacity = sphere_effector_settings.target_opacity;
-	} else if (total_scene_effectors > GS_MAX_SPHERE_EFFECTORS) {
+	if (total_scene_effectors > GS_MAX_SPHERE_EFFECTORS) {
 		WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Scene matched %d sphere effectors, but this runtime binds at most %d per pass. Highest-priority deterministic entries are used.",
 				total_scene_effectors, GS_MAX_SPHERE_EFFECTORS));
 	}
