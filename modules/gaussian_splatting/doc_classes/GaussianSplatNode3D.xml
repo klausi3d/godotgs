@@ -156,19 +156,6 @@
 				Returns the current painterly stroke width.
 			</description>
 		</method>
-		<method name="set_color_variation">
-			<return type="void" />
-			<param index="0" name="variation" type="float" />
-			<description>
-				Sets the color variation amount for painterly effects. Legacy method retained for compatibility with existing scenes and scripts.
-			</description>
-		</method>
-		<method name="get_color_variation">
-			<return type="float" />
-			<description>
-				Returns the current color variation amount.
-			</description>
-		</method>
 		<method name="set_temporal_blend">
 			<return type="void" />
 			<param index="0" name="blend" type="float" />
@@ -232,19 +219,6 @@
 			<return type="bool" />
 			<description>
 				Returns [code]true[/code] if frustum culling is enabled.
-			</description>
-		</method>
-		<method name="set_use_occlusion_culling">
-			<return type="void" />
-			<param index="0" name="enabled" type="bool" />
-			<description>
-				Enables or disables occlusion culling. Legacy method retained for compatibility with existing scenes and scripts.
-			</description>
-		</method>
-		<method name="is_occlusion_culling_enabled">
-			<return type="bool" />
-			<description>
-				Returns [code]true[/code] if occlusion culling is enabled.
 			</description>
 		</method>
 		<method name="set_opacity">

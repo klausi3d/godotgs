@@ -151,7 +151,6 @@ private:
     float edge_threshold = 0.1f;
     float stroke_opacity = 0.8f;
     float stroke_width = 1.0f;
-    float color_variation = 0.05f; // Legacy serialized compatibility only (not an exposed node property).
     float temporal_blend = 0.9f;
     uint32_t painterly_seed = 1337;
     GaussianSplatting::PainterlyManager painterly_manager;
@@ -160,7 +159,6 @@ private:
     ViewportUpdateMode update_mode = UPDATE_MODE_WHEN_VISIBLE;
     bool cast_shadow = false;
     bool use_frustum_culling = true;
-    bool use_occlusion_culling = true; // Legacy serialized compatibility only (not an exposed node property).
     float opacity = 1.0f;
     float effect_position_scale = 1.0f;
     float effect_opacity_scale = 1.0f;
@@ -515,10 +513,6 @@ public:
     /** @brief Returns the stroke width. */
     float get_stroke_width() const { return stroke_width; }
 
-    /** @brief Legacy compatibility setter retained for serialized scenes/scripts. Not exposed as a node property. */
-    void set_color_variation(float p_variation);
-    float get_color_variation() const { return color_variation; }
-
     /**
      * @brief Sets the temporal blend factor for painterly stability.
      * @param p_blend Blend factor in [0, 1]; higher values reduce flickering.
@@ -568,10 +562,6 @@ public:
 
     /** @brief Returns true if frustum culling is enabled. */
     bool is_frustum_culling_enabled() const { return use_frustum_culling; }
-
-    /** @brief Legacy compatibility setter retained for serialized scenes/scripts. Not exposed as a node property. */
-    void set_use_occlusion_culling(bool p_enabled);
-    bool is_occlusion_culling_enabled() const { return use_occlusion_culling; }
 
     /** @brief Sets the per-instance opacity multiplier for this node. */
     void set_opacity(float p_opacity);

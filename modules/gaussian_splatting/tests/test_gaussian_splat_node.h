@@ -790,52 +790,6 @@ TEST_CASE("[GaussianSplatting][Node] Debug overlay toggles have correct defaults
     memdelete(node);
 }
 
-TEST_CASE("[GaussianSplatting][Node] Legacy non-functional properties are not exposed but still deserialize") {
-    GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
-    CHECK(node != nullptr);
-    if (node == nullptr) {
-        return;
-    }
-
-    List<PropertyInfo> property_list;
-    node->get_property_list(&property_list);
-
-    bool has_color_variation_property = false;
-    bool has_occlusion_culling_property = false;
-    for (const List<PropertyInfo>::Element *E = property_list.front(); E; E = E->next()) {
-        const StringName &property_name = E->get().name;
-        if (property_name == StringName("painterly/color_variation")) {
-            has_color_variation_property = true;
-        }
-        if (property_name == StringName("rendering/occlusion_culling")) {
-            has_occlusion_culling_property = true;
-        }
-    }
-
-    CHECK_FALSE(has_color_variation_property);
-    CHECK_FALSE(has_occlusion_culling_property);
-
-    bool set_valid = false;
-    node->set(StringName("painterly/color_variation"), 0.3f, &set_valid);
-    CHECK(set_valid);
-    CHECK(Math::is_equal_approx(node->get_color_variation(), 0.3f));
-
-    node->set(StringName("rendering/occlusion_culling"), false, &set_valid);
-    CHECK(set_valid);
-    CHECK_FALSE(node->is_occlusion_culling_enabled());
-
-    bool get_valid = false;
-    Variant color_variation = node->get(StringName("painterly/color_variation"), &get_valid);
-    CHECK(get_valid);
-    CHECK(Math::is_equal_approx(float(color_variation), 0.3f));
-
-    Variant occlusion_culling = node->get(StringName("rendering/occlusion_culling"), &get_valid);
-    CHECK(get_valid);
-    CHECK_FALSE((bool)occlusion_culling);
-
-    memdelete(node);
-}
-
 TEST_CASE("[GaussianSplatting][Node] Asset origin label describes active ingress") {
     GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
     REQUIRE(node != nullptr);

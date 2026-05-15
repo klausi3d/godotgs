@@ -128,10 +128,6 @@ void GaussianSplatNode3D::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_stroke_width"), &GaussianSplatNode3D::get_stroke_width);
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "painterly/stroke_width", PROPERTY_HINT_RANGE, "0.1,5.0,0.1"), "set_stroke_width", "get_stroke_width");
 
-    // Legacy method retained for existing scenes/scripts.
-    ClassDB::bind_method(D_METHOD("set_color_variation", "variation"), &GaussianSplatNode3D::set_color_variation);
-    ClassDB::bind_method(D_METHOD("get_color_variation"), &GaussianSplatNode3D::get_color_variation);
-
     ClassDB::bind_method(D_METHOD("set_temporal_blend", "blend"), &GaussianSplatNode3D::set_temporal_blend);
     ClassDB::bind_method(D_METHOD("get_temporal_blend"), &GaussianSplatNode3D::get_temporal_blend);
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "painterly/temporal_blend", PROPERTY_HINT_RANGE, "0.01,1.0,0.01"), "set_temporal_blend", "get_temporal_blend");
@@ -153,10 +149,6 @@ void GaussianSplatNode3D::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_use_frustum_culling", "enabled"), &GaussianSplatNode3D::set_use_frustum_culling);
     ClassDB::bind_method(D_METHOD("is_frustum_culling_enabled"), &GaussianSplatNode3D::is_frustum_culling_enabled);
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "rendering/frustum_culling"), "set_use_frustum_culling", "is_frustum_culling_enabled");
-
-    // Legacy method retained for existing scenes/scripts.
-    ClassDB::bind_method(D_METHOD("set_use_occlusion_culling", "enabled"), &GaussianSplatNode3D::set_use_occlusion_culling);
-    ClassDB::bind_method(D_METHOD("is_occlusion_culling_enabled"), &GaussianSplatNode3D::is_occlusion_culling_enabled);
 
     // Legacy render-thread path deprecated; no longer exposed as a property.
 
@@ -534,15 +526,6 @@ void GaussianSplatNode3D::_validate_property(PropertyInfo &p_property) const {
 }
 
 bool GaussianSplatNode3D::_set(const StringName &p_name, const Variant &p_value) {
-    // Legacy serialized property compatibility after property unbinding.
-    if (p_name == StringName("painterly/color_variation")) {
-        set_color_variation((float)p_value);
-        return true;
-    }
-    if (p_name == StringName("rendering/occlusion_culling")) {
-        set_use_occlusion_culling((bool)p_value);
-        return true;
-    }
 #ifndef DISABLE_DEPRECATED
     // One-release compatibility for the removed `ply_file_path` property
     // (commit "remove node raw file path surface"). Old `.tscn` files still
@@ -579,14 +562,6 @@ bool GaussianSplatNode3D::_set(const StringName &p_name, const Variant &p_value)
 }
 
 bool GaussianSplatNode3D::_get(const StringName &p_name, Variant &r_ret) const {
-    if (p_name == StringName("painterly/color_variation")) {
-        r_ret = color_variation;
-        return true;
-    }
-    if (p_name == StringName("rendering/occlusion_culling")) {
-        r_ret = use_occlusion_culling;
-        return true;
-    }
     if (p_name == StringName("stats/visible_splats")) {
         r_ret = (int64_t)visible_splat_count;
         return true;
@@ -1009,11 +984,6 @@ void GaussianSplatNode3D::set_stroke_width(float p_width) {
     _mark_render_state_dirty();
 }
 
-void GaussianSplatNode3D::set_color_variation(float p_variation) {
-    // Compatibility-only placeholder: renderer currently has no color-variation control.
-    color_variation = CLAMP(p_variation, 0.0f, 0.5f);
-}
-
 void GaussianSplatNode3D::set_temporal_blend(float p_blend) {
     if (_is_renderer_shared_with_other_content(renderer)) {
         return;
@@ -1081,11 +1051,6 @@ void GaussianSplatNode3D::set_use_frustum_culling(bool p_enabled) {
         _apply_renderer_settings();
     }
     _mark_render_state_dirty();
-}
-
-void GaussianSplatNode3D::set_use_occlusion_culling(bool p_enabled) {
-    // Compatibility-only placeholder: renderer currently has no dedicated occlusion-culling toggle.
-    use_occlusion_culling = p_enabled;
 }
 
 void GaussianSplatNode3D::set_opacity(float p_opacity) {
