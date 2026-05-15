@@ -55,6 +55,7 @@ TEST_CASE("[GaussianSplatting] Painterly viewport copy handles downscale") {
     destination_format.usage_bits = RD::TEXTURE_USAGE_STORAGE_BIT |
             RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT |
             RD::TEXTURE_USAGE_CAN_COPY_TO_BIT |
+            RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT |
             RD::TEXTURE_USAGE_SAMPLING_BIT;
 
     RID stylized_texture = rd->texture_create(source_format, RD::TextureView());
