@@ -56,9 +56,38 @@ PNGs are committed to the repo. Keep file sizes small — prefer 256x256 or
 smaller deterministic fixtures over full-viewport captures. The hazard repro
 test in `tests/test_output_compositor_composite_hazard.cpp` uses 256x256.
 
+## Current state: visual gate is wired but not yet exercised
+
+The helper, baseline directory, capture/compare protocol, and the first
+hazard reproducer test (`test_output_compositor_composite_hazard.h`) all
+ship together. **But no PNG baselines exist yet**, and the existing CI
+test runner cannot capture one.
+
+The reason: `tests/ci/run_module_tests.py` invokes the Godot test binary
+with `--headless --test`, which does not initialize a `RenderingDevice`.
+The `REQUIRE_GPU_DEVICE()` guard in module tests therefore returns early.
+This affects every test tagged `[RequiresGPU]`, not just the compositor
+hazard repro — see the `REQUIRES_RD_TEST_FILTERS` catalogue
+(`run_module_tests.py:109`) noted as "future use when a full-engine test
+harness is added."
+
+When that GPU-enabled harness lands, the workflow is:
+
+1. Run the hazard repro under `GS_VISUAL_BASELINE_MODE=update`; this
+   writes `composite_hazard_256x256.png` to this directory.
+2. Commit the PNG alongside a one-line provenance note in this file
+   (runner + driver version at capture time).
+3. PR runs default to `GS_VISUAL_BASELINE_MODE=compare`; mismatches fail
+   the test and dump the diff to `build/visual_diffs/`.
+
+Until then, the test will compile and be selected by the
+`*][RequiresGPU]*` filter but report "Skipping test - RenderingDevice
+unavailable" rather than executing the visual assertions.
+
 ## Related
 
 - Helper: `modules/gaussian_splatting/tests/visual_compare.h`
+- First test: `modules/gaussian_splatting/tests/test_output_compositor_composite_hazard.h`
 - CI integration: `.github/workflows/baseline_qa.yml` (baseline_mode input)
 - Aspirational scaffolding: `modules/gaussian_splatting/tests/visual_validation.h`
   has a much larger unimplemented API; treat as a planning artifact, not as
