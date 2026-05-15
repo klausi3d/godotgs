@@ -28,6 +28,7 @@
 #include "test_overflow_auto_tuner_stale_stats.h"
 #include "test_render_validation.h"
 #include "test_diagnostics.h"
+#include "visual_compare.h"
 #include "test_logger_rate_limit.h"
 #include "test_vram_budget_regulator.h"
 #include "test_renderer_pipeline.h"
