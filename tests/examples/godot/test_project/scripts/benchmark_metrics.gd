@@ -674,13 +674,6 @@ static func build_recommendations(report: Dictionary) -> Array[Dictionary]:
 			"reason": "Low percentile FPS indicates animation deformation cost is too high for current hardware.",
 			"tradeoff": "Reduced wind motion amplitude.",
 		})
-		recommendations.append({
-			"setting": "rendering/gaussian_splatting/effects/max_effectors",
-			"current": _setting_value(settings, "rendering/gaussian_splatting/effects/max_effectors", 0),
-			"suggested": 2,
-			"reason": "Effector-heavy frames are likely contributing to frame-time outliers.",
-			"tradeoff": "Fewer concurrent procedural effect regions.",
-		})
 
 	if lod_transitions > 12.0 and lod_reduction_ratio > 40.0:
 		recommendations.append({

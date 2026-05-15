@@ -32,14 +32,12 @@ func _configure_gaussian_node() -> void:
     gaussian_node.set_edge_threshold(0.25)
     gaussian_node.set_stroke_opacity(0.85)
     gaussian_node.set_stroke_width(1.1)
-    gaussian_node.set_color_variation(0.12)
     gaussian_node.set_temporal_blend(0.35)
     gaussian_node.set_painterly_seed(1337)
 
     gaussian_node.set_update_mode(GaussianSplatNode3D.UPDATE_MODE_WHEN_VISIBLE)
     gaussian_node.set_cast_shadow(true)
     gaussian_node.set_use_frustum_culling(true)
-    gaussian_node.set_use_occlusion_culling(true)
     gaussian_node.set_opacity(1.0)
 
     gaussian_node.set_preview_enabled(true)

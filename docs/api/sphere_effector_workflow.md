@@ -18,8 +18,6 @@ This branch supports scene-authored sphere effectors for Gaussian splats through
   - `rendering/wind_direction`
   - `rendering/wind_frequency`
 
-ProjectSettings under `rendering/gaussian_splatting/effects/*` remain available as a backward-compatible fallback when a scene does not author any active `SphereEffector3D` nodes. That fallback stays on the legacy single-global-effector path, so `rendering/gaussian_splatting/effects/max_effectors` is still clamped to `0..1` there even though scene-authored bindings can fill a larger renderer budget.
-
 ## What Works In Game
 
 - Wind-only animation on selected splat nodes through node-local wind override.
@@ -35,7 +33,6 @@ ProjectSettings under `rendering/gaussian_splatting/effects/*` remain available 
 - If more than `4` scene-authored effectors match one node, the highest-priority deterministic four are bound and the rest stay logical matches only.
 - Deterministic ordering uses priority first, then scope specificity, then registration order, then object id.
 - `get_primary_sphere_effector_for_instance()` is now a compatibility query only. It still returns one match even though the renderer can bind multiple.
-- ProjectSettings fallback effectors remain single-global and are still governed by `rendering/gaussian_splatting/effects/max_effectors` clamped to `0..1`.
 - `target_opacity = 1.0` is a neutral target. Matching nodes still count as matched, but no visible opacity change is produced and opacity diagnostics stay inactive.
 
 ## Runtime Diagnostics

@@ -71,15 +71,6 @@ const PROJECT_SETTING_KEYS := [
 	"rendering/gaussian_splatting/animation/wind_direction_x",
 	"rendering/gaussian_splatting/animation/wind_direction_y",
 	"rendering/gaussian_splatting/animation/wind_direction_z",
-	"rendering/gaussian_splatting/effects/max_effectors",
-	"rendering/gaussian_splatting/effects/sphere_effector_enabled",
-	"rendering/gaussian_splatting/effects/sphere_effector_center_x",
-	"rendering/gaussian_splatting/effects/sphere_effector_center_y",
-	"rendering/gaussian_splatting/effects/sphere_effector_center_z",
-	"rendering/gaussian_splatting/effects/sphere_effector_radius",
-	"rendering/gaussian_splatting/effects/sphere_effector_strength",
-	"rendering/gaussian_splatting/effects/sphere_effector_falloff",
-	"rendering/gaussian_splatting/effects/sphere_effector_frequency",
 ]
 
 signal benchmark_scene_finished(result: Dictionary)
@@ -480,8 +471,6 @@ func _apply_base_project_settings() -> void:
 	_set_project_setting("rendering/gaussian_splatting/lighting/shadow_strength", 0.5)
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_enabled", false)
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_strength", 0.0)
-	_set_project_setting("rendering/gaussian_splatting/effects/max_effectors", 0)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_enabled", false)
 	_set_project_setting("rendering/gaussian_splatting/lod/max_distance", 50.0)
 	_set_project_setting("rendering/gaussian_splatting/lod/bias", 1.0)
 	_set_project_setting("rendering/gaussian_splatting/lod/hysteresis_zone", 0.5)
@@ -557,8 +546,6 @@ func _setup_phase_warmup() -> void:
 	omni_light_b.visible = false
 	spot_light.visible = false
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_enabled", false)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_enabled", false)
-	_set_project_setting("rendering/gaussian_splatting/effects/max_effectors", 0)
 
 func _setup_phase_instance() -> void:
 	_set_scene_visibility(false, true, true)
@@ -569,8 +556,6 @@ func _setup_phase_instance() -> void:
 	omni_light_b.visible = true
 	spot_light.visible = false
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_enabled", false)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_enabled", false)
-	_set_project_setting("rendering/gaussian_splatting/effects/max_effectors", 0)
 
 func _setup_phase_streaming() -> void:
 	_set_scene_visibility(true, false, false)
@@ -581,8 +566,6 @@ func _setup_phase_streaming() -> void:
 	omni_light_b.visible = false
 	spot_light.visible = false
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_enabled", false)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_enabled", false)
-	_set_project_setting("rendering/gaussian_splatting/effects/max_effectors", 0)
 
 func _setup_phase_lighting() -> void:
 	_set_scene_visibility(true, true, false)
@@ -595,7 +578,6 @@ func _setup_phase_lighting() -> void:
 	_set_project_setting("rendering/gaussian_splatting/lighting/direct_light_scale", 1.2)
 	_set_project_setting("rendering/gaussian_splatting/lighting/indirect_sh_scale", 0.9)
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_enabled", false)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_enabled", false)
 
 func _setup_phase_effects() -> void:
 	_set_scene_visibility(true, true, true)
@@ -608,10 +590,6 @@ func _setup_phase_effects() -> void:
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_enabled", true)
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_strength", 1.0)
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_frequency", 1.7)
-	_set_project_setting("rendering/gaussian_splatting/effects/max_effectors", 4)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_enabled", true)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_radius", 7.0)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_strength", 1.35)
 
 func _setup_phase_lod() -> void:
 	_set_scene_visibility(true, false, true)
@@ -622,8 +600,6 @@ func _setup_phase_lod() -> void:
 	omni_light_b.visible = true
 	spot_light.visible = true
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_enabled", false)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_enabled", false)
-	_set_project_setting("rendering/gaussian_splatting/effects/max_effectors", 0)
 	_set_project_setting("rendering/gaussian_splatting/lod/max_distance", 40.0)
 
 func _setup_phase_finalize() -> void:
@@ -641,9 +617,6 @@ func _apply_dynamic_phase_settings() -> void:
 		_set_project_setting("rendering/gaussian_splatting/animation/wind_direction_x", cos(wind_angle))
 		_set_project_setting("rendering/gaussian_splatting/animation/wind_direction_y", 0.0)
 		_set_project_setting("rendering/gaussian_splatting/animation/wind_direction_z", sin(wind_angle))
-		_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_center_x", _focus_point.x + sin(_elapsed_s * 1.5) * 8.0)
-		_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_center_y", _focus_point.y + 2.5)
-		_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_center_z", _focus_point.z + cos(_elapsed_s * 1.5) * 8.0)
 	elif _phase_name == "LOD":
 		var lod_bias := 0.95 + 0.45 * (0.5 + 0.5 * sin(_elapsed_s * 1.4))
 		_set_world_lod_bias(lod_bias)

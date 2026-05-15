@@ -25,8 +25,6 @@ const PROJECT_SETTING_KEYS := [
 	"rendering/gaussian_splatting/quality/tier_apply_streaming_budgets",
 	"rendering/gaussian_splatting/animation/wind_enabled",
 	"rendering/gaussian_splatting/animation/wind_strength",
-	"rendering/gaussian_splatting/effects/max_effectors",
-	"rendering/gaussian_splatting/effects/sphere_effector_enabled",
 	"rendering/gaussian_splatting/lod/max_distance",
 	"rendering/gaussian_splatting/lod/bias",
 ]
@@ -299,8 +297,6 @@ func _apply_small_scene_settings() -> void:
 	_set_project_setting("rendering/gaussian_splatting/quality/tier_apply_streaming_budgets", false)
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_enabled", false)
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_strength", 0.0)
-	_set_project_setting("rendering/gaussian_splatting/effects/max_effectors", 0)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_enabled", false)
 	_set_project_setting("rendering/gaussian_splatting/lod/max_distance", 500.0)
 	_set_project_setting("rendering/gaussian_splatting/lod/bias", 1.0)
 

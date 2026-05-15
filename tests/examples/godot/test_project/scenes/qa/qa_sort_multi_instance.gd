@@ -44,18 +44,10 @@ func _on_test_start():
 	_prev_animation_settings["rendering/gaussian_splatting/animation/wind_strength"] = ProjectSettings.get_setting(
 		"rendering/gaussian_splatting/animation/wind_strength"
 	)
-	_prev_animation_settings["rendering/gaussian_splatting/effects/max_effectors"] = ProjectSettings.get_setting(
-		"rendering/gaussian_splatting/effects/max_effectors"
-	)
-	_prev_animation_settings["rendering/gaussian_splatting/effects/sphere_effector_enabled"] = ProjectSettings.get_setting(
-		"rendering/gaussian_splatting/effects/sphere_effector_enabled"
-	)
 	ProjectSettings.set_setting("rendering/gaussian_splatting/lighting/indirect_sh_scale", 1.0)
 	ProjectSettings.set_setting("rendering/gaussian_splatting/lighting/direct_light_scale", 0.0)
 	ProjectSettings.set_setting("rendering/gaussian_splatting/animation/wind_enabled", false)
 	ProjectSettings.set_setting("rendering/gaussian_splatting/animation/wind_strength", 0.0)
-	ProjectSettings.set_setting("rendering/gaussian_splatting/effects/max_effectors", 0)
-	ProjectSettings.set_setting("rendering/gaussian_splatting/effects/sphere_effector_enabled", false)
 
 	_near_renderer = get_gs_renderer("NearInstance")
 	_far_renderer = get_gs_renderer("FarInstance")

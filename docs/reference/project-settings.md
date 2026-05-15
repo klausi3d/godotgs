@@ -339,25 +339,6 @@ These settings are registered with `GLOBAL_DEF(...)` and grouped by key prefix.
   </tbody>
 </table>
 
-#### Cull
-
-<table>
-  <thead>
-    <tr>
-      <th>Setting</th>
-      <th>Default</th>
-      <th>Defined In</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><pre><code>rendering/gaussian_splatting/cull/overflow_autotune_enabled</code></pre></td>
-      <td><pre><code>false</code></pre></td>
-      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1033</code></pre></td>
-    </tr>
-  </tbody>
-</table>
-
 #### Lod
 
 <table>
@@ -705,59 +686,12 @@ These settings are registered with `GLOBAL_DEF(...)` and grouped by key prefix.
       <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:995</code></pre></td>
     </tr>
     <tr>
-      <td><pre><code>rendering/gaussian_splatting/effects/max_effectors</code></pre></td>
-      <td><pre><code>1</code></pre></td>
-      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1004</code></pre></td>
-    </tr>
-    <tr>
-      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_center_x</code></pre></td>
-      <td><pre><code>0.0f</code></pre></td>
-      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1006</code></pre></td>
-    </tr>
-    <tr>
-      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_center_y</code></pre></td>
-      <td><pre><code>0.0f</code></pre></td>
-      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1007</code></pre></td>
-    </tr>
-    <tr>
-      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_center_z</code></pre></td>
-      <td><pre><code>0.0f</code></pre></td>
-      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1008</code></pre></td>
-    </tr>
-    <tr>
-      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_enabled</code></pre></td>
-      <td><pre><code>false</code></pre></td>
-      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1005</code></pre></td>
-    </tr>
-    <tr>
-      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_falloff</code></pre></td>
-      <td><pre><code>2.0f</code></pre></td>
-      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1011</code></pre></td>
-    </tr>
-    <tr>
-      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_frequency</code></pre></td>
-      <td><pre><code>2.0f</code></pre></td>
-      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1012</code></pre></td>
-    </tr>
-    <tr>
-      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_radius</code></pre></td>
-      <td><pre><code>0.0f</code></pre></td>
-      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1009</code></pre></td>
-    </tr>
-    <tr>
-      <td><pre><code>rendering/gaussian_splatting/effects/sphere_effector_strength</code></pre></td>
-      <td><pre><code>0.0f</code></pre></td>
-      <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1010</code></pre></td>
-    </tr>
-    <tr>
       <td><pre><code>rendering/gaussian_splatting/rasterization/low_pass_filter</code></pre></td>
       <td><pre><code>0.35f</code></pre></td>
       <td><pre><code>modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1024</code></pre></td>
     </tr>
   </tbody>
 </table>
-
-For the `rendering/gaussian_splatting/effects/*` keys above, the current branch uses these settings as a compatibility fallback when no active `SphereEffector3D` nodes are present in the scene. That fallback still follows the legacy single-global-effector contract, so `rendering/gaussian_splatting/effects/max_effectors` is clamped to `0..1` even though scene-authored effectors can bind up to four entries per renderer pass.
 
 ### Runtime-only keys
 These keys are used by module code but are not registered with `GLOBAL_DEF(...)`.
@@ -802,7 +736,6 @@ These registered keys have no additional string-literal references beyond their 
 
 | Setting | Registered in |
 | --- | --- |
-| `rendering/gaussian_splatting/cull/overflow_autotune_enabled` | `modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1033` |
 | `rendering/gaussian_splatting/culling/opacity_aware_bounds` | `modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1028` |
 | `rendering/gaussian_splatting/culling/visibility_threshold` | `modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1029` |
 | `rendering/gaussian_splatting/debug/enable_mainloop_probes` | `modules/gaussian_splatting/core/gaussian_splat_manager.cpp:1039` |

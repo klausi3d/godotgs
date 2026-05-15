@@ -376,7 +376,6 @@ Current bounds:
 
 - Scene-authored effectors are bounded to `4` active bindings per renderer pass. If more match this node, the highest-priority deterministic four are bound and the rest remain logical matches only.
 - `SphereEffector3D` defaults to subtree scoping. Put the effector under the same gameplay parent as the splat nodes you want to affect, or use its explicit root/layer controls for broader setups.
-- ProjectSettings under `rendering/gaussian_splatting/effects/*` still act as a compatibility fallback when no scene-authored sphere effectors are active. That fallback remains single-global and still honors `rendering/gaussian_splatting/effects/max_effectors` clamped to `0..1`.
 - Invalid node-authored runtime inputs are sanitized where supported: opacity clamps to `0.0..1.0`, effect scales clamp to `>= 0.0`, and non-finite opacity or effect scale inputs fall back to stable defaults.
 - A matched opacity effector with `target_opacity = 1.0` is intentionally neutral. The node can still report a non-zero matched-effector count while `is_scene_effector_opacity_active()` remains `false`.
 

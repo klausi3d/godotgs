@@ -61,7 +61,6 @@ const PROJECT_SETTING_KEYS := [
 	"rendering/gaussian_splatting/lod/splat_skip_enabled",
 	"rendering/gaussian_splatting/lod/sh_reduction_enabled",
 	"rendering/gaussian_splatting/lod/opacity_fade_enabled",
-	"rendering/gaussian_splatting/cull/overflow_autotune_enabled",
 	"rendering/gaussian_splatting/rasterization/low_pass_filter",
 	"rendering/gaussian_splatting/streaming/vram_budget_mb",
 	"rendering/gaussian_splatting/streaming/max_chunk_loads_per_frame",
@@ -78,15 +77,6 @@ const PROJECT_SETTING_KEYS := [
 	"rendering/gaussian_splatting/animation/wind_direction_x",
 	"rendering/gaussian_splatting/animation/wind_direction_y",
 	"rendering/gaussian_splatting/animation/wind_direction_z",
-	"rendering/gaussian_splatting/effects/max_effectors",
-	"rendering/gaussian_splatting/effects/sphere_effector_enabled",
-	"rendering/gaussian_splatting/effects/sphere_effector_center_x",
-	"rendering/gaussian_splatting/effects/sphere_effector_center_y",
-	"rendering/gaussian_splatting/effects/sphere_effector_center_z",
-	"rendering/gaussian_splatting/effects/sphere_effector_radius",
-	"rendering/gaussian_splatting/effects/sphere_effector_strength",
-	"rendering/gaussian_splatting/effects/sphere_effector_falloff",
-	"rendering/gaussian_splatting/effects/sphere_effector_frequency",
 ]
 
 const RENDER_TELEMETRY_KEYS := [
@@ -947,12 +937,6 @@ func _animate_lane(delta: float) -> void:
 		spot_light.look_at(_focus_point + Vector3(0.0, 2.0, 0.0), Vector3.UP)
 
 func _apply_dynamic_lane_settings() -> void:
-	if bool(_lane_config.get("effects_enabled", false)):
-		var t := _elapsed_s * 0.9
-		_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_center_x", _focus_point.x + sin(t) * 12.0)
-		_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_center_y", _focus_point.y + 2.0)
-		_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_center_z", _focus_point.z + cos(t) * 12.0)
-
 	if str(_lane_config.get("camera_mode", "")) == "lod_pulse":
 		var bias := 1.0 + 0.25 * (0.5 + 0.5 * sin(_elapsed_s * 1.2))
 		_set_project_setting("rendering/gaussian_splatting/lod/bias", bias)
@@ -1535,15 +1519,6 @@ func _apply_lane_project_settings(config: Dictionary) -> void:
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_direction_x", 1.0)
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_direction_y", 0.0)
 	_set_project_setting("rendering/gaussian_splatting/animation/wind_direction_z", 0.2)
-	_set_project_setting("rendering/gaussian_splatting/effects/max_effectors", 1 if bool(config.get("effects_enabled", false)) else 0)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_enabled", bool(config.get("effects_enabled", false)))
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_radius", 12.0)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_strength", 1.0)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_falloff", 1.0)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_frequency", 0.75)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_center_x", 0.0)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_center_y", 2.0)
-	_set_project_setting("rendering/gaussian_splatting/effects/sphere_effector_center_z", 0.0)
 	if config.has("camera_near"):
 		camera.near = float(config.get("camera_near"))
 	if config.has("camera_far"):

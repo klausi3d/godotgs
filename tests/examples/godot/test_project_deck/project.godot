@@ -49,7 +49,6 @@ gaussian_splatting/streaming/auto_regulate_enabled=true
 
 ; --- Disable expensive features ---
 gaussian_splatting/animation/wind_enabled=false
-gaussian_splatting/effects/max_effectors=0
 
 ; --- Debug (benchmarking) ---
 gaussian_splatting/debug/enable_frame_logging=true
