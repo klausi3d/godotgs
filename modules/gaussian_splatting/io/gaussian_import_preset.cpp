@@ -18,7 +18,6 @@ static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
         mobile.quantize_colors = true;
         mobile.quantize_scales = true;
         mobile.quantize_rotations = true;
-        mobile.pack_opacity = true;
         mobile.thumbnail_style = 1; // density
         mobile.include_statistics = true;
         mobile.include_memory_estimate = true;
@@ -37,7 +36,6 @@ static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
         desktop.quantize_colors = false;
         desktop.quantize_scales = true;
         desktop.quantize_rotations = false;
-        desktop.pack_opacity = false;
         desktop.thumbnail_style = 0; // color
         desktop.include_statistics = true;
         desktop.include_memory_estimate = true;
@@ -56,7 +54,6 @@ static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
         high.quantize_colors = false;
         high.quantize_scales = false;
         high.quantize_rotations = false;
-        high.pack_opacity = false;
         high.thumbnail_style = 0;
         high.include_statistics = true;
         high.include_memory_estimate = true;
@@ -75,7 +72,6 @@ static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
         ultra.quantize_colors = false;
         ultra.quantize_scales = false;
         ultra.quantize_rotations = false;
-        ultra.pack_opacity = false;
         ultra.thumbnail_style = 2; // normals style
         ultra.include_statistics = true;
         ultra.include_memory_estimate = true;
@@ -94,7 +90,6 @@ static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
         development.quantize_colors = false;
         development.quantize_scales = false;
         development.quantize_rotations = false;
-        development.pack_opacity = false;
         development.thumbnail_style = 3; // heatmap
         development.include_statistics = true;
         development.include_memory_estimate = true;

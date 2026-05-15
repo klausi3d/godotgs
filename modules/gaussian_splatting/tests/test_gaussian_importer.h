@@ -536,7 +536,6 @@ TEST_CASE("[GaussianSplatting][Importer] PLY importer produces metadata and prev
     options.insert(StringName("compression/quantize_colors"), false);
     options.insert(StringName("compression/quantize_scales"), true);
     options.insert(StringName("compression/quantize_rotations"), false);
-    options.insert(StringName("compression/pack_opacity"), true); // force customization
     options.insert(StringName("preview/generate_thumbnail"), true);
     options.insert(StringName("preview/thumbnail_style"),
             int(GaussianThumbnailGenerator::THUMBNAIL_STYLE_HEATMAP));
@@ -565,12 +564,8 @@ TEST_CASE("[GaussianSplatting][Importer] PLY importer produces metadata and prev
 
     Dictionary metadata = metadata_variant;
     CHECK(metadata.has(StringName("options")));
-    Dictionary option_dict = metadata.get(StringName("options"), Dictionary());
-    CHECK(option_dict.has(StringName("compression/pack_opacity")));
-    CHECK(bool(option_dict[StringName("compression/pack_opacity")]) == true);
     CHECK(metadata.has(StringName("memory_estimate_mb")));
     CHECK((double)metadata[StringName("memory_estimate_mb")] > 0.0);
-    CHECK(metadata.get(StringName("quality_customized"), false));
     CHECK(String(metadata.get(StringName("thumbnail_style_name"), String())) ==
             GaussianThumbnailGenerator::style_to_display_name(GaussianThumbnailGenerator::THUMBNAIL_STYLE_HEATMAP));
 

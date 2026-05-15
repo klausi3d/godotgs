@@ -544,17 +544,12 @@ Ref<Texture2D> GaussianThumbnailGenerator::generate_thumbnail(const Ref<Gaussian
     return ImageTexture::create_from_image(image);
 }
 
-Dictionary GaussianThumbnailGenerator::compute_memory_statistics(uint32_t p_splat_count, uint32_t p_compression_flags,
-        bool p_pack_opacity) const {
+Dictionary GaussianThumbnailGenerator::compute_memory_statistics(uint32_t p_splat_count, uint32_t p_compression_flags) const {
     const double float_bytes = 4.0;
     double positions_bytes = double(p_splat_count) * 3.0 * ((p_compression_flags & GaussianSplatAsset::COMPRESSION_POSITIONS) ? 2.0 : float_bytes);
     double colors_bytes = double(p_splat_count) * ((p_compression_flags & GaussianSplatAsset::COMPRESSION_COLORS) ? 4.0 : 4.0 * float_bytes);
     double scales_bytes = double(p_splat_count) * 3.0 * ((p_compression_flags & GaussianSplatAsset::COMPRESSION_SCALES) ? 2.0 : float_bytes);
     double rotations_bytes = double(p_splat_count) * 4.0 * ((p_compression_flags & GaussianSplatAsset::COMPRESSION_ROTATIONS) ? 2.0 : float_bytes);
-
-    if (p_pack_opacity) {
-        colors_bytes -= double(p_splat_count) * (float_bytes - 1.0);
-    }
 
     double total_bytes = positions_bytes + colors_bytes + scales_bytes + rotations_bytes;
     double total_mb = total_bytes / (1024.0 * 1024.0);

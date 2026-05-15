@@ -15,7 +15,6 @@ struct GaussianImportPresetDefinition {
     bool quantize_colors = false;
     bool quantize_scales = false;
     bool quantize_rotations = false;
-    bool pack_opacity = false;
     int thumbnail_style = 0;
     bool include_statistics = true;
     bool include_memory_estimate = true;

@@ -46,7 +46,6 @@ metadata={
 &"normalize_opacity": true,
 &"optimize_for_gpu": true,
 &"options": {
-&"compression/pack_opacity": false,
 &"compression/quantize_colors": true,
 &"compression/quantize_positions": true,
 &"compression/quantize_rotations": true,
@@ -59,7 +58,6 @@ metadata={
 &"preview/thumbnail_style": 1,
 &"processing/normalize_opacity": true,
 &"processing/sort_by_opacity": false,
-&"quality/customized": false,
 &"quality/density_multiplier": 0.4,
 &"quality/enable_lod": true,
 &"quality/max_splats": 250000,
@@ -70,7 +68,6 @@ metadata={
 },
 &"original_splat_count": 30000,
 &"preset_display": "Mobile",
-&"quality_customized": false,
 &"quality_preset": "mobile",
 &"sort_by_opacity": false,
 &"source_file": "res://tests/fixtures/synthetic_flower_field.ply",

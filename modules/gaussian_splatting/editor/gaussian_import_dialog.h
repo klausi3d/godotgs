@@ -38,7 +38,7 @@ public:
      * @struct ImportConfiguration
      * @brief Import settings for Gaussian splat files.
      *
-     * ## Compression Options (quantize_* and pack_opacity)
+     * ## Compression Options (quantize_*)
      *
      * These options control **precision reduction** for GPU memory optimization,
      * not file-level compression. They reduce the bit depth of stored values:
@@ -55,9 +55,6 @@ public:
      *
      * - **quantize_rotations**: Reduces rotation quaternion precision from 32-bit
      *   float components to 16-bit. Generally imperceptible.
-     *
-     * - **pack_opacity**: Deprecated compatibility option. It is ignored by
-     *   current import/runtime paths and retained only for metadata migration.
      *
      * These settings affect GPU buffer storage, not the source file format.
      * SPZ files already use internal compression and may not benefit as much
@@ -76,7 +73,6 @@ public:
         bool quantize_colors = false;     ///< Reduce color precision (see above)
         bool quantize_scales = false;     ///< Reduce scale precision (see above)
         bool quantize_rotations = false;  ///< Reduce rotation precision (see above)
-        bool pack_opacity = false;        ///< Deprecated compatibility option (ignored)
         bool normalize_opacity = true;    ///< Normalize opacity range to [0,1]
         bool sort_by_opacity = false;     ///< Sort splats by opacity for blending
         bool generate_thumbnail = true;   ///< Generate preview thumbnail
@@ -107,7 +103,6 @@ private:
     CheckBox *compress_colors_checkbox = nullptr;
     CheckBox *compress_scales_checkbox = nullptr;
     CheckBox *compress_rotations_checkbox = nullptr;
-    CheckBox *pack_opacity_checkbox = nullptr;
     CheckBox *thumbnail_checkbox = nullptr;
     OptionButton *thumbnail_style_option = nullptr;
     SpinBox *thumbnail_size_spin = nullptr;

@@ -90,7 +90,6 @@ class GaussianImportSettingsData : public Object {
 		r_list->push_back(PropertyInfo(Variant::BOOL, "compression/quantize_colors"));
 		r_list->push_back(PropertyInfo(Variant::BOOL, "compression/quantize_scales"));
 		r_list->push_back(PropertyInfo(Variant::BOOL, "compression/quantize_rotations"));
-		r_list->push_back(PropertyInfo(Variant::BOOL, "compression/pack_opacity"));
 
 		// Metadata
 		r_list->push_back(PropertyInfo(Variant::NIL, "Metadata", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_CATEGORY));
@@ -266,7 +265,6 @@ void GaussianImportSettingsDialog::_on_inspector_property_edited(const String &p
 			settings_data->current[StringName("compression/quantize_colors")] = preset.quantize_colors;
 			settings_data->current[StringName("compression/quantize_scales")] = preset.quantize_scales;
 			settings_data->current[StringName("compression/quantize_rotations")] = preset.quantize_rotations;
-			settings_data->current[StringName("compression/pack_opacity")] = preset.pack_opacity;
 			settings_data->notify_property_list_changed();
 		}
 	}
@@ -452,7 +450,6 @@ void GaussianImportSettingsDialog::_populate_settings_data() {
 	settings_data->defaults[StringName("compression/quantize_colors")] = preset.quantize_colors;
 	settings_data->defaults[StringName("compression/quantize_scales")] = preset.quantize_scales;
 	settings_data->defaults[StringName("compression/quantize_rotations")] = preset.quantize_rotations;
-	settings_data->defaults[StringName("compression/pack_opacity")] = preset.pack_opacity;
 	settings_data->defaults[StringName("metadata/include_statistics")] = preset.include_statistics;
 	settings_data->defaults[StringName("metadata/include_memory_estimate")] = preset.include_memory_estimate;
 

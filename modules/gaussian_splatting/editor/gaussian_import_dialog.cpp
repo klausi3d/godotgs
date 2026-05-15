@@ -227,13 +227,6 @@ VBoxContainer *GaussianImportDialog::_create_compression_tab() {
     compress_rotations_checkbox->connect("toggled", callable_mp(this, &GaussianImportDialog::_on_settings_changed).unbind(1));
     tab->add_child(compress_rotations_checkbox);
 
-    pack_opacity_checkbox = memnew(CheckBox);
-    pack_opacity_checkbox->set_text(TTR("Pack Opacity (Deprecated)"));
-    pack_opacity_checkbox->set_disabled(true);
-    pack_opacity_checkbox->set_tooltip_text(TTR("Deprecated option retained for compatibility. It is ignored during import."));
-    pack_opacity_checkbox->connect("toggled", callable_mp(this, &GaussianImportDialog::_on_settings_changed).unbind(1));
-    tab->add_child(pack_opacity_checkbox);
-
     return tab;
 }
 
@@ -461,7 +454,6 @@ void GaussianImportDialog::_apply_preset_defaults(const GaussianImportPresetDefi
     current_config.quantize_colors = p_preset.quantize_colors;
     current_config.quantize_scales = p_preset.quantize_scales;
     current_config.quantize_rotations = p_preset.quantize_rotations;
-    current_config.pack_opacity = false;
     current_config.generate_thumbnail = true;
     current_config.thumbnail_style = p_preset.thumbnail_style;
     current_config.thumbnail_size = p_preset.default_thumbnail_size;
@@ -525,9 +517,6 @@ void GaussianImportDialog::_apply_configuration_to_ui() {
     if (compress_rotations_checkbox) {
         compress_rotations_checkbox->set_pressed(current_config.quantize_rotations);
     }
-    if (pack_opacity_checkbox) {
-        pack_opacity_checkbox->set_pressed(current_config.pack_opacity);
-    }
     if (thumbnail_checkbox) {
         thumbnail_checkbox->set_pressed(current_config.generate_thumbnail);
     }
@@ -588,8 +577,6 @@ void GaussianImportDialog::_configuration_from_dictionary(ImportConfiguration &r
             r_config.quantize_scales = bool(value);
         } else if (key == "compression/quantize_rotations") {
             r_config.quantize_rotations = bool(value);
-        } else if (key == "compression/pack_opacity") {
-            r_config.pack_opacity = bool(value);
         } else if (key == "preview/generate_thumbnail") {
             r_config.generate_thumbnail = bool(value);
         } else if (key == "preview/thumbnail_style") {
@@ -600,8 +587,6 @@ void GaussianImportDialog::_configuration_from_dictionary(ImportConfiguration &r
             r_config.include_statistics = bool(value);
         } else if (key == "metadata/include_memory_estimate") {
             r_config.include_memory_estimate = bool(value);
-        } else if (key == "quality/customized") {
-            r_config.custom_settings = bool(value);
         }
     }
 }
@@ -627,7 +612,6 @@ Dictionary GaussianImportDialog::_configuration_to_dictionary(const ImportConfig
     pairs.push_back({ StringName("preview/thumbnail_size"), p_config.thumbnail_size });
     pairs.push_back({ StringName("metadata/include_statistics"), p_config.include_statistics });
     pairs.push_back({ StringName("metadata/include_memory_estimate"), p_config.include_memory_estimate });
-    pairs.push_back({ StringName("quality/customized"), p_config.custom_settings });
     return _dictionary_from_options(pairs);
 }
 
@@ -681,7 +665,6 @@ void GaussianImportDialog::_update_configuration_from_ui() {
     if (compress_rotations_checkbox) {
         current_config.quantize_rotations = compress_rotations_checkbox->is_pressed();
     }
-    current_config.pack_opacity = false;
     if (thumbnail_checkbox) {
         current_config.generate_thumbnail = thumbnail_checkbox->is_pressed();
     }
@@ -817,7 +800,7 @@ void GaussianImportDialog::_update_memory_estimate() {
         compression_flags |= GaussianSplatAsset::COMPRESSION_ROTATIONS;
     }
 
-    Dictionary stats = thumbnail_generator->compute_memory_statistics(final_count, compression_flags, false);
+    Dictionary stats = thumbnail_generator->compute_memory_statistics(final_count, compression_flags);
     double total_mb = stats.get(StringName("total_mb"), 0.0);
     memory_label->set_text(vformat(TTR("Estimated Memory: %.2f MB"), total_mb));
 }

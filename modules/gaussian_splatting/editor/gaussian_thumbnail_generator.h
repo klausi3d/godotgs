@@ -58,7 +58,7 @@ private:
 public:
     Ref<Image> generate_thumbnail_image(const Ref<GaussianSplatAsset> &p_asset, int p_size, ThumbnailStyle p_style) const;
     Ref<Texture2D> generate_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size, ThumbnailStyle p_style) const;
-    Dictionary compute_memory_statistics(uint32_t p_splat_count, uint32_t p_compression_flags, bool p_pack_opacity) const;
+    Dictionary compute_memory_statistics(uint32_t p_splat_count, uint32_t p_compression_flags) const;
     int get_cache_entry_count() const;
     Dictionary get_cache_statistics() const;
     void clear_cache();

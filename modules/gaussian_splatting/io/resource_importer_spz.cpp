@@ -34,7 +34,6 @@ namespace {
 #define OPTION_QUANTIZE_COLORS SNAME("compression/quantize_colors")
 #define OPTION_QUANTIZE_SCALES SNAME("compression/quantize_scales")
 #define OPTION_QUANTIZE_ROTATIONS SNAME("compression/quantize_rotations")
-#define OPTION_PACK_OPACITY SNAME("compression/pack_opacity")
 #define OPTION_GENERATE_THUMBNAIL SNAME("preview/generate_thumbnail")
 #define OPTION_THUMBNAIL_STYLE SNAME("preview/thumbnail_style")
 #define OPTION_THUMBNAIL_SIZE SNAME("preview/thumbnail_size")
@@ -259,11 +258,6 @@ Error ResourceImporterSPZ::import(ResourceUID::ID p_source_id, const String &p_s
     bool quantize_colors = _get_bool_option(p_options, OPTION_QUANTIZE_COLORS, preset.quantize_colors);
     bool quantize_scales = _get_bool_option(p_options, OPTION_QUANTIZE_SCALES, preset.quantize_scales);
     bool quantize_rotations = _get_bool_option(p_options, OPTION_QUANTIZE_ROTATIONS, preset.quantize_rotations);
-    const Variant *legacy_pack_opacity_value = p_options.getptr(OPTION_PACK_OPACITY);
-    const bool legacy_pack_opacity_requested = legacy_pack_opacity_value && bool(*legacy_pack_opacity_value);
-    if (legacy_pack_opacity_requested) {
-        WARN_PRINT_ONCE("[ResourceImporterSPZ] compression/pack_opacity is deprecated and ignored.");
-    }
     bool generate_thumbnail = _get_bool_option(p_options, OPTION_GENERATE_THUMBNAIL, true);
     int thumbnail_style = _get_int_option(p_options, OPTION_THUMBNAIL_STYLE, preset.thumbnail_style);
     int thumbnail_size = _get_int_option(p_options, OPTION_THUMBNAIL_SIZE, preset.default_thumbnail_size);
@@ -431,7 +425,6 @@ Error ResourceImporterSPZ::import(ResourceUID::ID p_source_id, const String &p_s
     option_dict[OPTION_QUANTIZE_COLORS] = quantize_colors;
     option_dict[OPTION_QUANTIZE_SCALES] = quantize_scales;
     option_dict[OPTION_QUANTIZE_ROTATIONS] = quantize_rotations;
-    option_dict[OPTION_PACK_OPACITY] = legacy_pack_opacity_requested;
     option_dict[OPTION_GENERATE_THUMBNAIL] = generate_thumbnail;
     option_dict[OPTION_THUMBNAIL_STYLE] = thumbnail_style;
     option_dict[OPTION_THUMBNAIL_SIZE] = thumbnail_size;
@@ -476,7 +469,7 @@ Error ResourceImporterSPZ::import(ResourceUID::ID p_source_id, const String &p_s
     if (include_memory) {
         Ref<GaussianThumbnailGenerator> generator;
         generator.instantiate();
-        Dictionary memory_stats = generator->compute_memory_statistics(final_count, compression_flags, false);
+        Dictionary memory_stats = generator->compute_memory_statistics(final_count, compression_flags);
         import_metadata[StringName("memory_estimate_mb")] = memory_stats.get(StringName("total_mb"), 0.0);
         import_metadata[StringName("memory_breakdown_mb")] = memory_stats;
     }

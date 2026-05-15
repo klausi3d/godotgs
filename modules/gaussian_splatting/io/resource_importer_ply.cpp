@@ -40,13 +40,11 @@ namespace {
 #define OPTION_QUANTIZE_COLORS SNAME("compression/quantize_colors")
 #define OPTION_QUANTIZE_SCALES SNAME("compression/quantize_scales")
 #define OPTION_QUANTIZE_ROTATIONS SNAME("compression/quantize_rotations")
-#define OPTION_PACK_OPACITY SNAME("compression/pack_opacity")
 #define OPTION_GENERATE_THUMBNAIL SNAME("preview/generate_thumbnail")
 #define OPTION_THUMBNAIL_STYLE SNAME("preview/thumbnail_style")
 #define OPTION_THUMBNAIL_SIZE SNAME("preview/thumbnail_size")
 #define OPTION_INCLUDE_STATS SNAME("metadata/include_statistics")
 #define OPTION_INCLUDE_MEMORY SNAME("metadata/include_memory_estimate")
-#define OPTION_CUSTOMIZED SNAME("quality/customized")
 
 static bool _get_bool_option(const HashMap<StringName, Variant> &p_options, const StringName &p_name,
         const StringName &p_fallback, bool p_default) {
@@ -295,17 +293,11 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
     bool quantize_colors = _get_bool_option(p_options, OPTION_QUANTIZE_COLORS, StringName(), preset.quantize_colors);
     bool quantize_scales = _get_bool_option(p_options, OPTION_QUANTIZE_SCALES, StringName(), preset.quantize_scales);
     bool quantize_rotations = _get_bool_option(p_options, OPTION_QUANTIZE_ROTATIONS, StringName(), preset.quantize_rotations);
-    const Variant *legacy_pack_opacity_value = p_options.getptr(OPTION_PACK_OPACITY);
-    const bool legacy_pack_opacity_requested = legacy_pack_opacity_value && bool(*legacy_pack_opacity_value);
-    if (legacy_pack_opacity_requested) {
-        WARN_PRINT_ONCE("[ResourceImporterPLY] compression/pack_opacity is deprecated and ignored.");
-    }
     bool generate_thumbnail = _get_bool_option(p_options, OPTION_GENERATE_THUMBNAIL, StringName(), true);
     int thumbnail_style = _get_int_option(p_options, OPTION_THUMBNAIL_STYLE, StringName(), preset.thumbnail_style);
     int thumbnail_size = _get_int_option(p_options, OPTION_THUMBNAIL_SIZE, StringName(), preset.default_thumbnail_size);
     bool include_stats = _get_bool_option(p_options, OPTION_INCLUDE_STATS, StringName(), preset.include_statistics);
     bool include_memory = _get_bool_option(p_options, OPTION_INCLUDE_MEMORY, StringName(), preset.include_memory_estimate);
-    bool customized = _get_bool_option(p_options, OPTION_CUSTOMIZED, StringName(), false) || legacy_pack_opacity_requested;
 
     thumbnail_style = CLAMP(thumbnail_style, 0, 3);
     thumbnail_size = CLAMP(thumbnail_size, 32, 512);
@@ -465,13 +457,11 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
     option_dict[OPTION_QUANTIZE_COLORS] = quantize_colors;
     option_dict[OPTION_QUANTIZE_SCALES] = quantize_scales;
     option_dict[OPTION_QUANTIZE_ROTATIONS] = quantize_rotations;
-    option_dict[OPTION_PACK_OPACITY] = legacy_pack_opacity_requested;
     option_dict[OPTION_GENERATE_THUMBNAIL] = generate_thumbnail;
     option_dict[OPTION_THUMBNAIL_STYLE] = thumbnail_style;
     option_dict[OPTION_THUMBNAIL_SIZE] = thumbnail_size;
     option_dict[OPTION_INCLUDE_STATS] = include_stats;
     option_dict[OPTION_INCLUDE_MEMORY] = include_memory;
-    option_dict[OPTION_CUSTOMIZED] = customized;
 
     Dictionary import_metadata;
     import_metadata[StringName("source_file")] = p_source_file;
@@ -482,7 +472,6 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
     import_metadata[StringName("asset_type")] = asset_type;
     import_metadata[StringName("quality_preset")] = preset_name;
     import_metadata[StringName("preset_display")] = preset.display_name;
-    import_metadata[StringName("quality_customized")] = customized;
     import_metadata[StringName("enable_lod")] = enable_lod;
     import_metadata[StringName("optimize_for_gpu")] = optimize_for_gpu;
     import_metadata[StringName("density_multiplier")] = density_multiplier;
@@ -505,7 +494,7 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
     if (include_memory) {
         Ref<GaussianThumbnailGenerator> generator;
         generator.instantiate();
-        Dictionary memory_stats = generator->compute_memory_statistics(final_count, compression_flags, false);
+        Dictionary memory_stats = generator->compute_memory_statistics(final_count, compression_flags);
         import_metadata[StringName("memory_estimate_mb")] = memory_stats.get(StringName("total_mb"), 0.0);
         import_metadata[StringName("memory_breakdown_mb")] = memory_stats;
     }

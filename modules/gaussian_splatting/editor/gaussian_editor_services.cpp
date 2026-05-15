@@ -239,11 +239,6 @@ String format_asset_metadata_summary(const Ref<GaussianSplatAsset> &p_asset, con
 
     String preset_id = dict_get_string(metadata, StringName("quality_preset"), p_asset->get_import_quality_preset());
     String preset_display = dict_get_string(metadata, StringName("preset_display"), preset_id.capitalize());
-    bool customized = dict_get_bool(metadata, StringName("quality_customized"), false) ||
-            dict_get_bool(options, StringName("quality/customized"), false);
-    if (customized && !preset_display.ends_with(TTR(" (modified)"))) {
-        preset_display += TTR(" (modified)");
-    }
     text += vformat(TTR("Quality: %s (%s)"), preset_display, preset_id) + "\n";
 
     bool enable_lod = dict_get_bool(metadata, StringName("enable_lod"),
@@ -265,10 +260,6 @@ String format_asset_metadata_summary(const Ref<GaussianSplatAsset> &p_asset, con
     }
 
     text += vformat(TTR("Compression: %s"), _format_compression_flags(p_asset->get_compression_flags())) + "\n";
-
-    bool pack_opacity = dict_get_bool(metadata, StringName("pack_opacity"),
-            dict_get_bool(options, StringName("compression/pack_opacity"), false));
-    text += vformat(TTR("Pack Opacity: %s"), _bool_to_text(pack_opacity)) + "\n";
 
     bool normalize_opacity = dict_get_bool(metadata, StringName("normalize_opacity"),
             dict_get_bool(options, StringName("processing/normalize_opacity"), true));
