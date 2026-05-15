@@ -100,14 +100,14 @@ public:
         uint32_t culling_min_gaussians = 32;
         float tiny_splat_screen_radius_px = 0.3f; // drop subpixel splats (minor axis < 0.3px) to prevent tile overflow (#797)
         float tiny_splat_screen_radius_baseline = 0.3f;
-        // Overflow auto-tuner: DISABLED by default (January 2025)
-        // The auto-tuner's feedback loop caused exponential splat decay bug:
-        // - importance_threshold kept increasing even without true overflow
-        // - This caused more splats to be culled each frame
-        // - Result: 84K -> 36K -> 12K -> 538 -> 0 splats over ~60 frames
-        // Re-enable at your own risk via cull/overflow_autotune_enabled property.
-        // Root cause (stale overflow stats) fixed in ISSUE-033: RasterOverflowStats now
-        // carries a frame_number, and OverflowAutoTuner discards stats > 2 frames old.
+        // Overflow auto-tuner: opt-in, disabled by default.
+        // Enable per-renderer via GaussianSplatRenderer::set_overflow_autotune_enabled
+        // (exposed as the `cull/overflow_autotune_enabled` property). The tuner observes
+        // raster overflow stats and rebalances cull thresholds. The earlier feedback bug
+        // (stale overflow stats driving exponential splat decay) was fixed by ISSUE-033:
+        // RasterOverflowStats now carries a frame_number and OverflowAutoTuner discards
+        // stats > 2 frames old (see interfaces/overflow_auto_tuner.cpp:87-112). Default
+        // off because the rebalancing policy is still under tuning, not because it's broken.
         bool overflow_autotune_enabled = false;
         float overflow_autotune_trigger_ratio = 0.0025f; // 0.25% overflow triggers tightening
         float overflow_autotune_importance_step = 0.001f;

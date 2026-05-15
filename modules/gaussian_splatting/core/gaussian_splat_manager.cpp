@@ -1057,10 +1057,6 @@ void GaussianSplatManager::initialize_module() {
 	// after per-node/global opacity multipliers are applied.
 	GLOBAL_DEF("rendering/gaussian_splatting/culling/alpha_clip", 0.0f);
 
-	// EXPERIMENTAL: overflow auto-tuner (disabled by default due to splat decay bug).
-	// Enable only for testing until the feedback loop is fixed.
-	GLOBAL_DEF("rendering/gaussian_splatting/cull/overflow_autotune_enabled", false);
-
     // LOD + debug overlay settings now register in their owning config managers.
 	GLOBAL_DEF("rendering/gaussian_splatting/debug/enable_frame_logging", false);
 	GLOBAL_DEF("rendering/gaussian_splatting/debug/enable_frame_logging_verbose", false);
