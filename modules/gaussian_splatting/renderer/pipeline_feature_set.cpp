@@ -6,14 +6,11 @@
 #include "../logger/gs_logger.h"
 
 const String PipelineFeatureSet::SECTION_PATH = "rendering/gaussian_splatting/pipeline/";
-const String PipelineFeatureSet::ENABLE_TWO_STAGE_SORT_PATH = SECTION_PATH + "enable_two_stage_sort";
 const String PipelineFeatureSet::ENABLE_PACKED_STAGE_DATA_PATH = SECTION_PATH + "enable_packed_stage_data";
 const String PipelineFeatureSet::ENABLE_TIGHTER_BOUNDS_PATH = SECTION_PATH + "enable_tighter_bounds";
 const String PipelineFeatureSet::ENABLE_FAST_RASTER_PATH = SECTION_PATH + "enable_fast_raster";
 const String PipelineFeatureSet::ENABLE_SH_AMORTIZATION_PATH = SECTION_PATH + "enable_sh_amortization";
 const String PipelineFeatureSet::SH_AMORTIZATION_DIVISOR_PATH = SECTION_PATH + "sh_amortization_divisor";
-const String PipelineFeatureSet::DISABLE_SH_AMORTIZATION_VISIBILITY_PATH = SECTION_PATH + "sh_amortization_disable_on_visibility_change";
-const String PipelineFeatureSet::SH_AMORTIZATION_VISIBILITY_THRESHOLD_PATH = SECTION_PATH + "sh_amortization_visibility_threshold";
 const String PipelineFeatureSet::ENABLE_ALL_EXPERIMENTAL_PATH = SECTION_PATH + "enable_all_experimental";
 
 PipelineFeatureSet g_pipeline_feature_set;
@@ -30,7 +27,6 @@ static void _describe_project_setting_source(ProjectSettings *p_ps, const String
 }
 
 static void _register_pipeline_project_settings() {
-    GLOBAL_DEF(PipelineFeatureSet::ENABLE_TWO_STAGE_SORT_PATH, g_pipeline_feature_set.enable_two_stage_sort);
     GLOBAL_DEF(
             PropertyInfo(Variant::BOOL, PipelineFeatureSet::ENABLE_PACKED_STAGE_DATA_PATH,
                     PROPERTY_HINT_NONE, String(),
@@ -56,10 +52,6 @@ static void _register_pipeline_project_settings() {
                     PROPERTY_HINT_NONE, String(),
                     PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_STORAGE),
             g_pipeline_feature_set.sh_amortization_divisor);
-    GLOBAL_DEF(PipelineFeatureSet::DISABLE_SH_AMORTIZATION_VISIBILITY_PATH,
-            g_pipeline_feature_set.disable_sh_amortization_on_visibility_change);
-    GLOBAL_DEF(PipelineFeatureSet::SH_AMORTIZATION_VISIBILITY_THRESHOLD_PATH,
-            g_pipeline_feature_set.sh_amortization_visibility_threshold);
     GLOBAL_DEF(
             PropertyInfo(Variant::BOOL, PipelineFeatureSet::ENABLE_ALL_EXPERIMENTAL_PATH,
                     PROPERTY_HINT_NONE, String(),
@@ -88,23 +80,16 @@ void PipelineFeatureSet::load_from_project_settings() {
         return;
     }
 
-    enable_two_stage_sort = ps->get_setting(ENABLE_TWO_STAGE_SORT_PATH, false);
     enable_packed_stage_data = ps->get_setting(ENABLE_PACKED_STAGE_DATA_PATH, false);
     enable_tighter_bounds = ps->get_setting(ENABLE_TIGHTER_BOUNDS_PATH, false);
     enable_fast_raster = ps->get_setting(ENABLE_FAST_RASTER_PATH, false);
     enable_sh_amortization = ps->get_setting(ENABLE_SH_AMORTIZATION_PATH, false);
     sh_amortization_divisor = ps->get_setting(SH_AMORTIZATION_DIVISOR_PATH, sh_amortization_divisor);
-    disable_sh_amortization_on_visibility_change = ps->get_setting(DISABLE_SH_AMORTIZATION_VISIBILITY_PATH,
-            disable_sh_amortization_on_visibility_change);
-    sh_amortization_visibility_threshold = ps->get_setting(SH_AMORTIZATION_VISIBILITY_THRESHOLD_PATH,
-            sh_amortization_visibility_threshold);
     enable_all_experimental = ps->get_setting(ENABLE_ALL_EXPERIMENTAL_PATH, false);
 
     const String tier_preset = ps->get_setting("rendering/gaussian_splatting/quality/tier_preset", "custom");
     const bool apply_tier_toggles = ps->get_setting("rendering/gaussian_splatting/quality/tier_apply_pipeline_toggles", true);
 
-    String two_stage_sort_source;
-    String two_stage_sort_source_label;
     String packed_stage_source;
     String packed_stage_source_label;
     String tighter_bounds_source;
@@ -116,7 +101,6 @@ void PipelineFeatureSet::load_from_project_settings() {
     String sh_amortization_divisor_source;
     String sh_amortization_divisor_source_label;
 
-    _describe_project_setting_source(ps, ENABLE_TWO_STAGE_SORT_PATH, two_stage_sort_source, two_stage_sort_source_label);
     _describe_project_setting_source(ps, ENABLE_PACKED_STAGE_DATA_PATH, packed_stage_source, packed_stage_source_label);
     _describe_project_setting_source(ps, ENABLE_TIGHTER_BOUNDS_PATH, tighter_bounds_source, tighter_bounds_source_label);
     _describe_project_setting_source(ps, ENABLE_FAST_RASTER_PATH, fast_raster_source, fast_raster_source_label);
@@ -146,8 +130,6 @@ void PipelineFeatureSet::load_from_project_settings() {
     }
 
     Dictionary snapshot;
-    GaussianEffectiveConfig::set_entry(snapshot, StringName("pipeline_two_stage_sort"),
-            enable_two_stage_sort, two_stage_sort_source, two_stage_sort_source_label);
     GaussianEffectiveConfig::set_entry(snapshot, StringName("pipeline_packed_stage_data"),
             enable_packed_stage_data, packed_stage_source, packed_stage_source_label);
     GaussianEffectiveConfig::set_entry(snapshot, StringName("pipeline_tighter_bounds"),
@@ -162,7 +144,7 @@ void PipelineFeatureSet::load_from_project_settings() {
     effective_provenance_snapshot = Dictionary();
     effective_provenance_snapshot_valid = false;
 
-    if (enable_all_experimental || enable_two_stage_sort || enable_packed_stage_data ||
+    if (enable_all_experimental || enable_packed_stage_data ||
             enable_tighter_bounds || enable_fast_raster || enable_sh_amortization) {
         print_config_summary();
     }
@@ -174,14 +156,11 @@ void PipelineFeatureSet::save_to_project_settings() const {
         return;
     }
 
-    ps->set_setting(ENABLE_TWO_STAGE_SORT_PATH, enable_two_stage_sort);
     ps->set_setting(ENABLE_PACKED_STAGE_DATA_PATH, enable_packed_stage_data);
     ps->set_setting(ENABLE_TIGHTER_BOUNDS_PATH, enable_tighter_bounds);
     ps->set_setting(ENABLE_FAST_RASTER_PATH, enable_fast_raster);
     ps->set_setting(ENABLE_SH_AMORTIZATION_PATH, enable_sh_amortization);
     ps->set_setting(SH_AMORTIZATION_DIVISOR_PATH, sh_amortization_divisor);
-    ps->set_setting(DISABLE_SH_AMORTIZATION_VISIBILITY_PATH, disable_sh_amortization_on_visibility_change);
-    ps->set_setting(SH_AMORTIZATION_VISIBILITY_THRESHOLD_PATH, sh_amortization_visibility_threshold);
     ps->set_setting(ENABLE_ALL_EXPERIMENTAL_PATH, enable_all_experimental);
 
     ps->save();
@@ -190,14 +169,11 @@ void PipelineFeatureSet::save_to_project_settings() const {
 }
 
 void PipelineFeatureSet::reset_to_defaults() {
-    enable_two_stage_sort = false;
     enable_packed_stage_data = false;
     enable_tighter_bounds = false;
     enable_fast_raster = false;
     enable_sh_amortization = false;
     sh_amortization_divisor = 10;
-    disable_sh_amortization_on_visibility_change = true;
-    sh_amortization_visibility_threshold = 0.25f;
     enable_all_experimental = false;
 
     GS_LOG_INFO_DEFAULT("[Pipeline Feature Set] Reset to default configuration");
@@ -223,19 +199,6 @@ String PipelineFeatureSet::get_validation_errors(uint32_t p_total_gaussians) con
         errors.push_back("SH amortization divisor must be > 1.");
     }
 
-    if (sh_amortization_requested && disable_sh_amortization_on_visibility_change) {
-        if (!Math::is_finite(sh_amortization_visibility_threshold)) {
-            errors.push_back("SH amortization visibility threshold must be finite.");
-        } else {
-            if (sh_amortization_visibility_threshold < 0.0f) {
-                errors.push_back("SH amortization visibility threshold must be >= 0.");
-            }
-            if (sh_amortization_visibility_threshold > 1.0f) {
-                errors.push_back("SH amortization visibility threshold must be <= 1.");
-            }
-        }
-    }
-
     return String("\n").join(errors);
 }
 
@@ -247,13 +210,10 @@ PipelineFeatureSet PipelineFeatureSet::get_effective(RenderingDevice *p_device,
     Dictionary provenance_snapshot = loaded_provenance_snapshot.duplicate(true);
 
     if (enable_all_experimental) {
-        effective.enable_two_stage_sort = true;
         effective.enable_packed_stage_data = true;
         effective.enable_tighter_bounds = true;
         effective.enable_fast_raster = true;
         effective.enable_sh_amortization = true;
-        GaussianEffectiveConfig::set_entry(provenance_snapshot, StringName("pipeline_two_stage_sort"),
-                true, "project_override", "project override");
         GaussianEffectiveConfig::set_entry(provenance_snapshot, StringName("pipeline_packed_stage_data"),
                 true, "project_override", "project override");
         GaussianEffectiveConfig::set_entry(provenance_snapshot, StringName("pipeline_tighter_bounds"),
@@ -269,13 +229,7 @@ PipelineFeatureSet PipelineFeatureSet::get_effective(RenderingDevice *p_device,
             *r_warnings += p_msg + "\n";
         }
     };
-
-    if (effective.enable_two_stage_sort && !p_global_sort_enabled) {
-        warn("Two-stage sort requires global composite sort; disabling feature.");
-        effective.enable_two_stage_sort = false;
-        GaussianEffectiveConfig::set_entry(provenance_snapshot, StringName("pipeline_two_stage_sort"),
-                false, "runtime_requirement", "disabled by runtime requirement");
-    }
+    (void)p_global_sort_enabled;
 
     if (!p_compute_raster_enabled) {
         if (effective.enable_fast_raster) {
@@ -307,19 +261,6 @@ PipelineFeatureSet PipelineFeatureSet::get_effective(RenderingDevice *p_device,
             provenance_snapshot[StringName("pipeline_sh_amortization_divisor")] = divisor_entry;
         }
     }
-    if (effective.enable_sh_amortization && effective.disable_sh_amortization_on_visibility_change) {
-        if (!Math::is_finite(effective.sh_amortization_visibility_threshold)) {
-            warn("SH amortization visibility threshold must be finite; resetting to 0.25.");
-            effective.sh_amortization_visibility_threshold = 0.25f;
-        } else if (effective.sh_amortization_visibility_threshold < 0.0f) {
-            warn("SH amortization visibility threshold < 0; clamping to 0.");
-            effective.sh_amortization_visibility_threshold = 0.0f;
-        } else if (effective.sh_amortization_visibility_threshold > 1.0f) {
-            warn("SH amortization visibility threshold > 1; clamping to 1.");
-            effective.sh_amortization_visibility_threshold = 1.0f;
-        }
-    }
-
     if (!p_device) {
         warn("No RenderingDevice available to validate pipeline feature capabilities.");
         effective_provenance_snapshot = provenance_snapshot;
@@ -356,16 +297,11 @@ Dictionary PipelineFeatureSet::get_effective_config_snapshot() const {
 void PipelineFeatureSet::print_config_summary() const {
     GS_LOG_INFO_DEFAULT("[Pipeline Feature Set] ========== Configuration Summary ==========");
     GS_LOG_INFO_DEFAULT(vformat("[Pipeline Feature Set] enable_all_experimental: %s", enable_all_experimental ? "enabled" : "disabled"));
-    GS_LOG_INFO_DEFAULT(vformat("[Pipeline Feature Set] two_stage_sort: %s", enable_two_stage_sort ? "enabled" : "disabled"));
     GS_LOG_INFO_DEFAULT(vformat("[Pipeline Feature Set] packed_stage_data: %s", enable_packed_stage_data ? "enabled" : "disabled"));
     GS_LOG_INFO_DEFAULT(vformat("[Pipeline Feature Set] tighter_bounds: %s", enable_tighter_bounds ? "enabled" : "disabled"));
     GS_LOG_INFO_DEFAULT(vformat("[Pipeline Feature Set] fast_raster: %s", enable_fast_raster ? "enabled" : "disabled"));
     GS_LOG_INFO_DEFAULT(vformat("[Pipeline Feature Set] sh_amortization: %s", enable_sh_amortization ? "enabled" : "disabled"));
     GS_LOG_INFO_DEFAULT(vformat("[Pipeline Feature Set] sh_amortization_divisor: %d", sh_amortization_divisor));
-    GS_LOG_INFO_DEFAULT(vformat("[Pipeline Feature Set] sh_amortization_visibility_threshold: %.3f",
-            sh_amortization_visibility_threshold));
-    GS_LOG_INFO_DEFAULT(vformat("[Pipeline Feature Set] sh_amortization_disable_on_visibility_change: %s",
-            disable_sh_amortization_on_visibility_change ? "enabled" : "disabled"));
     GS_LOG_INFO_DEFAULT("[Pipeline Feature Set] ================================================");
 }
 

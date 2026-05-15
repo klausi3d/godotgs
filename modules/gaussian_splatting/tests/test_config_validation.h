@@ -539,35 +539,6 @@ TEST_CASE("[GaussianSplatting][Config] PipelineFeatureSet validates SH amortizat
 		CHECK(config.get_validation_errors().contains("SH amortization divisor must be > 1."));
 	}
 
-	SUBCASE("Visibility threshold must be finite") {
-		config.enable_sh_amortization = true;
-		config.sh_amortization_visibility_threshold = std::numeric_limits<float>::infinity();
-		CHECK_FALSE(config.validate());
-		CHECK(config.get_validation_errors().contains("SH amortization visibility threshold must be finite."));
-	}
-
-	SUBCASE("Visibility threshold must stay within normalized range") {
-		config.enable_sh_amortization = true;
-		config.sh_amortization_visibility_threshold = 1.5f;
-		CHECK_FALSE(config.validate());
-		CHECK(config.get_validation_errors().contains("SH amortization visibility threshold must be <= 1."));
-	}
-
-	SUBCASE("Disabled visibility invalidation ignores the threshold value") {
-		config.enable_sh_amortization = true;
-		config.disable_sh_amortization_on_visibility_change = false;
-		config.sh_amortization_divisor = 2;
-		config.sh_amortization_visibility_threshold = 1.5f;
-		CHECK(config.validate());
-	}
-
-	SUBCASE("Normalized threshold is accepted") {
-		config.enable_sh_amortization = true;
-		config.sh_amortization_divisor = 4;
-		config.sh_amortization_visibility_threshold = 0.5f;
-		CHECK(config.validate());
-	}
-
 	SUBCASE("Experimental bundle inherits SH amortization validation") {
 		config.enable_all_experimental = true;
 		config.sh_amortization_divisor = 1;

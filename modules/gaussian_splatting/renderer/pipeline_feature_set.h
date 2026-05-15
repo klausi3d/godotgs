@@ -13,25 +13,19 @@ struct PipelineFeatureSet {
     // Packed payloads store the projected global index in 16 bits.
     static constexpr uint32_t PACKED_STAGE_MAX_TOTAL_SPLATS = 65535u;
 
-    bool enable_two_stage_sort = false;
     bool enable_packed_stage_data = false;
     bool enable_tighter_bounds = false;
     bool enable_fast_raster = false;
     bool enable_sh_amortization = false;
     bool enable_all_experimental = false;
     int sh_amortization_divisor = 10;
-    bool disable_sh_amortization_on_visibility_change = true;
-    float sh_amortization_visibility_threshold = 0.25f;
 
     static const String SECTION_PATH;
-    static const String ENABLE_TWO_STAGE_SORT_PATH;
     static const String ENABLE_PACKED_STAGE_DATA_PATH;
     static const String ENABLE_TIGHTER_BOUNDS_PATH;
     static const String ENABLE_FAST_RASTER_PATH;
     static const String ENABLE_SH_AMORTIZATION_PATH;
     static const String SH_AMORTIZATION_DIVISOR_PATH;
-    static const String DISABLE_SH_AMORTIZATION_VISIBILITY_PATH;
-    static const String SH_AMORTIZATION_VISIBILITY_THRESHOLD_PATH;
     static const String ENABLE_ALL_EXPERIMENTAL_PATH;
 
     void load_from_project_settings();
