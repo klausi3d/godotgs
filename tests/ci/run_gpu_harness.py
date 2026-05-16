@@ -143,7 +143,11 @@ def _run_batch(
     timeout_sec: int,
     extra_args: list[str],
 ) -> BatchResult:
-    args: list[str] = [str(godot_binary), "--gs-gpu-test", "--no-header"]
+    # Note: doctest's banner-suppression flag is --no-intro / --dt-no-intro;
+    # --no-header is silently ignored. Leaving the banner in stdout for now —
+    # the supervisor's _parse_summary regex matches the summary lines regardless,
+    # and the banner is useful when triaging a failing run.
+    args: list[str] = [str(godot_binary), "--gs-gpu-test"]
     for f in filters:
         args.append(f"--test-case={f}")
     args.extend(extra_args)
@@ -331,7 +335,13 @@ def main() -> int:
     if not report_path.is_absolute():
         report_path = (ROOT / report_path).resolve()
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    # Atomic write: serialize to a sibling temp file then os.replace into the
+    # final path. Prevents downstream readers (e.g. the workflow's PowerShell
+    # ConvertFrom-Json summary step) from blowing up on a half-written report
+    # if the supervisor is killed mid-write or another invocation overlaps.
+    tmp_path = report_path.with_suffix(report_path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    os.replace(tmp_path, report_path)
     print(f"[run_gpu_harness] wrote {report_path}", flush=True)
 
     fail_count = totals["test_cases_failed"] + totals["assertions_failed"]

@@ -225,6 +225,9 @@ jobs:
             const fallbackLabel = "ci/gpu-runner-unavailable";
             let runHarness = true;
             let reason = "default-run";
+            // Set true when the merge_group fallback paths override the
+            // normal path-filter result (truncated file list or API error).
+            let decisionForced = false;
 
             if (context.eventName === "schedule" || context.eventName === "push" || context.eventName === "workflow_dispatch") {
               reason = `event:${context.eventName}`;
@@ -252,21 +255,46 @@ jobs:
                 });
                 changedPaths = files.map((f) => String(f.filename || ""));
               } else {
+                // merge_group: compareCommitsWithBasehead returns a single
+                // comparison object whose `files` array is capped at per_page
+                // (max 100). For merge queues that batch >100 changed files,
+                // this can miss renderer/shader changes and cause the path
+                // filter to skip the harness when it shouldn't. Soft-fallback:
+                // on any error or when the response is truncated, default to
+                // runHarness=true (safer to run than skip).
                 const base = context.payload.merge_group.base_sha;
                 const head = context.payload.merge_group.head_sha;
-                const compare = await github.rest.repos.compareCommitsWithBasehead({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  basehead: `${base}...${head}`,
-                  per_page: 100,
-                });
-                changedPaths = (compare.data.files || []).map((f) => String(f.filename || ""));
+                try {
+                  const compare = await github.rest.repos.compareCommitsWithBasehead({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    basehead: `${base}...${head}`,
+                    per_page: 100,
+                  });
+                  changedPaths = (compare.data.files || []).map((f) => String(f.filename || ""));
+                  if (compare.data.files && compare.data.files.length === 100) {
+                    core.warning(
+                      "merge_group compare returned exactly 100 files (per_page max). " +
+                      "Path filter may be incomplete; forcing runHarness=true to stay safe."
+                    );
+                    decisionForced = true;
+                    runHarness = true;
+                    reason = "merge-group-file-list-truncated";
+                  }
+                } catch (e) {
+                  core.warning(`merge_group compare API failed: ${e.message}; forcing runHarness=true`);
+                  decisionForced = true;
+                  runHarness = true;
+                  reason = "merge-group-compare-error";
+                }
               }
 
-              runHarness = changedPaths.some((p) =>
-                renderPrefixes.some((prefix) => p.startsWith(prefix))
-              );
-              reason = runHarness ? "render-path-change" : "no-render-changes";
+              if (!decisionForced) {
+                runHarness = changedPaths.some((p) =>
+                  renderPrefixes.some((prefix) => p.startsWith(prefix))
+                );
+                reason = runHarness ? "render-path-change" : "no-render-changes";
+              }
 
               let labels = [];
               if (context.eventName === "pull_request") {
@@ -398,8 +426,21 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
-      - name: Open recapture PR
+      - name: Check recapture PAT availability
+        id: recapture_pat
         if: success() && steps.path_filter.outputs.run_harness == 'true' && steps.baseline_mode.outputs.mode == 'update'
+        env:
+          PAT_PROBE: ${{ secrets.BASELINE_UPDATE_PAT }}
+        run: |
+          if ([string]::IsNullOrEmpty($env:PAT_PROBE)) {
+            "available=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Host "::warning::BASELINE_UPDATE_PAT secret is not provisioned. Update-mode run will capture baselines as artifacts only; no recapture PR will be opened. Provision the secret in repo settings to enable the auto-PR flow."
+          } else {
+            "available=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+
+      - name: Open recapture PR
+        if: success() && steps.path_filter.outputs.run_harness == 'true' && steps.baseline_mode.outputs.mode == 'update' && steps.recapture_pat.outputs.available == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.BASELINE_UPDATE_PAT }}
@@ -435,13 +476,27 @@ jobs:
           "- Mode: ``${{ steps.baseline_mode.outputs.mode }}`` (${{ steps.baseline_mode.outputs.reason }})" `
             | Out-File -Append -FilePath $summaryFile -Encoding utf8
           if (Test-Path "tests/visual_baselines/.provenance.json") {
-            $p = Get-Content "tests/visual_baselines/.provenance.json" -Raw | ConvertFrom-Json
-            "- GPU: $($p.gpu)" | Out-File -Append -FilePath $summaryFile -Encoding utf8
-            "- Driver: $($p.driver)" | Out-File -Append -FilePath $summaryFile -Encoding utf8
-            "- Runner: $($p.runner_id)" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            $p = $null
+            try {
+              $p = Get-Content "tests/visual_baselines/.provenance.json" -Raw | ConvertFrom-Json -ErrorAction Stop
+            } catch {
+              Write-Host "::warning::Failed to parse provenance.json: $($_.Exception.Message)"
+            }
+            if ($p) {
+              "- GPU: $($p.gpu)" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+              "- Driver: $($p.driver)" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+              "- Runner: $($p.runner_id)" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            }
           }
+          $r = $null
           if (Test-Path "tests/ci/gpu_harness_report.json") {
-            $r = Get-Content "tests/ci/gpu_harness_report.json" -Raw | ConvertFrom-Json
+            try {
+              $r = Get-Content "tests/ci/gpu_harness_report.json" -Raw | ConvertFrom-Json -ErrorAction Stop
+            } catch {
+              Write-Host "::warning::Failed to parse gpu_harness_report.json: $($_.Exception.Message)"
+            }
+          }
+          if ($r) {
             "" | Out-File -Append -FilePath $summaryFile -Encoding utf8
             "| Metric | Value |" | Out-File -Append -FilePath $summaryFile -Encoding utf8
             "|---|---|" | Out-File -Append -FilePath $summaryFile -Encoding utf8
@@ -469,7 +524,7 @@ jobs:
             }
           } else {
             "" | Out-File -Append -FilePath $summaryFile -Encoding utf8
-            "*No gpu_harness_report.json was produced — the harness may have crashed before writing the report.*" `
+            "*No gpu_harness_report.json could be parsed — the harness may have crashed before writing the report, or the JSON was malformed.*" `
               | Out-File -Append -FilePath $summaryFile -Encoding utf8
           }
 
