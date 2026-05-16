@@ -249,8 +249,8 @@ inline ComparisonResult compare_images(const Ref<Image> &p_a, const Ref<Image> &
 	}
 	result.match = (mismatched == 0);
 	result.diff_summary = vformat(
-			"mismatched=%u/%llu max_lsb=%d mean_lsb=%.3f psnr=%.2f dB",
-			mismatched, (unsigned long long)result.total_pixels,
+			"mismatched=%d/%d max_lsb=%d mean_lsb=%.3f psnr=%.2f dB",
+			int(mismatched), int(result.total_pixels),
 			max_lsb, result.mean_per_channel_diff_lsb, result.psnr_db);
 	return result;
 }

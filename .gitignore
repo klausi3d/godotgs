@@ -516,3 +516,7 @@ outputs/**/*.import
 outputs/**/*.translation
 *.bak
 *.backup
+
+# Visual regression diff outputs (committed baselines are explicit *.png; never commit drive-by .actual.png).
+tests/visual_baselines/**/*.actual.png
+tests/visual_baselines/.provenance.json
