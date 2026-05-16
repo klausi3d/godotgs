@@ -854,7 +854,7 @@ TEST_CASE("[GaussianSplatting][Thumbnail] Generator produces preview images for 
         CHECK_MESSAGE(image.is_valid(), "Thumbnail generator should return a valid image for each style.");
     }
 
-    Dictionary memory = generator->compute_memory_statistics(splat_count, GaussianSplatAsset::COMPRESSION_NONE);
+    Dictionary memory = generator->compute_memory_statistics(splat_count, GaussianSplatAsset::COMPRESSION_NONE, false);
     CHECK(float(memory.get(StringName("total_mb"), 0.0)) > 0.0f);
 }
 
