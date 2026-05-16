@@ -144,8 +144,13 @@ public:
     uint32_t get_blit_variant_count() const { return viewport_blit_variants.size(); }
     uint32_t get_viewport_blit_scratch_count() const { return viewport_blit_scratch.size(); }
 
-    // Debug seam published by _copy_final_output_compute so tests can verify the
-    // scratch-copy path was actually exercised (vs. fallback or the no-composite path).
+    // Debug seam published by _copy_final_output_compute. Test-only contract: the
+    // hazard-repro test reads this to verify the scratch-copy path was exercised
+    // (vs. graphics fallback or the no-composite path). Do not consume from
+    // production callers — the field set and "valid" semantics may change as the
+    // composite path evolves. Kept always-compiled so the struct definition and
+    // assignment sites stay readable without TESTS_ENABLED preprocessor sprawl;
+    // the marginal cost in shipping builds is one 8-byte struct per OutputCompositor.
     struct LastCompositeStats {
         bool valid = false;
         bool composite_with_destination = false;

@@ -108,6 +108,13 @@ inline ComparisonResult compare_images(const Ref<Image> &p_a, const Ref<Image> &
 
 	const int w = p_a->get_width();
 	const int h = p_a->get_height();
+	if (w <= 0 || h <= 0) {
+		// Zero-dimension images would divide by zero in the MSE/mean computations
+		// below and produce a misleading "match=true / psnr=99" result for empty
+		// inputs. Treat as a non-match with a clear summary so callers can branch.
+		result.diff_summary = vformat("Empty image: %dx%d", w, h);
+		return result;
+	}
 	result.total_pixels = uint64_t(w) * uint64_t(h);
 
 	Ref<Image> a8;

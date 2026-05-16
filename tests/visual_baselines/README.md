@@ -89,6 +89,3 @@ unavailable" rather than executing the visual assertions.
 - Helper: `modules/gaussian_splatting/tests/visual_compare.h`
 - First test: `modules/gaussian_splatting/tests/test_output_compositor_composite_hazard.h`
 - CI integration: `.github/workflows/baseline_qa.yml` (baseline_mode input)
-- Aspirational scaffolding: `modules/gaussian_splatting/tests/visual_validation.h`
-  has a much larger unimplemented API; treat as a planning artifact, not as
-  production infrastructure. The focused helper above is what is wired up.
