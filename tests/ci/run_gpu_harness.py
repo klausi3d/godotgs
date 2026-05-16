@@ -38,6 +38,12 @@ REPORT_SCHEMA_VERSION = 1
 # catalogued so future [RequiresGPU] migrations land in a known batch
 # without re-shaping the supervisor; they currently report "0 tests
 # matched" which the supervisor treats as success (advisory) per batch.
+#
+# Intentionally no catch-all "*[RequiresGPU]*" batch: the wildcard would
+# match the 26 [SceneTree]+[RequiresGPU] tests deferred to v2 of the
+# harness (Issue #329), which crash with an access violation because
+# SceneTree isn't initialized. Tests that aren't in a named batch stay
+# invisible until they're added explicitly.
 BATCHES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("CompositorHazard", ("*HazardRepro*",)),
     ("OutputCompositor", ("*OutputCompositor*][RequiresGPU]*",)),
@@ -46,7 +52,6 @@ BATCHES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("GpuSorting", ("*Sort*][RequiresGPU]*",)),
     ("MemoryStream", ("*MemoryStream*][RequiresGPU]*",)),
     ("Streaming", ("*Streaming*][RequiresGPU]*",)),
-    ("UntaggedRequiresGPU", ("*GaussianSplatting*][RequiresGPU]*",)),
 )
 
 # Doctest summary lines we parse:

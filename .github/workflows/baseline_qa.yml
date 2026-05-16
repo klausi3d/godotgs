@@ -182,6 +182,304 @@ jobs:
           "Test results file not found" | Out-File -FilePath $summaryFile -Encoding utf8 -Append
         }
 
+  gpu-harness:
+    name: GPU Harness + Visual Gate (Windows Self-Hosted)
+    runs-on: [self-hosted, Windows, X64, godotgs, gpu]
+    # Runs after gpu-tests so the two GPU jobs serialize on the shared runner
+    # and split the scons cache cleanly. Independent of gpu-tests' result —
+    # a failing GDScript-based gpu-test should not gate the doctest-based
+    # visual gate.
+    needs: gpu-tests
+    if: ${{ !cancelled() }}
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+
+    defaults:
+      run:
+        working-directory: repo
+        shell: pwsh
+
+    steps:
+      - name: Configure Git safe.directory
+        working-directory: ${{ github.workspace }}
+        run: git config --global --add safe.directory '*'
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: repo
+          fetch-depth: 0
+          submodules: recursive
+          set-safe-directory: false
+          # Update-mode runs push baseline changes back through a PR; everything
+          # else stays on the workflow's default token.
+          token: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.baseline_mode == 'update')) && secrets.BASELINE_UPDATE_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Decide whether GPU harness should run
+        id: path_filter
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fallbackLabel = "ci/gpu-runner-unavailable";
+            let runHarness = true;
+            let reason = "default-run";
+
+            if (context.eventName === "schedule" || context.eventName === "push" || context.eventName === "workflow_dispatch") {
+              reason = `event:${context.eventName}`;
+            } else if (context.eventName === "pull_request" || context.eventName === "merge_group") {
+              const renderPrefixes = [
+                "modules/gaussian_splatting/renderer/",
+                "modules/gaussian_splatting/shaders/",
+                "modules/gaussian_splatting/interfaces/",
+                "modules/gaussian_splatting/tests/",
+                "tests/visual_baselines/",
+                "modules/gaussian_splatting/SCsub",
+                "modules/gaussian_splatting/register_types.cpp",
+                "main/main.cpp",
+                "tests/ci/run_gpu_harness.py",
+                ".github/workflows/baseline_qa.yml",
+              ];
+
+              let changedPaths = [];
+              if (context.eventName === "pull_request") {
+                const files = await github.paginate(github.rest.pulls.listFiles, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.payload.pull_request.number,
+                  per_page: 100,
+                });
+                changedPaths = files.map((f) => String(f.filename || ""));
+              } else {
+                const base = context.payload.merge_group.base_sha;
+                const head = context.payload.merge_group.head_sha;
+                const compare = await github.rest.repos.compareCommitsWithBasehead({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  basehead: `${base}...${head}`,
+                  per_page: 100,
+                });
+                changedPaths = (compare.data.files || []).map((f) => String(f.filename || ""));
+              }
+
+              runHarness = changedPaths.some((p) =>
+                renderPrefixes.some((prefix) => p.startsWith(prefix))
+              );
+              reason = runHarness ? "render-path-change" : "no-render-changes";
+
+              let labels = [];
+              if (context.eventName === "pull_request") {
+                labels = (context.payload.pull_request.labels || []).map((l) => l.name);
+              }
+              if (runHarness && labels.includes(fallbackLabel)) {
+                runHarness = false;
+                reason = `fallback-label:${fallbackLabel}`;
+              }
+            }
+
+            core.info(`run_harness=${runHarness} reason=${reason}`);
+            core.setOutput("run_harness", runHarness ? "true" : "false");
+            core.setOutput("reason", reason);
+
+      - name: Report decision
+        run: |
+          Write-Host "run_harness=${{ steps.path_filter.outputs.run_harness }}"
+          Write-Host "reason=${{ steps.path_filter.outputs.reason }}"
+
+      - name: Verify Python
+        if: steps.path_filter.outputs.run_harness == 'true'
+        run: python --version
+
+      - name: Set up MSVC
+        if: steps.path_filter.outputs.run_harness == 'true'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install SCons + Python deps
+        if: steps.path_filter.outputs.run_harness == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install scons numpy pillow
+
+      - name: Build module-enabled Godot editor (tests=yes)
+        if: steps.path_filter.outputs.run_harness == 'true'
+        run: |
+          python -m SCons platform=windows target=editor dev_build=yes tests=yes `
+            module_gaussian_splatting_enabled=yes `
+            cache_path=C:/godotgs-scons-cache cache_limit=50 -j12
+
+      - name: Resolve Godot binary
+        if: steps.path_filter.outputs.run_harness == 'true'
+        id: godot_binary
+        run: |
+          $candidates = @(
+            "bin\godot.windows.editor.dev.x86_64.console.exe",
+            "bin\godot.windows.editor.dev.x86_64.exe",
+            "bin\godot.windows.editor.x86_64.console.exe",
+            "bin\godot.windows.editor.x86_64.exe"
+          )
+          $resolved = $null
+          foreach ($candidate in $candidates) {
+            if (Test-Path -LiteralPath $candidate) {
+              $resolved = (Resolve-Path -LiteralPath $candidate).Path
+              break
+            }
+          }
+          if (-not $resolved) { throw "Could not find built Godot binary in bin\." }
+          Write-Host "Resolved Godot binary: $resolved"
+          "GODOT_BINARY=$resolved" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Resolve baseline mode
+        if: steps.path_filter.outputs.run_harness == 'true'
+        id: baseline_mode
+        run: |
+          $mode = "compare"; $reason = "default-compare"
+          if ("${{ github.event_name }}" -eq "schedule") {
+            $mode = "update"; $reason = "nightly-schedule-update"
+          } elseif ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.baseline_mode }}" -eq "update") {
+            $mode = "update"; $reason = "manual-update"
+          }
+          "mode=$mode" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "reason=$reason" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Record runner provenance
+        if: steps.path_filter.outputs.run_harness == 'true'
+        run: |
+          $gpu = Get-CimInstance Win32_VideoController | Select-Object -First 1
+          $os_info = Get-CimInstance Win32_OperatingSystem
+          $head_sha = (git -C . rev-parse HEAD).Trim()
+          $info = [ordered]@{
+            gpu = if ($gpu) { $gpu.Name } else { "unknown" }
+            driver = if ($gpu) { $gpu.DriverVersion } else { "unknown" }
+            runner_id = $env:RUNNER_NAME
+            runner_os_build = $os_info.BuildNumber
+            timestamp_utc = (Get-Date).ToUniversalTime().ToString("o")
+            baseline_mode = "${{ steps.baseline_mode.outputs.mode }}"
+            baseline_mode_reason = "${{ steps.baseline_mode.outputs.reason }}"
+            harness_commit = $head_sha
+            github_run_id = $env:GITHUB_RUN_ID
+            github_event = $env:GITHUB_EVENT_NAME
+          }
+          $info | ConvertTo-Json | Out-File -FilePath "tests/visual_baselines/.provenance.json" -Encoding utf8
+          Write-Host "Provenance:"
+          Get-Content "tests/visual_baselines/.provenance.json"
+
+      - name: Run GPU harness
+        if: steps.path_filter.outputs.run_harness == 'true'
+        env:
+          GS_CI_GPU_REQUIRED: "1"
+          GS_VISUAL_BASELINE_MODE: ${{ steps.baseline_mode.outputs.mode }}
+        run: |
+          python tests/ci/run_gpu_harness.py `
+            --godot $env:GODOT_BINARY `
+            --report tests/ci/gpu_harness_report.json
+
+      - name: Upload visual diff artifacts (compare mode)
+        if: always() && steps.path_filter.outputs.run_harness == 'true' && steps.baseline_mode.outputs.mode == 'compare'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-harness-visual-diffs
+          path: |
+            repo/tests/visual_baselines/**/*.actual.png
+            repo/tests/visual_baselines/.provenance.json
+            repo/tests/ci/gpu_harness_report.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload regenerated baselines (update mode)
+        if: always() && steps.path_filter.outputs.run_harness == 'true' && steps.baseline_mode.outputs.mode == 'update'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-harness-recaptured-baselines
+          path: |
+            repo/tests/visual_baselines/**/*.png
+            repo/tests/visual_baselines/.provenance.json
+            repo/tests/ci/gpu_harness_report.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Open recapture PR
+        if: success() && steps.path_filter.outputs.run_harness == 'true' && steps.baseline_mode.outputs.mode == 'update'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.BASELINE_UPDATE_PAT }}
+          path: repo
+          branch: ci/baseline-recapture/${{ github.run_id }}
+          base: master
+          commit-message: |
+            visual_baselines: recapture from run ${{ github.run_id }}
+
+            Trigger: ${{ github.event_name }} (${{ steps.baseline_mode.outputs.reason }})
+            Provenance is in the gpu-harness-recaptured-baselines artifact
+            and (after merge) in tests/visual_baselines/.provenance.json.
+          title: "visual_baselines: scheduled recapture (${{ github.run_id }})"
+          body: |
+            Automated baseline recapture from `baseline_qa.yml` run ${{ github.run_id }}.
+            Provenance JSON is attached to the `gpu-harness-recaptured-baselines`
+            workflow artifact for this run.
+
+            **Reviewer checklist:**
+            - [ ] Diffs are within sub-LSB rendering tolerances (no functional regression).
+            - [ ] Driver/GPU change documented per `tests/visual_baselines/README.md`.
+            - [ ] No new PNGs exceed the 256x256 fixture-size guideline unless justified.
+          add-paths: |
+            tests/visual_baselines/*.png
+          delete-branch: true
+
+      - name: Append GPU harness summary
+        if: always() && steps.path_filter.outputs.run_harness == 'true'
+        run: |
+          $summaryFile = $env:GITHUB_STEP_SUMMARY
+          "## GPU Harness + Visual Gate" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+          "" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+          "- Mode: ``${{ steps.baseline_mode.outputs.mode }}`` (${{ steps.baseline_mode.outputs.reason }})" `
+            | Out-File -Append -FilePath $summaryFile -Encoding utf8
+          if (Test-Path "tests/visual_baselines/.provenance.json") {
+            $p = Get-Content "tests/visual_baselines/.provenance.json" -Raw | ConvertFrom-Json
+            "- GPU: $($p.gpu)" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "- Driver: $($p.driver)" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "- Runner: $($p.runner_id)" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+          }
+          if (Test-Path "tests/ci/gpu_harness_report.json") {
+            $r = Get-Content "tests/ci/gpu_harness_report.json" -Raw | ConvertFrom-Json
+            "" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "| Metric | Value |" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "|---|---|" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "| Test cases | $($r.totals.test_cases_passed)/$($r.totals.test_cases_total) |" `
+              | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "| Assertions | $($r.totals.assertions_passed)/$($r.totals.assertions_total) |" `
+              | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "| Wall seconds | $($r.wall_seconds) |" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "| Supervisor exit | $($r.supervisor_exit) |" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "### Per-batch breakdown" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "| Batch | RC | Cases | Asserts | Status | Wall (s) |" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "|---|---|---|---|---|---|" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            foreach ($b in $r.batches) {
+              "| $($b.name) | $($b.rc) | $($b.test_cases.passed)/$($b.test_cases.total) | $($b.assertions.passed)/$($b.assertions.total) | $($b.status) | $($b.wall_seconds) |" `
+                | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            }
+            if ($r.totals.test_cases_failed -gt 0 -or $r.totals.assertions_failed -gt 0) {
+              $actuals = Get-ChildItem "tests/visual_baselines" -Filter "*.actual.png" -ErrorAction SilentlyContinue
+              if ($actuals) {
+                "" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+                "**Visual-diff captures: $($actuals.Count)** (see ``gpu-harness-visual-diffs`` artifact)" `
+                  | Out-File -Append -FilePath $summaryFile -Encoding utf8
+              }
+            }
+          } else {
+            "" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "*No gpu_harness_report.json was produced — the harness may have crashed before writing the report.*" `
+              | Out-File -Append -FilePath $summaryFile -Encoding utf8
+          }
+
+      - name: Report skipped run
+        if: steps.path_filter.outputs.run_harness != 'true'
+        run: |
+          $summaryFile = $env:GITHUB_STEP_SUMMARY
+          "## GPU Harness + Visual Gate" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+          "Skipped: ${{ steps.path_filter.outputs.reason }}" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+
   cpu-tests:
     name: CPU-Only QA Tests (Linux)
     # Skip the slow Linux build on PRs — Windows self-hosted is the fast gate.
