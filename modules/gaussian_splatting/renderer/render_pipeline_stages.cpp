@@ -930,10 +930,13 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 	};
 	GaussianSplatRenderer::CullStageOutput cull_output;
 	const GaussianSplatRenderer::StageResult cull_result = execute_cull_stage(cull_input, cull_output);
-	if (cull_result.is_error || cull_result.status == GaussianSplatRenderer::StageResult::StageStatus::FAILED) {
-		// Cull failed: stage already recorded its own metrics/route_uid. Mark sort
-		// SKIPPED so the failure cascade is visible instead of a stale SUCCESS,
-		// then render empty. Snapshot stays at the zero-safe defaults set above.
+	if (cull_result.is_error || !cull_result.is_success()) {
+		// Cull did not produce usable output (FAILED, or SKIPPED with default-zeroed
+		// CullStageOutput). is_success() returns true for SUCCESS and FALLBACK, so
+		// this short-circuit catches the cases where the sort stage would receive
+		// poison input. Stage already recorded its own metrics/route_uid; mark sort
+		// SKIPPED so the cascade is visible instead of a stale SUCCESS, then render
+		// empty. Snapshot stays at the zero-safe defaults set above.
 		if (frame_context.metrics) {
 			frame_context.metrics->sort = GaussianSplatRenderer::SortStageOutput();
 			frame_context.metrics->sort_result = _make_stage_result(
@@ -956,7 +959,11 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 	};
 	GaussianSplatRenderer::SortStageOutput sort_output;
 	const GaussianSplatRenderer::StageResult sort_result = execute_sort_stage(sort_input, sort_output);
-	if (sort_result.is_error || sort_result.status == GaussianSplatRenderer::StageResult::StageStatus::FAILED) {
+	if (sort_result.is_error || !sort_result.is_success()) {
+		// Same is_success() guard as the cull short-circuit above: route FAILED and
+		// SKIPPED to the empty-render path so downstream consumers don't read poison
+		// from a default-zeroed SortStageOutput. Cull domain is preserved since cull
+		// completed successfully.
 		frame_context.snapshot.cull_visible_domain = cull_output.visible_domain;
 		update_counts_from_snapshot();
 		render_sorted_splats_with_context(frame_context);
