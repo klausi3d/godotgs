@@ -142,6 +142,24 @@ public:
     // Statistics
     uint32_t get_cached_framebuffer_count() const { return output_cache.cached_framebuffers.size(); }
     uint32_t get_blit_variant_count() const { return viewport_blit_variants.size(); }
+    uint32_t get_viewport_blit_scratch_count() const { return viewport_blit_scratch.size(); }
+
+    // Debug seam published by _copy_final_output_compute. Test-only contract: the
+    // hazard-repro test reads this to verify the scratch-copy path was exercised
+    // (vs. graphics fallback or the no-composite path). Do not consume from
+    // production callers — the field set and "valid" semantics may change as the
+    // composite path evolves. Kept always-compiled so the struct definition and
+    // assignment sites stay readable without TESTS_ENABLED preprocessor sprawl;
+    // the marginal cost in shipping builds is one 8-byte struct per OutputCompositor.
+    struct LastCompositeStats {
+        bool valid = false;
+        bool composite_with_destination = false;
+        bool scratch_used = false;
+        bool scratch_reused = false;
+        bool fallback_due_to_missing_copy_from = false;
+        uint32_t binding_count = 0;
+    };
+    LastCompositeStats get_last_composite_stats() const { return last_composite_stats; }
 
 protected:
     static void _bind_methods();
@@ -166,6 +184,27 @@ private:
         RenderingDevice *owner_device = nullptr;
     };
 
+    // Scratch texture used to break the R/W hazard in the composite path: destination
+    // is copied here before the compute dispatch, the shader reads from this via a
+    // sampler, and only writes the destination (which is writeonly inside the shader).
+    // `format` is the canonical storage format used to allocate the scratch (SRGB
+    // inputs get swapped to UNORM equivalent to avoid sampler double-decode); the
+    // pool reuses entries across destinations that share the canonical format.
+    // `last_used_id` is bumped on every hit/insert and consumed by the LRU eviction.
+    struct ViewportBlitScratch {
+        RID texture;
+        Size2i extent;
+        RD::DataFormat format = RD::DATA_FORMAT_MAX;
+        RenderingDevice *owner_device = nullptr;
+        uint64_t last_used_id = 0;
+    };
+    // Per-(device, canonical-format) entry cap. Viewport resizes in the editor
+    // create one scratch entry per intermediate extent; without an LRU the pool
+    // accumulates indefinitely until shutdown. 4 is a balance between bounded
+    // memory (~32 MiB at 1080p RGBA8) and absorbing dock-resize trajectories.
+    static constexpr uint32_t VIEWPORT_BLIT_SCRATCH_MAX_PER_KIND = 4;
+    uint64_t viewport_blit_scratch_next_id = 0;
+
     // State
     bool initialized = false;
     RenderingDevice *rd = nullptr;
@@ -180,8 +219,10 @@ private:
     // Viewport blit resources
     HashMap<uint64_t, ViewportBlitVariant> viewport_blit_variants;
     HashMap<uint64_t, ViewportBlitSampler> viewport_blit_samplers;
+    HashMap<uint64_t, ViewportBlitScratch> viewport_blit_scratch;
     ViewportBlitShaderRD *viewport_blit_shader_source = nullptr;
     bool viewport_blit_shader_source_initialized = false;
+    LastCompositeStats last_composite_stats;
 
     // Final render state
     RID final_render_texture;
@@ -197,9 +238,14 @@ private:
     // Viewport blit helpers
     bool _ensure_viewport_blit_pipeline(RenderingDevice *p_device, RD::DataFormat p_format, RID &r_shader, RID &r_pipeline);
     RID _ensure_viewport_blit_sampler(RenderingDevice *p_device);
+    // Returns (or reuses) a scratch texture matching p_format/p_extent. r_reused tells
+    // the caller whether this was a pool hit (true) or a fresh allocation (false).
+    RID _ensure_viewport_blit_scratch(RenderingDevice *p_device, const RD::TextureFormat &p_format,
+            const Size2i &p_extent, bool *r_reused);
     static bool _determine_viewport_blit_format(RD::DataFormat p_format, ViewportBlitFormat &r_format);
     static const char *_viewport_blit_define(ViewportBlitFormat p_format);
     static uint64_t _viewport_blit_key(RenderingDevice *p_device, ViewportBlitFormat p_format);
+    static uint64_t _viewport_blit_scratch_key(RenderingDevice *p_device, RD::DataFormat p_format, const Size2i &p_extent);
 
     // Compute copy helper
     bool _copy_final_output_compute(RenderingDevice *p_device, RID p_source, RID p_destination,

@@ -8,16 +8,25 @@ layout(set = 0, binding = 0) uniform sampler2D u_source_texture;
 layout(set = 0, binding = 2) uniform sampler2D u_source_depth;
 layout(set = 0, binding = 3) uniform sampler2D u_destination_depth;
 
+// Sampled copy of the destination, captured to a separate texture before this
+// dispatch by OutputCompositor::_copy_final_output_compute. Reading the live
+// destination via imageLoad inside the same compute dispatch that writes it
+// reintroduces the cross-invocation R/W hazard responsible for incident #256
+// (workgroup-grid black blocks on AMD/RDNA drivers). The destination image
+// below is now writeonly; all reads of the prior destination go through this
+// scratch sampler.
+layout(set = 0, binding = 4) uniform sampler2D u_destination_scratch;
+
 #ifndef VIEWPORT_BLIT_FORMAT
 #define VIEWPORT_BLIT_FORMAT 0
 #endif
 
 #if VIEWPORT_BLIT_FORMAT == 0
-layout(set = 0, binding = 1, rgba8) uniform image2D u_destination_image;
+layout(set = 0, binding = 1, rgba8) uniform writeonly image2D u_destination_image;
 #elif VIEWPORT_BLIT_FORMAT == 1
-layout(set = 0, binding = 1, rgba16f) uniform image2D u_destination_image;
+layout(set = 0, binding = 1, rgba16f) uniform writeonly image2D u_destination_image;
 #elif VIEWPORT_BLIT_FORMAT == 2
-layout(set = 0, binding = 1, rgba32f) uniform image2D u_destination_image;
+layout(set = 0, binding = 1, rgba32f) uniform writeonly image2D u_destination_image;
 #else
 #error "Unsupported VIEWPORT_BLIT_FORMAT value"
 #endif
@@ -138,14 +147,15 @@ void main() {
     vec4 source_color = texture(u_source_texture, source_uv);
     vec4 destination_color = vec4(0.0);
     if (params.composite_with_destination != 0) {
-        destination_color = imageLoad(u_destination_image, destination_coord);
+        destination_color = texelFetch(u_destination_scratch, destination_coord, 0);
     }
 
     vec4 source_linear = source_color;
     vec4 destination_linear = destination_color;
 
     if (params.composite_with_destination != 0 && source_linear.a <= 0.0) {
-        imageStore(u_destination_image, destination_coord, destination_color);
+        // Destination already contains the original pixel; with the writeonly
+        // image binding we leave it untouched by returning without imageStore.
         return;
     }
 
@@ -160,8 +170,6 @@ void main() {
         // Treat destination as fully opaque (alpha=1). Godot's post-tonemap
         // framebuffer does not carry meaningful alpha — sky, meshes, and
         // background are all opaque content with undefined alpha channel.
-        // Using destination_linear.a here caused black blocks wherever the
-        // framebuffer alpha was 0/undefined.
         vec3 dst_rgb = destination_linear.rgb;
 
         if (params.source_is_premultiplied == 0) {

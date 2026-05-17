@@ -312,6 +312,31 @@ bool OutputCompositor::_is_srgb_format(RD::DataFormat p_format) {
     return false;
 }
 
+// Map an SRGB data format to its UNORM equivalent so that sampling does not
+// auto-decode SRGB → linear. Used by the scratch-copy path to avoid double-
+// decoding the destination (sampler decode + shader srgb_to_linear). For
+// non-SRGB inputs the format is returned unchanged.
+static RD::DataFormat _canonical_storage_format(RD::DataFormat p_format) {
+    switch (p_format) {
+        case RD::DATA_FORMAT_R8_SRGB:
+            return RD::DATA_FORMAT_R8_UNORM;
+        case RD::DATA_FORMAT_R8G8_SRGB:
+            return RD::DATA_FORMAT_R8G8_UNORM;
+        case RD::DATA_FORMAT_R8G8B8_SRGB:
+            return RD::DATA_FORMAT_R8G8B8_UNORM;
+        case RD::DATA_FORMAT_B8G8R8_SRGB:
+            return RD::DATA_FORMAT_B8G8R8_UNORM;
+        case RD::DATA_FORMAT_R8G8B8A8_SRGB:
+            return RD::DATA_FORMAT_R8G8B8A8_UNORM;
+        case RD::DATA_FORMAT_B8G8R8A8_SRGB:
+            return RD::DATA_FORMAT_B8G8R8A8_UNORM;
+        case RD::DATA_FORMAT_A8B8G8R8_SRGB_PACK32:
+            return RD::DATA_FORMAT_A8B8G8R8_UNORM_PACK32;
+        default:
+            return p_format;
+    }
+}
+
 String OutputCompositor::_attachment_usage_label(bool p_is_depth) {
     return p_is_depth ? String("DEPTH_STENCIL_ATTACHMENT") : String("COLOR_ATTACHMENT");
 }
@@ -356,6 +381,13 @@ uint64_t OutputCompositor::_viewport_blit_key(RenderingDevice *p_device, Viewpor
     uint64_t format_key = static_cast<uint64_t>(p_format) & 0xFFFFull;
     uint64_t device_key = reinterpret_cast<uint64_t>(p_device);
     return (device_key << 16) ^ format_key;
+}
+
+uint64_t OutputCompositor::_viewport_blit_scratch_key(RenderingDevice *p_device, RD::DataFormat p_format, const Size2i &p_extent) {
+    uint64_t seed = hash64_murmur3_64(reinterpret_cast<uint64_t>(p_device), HASH_MURMUR3_SEED);
+    seed = hash64_murmur3_64(static_cast<uint64_t>(p_format), seed);
+    seed = hash64_murmur3_64(static_cast<uint64_t>(uint32_t(p_extent.x)) | (static_cast<uint64_t>(uint32_t(p_extent.y)) << 32), seed);
+    return seed;
 }
 
 uint64_t OutputCompositor::_compute_framebuffer_validation_key(RenderingDevice *p_device, const Vector<RID> &p_attachments) const {
@@ -408,6 +440,110 @@ RID OutputCompositor::_ensure_viewport_blit_sampler(RenderingDevice *p_device) {
     sampler_entry.owner_device = p_device;
     viewport_blit_samplers.insert(device_key, sampler_entry);
     return sampler;
+}
+
+RID OutputCompositor::_ensure_viewport_blit_scratch(RenderingDevice *p_device, const RD::TextureFormat &p_format,
+        const Size2i &p_extent, bool *r_reused) {
+    if (r_reused) {
+        *r_reused = false;
+    }
+    if (!p_device || p_extent.x <= 0 || p_extent.y <= 0) {
+        return RID();
+    }
+
+    // Canonical scratch format: swap SRGB inputs to their UNORM equivalent so
+    // that sampling via sampler2D does not auto-decode SRGB → linear (the
+    // composite shader applies srgb_to_linear itself; without the swap the
+    // destination would be gamma-decoded twice). For UNORM/HDR inputs this is
+    // identity. Pool key uses the canonical format so SRGB and UNORM
+    // destinations of the same dimensions share scratch.
+    const RD::DataFormat canonical_format = _canonical_storage_format(p_format.format);
+    const uint64_t key = _viewport_blit_scratch_key(p_device, canonical_format, p_extent);
+    if (ViewportBlitScratch *existing = viewport_blit_scratch.getptr(key)) {
+        if (existing->texture.is_valid() && existing->owner_device == p_device &&
+                existing->extent == p_extent && existing->format == canonical_format &&
+                p_device->texture_is_valid(existing->texture)) {
+            existing->last_used_id = ++viewport_blit_scratch_next_id;
+            if (r_reused) {
+                *r_reused = true;
+            }
+            return existing->texture;
+        }
+        RenderingDevice *owner_device = existing->owner_device ? existing->owner_device : p_device;
+        if (existing->texture.is_valid() && owner_device) {
+            owner_device->free(existing->texture);
+        }
+        _forget_resource(existing->texture);
+        viewport_blit_scratch.erase(key);
+    }
+
+    // LRU eviction: cap the number of scratch entries per (device, canonical
+    // format). Editor viewport resizes accumulate one entry per intermediate
+    // extent; without this bound the pool grows until shutdown.
+    {
+        uint32_t same_kind_count = 0;
+        uint64_t oldest_key = 0;
+        uint64_t oldest_id = UINT64_MAX;
+        for (const KeyValue<uint64_t, ViewportBlitScratch> &kv : viewport_blit_scratch) {
+            if (kv.value.owner_device == p_device && kv.value.format == canonical_format) {
+                same_kind_count++;
+                if (kv.value.last_used_id < oldest_id) {
+                    oldest_id = kv.value.last_used_id;
+                    oldest_key = kv.key;
+                }
+            }
+        }
+        if (same_kind_count >= VIEWPORT_BLIT_SCRATCH_MAX_PER_KIND) {
+            ViewportBlitScratch *victim = viewport_blit_scratch.getptr(oldest_key);
+            if (victim) {
+                RenderingDevice *owner_device = victim->owner_device ? victim->owner_device : p_device;
+                if (victim->texture.is_valid() && owner_device &&
+                        owner_device->texture_is_valid(victim->texture)) {
+                    owner_device->free(victim->texture);
+                }
+                _forget_resource(victim->texture);
+                viewport_blit_scratch.erase(oldest_key);
+            }
+        }
+    }
+
+    RD::TextureFormat scratch_format = p_format;
+    scratch_format.format = canonical_format;
+    scratch_format.width = p_extent.x;
+    scratch_format.height = p_extent.y;
+    scratch_format.depth = 1;
+    scratch_format.array_layers = 1;
+    scratch_format.mipmaps = 1;
+    scratch_format.texture_type = RD::TEXTURE_TYPE_2D;
+    scratch_format.samples = RD::TEXTURE_SAMPLES_1;
+    scratch_format.usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_CAN_COPY_TO_BIT;
+    // p_format was cloned from the destination texture; its shareable_formats
+    // list reflects the destination's mutability contract (e.g. SRGB↔UNORM
+    // aliasing for a swapchain target). The scratch is a freshly-allocated,
+    // self-contained texture and never aliased into another format — but
+    // texture_create() validates that the chosen `format` is present in
+    // shareable_formats when the list is non-empty, so an SRGB-only shareable
+    // list combined with our canonical UNORM choice would reject the
+    // allocation and silently disable the compute composite path. Clear the
+    // list so texture_create() applies its default-shareable handling.
+    scratch_format.shareable_formats.clear();
+
+    RID texture = p_device->texture_create(scratch_format, RD::TextureView());
+    if (!texture.is_valid()) {
+        GS_LOG_WARN_DEFAULT("[OutputCompositor] Failed to create viewport blit scratch texture");
+        return RID();
+    }
+    p_device->set_resource_name(texture, "GS_OutputCompositor_ViewportBlitScratch");
+
+    _track_resource(texture, p_device, true, "viewport_blit_scratch");
+    ViewportBlitScratch entry;
+    entry.texture = texture;
+    entry.extent = p_extent;
+    entry.format = canonical_format;
+    entry.owner_device = p_device;
+    entry.last_used_id = ++viewport_blit_scratch_next_id;
+    viewport_blit_scratch.insert(key, entry);
+    return texture;
 }
 
 bool OutputCompositor::_ensure_viewport_blit_pipeline(RenderingDevice *p_device, RD::DataFormat p_format, RID &r_shader, RID &r_pipeline) {
@@ -540,8 +676,18 @@ void OutputCompositor::clear_viewport_blit_resources() {
         _forget_resource(sampler_entry.sampler);
     }
 
+    for (KeyValue<uint64_t, ViewportBlitScratch> &E : viewport_blit_scratch) {
+        ViewportBlitScratch &scratch_entry = E.value;
+        RenderingDevice *owner_device = scratch_entry.owner_device ? scratch_entry.owner_device : rd;
+        if (scratch_entry.texture.is_valid() && owner_device && owner_device->texture_is_valid(scratch_entry.texture)) {
+            owner_device->free(scratch_entry.texture);
+        }
+        _forget_resource(scratch_entry.texture);
+    }
+
     viewport_blit_variants.clear();
     viewport_blit_samplers.clear();
+    viewport_blit_scratch.clear();
 }
 
 RID OutputCompositor::get_cached_framebuffer(RenderingDevice *p_device, const RID &p_texture) {
@@ -742,12 +888,56 @@ bool OutputCompositor::_copy_final_output_compute(RenderingDevice *p_device, RID
         const RD::TextureFormat &p_destination_format, RID p_source_depth, RID p_destination_depth,
         bool p_depth_test_enabled, bool p_depth_is_orthogonal, float p_z_near, float p_z_far,
         float p_depth_linearize_mul, float p_depth_linearize_add, float p_depth_epsilon) {
+    // last_composite_stats is reset at the entry of copy_to_render_target (the
+    // public dispatcher) so non-compute branches (direct-copy, graphics
+    // fallback) also see a clean slate. Don't reset here a second time — the
+    // dispatcher's contract is "stats reflect THIS copy_to_render_target call",
+    // regardless of which internal path is taken.
+
     if (!p_device || !p_source.is_valid() || !p_destination.is_valid()) {
         return false;
     }
 
     if (p_copy_extent.x <= 0 || p_copy_extent.y <= 0) {
         return false;
+    }
+
+    last_composite_stats.composite_with_destination = p_composite_with_destination;
+
+    // Scratch-copy path: when compositing, we read the prior destination through a
+    // sampled scratch texture rather than imageLoad on the live destination image.
+    // This eliminates the cross-invocation R/W hazard responsible for incident #256.
+    // Bind the source as a dummy when not compositing so the shader's binding-4
+    // sampler slot always has a valid resource.
+    RID scratch_for_binding = p_source;
+    if (p_composite_with_destination) {
+        const RD::TextureFormat dest_actual = p_device->texture_get_format(p_destination);
+        if (!(dest_actual.usage_bits & RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT)) {
+            last_composite_stats.fallback_due_to_missing_copy_from = true;
+            last_composite_stats.valid = true;
+            WARN_PRINT_ONCE("[OutputCompositor] Composite destination is missing TEXTURE_USAGE_CAN_COPY_FROM_BIT; falling back to caller-provided graphics path.");
+            return false;
+        }
+        const int32_t dest_w = p_destination_format.width > 0 ? (int32_t)p_destination_format.width
+                                                              : MAX(p_destination_offset.x + p_copy_extent.x, 1);
+        const int32_t dest_h = p_destination_format.height > 0 ? (int32_t)p_destination_format.height
+                                                               : MAX(p_destination_offset.y + p_copy_extent.y, 1);
+        const Size2i scratch_extent(dest_w, dest_h);
+        bool scratch_reused = false;
+        RID scratch_rid = _ensure_viewport_blit_scratch(p_device, p_destination_format, scratch_extent, &scratch_reused);
+        if (!scratch_rid.is_valid()) {
+            return false;
+        }
+        const Vector3 copy_zero(0, 0, 0);
+        const Vector3 copy_size(dest_w, dest_h, 1);
+        Error copy_err = p_device->texture_copy(p_destination, scratch_rid, copy_zero, copy_zero, copy_size, 0, 0, 0, 0);
+        if (copy_err != OK) {
+            GS_LOG_WARN_DEFAULT(vformat("[OutputCompositor] texture_copy destination->scratch failed (err=%d); skipping composite frame", int(copy_err)));
+            return false;
+        }
+        scratch_for_binding = scratch_rid;
+        last_composite_stats.scratch_used = true;
+        last_composite_stats.scratch_reused = scratch_reused;
     }
 
     RID shader;
@@ -797,17 +987,24 @@ bool OutputCompositor::_copy_final_output_compute(RenderingDevice *p_device, RID
     destination_depth_uniform.append_id(sampler);
     destination_depth_uniform.append_id(destination_depth);
 
+    RD::Uniform scratch_uniform;
+    scratch_uniform.uniform_type = RD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE;
+    scratch_uniform.binding = 4;
+    scratch_uniform.append_id(sampler);
+    scratch_uniform.append_id(scratch_for_binding);
+
     UniformSetCacheRD *uniform_cache = UniformSetCacheRD::get_singleton();
     RID uniform_set;
     bool manual_uniform_set = false;
     if (uniform_cache) {
-        uniform_set = uniform_cache->get_cache(shader, 0, sampler_uniform, image_uniform, source_depth_uniform, destination_depth_uniform);
+        uniform_set = uniform_cache->get_cache(shader, 0, sampler_uniform, image_uniform, source_depth_uniform, destination_depth_uniform, scratch_uniform);
     } else {
         Vector<RD::Uniform> uniforms;
         uniforms.push_back(sampler_uniform);
         uniforms.push_back(image_uniform);
         uniforms.push_back(source_depth_uniform);
         uniforms.push_back(destination_depth_uniform);
+        uniforms.push_back(scratch_uniform);
         uniform_set = p_device->uniform_set_create(uniforms, shader, 0);
         manual_uniform_set = true;
         if (!uniform_set.is_valid()) {
@@ -815,6 +1012,8 @@ bool OutputCompositor::_copy_final_output_compute(RenderingDevice *p_device, RID
         }
         p_device->set_resource_name(uniform_set, "GS_OutputCompositor_CopyFinalOutputUniformSet");
     }
+    last_composite_stats.binding_count = 5;
+    last_composite_stats.valid = true;
 
     // GPU Debug: Output composition pass (Purple tones for compositing)
     ScopedGpuMarker composite_marker(p_device, "GS_Composite", Color(0.7f, 0.3f, 0.9f, 1.0f));
@@ -945,6 +1144,14 @@ bool OutputCompositor::copy_to_framebuffer(const FramebufferCopyParams &p_params
 }
 
 OutputCopyResult OutputCompositor::copy_to_render_target(const OutputCopyParams &p_params) {
+    // Reset composite stats at the dispatcher entry so every call starts with a
+    // clean state regardless of which internal path runs (compute, direct-copy,
+    // or graphics fallback). Without this, get_last_composite_stats() can
+    // return stale values from a prior compute call when the current invocation
+    // takes the direct-copy or graphics-fallback path — masking regressions in
+    // tests that verify scratch-vs-fallback behavior.
+    last_composite_stats = LastCompositeStats();
+
     OutputCopyResult result;
     result.success = false;
     output_cache.last_viewport_copy_success = false;
@@ -1052,6 +1259,17 @@ OutputCopyResult OutputCompositor::copy_to_render_target(const OutputCopyParams 
         Error copy_err = copy_device->texture_copy(p_params.source_texture, p_params.destination_texture, src_offset, dst_offset, region, 0, 0, 0, 0);
         if (copy_err == OK) {
             result.success = true;
+            // Direct copy is a pure pixel transfer with no depth comparison.
+            // If the caller requested depth_test_enabled but reached this path
+            // (only possible when composite_with_destination=false), the
+            // request was not honored — surface that so callers don't treat
+            // an unoccluded overwrite as depth-correct output.
+            if (p_params.depth_test_enabled) {
+                result.depth_test_honored = false;
+                if (result.error.is_empty()) {
+                    result.error = "depth_test_enabled requested but direct-copy path performs no depth comparison; this combination requires composite_with_destination=true to route through the compute path";
+                }
+            }
             output_cache.last_viewport_copy_success = (copy_extent == source_extent);
             return result;
         }
@@ -1075,6 +1293,19 @@ OutputCopyResult OutputCompositor::copy_to_render_target(const OutputCopyParams 
                 p_params.depth_linearize_mul, p_params.depth_linearize_add, p_params.depth_epsilon);
         if (ok) {
             result.success = true;
+            // _copy_final_output_compute internally disables depth comparison
+            // when either source_depth or destination_depth RID is invalid (it
+            // substitutes a fallback depth texture and zeroes the depth-test
+            // push-constant). Detect that case here so callers that requested
+            // depth_test_enabled but didn't supply valid depth textures see
+            // depth_test_honored=false rather than a false-positive true.
+            if (p_params.depth_test_enabled &&
+                    (!p_params.source_depth.is_valid() || !p_params.destination_depth.is_valid())) {
+                result.depth_test_honored = false;
+                if (result.error.is_empty()) {
+                    result.error = "depth_test_enabled requested but source_depth or destination_depth was invalid; compute path internally disabled depth comparison";
+                }
+            }
             output_cache.last_viewport_copy_success = (copy_extent == source_extent);
             return result;
         }
@@ -1126,6 +1357,18 @@ OutputCopyResult OutputCompositor::copy_to_render_target(const OutputCopyParams 
     copy_effects->copy_to_fb_rect(p_params.source_texture, framebuffer, dest_rect, false, false, false, srgb_destination, RID(), false, false, false, false, src_rect, enable_blend, use_premultiplied_alpha);
 
     result.success = true;
+    // The graphics fallback path does not carry depth through copy_to_fb_rect.
+    // If the caller requested depth-tested compositing and we reached this
+    // path (compute path returned false, typically because destination lacked
+    // TEXTURE_USAGE_CAN_COPY_FROM_BIT for the scratch copy), signal the
+    // degradation in the result. Caller can choose to abort, warn, or
+    // recreate the destination with the required usage bit.
+    if (p_params.depth_test_enabled) {
+        result.depth_test_honored = false;
+        if (result.error.is_empty()) {
+            result.error = "depth_test_enabled requested but graphics fallback path does not carry depth; destination likely missing TEXTURE_USAGE_CAN_COPY_FROM_BIT";
+        }
+    }
     output_cache.last_viewport_copy_success = (copy_extent == source_extent);
     return result;
 }
