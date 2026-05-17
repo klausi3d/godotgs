@@ -654,6 +654,7 @@ RasterPerformance TileRasterizer::get_performance() const {
     perf.sort_sync_fallback_count = tile_renderer->get_sort_sync_fallback_count();
     perf.timing_frame_serial = tile_renderer->get_gpu_timing_frame_serial();
     perf.timing_frames_behind = tile_renderer->get_gpu_timing_frames_behind();
+    perf.raster_pipeline_reformats = tile_renderer->get_raster_pipeline_reformat_count();
 
     return perf;
 }

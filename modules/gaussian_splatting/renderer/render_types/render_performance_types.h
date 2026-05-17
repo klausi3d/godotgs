@@ -135,6 +135,7 @@ struct PerformanceMetrics {
 	float frame_to_frame_time_ms = 0.0f;
 	float avg_frame_to_frame_ms = 0.0f;
 	uint64_t cull_projection_contract_mismatch_count = 0;
+	uint32_t raster_pipeline_reformats = 0;
 };
 
 struct PerformanceState {

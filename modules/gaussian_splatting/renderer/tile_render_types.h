@@ -276,6 +276,10 @@ struct TilePerformanceMetrics {
 	float rasterization_ms = 0.0f;
 	uint32_t profiling_cached_overlap_total = 0;
 	uint64_t sort_sync_fallback_count = 0;
+	// Counts how many times the cached graphics raster pipeline was rebuilt due to a
+	// framebuffer-format mismatch (e.g. when the eager pre-create at init used a
+	// "probable" color format that differed from the live framebuffer).
+	uint32_t raster_pipeline_reformats = 0;
 	uint64_t compute_raster_frames = 0;
 	uint64_t fragment_raster_frames = 0;
 	bool last_raster_used_compute = false;

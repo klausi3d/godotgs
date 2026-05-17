@@ -328,6 +328,7 @@ void TileRenderTargets::destroy_output_textures() {
 		}
 		owner.shader_resources.tile_raster_pipeline = RID();
 	}
+	owner.shader_resources.cached_raster_framebuffer_format = RD::INVALID_ID;
 	if (owner.raster_stage.cached_raster_image_uniform_set.is_valid() && owner.raster_stage.cached_raster_image_device &&
 			owner.raster_stage.cached_raster_image_device->uniform_set_is_valid(owner.raster_stage.cached_raster_image_uniform_set)) {
 		owner.raster_stage.cached_raster_image_device->free(owner.raster_stage.cached_raster_image_uniform_set);
@@ -383,6 +384,7 @@ void TileRenderTargets::destroy_output_textures() {
 	tile_framebuffer_format = RD::INVALID_ID;
 	tile_framebuffer_owner = nullptr;
 	owner.shader_resources.tile_raster_pipeline = RID();
+	owner.shader_resources.cached_raster_framebuffer_format = RD::INVALID_ID;
 
 	destroy_resolve_textures();
 }
@@ -943,6 +945,7 @@ void TileShaderResources::reset_state() {
 	tile_prefix_pipeline_pass2 = RID();
 	tile_prefix_pipeline_pass3 = RID();
 	tile_raster_pipeline = RID();
+	cached_raster_framebuffer_format = RD::INVALID_ID;
 	tile_raster_compute_pipeline = RID();
 	tile_resolve_pipeline = RID();
 	tile_binning_shader = RID();

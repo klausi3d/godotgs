@@ -975,6 +975,10 @@ void GaussianSplatManager::initialize_module() {
 	GLOBAL_DEF("rendering/gaussian_splatting/gpu_sorting_enabled", true);
 	GLOBAL_DEF("rendering/gaussian_splatting/shared_submission_device_enabled", false);
 	GLOBAL_DEF("rendering/gaussian_splatting/renderdoc_compatibility", false);
+	// Phase 4 startup-time fix: pre-create the graphics raster pipeline at TileRenderer init
+	// using the orchestrator's "probable" color format. Removes the first-frame hitch from
+	// in-render render_pipeline_create. The lazy reformat path catches format mismatches.
+	GLOBAL_DEF("rendering/gaussian_splatting/init/eager_raster_pipeline", true);
 	GLOBAL_DEF("rendering/gaussian_splatting/composite/depth_test", true);
     // Scene composite depth policy: 0=strict (skip frame if depth contract is missing), 1=relaxed (allow no-depth blend fallback).
     GLOBAL_DEF("rendering/gaussian_splatting/composite/scene_depth_policy", 0);

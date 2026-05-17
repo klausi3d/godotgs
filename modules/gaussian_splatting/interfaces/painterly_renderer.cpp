@@ -1877,7 +1877,10 @@ Error PainterlyRenderer::populate_painterly_gbuffer(GaussianSplatRenderer *p_ren
         tile_renderer_state.renderer.instantiate();
         tile_renderer_state.renderer->set_performance_monitor(&tile_renderer_state.gpu_performance_monitor);
         p_renderer->synchronize_tile_submission(tile_device, "TileRenderer initialization");
-        Error init_err = tile_device ? tile_renderer_state.renderer->initialize(tile_device, Vector2i(width, height), TileRenderer::DEFAULT_TILE_SIZE, target_output_format, tile_device)
+        // Phase 4 eager pre-create: painterly has the real viewport + target format, so the
+        // hint will almost always match the live framebuffer (raster_pipeline_reformats stays 0).
+        Error init_err = tile_device ? tile_renderer_state.renderer->initialize(tile_device, Vector2i(width, height), TileRenderer::DEFAULT_TILE_SIZE, target_output_format, tile_device,
+                                              Size2i(width, height), target_output_format)
                                      : ERR_UNCONFIGURED;
         if (init_err != OK) {
             GS_LOG_ERROR_DEFAULT(vformat("[Painterly] Failed to initialize tile renderer: %d (will not retry)", init_err));
