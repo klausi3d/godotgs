@@ -104,7 +104,15 @@ jobs:
 
     - name: Build module-enabled Godot editor
       run: |
-        python -m SCons platform=windows target=editor dev_build=yes tests=yes gs_native_arch=no cache_path=C:/godotgs-scons-cache cache_limit=50 -j12
+        # Pass `module_gaussian_splatting_enabled=yes` explicitly to match the
+        # gpu-harness job's scons args byte-for-byte. The module already
+        # defaults to on via `modules/gaussian_splatting/config.py:can_build()`,
+        # so the practical effect on CPPDEFINES is zero — but keeping the arg
+        # string aligned across both jobs eliminates any scons env-hash drift
+        # in the shared `C:/godotgs-scons-cache` and removes a misleading
+        # signal in build logs that the two jobs are building different
+        # configurations.
+        python -m SCons platform=windows target=editor dev_build=yes tests=yes module_gaussian_splatting_enabled=yes gs_native_arch=no cache_path=C:/godotgs-scons-cache cache_limit=50 -j12
 
     - name: Resolve Godot binary
       id: godot_binary
@@ -441,9 +449,15 @@ jobs:
       - name: Build module-enabled Godot editor (tests=yes)
         if: steps.path_filter.outputs.run_harness == 'true'
         run: |
-          # Mirror gpu-tests's scons args (gs_native_arch=no) so both jobs
-          # produce identical .obj cache entries and the shared C:/godotgs-
-          # scons-cache doesn't thrash between them.
+          # Mirror gpu-tests's scons args byte-for-byte so the two jobs share
+          # `C:/godotgs-scons-cache` cleanly. The module defaults to on (see
+          # modules/gaussian_splatting/config.py:can_build), so passing
+          # `module_gaussian_splatting_enabled=yes` doesn't change CPPDEFINES —
+          # it just keeps the arg string aligned and removes any scons
+          # env-hash drift between the two jobs. (Note: the dominant rebuild
+          # cost between jobs is `actions/checkout` blowing away .sconsign
+          # between runs, not cache fragmentation; eliminating that needs
+          # artifact handoff from gpu-tests, tracked separately.)
           python -m SCons platform=windows target=editor dev_build=yes tests=yes `
             module_gaussian_splatting_enabled=yes gs_native_arch=no `
             cache_path=C:/godotgs-scons-cache cache_limit=50 -j12
