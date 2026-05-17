@@ -65,9 +65,53 @@ static Vector<uint8_t> _build_source_premultiplied_circle_256() {
 
 } // namespace CompositeHazardRepro
 
+// Scope guard tied to this TU's hazard test: tracks textures and the optional
+// locally-allocated fallback RD that REQUIRE_GPU_DEVICE() may have created,
+// and frees them in destruction order regardless of how the test exits
+// (success, REQUIRE failure → doctest exception, or normal return). Without
+// this guard, any REQUIRE failure before the manual rd->free(...) block at
+// the end of the test would leak RIDs into the next test case, and a local
+// fallback RD (singleton path bypassed) would leak the entire device.
+class HazardTestScope {
+public:
+	HazardTestScope(RenderingDevice *p_rd, bool p_owns_rd) :
+			rd(p_rd), owns_rd(p_owns_rd) {}
+
+	~HazardTestScope() {
+		if (rd) {
+			for (int i = textures.size() - 1; i >= 0; i--) {
+				if (textures[i].is_valid() && rd->texture_is_valid(textures[i])) {
+					rd->free(textures[i]);
+				}
+			}
+			if (compositor.is_valid()) {
+				compositor->shutdown();
+			}
+			if (owns_rd) {
+				memdelete(rd);
+			}
+		}
+	}
+
+	void track(RID p_texture) { textures.push_back(p_texture); }
+
+	RenderingDevice *rd = nullptr;
+	bool owns_rd = false;
+	Vector<RID> textures;
+	Ref<OutputCompositor> compositor;
+};
+
 TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Compositor scratch-copy preserves destination outside source") {
+	// Track whether REQUIRE_GPU_DEVICE() allocated a local fallback RD (singleton
+	// was null) so the scope guard knows to memdelete it on test exit. Under the
+	// GPU harness path the singleton is pre-populated by `_bootstrap_rd()` and
+	// `owns_rd` stays false, but the macro is also used outside that harness
+	// (regular `--test` lane, future cross-driver swap-in lanes), where a leaked
+	// device propagates across test cases.
+	const bool _had_singleton_before = (RenderingDevice::get_singleton() != nullptr);
 	REQUIRE_GPU_DEVICE();
 	// rd was declared by REQUIRE_GPU_DEVICE; it is the singleton or a local fallback.
+	HazardTestScope _scope(rd, !_had_singleton_before && rd != RenderingDevice::get_singleton());
 
 	RD::TextureFormat source_format;
 	source_format.width = 256;
@@ -98,6 +142,8 @@ TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Compositor scratch-copy
 
 	RID source_tex = rd->texture_create(source_format, RD::TextureView());
 	RID destination_tex = rd->texture_create(destination_format, RD::TextureView());
+	_scope.track(source_tex);
+	_scope.track(destination_tex);
 	REQUIRE(source_tex.is_valid());
 	REQUIRE(destination_tex.is_valid());
 	rd->set_resource_name(source_tex, "GS_HazardRepro_Source");
@@ -125,6 +171,8 @@ TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Compositor scratch-copy
 			RD::TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 	RID source_depth = rd->texture_create(depth_format, RD::TextureView());
 	RID destination_depth = rd->texture_create(depth_format, RD::TextureView());
+	_scope.track(source_depth);
+	_scope.track(destination_depth);
 	REQUIRE(source_depth.is_valid());
 	REQUIRE(destination_depth.is_valid());
 	rd->set_resource_name(source_depth, "GS_HazardRepro_SourceDepth");
@@ -150,6 +198,7 @@ TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Compositor scratch-copy
 
 	Ref<OutputCompositor> compositor;
 	compositor.instantiate();
+	_scope.compositor = compositor;
 	REQUIRE(compositor->initialize(rd) == OK);
 
 	OutputCopyParams params;
@@ -197,11 +246,9 @@ TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Compositor scratch-copy
 	CHECK(stats_second.scratch_used);
 	CHECK(stats_second.scratch_reused);
 
-	compositor->shutdown();
-	rd->free(source_tex);
-	rd->free(destination_tex);
-	rd->free(source_depth);
-	rd->free(destination_depth);
+	// All cleanup (textures, compositor shutdown, locally-allocated fallback
+	// RD if any) is handled by _scope's destructor on function exit — including
+	// any path where an earlier REQUIRE failure threw a doctest exception.
 }
 
 } // namespace TestGaussianSplatting

@@ -42,12 +42,32 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: baseline-qa-${{ github.event.pull_request.number || github.ref }}
+  # PR runs and merge_group runs are INDEPENDENT gates — they validate
+  # different commits (the PR head vs the queue-merged-with-base version),
+  # so they shouldn't (and won't) cross-serialize. Each event type
+  # serializes within itself:
+  #   - pull_request: by PR number, so an amended/force-pushed PR cancels
+  #     the in-flight run on the older head (saves a full ~6 min rebuild).
+  #   - merge_group: by head_sha, so each queue entry gets a dedicated slot.
+  #   - push / schedule / workflow_dispatch: fall back to github.ref.
+  # On the self-hosted GPU runner, simultaneous PR + merge_group entries for
+  # the *same* PR will simply queue on the runner's single-job-at-a-time
+  # constraint — they share the scons cache directory rather than running
+  # in parallel, so cache contention is bounded by the runner's serial
+  # execution, not by this expression.
+  group: baseline-qa-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   gpu-tests:
     name: GPU QA Tests (Windows Self-Hosted)
+    # Never run self-hosted Windows on untrusted PR fork code. Same-repo
+    # branches (maintainer PRs) still trigger the gate; fork PRs are routed
+    # to the Linux cpu-tests lane only. Mirrors release_builds.yml's pattern
+    # and protects the persistent runner's scons cache, credential store,
+    # and Actions runner token from arbitrary code in `tests/ci/*.py`,
+    # `SConstruct`, `methods.py`, or any `SCsub` checked out from a fork.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64, godotgs, gpu]
     timeout-minutes: 120
 
@@ -184,13 +204,23 @@ jobs:
 
   gpu-harness:
     name: GPU Harness + Visual Gate (Windows Self-Hosted)
+    # Same fork-PR gate as gpu-tests — never let an untrusted fork PR's
+    # workflow files, SConstruct, methods.py, or test code run on the
+    # persistent self-hosted runner.
+    if: |
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      !cancelled()
     runs-on: [self-hosted, Windows, X64, godotgs, gpu]
     # Runs after gpu-tests so the two GPU jobs serialize on the shared runner
     # and split the scons cache cleanly. Independent of gpu-tests' result —
     # a failing GDScript-based gpu-test should not gate the doctest-based
     # visual gate.
+    # The `if:` block above also handles the needs:-failure case: `!cancelled()`
+    # in the conjunction is enough to override `needs:`'s implicit success()
+    # requirement, so a failing gpu-tests run still lets the visual gate run.
+    # Not using `always()` because it would evaluate true during cancellation
+    # and defeat the workflow's `concurrency.cancel-in-progress: true`.
     needs: gpu-tests
-    if: ${{ !cancelled() }}
     timeout-minutes: 60
     permissions:
       contents: write
@@ -213,6 +243,15 @@ jobs:
           fetch-depth: 0
           submodules: recursive
           set-safe-directory: false
+          # `persist-credentials: false` — without it, the checkout token
+          # (potentially the broadly-scoped BASELINE_UPDATE_PAT below) gets
+          # stored in .git/config as a credential helper for the rest of the
+          # job, exposing it to every subsequent step (scons cache writes,
+          # git submodule fetches, the provenance step, etc.). The create-PR
+          # step (peter-evans/create-pull-request) receives the PAT directly
+          # via its own `token:` input, so disabling persistence here doesn't
+          # break the recapture-PR flow but does narrow the blast radius.
+          persist-credentials: false
           # Update-mode runs push baseline changes back through a PR; everything
           # else stays on the workflow's default token.
           token: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.baseline_mode == 'update')) && secrets.BASELINE_UPDATE_PAT || secrets.GITHUB_TOKEN }}
@@ -232,36 +271,106 @@ jobs:
             if (context.eventName === "schedule" || context.eventName === "push" || context.eventName === "workflow_dispatch") {
               reason = `event:${context.eventName}`;
             } else if (context.eventName === "pull_request" || context.eventName === "merge_group") {
+              // Path filter — trigger the visual gate on anything that can
+              // change the GPU output of our test path:
+              //   - The whole gaussian_splatting module (SCsub
+              //     `source_directories` spans renderer/, shaders/, compute/,
+              //     core/, io/, lod/, interfaces/, nodes/, editor/, animation/,
+              //     asset_management/, painterly/, persistence/, logger/,
+              //     resources/, tests/).
+              //   - The upstream RenderingDevice surface and shader pipelines
+              //     under servers/rendering/. The harness boots an offscreen
+              //     RD via `Main::test_setup()` then drives it directly, so
+              //     changes here can absolutely change rendered output.
+              //   - GPU drivers (Vulkan canonical, D3D12 for the differential
+              //     lane). RenderingContextDriverVulkan/D3D12 changes can shift
+              //     adapter selection, queue setup, or pipeline-creation
+              //     behavior in ways the visual gate should catch.
+              //   - main/main.cpp (the --gs-gpu-test entrypoint lives there).
+              //   - The harness script, baselines, and this workflow file.
+              //   - Build system surface that controls what's compiled into
+              //     the harness binary (SConstruct, methods.py, platform/,
+              //     and the upstream doctest header). Edits here can change
+              //     RID lifetime, Image readback, env-var handling, or the
+              //     test framework itself — all directly load-bearing for
+              //     the visual gate.
+              //   - core/ — Image, RID, OS::get_environment, atomics, etc.
+              //     all live here and are exercised by the harness path.
+              // Costs CI minutes on broader-than-strictly-necessary changes
+              // (any servers/rendering edit triggers the gate), but the
+              // alternative is silent regressions on upstream rendering work.
               const renderPrefixes = [
-                "modules/gaussian_splatting/renderer/",
-                "modules/gaussian_splatting/shaders/",
-                "modules/gaussian_splatting/interfaces/",
-                "modules/gaussian_splatting/tests/",
+                "modules/gaussian_splatting/",
+                "servers/rendering/",
+                "drivers/vulkan/",
+                "drivers/d3d12/",
+                "core/",
+                "platform/",
+                "thirdparty/doctest/",
                 "tests/visual_baselines/",
-                "modules/gaussian_splatting/SCsub",
-                "modules/gaussian_splatting/register_types.cpp",
                 "main/main.cpp",
                 "tests/ci/run_gpu_harness.py",
                 ".github/workflows/baseline_qa.yml",
+                "SConstruct",
+                "methods.py",
               ];
 
+              // pulls.listFiles is capped at 3000 files per PR; github.paginate
+              // walks all pages but stops at that ceiling. Mirror the
+              // merge_group truncation fallback: if we hit the cap, force
+              // runHarness=true rather than risk silently skipping a giant PR
+              // that happens to touch renderer/shader code past the limit.
+              const GH_PULLS_LISTFILES_CAP = 3000;
               let changedPaths = [];
+              // Rename detection: pulls.listFiles / compareCommitsWithBasehead
+              // report renamed files with status="renamed" and an extra
+              // `previous_filename` for the old path. If a file moves from a
+              // watched prefix (e.g. modules/gaussian_splatting/) to an
+              // unwatched one, only matching against `filename` misses it and
+              // we'd silently skip the visual gate. Also include the old path
+              // so either side of the rename triggers the harness.
+              const pathsFromFile = (f) => {
+                const out = [];
+                if (f.filename) out.push(String(f.filename));
+                if (f.previous_filename) out.push(String(f.previous_filename));
+                return out;
+              };
               if (context.eventName === "pull_request") {
-                const files = await github.paginate(github.rest.pulls.listFiles, {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: context.payload.pull_request.number,
-                  per_page: 100,
-                });
-                changedPaths = files.map((f) => String(f.filename || ""));
+                try {
+                  const files = await github.paginate(github.rest.pulls.listFiles, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: context.payload.pull_request.number,
+                    per_page: 100,
+                  });
+                  changedPaths = files.flatMap(pathsFromFile);
+                  if (files.length >= GH_PULLS_LISTFILES_CAP) {
+                    core.warning(
+                      `pulls.listFiles returned >= ${GH_PULLS_LISTFILES_CAP} files (API cap). ` +
+                      "Path filter may be incomplete; forcing runHarness=true to stay safe."
+                    );
+                    decisionForced = true;
+                    runHarness = true;
+                    reason = "pull-request-file-list-truncated";
+                  }
+                } catch (e) {
+                  core.warning(`pulls.listFiles failed: ${e.message}; forcing runHarness=true`);
+                  decisionForced = true;
+                  runHarness = true;
+                  reason = "pull-request-files-api-error";
+                }
               } else {
                 // merge_group: compareCommitsWithBasehead returns a single
-                // comparison object whose `files` array is capped at per_page
-                // (max 100). For merge queues that batch >100 changed files,
-                // this can miss renderer/shader changes and cause the path
-                // filter to skip the harness when it shouldn't. Soft-fallback:
-                // on any error or when the response is truncated, default to
+                // comparison object whose `files` array is NOT paginated like
+                // pulls.listFiles — it returns up to a hard cap (300) in the
+                // first response and silently omits the rest. To minimize
+                // false positives, request the maximum (per_page=300) and
+                // only force the safety fallback when we hit that real cap.
+                // For merge queues that batch >300 changed files, truncation
+                // can still miss renderer/shader changes — Soft-fallback: on
+                // any error or when the response is truncated, default to
                 // runHarness=true (safer to run than skip).
+                const GH_COMPARE_FILES_CAP = 300;
                 const base = context.payload.merge_group.base_sha;
                 const head = context.payload.merge_group.head_sha;
                 try {
@@ -269,12 +378,12 @@ jobs:
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     basehead: `${base}...${head}`,
-                    per_page: 100,
+                    per_page: GH_COMPARE_FILES_CAP,
                   });
-                  changedPaths = (compare.data.files || []).map((f) => String(f.filename || ""));
-                  if (compare.data.files && compare.data.files.length === 100) {
+                  changedPaths = (compare.data.files || []).flatMap(pathsFromFile);
+                  if (compare.data.files && compare.data.files.length >= GH_COMPARE_FILES_CAP) {
                     core.warning(
-                      "merge_group compare returned exactly 100 files (per_page max). " +
+                      `merge_group compare returned >= ${GH_COMPARE_FILES_CAP} files (API cap). ` +
                       "Path filter may be incomplete; forcing runHarness=true to stay safe."
                     );
                     decisionForced = true;
@@ -332,8 +441,11 @@ jobs:
       - name: Build module-enabled Godot editor (tests=yes)
         if: steps.path_filter.outputs.run_harness == 'true'
         run: |
+          # Mirror gpu-tests's scons args (gs_native_arch=no) so both jobs
+          # produce identical .obj cache entries and the shared C:/godotgs-
+          # scons-cache doesn't thrash between them.
           python -m SCons platform=windows target=editor dev_build=yes tests=yes `
-            module_gaussian_splatting_enabled=yes `
+            module_gaussian_splatting_enabled=yes gs_native_arch=no `
             cache_path=C:/godotgs-scons-cache cache_limit=50 -j12
 
       - name: Resolve Godot binary
@@ -441,7 +553,15 @@ jobs:
 
       - name: Open recapture PR
         if: success() && steps.path_filter.outputs.run_harness == 'true' && steps.baseline_mode.outputs.mode == 'update' && steps.recapture_pat.outputs.available == 'true'
-        uses: peter-evans/create-pull-request@v6
+        # SHA-pinned (third-party action handed BASELINE_UPDATE_PAT).
+        # `c5a7806660adbe173f04e3e038b0ccdcd758773c` is `peter-evans/create-pull-request@v6`
+        # as of 2026-05-17 — refreshed via:
+        #   gh api repos/peter-evans/create-pull-request/git/refs/tags/v6
+        # Bump intentionally (review the diff between the old and new SHA)
+        # rather than letting the floating major tag move silently. The
+        # tj-actions/changed-files March-2025 incident is the canonical
+        # cautionary tale for floating tags on actions that hold secrets.
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6
         with:
           token: ${{ secrets.BASELINE_UPDATE_PAT }}
           path: repo
@@ -464,7 +584,8 @@ jobs:
             - [ ] Driver/GPU change documented per `tests/visual_baselines/README.md`.
             - [ ] No new PNGs exceed the 256x256 fixture-size guideline unless justified.
           add-paths: |
-            tests/visual_baselines/*.png
+            tests/visual_baselines/**/*.png
+            tests/visual_baselines/.provenance.json
           delete-branch: true
 
       - name: Append GPU harness summary

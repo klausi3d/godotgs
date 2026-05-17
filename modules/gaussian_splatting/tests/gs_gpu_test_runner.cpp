@@ -56,7 +56,12 @@ GsGpuTestOptions _parse_options(int argc, char *argv[]) {
 		const char *a = argv[x];
 		if (strncmp(a, "--gs-gpu-driver=", 16) == 0) {
 			opt.preferred_driver = String(a + 16);
-		} else if (strncmp(a, "--test-case=", 12) == 0 || strncmp(a, "--test-case-exclude=", 20) == 0) {
+		} else if (strncmp(a, "--test-case=", 12) == 0) {
+			// Only an INCLUSIVE filter suppresses the default-filter injection.
+			// `--test-case-exclude=` alone should still get the default
+			// `*[RequiresGPU]*` filter; otherwise doctest would run every test
+			// in the binary (including the 26 [SceneTree]+[RequiresGPU] cases
+			// that crash without SceneTree bootstrap — Issue #329).
 			opt.inject_default_filter = false;
 		}
 	}
@@ -141,6 +146,26 @@ int _run_doctest(int argc, char *argv[], const GsGpuTestOptions &opt) {
 
 	if (opt.inject_default_filter) {
 		test_args.push_back(String("--test-case=*[RequiresGPU]*"));
+		// Also exclude tag categories that share `[RequiresGPU]` but need
+		// fuller engine bootstrap than the harness provides. Without these
+		// exclusions, plain `--gs-gpu-test` (no filter) hangs or crashes
+		// on the first such case it encounters — making the default
+		// invocation unusable for local debugging or any caller that
+		// forgets to pass a narrower filter.
+		//
+		// Excluded categories:
+		//   - `[SceneTree]`: 26 cases require a SceneTree singleton not
+		//     wired up by Main::test_setup(); tracked in Issue #329.
+		//   - `[Importer]`: needs full ResourceLoader/ResourceSaver setup
+		//     including type-registration for GaussianSplatAsset's preview
+		//     I/O paths; the offscreen RD bootstrap is intentionally
+		//     lighter weight and crashes inside resource roundtrip.
+		//
+		// Callers who genuinely want to include any of these must pass an
+		// explicit `--test-case=` (which sets inject_default_filter=false
+		// and disables this injection block entirely). The supervisor uses
+		// explicit per-batch filters, so it bypasses both injections.
+		test_args.push_back(String("--test-case-exclude=*[SceneTree]*,*[Importer]*"));
 	}
 
 	if (test_args.size() > 0) {
@@ -161,10 +186,18 @@ int _run_doctest(int argc, char *argv[], const GsGpuTestOptions &opt) {
 	return ctx.run();
 }
 
+// Mode flag flipped on by `gs_gpu_test_main` for the lifetime of `_run_doctest`,
+// off everywhere else. The listener is registered globally via REGISTER_LISTENER
+// (doctest's only registration entry point) but early-returns when this flag is
+// false, so the standard `--test` lane is not affected: no double-listener
+// registration at priority 1, no spurious `[RID-LEAK?]` print lines when
+// SceneTree-only tests transiently spin up an unrelated RD, and no measurement
+// against a stale singleton snapshot.
+static bool g_in_gs_gpu_mode = false;
+
 // doctest reporter that snapshots GPU memory before and after each test case
-// and emits an advisory MESSAGE when a test leaves > 1 MiB of GPU memory behind.
-// Registered globally; no-ops when RenderingDevice::get_singleton() is null
-// (so it stays quiet under the existing `--test` path).
+// and emits an advisory line when a test leaves > 1 MiB of GPU memory behind.
+// Registered globally but gated by g_in_gs_gpu_mode (see comment above).
 struct GsGpuRidLeakListener : public doctest::IReporter {
 	explicit GsGpuRidLeakListener(const doctest::ContextOptions &) {}
 
@@ -172,6 +205,9 @@ struct GsGpuRidLeakListener : public doctest::IReporter {
 
 	void test_case_start(const doctest::TestCaseData &) override {
 		case_start_memory = 0;
+		if (!g_in_gs_gpu_mode) {
+			return;
+		}
 #if defined(RD_ENABLED)
 		if (RenderingDevice *rd = RenderingDevice::get_singleton()) {
 			case_start_memory = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
@@ -180,13 +216,21 @@ struct GsGpuRidLeakListener : public doctest::IReporter {
 	}
 
 	void test_case_end(const doctest::CurrentTestCaseStats &) override {
+		if (!g_in_gs_gpu_mode) {
+			return;
+		}
 #if defined(RD_ENABLED)
 		if (RenderingDevice *rd = RenderingDevice::get_singleton()) {
 			const uint64_t end_memory = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
 			if (end_memory > case_start_memory) {
 				const uint64_t delta = end_memory - case_start_memory;
 				if (delta > (1ull << 20)) {
-					print_line(vformat("[GS-GPU][RID-LEAK?] test left %s bytes of GPU memory allocated",
+					// Format: `[GS-GPU][RID-LEAK?] bytes=N test=<name>`
+					// The supervisor (tests/ci/run_gpu_harness.py) scrapes this
+					// pattern to fold leaks into the gate decision — listener
+					// reporters can't call CHECK_MESSAGE, so we surface the
+					// signal via stdout and let the supervisor escalate.
+					print_line(vformat("[GS-GPU][RID-LEAK?] bytes=%s test=advisory",
 							String::num_uint64(delta)));
 				}
 			}
@@ -231,7 +275,9 @@ int gs_gpu_test_main(int argc, char *argv[]) {
 		return bootstrap_rc;
 	}
 
+	g_in_gs_gpu_mode = true;
 	int rc = _run_doctest(argc, argv, opt);
+	g_in_gs_gpu_mode = false;
 
 	_teardown_rd();
 	Main::test_cleanup();

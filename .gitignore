@@ -519,7 +519,12 @@ outputs/**/*.translation
 
 # Visual regression diff outputs (committed baselines are explicit *.png; never commit drive-by .actual.png).
 tests/visual_baselines/**/*.actual.png
-tests/visual_baselines/.provenance.json
+
+# NOTE: tests/visual_baselines/.provenance.json is intentionally NOT ignored —
+# the baseline_qa.yml update-mode workflow writes it as the per-recapture audit
+# trail, and `peter-evans/create-pull-request` respects .gitignore (so an
+# ignored file would never end up in the auto-generated recapture PR despite
+# being listed in `add-paths`). Keep it tracked.
 
 # GPU harness per-run report (regenerated on every run; not source).
 tests/ci/gpu_harness_report.json
