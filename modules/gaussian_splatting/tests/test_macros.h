@@ -60,19 +60,48 @@ public:
     }
 };
 
-// Helper macro for GPU tests that require a rendering device
-// Uses CHECK instead of REQUIRE to avoid exceptions (disabled in Godot)
+// RAII guard for the optional locally-allocated fallback RenderingDevice that
+// REQUIRE_GPU_DEVICE() may construct when RenderingDevice::get_singleton()
+// returns null. Frees the device on scope exit if-and-only-if the macro owned
+// it. `rd` is exposed as a public field so the macro can republish it under
+// that name to the surrounding test function — the call-site contract from
+// pre-refactor REQUIRE_GPU_DEVICE() is unchanged.
+class ScopedFallbackRD {
+public:
+    RenderingDevice *rd = nullptr;
+    bool owns_rd = false;
+
+    ScopedFallbackRD() {
+        rd = RenderingDevice::get_singleton();
+        if (!rd) {
+            if (RenderingServer *rs = RenderingServer::get_singleton()) {
+                rd = rs->create_local_rendering_device();
+                owns_rd = (rd != nullptr);
+            }
+        }
+    }
+    ~ScopedFallbackRD() {
+        if (owns_rd && rd) {
+            memdelete(rd);
+        }
+    }
+    ScopedFallbackRD(const ScopedFallbackRD &) = delete;
+    ScopedFallbackRD &operator=(const ScopedFallbackRD &) = delete;
+};
+
+// Helper macro for GPU tests that require a rendering device.
+// Publishes a `RenderingDevice *rd` into the calling test's scope. If the
+// engine singleton is null, a local fallback RD is created and OWNED by an
+// inline ScopedFallbackRD guard — the guard's destructor frees the device on
+// every scope exit (normal return, early return below, doctest REQUIRE
+// exception). Pre-refactor callers leaked the fallback RD because the macro
+// had no paired teardown; #334.
 #define REQUIRE_GPU_DEVICE()                                              \
-    RenderingDevice *rd = RenderingDevice::get_singleton();              \
-    if (!rd) {                                                           \
-        RenderingServer *rs = RenderingServer::get_singleton();         \
-        if (rs) {                                                        \
-            rd = rs->create_local_rendering_device();                   \
-        }                                                               \
-    }                                                                    \
-    if (rd == nullptr) {                                                 \
-        MESSAGE("Skipping test - RenderingDevice unavailable");             \
-        return;                                                          \
+    ScopedFallbackRD _gs_rd_scope;                                        \
+    RenderingDevice *rd = _gs_rd_scope.rd;                                \
+    if (rd == nullptr) {                                                  \
+        MESSAGE("Skipping test - RenderingDevice unavailable");           \
+        return;                                                           \
     }
 
 // Performance baseline checking

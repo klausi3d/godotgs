@@ -65,17 +65,19 @@ static Vector<uint8_t> _build_source_premultiplied_circle_256() {
 
 } // namespace CompositeHazardRepro
 
-// Scope guard tied to this TU's hazard test: tracks textures and the optional
-// locally-allocated fallback RD that REQUIRE_GPU_DEVICE() may have created,
-// and frees them in destruction order regardless of how the test exits
-// (success, REQUIRE failure → doctest exception, or normal return). Without
-// this guard, any REQUIRE failure before the manual rd->free(...) block at
-// the end of the test would leak RIDs into the next test case, and a local
-// fallback RD (singleton path bypassed) would leak the entire device.
+// Scope guard tied to this TU's hazard test: tracks textures and the
+// compositor, and frees them in destruction order regardless of how the
+// test exits (success, REQUIRE failure → doctest exception, or normal
+// return). Without this guard, any REQUIRE failure before the manual
+// rd->free(...) block at the end of the test would leak RIDs into the
+// next test case. The RenderingDevice itself is owned by
+// REQUIRE_GPU_DEVICE()'s ScopedFallbackRD (declared first in the test
+// scope, destroyed last LIFO), so this guard intentionally does NOT free
+// the device — that would be a double-delete.
 class HazardTestScope {
 public:
-	HazardTestScope(RenderingDevice *p_rd, bool p_owns_rd) :
-			rd(p_rd), owns_rd(p_owns_rd) {}
+	explicit HazardTestScope(RenderingDevice *p_rd) :
+			rd(p_rd) {}
 
 	~HazardTestScope() {
 		if (rd) {
@@ -87,31 +89,23 @@ public:
 			if (compositor.is_valid()) {
 				compositor->shutdown();
 			}
-			if (owns_rd) {
-				memdelete(rd);
-			}
 		}
 	}
 
 	void track(RID p_texture) { textures.push_back(p_texture); }
 
 	RenderingDevice *rd = nullptr;
-	bool owns_rd = false;
 	Vector<RID> textures;
 	Ref<OutputCompositor> compositor;
 };
 
 TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Compositor scratch-copy preserves destination outside source") {
-	// Track whether REQUIRE_GPU_DEVICE() allocated a local fallback RD (singleton
-	// was null) so the scope guard knows to memdelete it on test exit. Under the
-	// GPU harness path the singleton is pre-populated by `_bootstrap_rd()` and
-	// `owns_rd` stays false, but the macro is also used outside that harness
-	// (regular `--test` lane, future cross-driver swap-in lanes), where a leaked
-	// device propagates across test cases.
-	const bool _had_singleton_before = (RenderingDevice::get_singleton() != nullptr);
 	REQUIRE_GPU_DEVICE();
-	// rd was declared by REQUIRE_GPU_DEVICE; it is the singleton or a local fallback.
-	HazardTestScope _scope(rd, !_had_singleton_before && rd != RenderingDevice::get_singleton());
+	// rd was declared by REQUIRE_GPU_DEVICE and is kept alive by its inline
+	// ScopedFallbackRD guard (#334). HazardTestScope only owns the textures
+	// and compositor — the RD itself is freed by the macro's guard on scope
+	// exit, after this scope's destructor runs (LIFO destruction order).
+	HazardTestScope _scope(rd);
 
 	RD::TextureFormat source_format;
 	source_format.width = 256;
