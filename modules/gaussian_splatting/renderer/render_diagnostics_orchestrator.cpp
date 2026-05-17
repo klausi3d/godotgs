@@ -482,6 +482,9 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["streaming_queue_pressure_active"] = streaming_state.get("queue_pressure_active", false);
 		r_metrics["streaming_queue_pressure_frames"] = streaming_diagnostics.get("queue_pressure_frames", int64_t(0));
 		r_metrics["streaming_vram_cap_hit_frames"] = streaming_diagnostics.get("vram_cap_hit_frames", int64_t(0));
+		r_metrics["streaming_initial_capacity"] = streaming_state.get("streaming_initial_capacity", int64_t(0));
+		r_metrics["streaming_current_capacity"] = streaming_state.get("streaming_current_capacity", int64_t(0));
+		r_metrics["streaming_grow_count"] = streaming_state.get("streaming_grow_count", int64_t(0));
 	} else {
 		r_metrics["streaming_diagnostics_category"] = String("unknown");
 		r_metrics["streaming_diagnostics_reason"] = String("unavailable");
@@ -514,6 +517,9 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 		r_metrics["streaming_queue_pressure_active"] = false;
 		r_metrics["streaming_queue_pressure_frames"] = static_cast<int64_t>(0);
 		r_metrics["streaming_vram_cap_hit_frames"] = static_cast<int64_t>(0);
+		r_metrics["streaming_initial_capacity"] = static_cast<int64_t>(0);
+		r_metrics["streaming_current_capacity"] = static_cast<int64_t>(0);
+		r_metrics["streaming_grow_count"] = static_cast<int64_t>(0);
 	}
 
 	if (subsystem_state.rasterizer.is_valid()) {

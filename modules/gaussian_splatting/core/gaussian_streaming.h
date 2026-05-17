@@ -89,6 +89,12 @@ private:
     RID persistent_buffer;  // Main GPU buffer (persistent mapped)
     uint32_t persistent_buffer_size = 0;
 
+    // Persistent buffer sizing (Phase 3 right-sized init + growth path)
+    uint32_t streaming_initial_capacity = 0;     // Slots allocated at init (asset-scaled).
+    uint32_t streaming_current_capacity = 0;     // Current allocator/buffer slot count.
+    uint32_t streaming_max_capacity = 0;         // Growth ceiling (effective_max_chunks at init).
+    uint32_t streaming_grow_count = 0;           // Number of successful grow operations.
+
     // Source data reference
     Ref<::GaussianData> source_data;
 
@@ -437,6 +443,13 @@ private:
     void _process_upload_queue();
     void _clear_pending_uploads();
     void _release_persistent_buffer(RenderingDevice *p_rd, const char *p_context);
+    // Grow the persistent buffer to p_new_capacity slots, preserving currently
+    // resident chunks. Returns false on any failure without corrupting state.
+    bool _grow_persistent_buffer(uint32_t p_new_capacity);
+    bool _try_grow_persistent_buffer_for_atlas_pressure(uint32_t p_loaded_chunks,
+            uint32_t p_effective_max,
+            bool p_enforce_vram_regulator_gate,
+            bool p_vram_regulator_allows_load);
     void _apply_config_overrides();
     const LODConfig &_get_lod_config() const;
     void _update_culling_config_from_project_settings();

@@ -751,6 +751,129 @@ void GaussianStreamingSystem::_release_persistent_buffer(RenderingDevice *p_rd, 
     persistent_buffer_size = 0;
 }
 
+bool GaussianStreamingSystem::_grow_persistent_buffer(uint32_t p_new_capacity) {
+    if (!streaming_initialized) {
+        return false;
+    }
+    if (streaming_current_capacity == 0 || streaming_max_capacity == 0) {
+        return false;
+    }
+    if (streaming_current_capacity >= streaming_max_capacity) {
+        return false;
+    }
+
+    // Clamp to [current+1, streaming_max_capacity].
+    const uint32_t min_target = streaming_current_capacity + 1u;
+    uint32_t new_capacity = MAX(p_new_capacity, min_target);
+    new_capacity = MIN(new_capacity, streaming_max_capacity);
+    if (new_capacity <= streaming_current_capacity) {
+        return false;
+    }
+
+    GaussianSplatManager *manager = GaussianSplatManager::get_singleton();
+    RenderingDevice *rd = primary_device_override ? primary_device_override
+            : (last_upload_device ? last_upload_device
+                    : (manager ? manager->get_primary_rendering_device() : nullptr));
+    if (!rd) {
+        ERR_PRINT("[Streaming] _grow_persistent_buffer failed: no RenderingDevice available.");
+        return false;
+    }
+
+    const uint64_t slot_bytes = _streaming_chunk_slot_bytes();
+    const uint64_t new_bytes64 = uint64_t(new_capacity) * slot_bytes;
+    if (slot_bytes == 0 || new_bytes64 == 0 || new_bytes64 > uint64_t(UINT32_MAX)) {
+        ERR_PRINT(vformat("[Streaming] _grow_persistent_buffer failed: new buffer size overflow (%s bytes, max=%u).",
+                String::num_uint64(new_bytes64), UINT32_MAX));
+        return false;
+    }
+
+    const uint32_t new_buffer_size = static_cast<uint32_t>(new_bytes64);
+    RID new_buffer = rd->storage_buffer_create(new_buffer_size);
+    if (!new_buffer.is_valid()) {
+        ERR_PRINT(vformat("[Streaming] _grow_persistent_buffer failed: storage_buffer_create returned invalid RID (size=%u bytes).",
+                new_buffer_size));
+        return false;
+    }
+    rd->set_resource_name(new_buffer, "GS_Streaming_PersistentBuffer");
+
+    // Copy currently resident slot contents from old buffer to new buffer. The
+    // slot layout (slot index -> byte offset) is identical for old and new
+    // buffers (only the trailing capacity differs), so this is a flat copy of
+    // the old buffer bytes; trailing slots stay zero-initialized.
+    const uint32_t copy_size = persistent_buffer_size;
+    if (copy_size > 0 && persistent_buffer.is_valid()) {
+        if (copy_size > new_buffer_size) {
+            ERR_PRINT(vformat("[Streaming] _grow_persistent_buffer failed: invariant violation old=%u > new=%u.",
+                    copy_size, new_buffer_size));
+            rd->free(new_buffer);
+            return false;
+        }
+        const Error copy_err = rd->buffer_copy(persistent_buffer, new_buffer, 0, 0, copy_size);
+        if (copy_err != OK) {
+            ERR_PRINT(vformat("[Streaming] _grow_persistent_buffer failed: buffer_copy err=%d.", int(copy_err)));
+            rd->free(new_buffer);
+            return false;
+        }
+        gs_device_utils::safe_submit_and_sync(rd);
+    }
+
+    // Preserve allocator slot assignments before swapping RIDs so any caller
+    // reading state mid-rollback sees a consistent view.
+    if (!atlas_allocator.resize_preserve(new_capacity)) {
+        ERR_PRINT(vformat("[Streaming] _grow_persistent_buffer failed: atlas_allocator.resize_preserve refused %u (current=%u).",
+                new_capacity, streaming_current_capacity));
+        rd->free(new_buffer);
+        return false;
+    }
+
+    // Swap buffers; release the old one via the existing pattern.
+    const uint32_t prev_capacity = streaming_current_capacity;
+    _release_persistent_buffer(rd, "_grow_persistent_buffer");
+    persistent_buffer = new_buffer;
+    persistent_buffer_size = new_buffer_size;
+    streaming_current_capacity = new_capacity;
+    streaming_grow_count++;
+
+    // Force a global atlas resync at end-of-frame so downstream descriptor
+    // caches (which key on atlas_generation / asset_registry_dirty) rebind to
+    // the new buffer RID before the next frame's binding. The existing
+    // end-of-update sync_to_gpu() picks this up — calling sync_to_gpu()
+    // directly here would re-enter atlas bookkeeping mid-frame.
+    global_atlas_registry.mark_asset_registry_dirty();
+
+    GS_LOG_STREAMING_INFO(vformat("[Streaming] Persistent buffer grew %d -> %d slots (max=%d, grow_count=%d).",
+            prev_capacity, streaming_current_capacity,
+            streaming_max_capacity, streaming_grow_count));
+    return true;
+}
+
+bool GaussianStreamingSystem::_try_grow_persistent_buffer_for_atlas_pressure(uint32_t p_loaded_chunks,
+        uint32_t p_effective_max,
+        bool p_enforce_vram_regulator_gate,
+        bool p_vram_regulator_allows_load) {
+    if (atlas_allocator.has_free_slots()) {
+        return false;
+    }
+    if (streaming_current_capacity == 0 || streaming_current_capacity >= streaming_max_capacity) {
+        return false;
+    }
+    if (p_effective_max == 0 || p_loaded_chunks >= p_effective_max) {
+        return false;
+    }
+    if (p_enforce_vram_regulator_gate && !p_vram_regulator_allows_load) {
+        return false;
+    }
+
+    const uint32_t growth_ceiling = MIN(streaming_max_capacity, p_effective_max);
+    if (streaming_current_capacity >= growth_ceiling) {
+        return false;
+    }
+
+    const uint64_t target64 = MIN<uint64_t>(uint64_t(streaming_current_capacity) * 2u,
+            uint64_t(growth_ceiling));
+    return _grow_persistent_buffer(static_cast<uint32_t>(target64));
+}
+
 void GaussianStreamingSystem::_bind_methods() {
     ClassDB::bind_method(D_METHOD("initialize", "data"), &GaussianStreamingSystem::initialize);
     ClassDB::bind_method(D_METHOD("attach_memory_stream", "stream"), &GaussianStreamingSystem::attach_memory_stream);
@@ -857,6 +980,10 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
         eviction_controller.invalidate_resident_tracking();
         asset_registry.primary_chunk_source_indices.clear();
         primary_chunk_layout_metrics.reset();
+        streaming_initial_capacity = 0;
+        streaming_current_capacity = 0;
+        streaming_max_capacity = 0;
+        streaming_grow_count = 0;
         return;
     }
 
@@ -900,8 +1027,19 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
         effective_max_chunks = addressable_max_chunks;
     }
 
+    // Phase 3: size the persistent buffer to the actual asset chunk count plus
+    // a growth headroom, instead of the regulated maximum. Keeps startup VRAM
+    // proportional to the loaded scene; growth is wired into the eviction
+    // pressure path via _grow_persistent_buffer().
+    const uint32_t asset_chunks = chunks.size();
+    const uint32_t headroom = MAX<uint32_t>(2u, asset_chunks / 4u);
+    uint32_t initial_capacity = asset_chunks + headroom;
+    const uint32_t min_floor = STREAMING_DEFAULT_MIN_CHUNKS_IN_VRAM;
+    initial_capacity = MAX(initial_capacity, min_floor);
+    initial_capacity = MIN(initial_capacity, effective_max_chunks);
+
     if (rd) {
-        const uint64_t persistent_bytes64 = uint64_t(effective_max_chunks) * _streaming_chunk_slot_bytes();
+        const uint64_t persistent_bytes64 = uint64_t(initial_capacity) * _streaming_chunk_slot_bytes();
         if (persistent_bytes64 == 0 || persistent_bytes64 > uint64_t(UINT32_MAX)) {
             ERR_PRINT(vformat("[Streaming] Initialization failed: persistent buffer size overflow (%s bytes, max=%u).",
                     String::num_uint64(persistent_bytes64), UINT32_MAX));
@@ -914,8 +1052,12 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
         }
     }
 
-    // Initialize atlas allocator slots (use effective max chunks)
-    atlas_allocator.reset(effective_max_chunks);
+    // Initialize atlas allocator slots to the right-sized initial capacity.
+    atlas_allocator.reset(initial_capacity);
+    streaming_initial_capacity = initial_capacity;
+    streaming_current_capacity = initial_capacity;
+    streaming_max_capacity = effective_max_chunks;
+    streaming_grow_count = 0;
     const uint32_t runtime_capacity_max = _compute_runtime_chunk_capacity_limit();
     const bool persistent_buffer_valid = persistent_buffer.is_valid() && persistent_buffer_size > 0;
     if (effective_max_chunks == 0 || runtime_capacity_max == 0 || !persistent_buffer_valid) {
@@ -946,9 +1088,10 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
     global_atlas_registry.build_cpu_state(*this);
     global_atlas_registry.sync_to_gpu(*this, rd);
 
-    GS_LOG_STREAMING_INFO(vformat("[Streaming] Initialized with %d chunks for %d splats (VRAM budget: %d MB, max chunks: %d)",
+    GS_LOG_STREAMING_INFO(vformat("[Streaming] Initialized with %d chunks for %d splats (VRAM budget: %d MB, initial slots: %d, max slots: %d)",
             chunks.size(), total_splat_count,
-            budget.vram_regulator->get_config().budget_mb, effective_max_chunks));
+            budget.vram_regulator->get_config().budget_mb,
+            streaming_initial_capacity, streaming_max_capacity));
 }
 void GaussianStreamingSystem::initialize_with_device(Ref<::GaussianData> p_data, RenderingDevice *p_device) {
     // Temporarily override the device used during initialization
@@ -1045,8 +1188,12 @@ void GaussianStreamingSystem::initialize_empty(RenderingDevice *p_device) {
                 effective_max_chunks, addressable_max_chunks));
         effective_max_chunks = addressable_max_chunks;
     }
+    // Phase 3: empty system has no asset chunks yet; right-size to the minimum
+    // floor so we don't reserve ~288 MiB before any data has been loaded.
+    uint32_t initial_capacity = STREAMING_DEFAULT_MIN_CHUNKS_IN_VRAM;
+    initial_capacity = MIN(initial_capacity, effective_max_chunks);
     if (rd) {
-        const uint64_t persistent_bytes64 = uint64_t(effective_max_chunks) * _streaming_chunk_slot_bytes();
+        const uint64_t persistent_bytes64 = uint64_t(initial_capacity) * _streaming_chunk_slot_bytes();
         if (persistent_bytes64 == 0 || persistent_bytes64 > uint64_t(UINT32_MAX)) {
             ERR_PRINT(vformat("[Streaming] Empty initialization failed: persistent buffer size overflow (%s bytes, max=%u).",
                     String::num_uint64(persistent_bytes64), UINT32_MAX));
@@ -1059,7 +1206,11 @@ void GaussianStreamingSystem::initialize_empty(RenderingDevice *p_device) {
         }
     }
 
-    atlas_allocator.reset(effective_max_chunks);
+    atlas_allocator.reset(initial_capacity);
+    streaming_initial_capacity = initial_capacity;
+    streaming_current_capacity = initial_capacity;
+    streaming_max_capacity = effective_max_chunks;
+    streaming_grow_count = 0;
     const uint32_t runtime_capacity_max = _compute_runtime_chunk_capacity_limit();
     const bool persistent_buffer_valid = persistent_buffer.is_valid() && persistent_buffer_size > 0;
     if (effective_max_chunks == 0 || runtime_capacity_max == 0 || !persistent_buffer_valid) {
@@ -1082,8 +1233,9 @@ void GaussianStreamingSystem::initialize_empty(RenderingDevice *p_device) {
     global_atlas_registry.build_cpu_state(*this);
     global_atlas_registry.sync_to_gpu(*this, rd);
 
-    GS_LOG_STREAMING_INFO(vformat("[Streaming] Initialized empty system (VRAM budget: %d MB, max chunks: %d)",
-            budget.vram_regulator->get_config().budget_mb, effective_max_chunks));
+    GS_LOG_STREAMING_INFO(vformat("[Streaming] Initialized empty system (VRAM budget: %d MB, initial slots: %d, max slots: %d)",
+            budget.vram_regulator->get_config().budget_mb,
+            streaming_initial_capacity, streaming_max_capacity));
 }
 
 void GaussianStreamingSystem::update_primary_asset_data(Ref<::GaussianData> p_data) {
@@ -2823,6 +2975,7 @@ void GaussianStreamingSystem::_evict_for_vram_budget(uint32_t &evictions_left, b
             evictions_left--;
             continue;
         }
+
         eviction_blocked = true;
         break;
     }
@@ -2987,6 +3140,11 @@ void GaussianStreamingSystem::_load_visible_chunks(uint32_t effective_max, uint3
         admission_policy.vram_regulator_allows_load =
                 !admission_policy.enforce_vram_regulator_gate ||
                 budget.vram_regulator->can_load_more_chunks(budget.loaded_chunks_count);
+        _try_grow_persistent_buffer_for_atlas_pressure(
+                budget.loaded_chunks_count,
+                effective_max,
+                admission_policy.enforce_vram_regulator_gate,
+                admission_policy.vram_regulator_allows_load);
         admission_policy.atlas_slots_full = !atlas_allocator.has_free_slots();
 
         const ResidencyBudgetController::AdmissionGate admission_gate =
@@ -3709,6 +3867,9 @@ void GaussianStreamingSystem::end_frame() {
     analytics_snapshot["atlas_published_chunks"] = global_atlas_registry.get_atlas_published_chunks();
     analytics_snapshot["visible_splats"] = get_visible_count();
     analytics_snapshot["effective_max_chunks"] = get_effective_max_chunks();
+    analytics_snapshot["streaming_initial_capacity"] = static_cast<int64_t>(streaming_initial_capacity);
+    analytics_snapshot["streaming_current_capacity"] = static_cast<int64_t>(streaming_current_capacity);
+    analytics_snapshot["streaming_grow_count"] = static_cast<int64_t>(streaming_grow_count);
     analytics_snapshot["chunks_loaded_this_frame"] = budget.chunks_loaded_this_frame;
     analytics_snapshot["chunks_evicted_this_frame"] = eviction_controller.get_chunks_evicted_this_frame();
     analytics_snapshot["zero_visible_consecutive_frames"] = visibility.zero_visible_recovery.zero_visible_consecutive_frames;
@@ -4856,6 +5017,11 @@ uint32_t GaussianStreamingSystem::_drain_sync_fallback_chunk_loads(
         admission_policy.vram_regulator_allows_load =
                 !admission_policy.enforce_vram_regulator_gate ||
                 budget.vram_regulator->can_load_more_chunks(budget.loaded_chunks_count);
+        _try_grow_persistent_buffer_for_atlas_pressure(
+                budget.loaded_chunks_count,
+                effective_max,
+                admission_policy.enforce_vram_regulator_gate,
+                admission_policy.vram_regulator_allows_load);
         admission_policy.atlas_slots_full = !atlas_allocator.has_free_slots();
 
         const ResidencyBudgetController::AdmissionGate admission_gate =

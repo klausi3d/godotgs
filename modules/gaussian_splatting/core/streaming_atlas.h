@@ -21,6 +21,11 @@
 class GaussianAtlasAllocator {
 public:
 	void reset(uint32_t p_slot_count);
+	// Grow capacity while preserving existing slot assignments. Returns false
+	// if `p_new_capacity` is not strictly greater than the current capacity
+	// (shrinking is intentionally unsupported — callers must release slots
+	// first if they need to lower capacity).
+	bool resize_preserve(uint32_t p_new_capacity);
 	bool has_free_slots() const { return !free_slots.is_empty(); }
 	uint32_t get_free_slot_count() const { return free_slots.size(); }
 	uint32_t get_capacity() const { return capacity; }
