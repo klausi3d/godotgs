@@ -1,11 +1,13 @@
 #include "gaussian_data_loader.h"
 
 #include "../logger/gs_logger.h"
+#include "../logger/startup_trace.h"
 #include "ply_loader.h"
 #include "spz_loader.h"
 
 Error load_gaussian_data_from_file(const String &p_path, GaussianDataLoadResult &r_result) {
     r_result = GaussianDataLoadResult();
+    GSStartupTrace::get_singleton()->begin_asset_open();
 
     const String extension = p_path.get_extension().to_lower();
     if (extension == "spz") {

@@ -12,6 +12,7 @@
 #include "../renderer/sorting_settings_utils.h"
 #include "../nodes/gaussian_splat_node_3d.h"
 #include "../logger/gs_logger.h"
+#include "../logger/startup_trace.h"
 #include "../interfaces/sync_policy.h"
 #include "servers/rendering/rendering_device.h"
 #include "servers/rendering_server.h"
@@ -215,6 +216,7 @@ void GaussianSplatManager::ScopedSubmissionLock::_release() {
 }
 
 GaussianSplatManager::GaussianSplatManager() {
+    GS_STARTUP_SCOPE("manager_construct");
     ERR_FAIL_COND_MSG(singleton != nullptr, "GaussianSplatManager singleton already exists.");
     singleton = this;
 
@@ -249,8 +251,14 @@ GaussianSplatManager::GaussianSplatManager() {
         // Create a local device for primary operations
         RenderingServer *rs = RenderingServer::get_singleton();
         if (rs) {
-            _request_primary_local_device();
-            _request_shared_local_device();
+            {
+                GS_STARTUP_SCOPE("device_request_primary");
+                _request_primary_local_device();
+            }
+            {
+                GS_STARTUP_SCOPE("device_request_shared");
+                _request_shared_local_device();
+            }
             primary_device_render_thread_bound = false;
             shared_device_render_thread_bound = false;
         } else {

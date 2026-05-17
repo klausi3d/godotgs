@@ -1,4 +1,5 @@
 #include "spz_loader.h"
+#include "../logger/startup_trace.h"
 #include "core/os/os.h"
 #include "../logger/gs_logger.h"
 
@@ -119,6 +120,8 @@ Error SPZLoader::load_file(const String &p_path) {
         GS_LOG_ERROR_DEFAULT("Failed to open SPZ file: " + p_path);
         return ERR_FILE_NOT_FOUND;
     }
+
+    GSStartupTrace::get_singleton()->begin_asset_open();
 
     int64_t file_size = file->get_length();
     GS_LOG_STREAMING_INFO(vformat("[SPZ-LOAD] File opened, size=%d MB", (int)(file_size / 1024 / 1024)));

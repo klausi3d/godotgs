@@ -8,6 +8,7 @@
 #include "gpu_sorting_config.h"
 #include "../interfaces/interactive_state_manager.h"
 #include "../logger/gs_logger.h"
+#include "../logger/startup_trace.h"
 #include "../shaders/gaussian_splat.glsl.gen.h"
 #include <cstring>
 
@@ -161,6 +162,7 @@ void RenderResourceOrchestrator::create_gpu_resources_safe() {
 
 	// Initialize GPU buffer manager
 	if (resource_state.buffer_manager.is_valid() && (!resource_state.buffer_manager_initialized || needs_buffer_resize)) {
+		GS_STARTUP_SCOPE("gpu_buffer_manager_init");
 		int max_splats_for_buffer = local_performance_settings.max_splats;
 		Error err = resource_state.buffer_manager->initialize(
 				device_state->rd, max_splats_for_buffer);

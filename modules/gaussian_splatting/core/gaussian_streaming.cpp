@@ -16,6 +16,7 @@
 #include "../renderer/gpu_debug_utils.h"
 #include "../renderer/quantization_config.h"
 #include "../logger/gs_logger.h"
+#include "../logger/startup_trace.h"
 #include "../interfaces/sync_policy.h"
 #include "../lod/lod_config.h"
 #include <cfloat>  // For FLT_MAX
@@ -901,6 +902,7 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
     }
 
     if (rd) {
+        GS_STARTUP_SCOPE("streaming_persistent_buffer_alloc");
         const uint64_t persistent_bytes64 = uint64_t(effective_max_chunks) * _streaming_chunk_slot_bytes();
         if (persistent_bytes64 == 0 || persistent_bytes64 > uint64_t(UINT32_MAX)) {
             ERR_PRINT(vformat("[Streaming] Initialization failed: persistent buffer size overflow (%s bytes, max=%u).",
@@ -943,8 +945,14 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
                 quantization_scales_enabled ? vformat("%d bits scale", quantization_scale_bits) : "scale unquantized"));
     }
 
-    global_atlas_registry.build_cpu_state(*this);
-    global_atlas_registry.sync_to_gpu(*this, rd);
+    {
+        GS_STARTUP_SCOPE("streaming_atlas_build_cpu");
+        global_atlas_registry.build_cpu_state(*this);
+    }
+    {
+        GS_STARTUP_SCOPE("streaming_atlas_sync_gpu");
+        global_atlas_registry.sync_to_gpu(*this, rd);
+    }
 
     GS_LOG_STREAMING_INFO(vformat("[Streaming] Initialized with %d chunks for %d splats (VRAM budget: %d MB, max chunks: %d)",
             chunks.size(), total_splat_count,

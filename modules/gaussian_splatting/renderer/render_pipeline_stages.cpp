@@ -24,6 +24,7 @@
 #include "../interfaces/painterly_renderer.h"
 #include "../logger/gs_debug_trace.h"
 #include "../logger/gs_logger.h"
+#include "../logger/startup_trace.h"
 #include "../resources/color_grading_resource.h"
 #include "../core/gaussian_splat_scene_director.h"
 #include "gpu_sorting_config.h"
@@ -818,6 +819,29 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 		bool p_set_skip_metrics, bool p_clear_cull_state_on_skip) {
 	ERR_FAIL_NULL(renderer);
 	ERR_FAIL_COND(!p_frame_context.deps.validate());
+
+	const bool startup_trace_enabled = GSStartupTrace::is_enabled_fast();
+	const uint64_t startup_trace_frame_start_usec =
+			startup_trace_enabled && OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : 0;
+	const bool startup_trace_is_first_frame =
+			startup_trace_enabled &&
+			p_frame_context.deps.frame_state &&
+			p_frame_context.deps.frame_state->frame_counter == 0;
+	struct StartupTraceFlushGuard {
+		bool active;
+		uint64_t start_usec;
+		~StartupTraceFlushGuard() {
+			if (!active) {
+				return;
+			}
+			GSStartupTrace *trace = GSStartupTrace::get_singleton();
+			if (!trace) {
+				return;
+			}
+			const uint64_t now = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : start_usec;
+			trace->flush(double(now - start_usec) / 1000.0);
+		}
+	} startup_trace_flush_guard{startup_trace_is_first_frame, startup_trace_frame_start_usec};
 
 	// Copy frame context first, then build frame_plan and update deps.
 	// The provider must be constructed AFTER this so it sees the updated deps.

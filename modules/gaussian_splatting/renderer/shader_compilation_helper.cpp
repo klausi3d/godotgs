@@ -3,6 +3,7 @@
 #include "core/error/error_macros.h"
 #include "core/string/string_builder.h"
 #include "../logger/gs_logger.h"
+#include "../logger/startup_trace.h"
 #include "quantization_config.h"
 #include "tile_prefix_scan_utils.h"
 #include "tile_renderer.h"
@@ -342,6 +343,7 @@ Error ShaderCompilationManager::compile_all_shaders(RenderingDevice *p_device_hi
 }
 
 Error ShaderCompilationManager::compile_binning_shaders(RenderingDevice *p_device) {
+	GS_STARTUP_SCOPE("shader_compile_binning");
 	const int variant_index = TileShaderCompilation::DEFAULT_VARIANT_INDEX;
 	ERR_FAIL_NULL_V(owner.shader_resources.tile_binning_shader_source.get(), ERR_UNCONFIGURED);
 
@@ -380,6 +382,7 @@ Error ShaderCompilationManager::compile_binning_shaders(RenderingDevice *p_devic
 }
 
 Error ShaderCompilationManager::compile_prefix_shaders(RenderingDevice *p_device) {
+	GS_STARTUP_SCOPE("shader_compile_prefix");
 	const int variant_index = TileShaderCompilation::DEFAULT_VARIANT_INDEX;
 	ERR_FAIL_NULL_V(owner.shader_resources.tile_prefix_shader_source.get(), ERR_UNCONFIGURED);
 
@@ -432,6 +435,7 @@ Error ShaderCompilationManager::compile_prefix_shaders(RenderingDevice *p_device
 }
 
 Error ShaderCompilationManager::compile_raster_shaders(RenderingDevice *p_device, bool p_want_compute_raster) {
+	GS_STARTUP_SCOPE("shader_compile_raster");
 	const int variant_index = TileShaderCompilation::DEFAULT_VARIANT_INDEX;
 	ERR_FAIL_NULL_V(owner.shader_resources.tile_raster_shader_source.get(), ERR_UNCONFIGURED);
 	ERR_FAIL_NULL_V(owner.shader_resources.tile_raster_compute_shader_source.get(), ERR_UNCONFIGURED);

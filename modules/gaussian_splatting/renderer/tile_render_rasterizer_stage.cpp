@@ -32,6 +32,7 @@
 #include "quantization_config.h"
 #include "resource_owner_mismatch_contract.h"
 #include "../logger/gs_logger.h"
+#include "../logger/startup_trace.h"
 #include "gaussian_gpu_layout.h"
 #include "pipeline_io_contracts.h"
 #include "shader_compilation_helper.h"
@@ -154,6 +155,7 @@ uint64_t TileRenderer::TileRasterizerStage::dispatch_tile_rasterizer(uint32_t p_
     }
 
     if (!owner.shader_resources.tile_raster_pipeline.is_valid()) {
+        GS_STARTUP_SCOPE("first_frame_raster_pipeline_create");
         RD::PipelineRasterizationState raster_state;
         raster_state.cull_mode = RD::POLYGON_CULL_DISABLED;
         RD::PipelineMultisampleState ms_state;
