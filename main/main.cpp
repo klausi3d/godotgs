@@ -933,6 +933,10 @@ void Main::test_cleanup() {
 }
 #endif
 
+#if defined(TESTS_ENABLED) && defined(MODULE_GAUSSIAN_SPLATTING_ENABLED)
+extern int gs_gpu_test_main(int argc, char *argv[]);
+#endif
+
 int Main::test_entrypoint(int argc, char *argv[], bool &tests_need_run) {
 	for (int x = 0; x < argc; x++) {
 		// Early return to ignore a possible user-provided "--test" argument.
@@ -940,6 +944,15 @@ int Main::test_entrypoint(int argc, char *argv[], bool &tests_need_run) {
 			tests_need_run = false;
 			return EXIT_SUCCESS;
 		}
+#if defined(TESTS_ENABLED) && defined(MODULE_GAUSSIAN_SPLATTING_ENABLED)
+		// Gaussian Splatting GPU test harness — bootstraps an offscreen RenderingDevice
+		// before invoking doctest so [RequiresGPU] cases actually run instead of skipping.
+		// Intercepts before the generic --test branch so the harness owns its own setup.
+		if ((strncmp(argv[x], "--gs-gpu-test", 13) == 0) && (strlen(argv[x]) == 13)) {
+			tests_need_run = true;
+			return gs_gpu_test_main(argc, argv);
+		}
+#endif
 		if ((strncmp(argv[x], "--test", 6) == 0) && (strlen(argv[x]) == 6)) {
 			tests_need_run = true;
 #ifdef TESTS_ENABLED

@@ -42,12 +42,32 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: baseline-qa-${{ github.event.pull_request.number || github.ref }}
+  # PR runs and merge_group runs are INDEPENDENT gates — they validate
+  # different commits (the PR head vs the queue-merged-with-base version),
+  # so they shouldn't (and won't) cross-serialize. Each event type
+  # serializes within itself:
+  #   - pull_request: by PR number, so an amended/force-pushed PR cancels
+  #     the in-flight run on the older head (saves a full ~6 min rebuild).
+  #   - merge_group: by head_sha, so each queue entry gets a dedicated slot.
+  #   - push / schedule / workflow_dispatch: fall back to github.ref.
+  # On the self-hosted GPU runner, simultaneous PR + merge_group entries for
+  # the *same* PR will simply queue on the runner's single-job-at-a-time
+  # constraint — they share the scons cache directory rather than running
+  # in parallel, so cache contention is bounded by the runner's serial
+  # execution, not by this expression.
+  group: baseline-qa-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   gpu-tests:
     name: GPU QA Tests (Windows Self-Hosted)
+    # Never run self-hosted Windows on untrusted PR fork code. Same-repo
+    # branches (maintainer PRs) still trigger the gate; fork PRs are routed
+    # to the Linux cpu-tests lane only. Mirrors release_builds.yml's pattern
+    # and protects the persistent runner's scons cache, credential store,
+    # and Actions runner token from arbitrary code in `tests/ci/*.py`,
+    # `SConstruct`, `methods.py`, or any `SCsub` checked out from a fork.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64, godotgs, gpu]
     timeout-minutes: 120
 
@@ -181,6 +201,460 @@ jobs:
         } else {
           "Test results file not found" | Out-File -FilePath $summaryFile -Encoding utf8 -Append
         }
+
+  gpu-harness:
+    name: GPU Harness + Visual Gate (Windows Self-Hosted)
+    # Same fork-PR gate as gpu-tests — never let an untrusted fork PR's
+    # workflow files, SConstruct, methods.py, or test code run on the
+    # persistent self-hosted runner.
+    if: |
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      !cancelled()
+    runs-on: [self-hosted, Windows, X64, godotgs, gpu]
+    # Runs after gpu-tests so the two GPU jobs serialize on the shared runner
+    # and split the scons cache cleanly. Independent of gpu-tests' result —
+    # a failing GDScript-based gpu-test should not gate the doctest-based
+    # visual gate.
+    # The `if:` block above also handles the needs:-failure case: `!cancelled()`
+    # in the conjunction is enough to override `needs:`'s implicit success()
+    # requirement, so a failing gpu-tests run still lets the visual gate run.
+    # Not using `always()` because it would evaluate true during cancellation
+    # and defeat the workflow's `concurrency.cancel-in-progress: true`.
+    needs: gpu-tests
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+
+    defaults:
+      run:
+        working-directory: repo
+        shell: pwsh
+
+    steps:
+      - name: Configure Git safe.directory
+        working-directory: ${{ github.workspace }}
+        run: git config --global --add safe.directory '*'
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: repo
+          fetch-depth: 0
+          submodules: recursive
+          set-safe-directory: false
+          # `persist-credentials: false` — without it, the checkout token
+          # (potentially the broadly-scoped BASELINE_UPDATE_PAT below) gets
+          # stored in .git/config as a credential helper for the rest of the
+          # job, exposing it to every subsequent step (scons cache writes,
+          # git submodule fetches, the provenance step, etc.). The create-PR
+          # step (peter-evans/create-pull-request) receives the PAT directly
+          # via its own `token:` input, so disabling persistence here doesn't
+          # break the recapture-PR flow but does narrow the blast radius.
+          persist-credentials: false
+          # Update-mode runs push baseline changes back through a PR; everything
+          # else stays on the workflow's default token.
+          token: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.baseline_mode == 'update')) && secrets.BASELINE_UPDATE_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Decide whether GPU harness should run
+        id: path_filter
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fallbackLabel = "ci/gpu-runner-unavailable";
+            let runHarness = true;
+            let reason = "default-run";
+            // Set true when the merge_group fallback paths override the
+            // normal path-filter result (truncated file list or API error).
+            let decisionForced = false;
+
+            if (context.eventName === "schedule" || context.eventName === "push" || context.eventName === "workflow_dispatch") {
+              reason = `event:${context.eventName}`;
+            } else if (context.eventName === "pull_request" || context.eventName === "merge_group") {
+              // Path filter — trigger the visual gate on anything that can
+              // change the GPU output of our test path:
+              //   - The whole gaussian_splatting module (SCsub
+              //     `source_directories` spans renderer/, shaders/, compute/,
+              //     core/, io/, lod/, interfaces/, nodes/, editor/, animation/,
+              //     asset_management/, painterly/, persistence/, logger/,
+              //     resources/, tests/).
+              //   - The upstream RenderingDevice surface and shader pipelines
+              //     under servers/rendering/. The harness boots an offscreen
+              //     RD via `Main::test_setup()` then drives it directly, so
+              //     changes here can absolutely change rendered output.
+              //   - GPU drivers (Vulkan canonical, D3D12 for the differential
+              //     lane). RenderingContextDriverVulkan/D3D12 changes can shift
+              //     adapter selection, queue setup, or pipeline-creation
+              //     behavior in ways the visual gate should catch.
+              //   - main/main.cpp (the --gs-gpu-test entrypoint lives there).
+              //   - The harness script, baselines, and this workflow file.
+              //   - Build system surface that controls what's compiled into
+              //     the harness binary (SConstruct, methods.py, platform/,
+              //     and the upstream doctest header). Edits here can change
+              //     RID lifetime, Image readback, env-var handling, or the
+              //     test framework itself — all directly load-bearing for
+              //     the visual gate.
+              //   - core/ — Image, RID, OS::get_environment, atomics, etc.
+              //     all live here and are exercised by the harness path.
+              // Costs CI minutes on broader-than-strictly-necessary changes
+              // (any servers/rendering edit triggers the gate), but the
+              // alternative is silent regressions on upstream rendering work.
+              const renderPrefixes = [
+                "modules/gaussian_splatting/",
+                "servers/rendering/",
+                "drivers/vulkan/",
+                "drivers/d3d12/",
+                "core/",
+                "platform/",
+                "thirdparty/doctest/",
+                "tests/visual_baselines/",
+                "main/main.cpp",
+                "tests/ci/run_gpu_harness.py",
+                ".github/workflows/baseline_qa.yml",
+                "SConstruct",
+                "methods.py",
+              ];
+
+              // pulls.listFiles is capped at 3000 files per PR; github.paginate
+              // walks all pages but stops at that ceiling. Mirror the
+              // merge_group truncation fallback: if we hit the cap, force
+              // runHarness=true rather than risk silently skipping a giant PR
+              // that happens to touch renderer/shader code past the limit.
+              const GH_PULLS_LISTFILES_CAP = 3000;
+              let changedPaths = [];
+              // Rename detection: pulls.listFiles / compareCommitsWithBasehead
+              // report renamed files with status="renamed" and an extra
+              // `previous_filename` for the old path. If a file moves from a
+              // watched prefix (e.g. modules/gaussian_splatting/) to an
+              // unwatched one, only matching against `filename` misses it and
+              // we'd silently skip the visual gate. Also include the old path
+              // so either side of the rename triggers the harness.
+              const pathsFromFile = (f) => {
+                const out = [];
+                if (f.filename) out.push(String(f.filename));
+                if (f.previous_filename) out.push(String(f.previous_filename));
+                return out;
+              };
+              if (context.eventName === "pull_request") {
+                try {
+                  const files = await github.paginate(github.rest.pulls.listFiles, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: context.payload.pull_request.number,
+                    per_page: 100,
+                  });
+                  changedPaths = files.flatMap(pathsFromFile);
+                  if (files.length >= GH_PULLS_LISTFILES_CAP) {
+                    core.warning(
+                      `pulls.listFiles returned >= ${GH_PULLS_LISTFILES_CAP} files (API cap). ` +
+                      "Path filter may be incomplete; forcing runHarness=true to stay safe."
+                    );
+                    decisionForced = true;
+                    runHarness = true;
+                    reason = "pull-request-file-list-truncated";
+                  }
+                } catch (e) {
+                  core.warning(`pulls.listFiles failed: ${e.message}; forcing runHarness=true`);
+                  decisionForced = true;
+                  runHarness = true;
+                  reason = "pull-request-files-api-error";
+                }
+              } else {
+                // merge_group: compareCommitsWithBasehead returns a single
+                // comparison object whose `files` array is NOT paginated like
+                // pulls.listFiles — it returns up to a hard cap (300) in the
+                // first response and silently omits the rest. To minimize
+                // false positives, request the maximum (per_page=300) and
+                // only force the safety fallback when we hit that real cap.
+                // For merge queues that batch >300 changed files, truncation
+                // can still miss renderer/shader changes — Soft-fallback: on
+                // any error or when the response is truncated, default to
+                // runHarness=true (safer to run than skip).
+                const GH_COMPARE_FILES_CAP = 300;
+                const base = context.payload.merge_group.base_sha;
+                const head = context.payload.merge_group.head_sha;
+                try {
+                  const compare = await github.rest.repos.compareCommitsWithBasehead({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    basehead: `${base}...${head}`,
+                    per_page: GH_COMPARE_FILES_CAP,
+                  });
+                  changedPaths = (compare.data.files || []).flatMap(pathsFromFile);
+                  if (compare.data.files && compare.data.files.length >= GH_COMPARE_FILES_CAP) {
+                    core.warning(
+                      `merge_group compare returned >= ${GH_COMPARE_FILES_CAP} files (API cap). ` +
+                      "Path filter may be incomplete; forcing runHarness=true to stay safe."
+                    );
+                    decisionForced = true;
+                    runHarness = true;
+                    reason = "merge-group-file-list-truncated";
+                  }
+                } catch (e) {
+                  core.warning(`merge_group compare API failed: ${e.message}; forcing runHarness=true`);
+                  decisionForced = true;
+                  runHarness = true;
+                  reason = "merge-group-compare-error";
+                }
+              }
+
+              if (!decisionForced) {
+                runHarness = changedPaths.some((p) =>
+                  renderPrefixes.some((prefix) => p.startsWith(prefix))
+                );
+                reason = runHarness ? "render-path-change" : "no-render-changes";
+              }
+
+              let labels = [];
+              if (context.eventName === "pull_request") {
+                labels = (context.payload.pull_request.labels || []).map((l) => l.name);
+              }
+              if (runHarness && labels.includes(fallbackLabel)) {
+                runHarness = false;
+                reason = `fallback-label:${fallbackLabel}`;
+              }
+            }
+
+            core.info(`run_harness=${runHarness} reason=${reason}`);
+            core.setOutput("run_harness", runHarness ? "true" : "false");
+            core.setOutput("reason", reason);
+
+      - name: Report decision
+        run: |
+          Write-Host "run_harness=${{ steps.path_filter.outputs.run_harness }}"
+          Write-Host "reason=${{ steps.path_filter.outputs.reason }}"
+
+      - name: Verify Python
+        if: steps.path_filter.outputs.run_harness == 'true'
+        run: python --version
+
+      - name: Set up MSVC
+        if: steps.path_filter.outputs.run_harness == 'true'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install SCons + Python deps
+        if: steps.path_filter.outputs.run_harness == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install scons numpy pillow
+
+      - name: Build module-enabled Godot editor (tests=yes)
+        if: steps.path_filter.outputs.run_harness == 'true'
+        run: |
+          # Mirror gpu-tests's scons args (gs_native_arch=no) so both jobs
+          # produce identical .obj cache entries and the shared C:/godotgs-
+          # scons-cache doesn't thrash between them.
+          python -m SCons platform=windows target=editor dev_build=yes tests=yes `
+            module_gaussian_splatting_enabled=yes gs_native_arch=no `
+            cache_path=C:/godotgs-scons-cache cache_limit=50 -j12
+
+      - name: Resolve Godot binary
+        if: steps.path_filter.outputs.run_harness == 'true'
+        id: godot_binary
+        run: |
+          $candidates = @(
+            "bin\godot.windows.editor.dev.x86_64.console.exe",
+            "bin\godot.windows.editor.dev.x86_64.exe",
+            "bin\godot.windows.editor.x86_64.console.exe",
+            "bin\godot.windows.editor.x86_64.exe"
+          )
+          $resolved = $null
+          foreach ($candidate in $candidates) {
+            if (Test-Path -LiteralPath $candidate) {
+              $resolved = (Resolve-Path -LiteralPath $candidate).Path
+              break
+            }
+          }
+          if (-not $resolved) { throw "Could not find built Godot binary in bin\." }
+          Write-Host "Resolved Godot binary: $resolved"
+          "GODOT_BINARY=$resolved" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Resolve baseline mode
+        if: steps.path_filter.outputs.run_harness == 'true'
+        id: baseline_mode
+        run: |
+          $mode = "compare"; $reason = "default-compare"
+          if ("${{ github.event_name }}" -eq "schedule") {
+            $mode = "update"; $reason = "nightly-schedule-update"
+          } elseif ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.baseline_mode }}" -eq "update") {
+            $mode = "update"; $reason = "manual-update"
+          }
+          "mode=$mode" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "reason=$reason" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Record runner provenance
+        if: steps.path_filter.outputs.run_harness == 'true'
+        run: |
+          $gpu = Get-CimInstance Win32_VideoController | Select-Object -First 1
+          $os_info = Get-CimInstance Win32_OperatingSystem
+          $head_sha = (git -C . rev-parse HEAD).Trim()
+          $info = [ordered]@{
+            gpu = if ($gpu) { $gpu.Name } else { "unknown" }
+            driver = if ($gpu) { $gpu.DriverVersion } else { "unknown" }
+            runner_id = $env:RUNNER_NAME
+            runner_os_build = $os_info.BuildNumber
+            timestamp_utc = (Get-Date).ToUniversalTime().ToString("o")
+            baseline_mode = "${{ steps.baseline_mode.outputs.mode }}"
+            baseline_mode_reason = "${{ steps.baseline_mode.outputs.reason }}"
+            harness_commit = $head_sha
+            github_run_id = $env:GITHUB_RUN_ID
+            github_event = $env:GITHUB_EVENT_NAME
+          }
+          $info | ConvertTo-Json | Out-File -FilePath "tests/visual_baselines/.provenance.json" -Encoding utf8
+          Write-Host "Provenance:"
+          Get-Content "tests/visual_baselines/.provenance.json"
+
+      - name: Run GPU harness
+        if: steps.path_filter.outputs.run_harness == 'true'
+        env:
+          GS_CI_GPU_REQUIRED: "1"
+          GS_VISUAL_BASELINE_MODE: ${{ steps.baseline_mode.outputs.mode }}
+        run: |
+          python tests/ci/run_gpu_harness.py `
+            --godot $env:GODOT_BINARY `
+            --report tests/ci/gpu_harness_report.json
+
+      - name: Upload visual diff artifacts (compare mode)
+        if: always() && steps.path_filter.outputs.run_harness == 'true' && steps.baseline_mode.outputs.mode == 'compare'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-harness-visual-diffs
+          path: |
+            repo/tests/visual_baselines/**/*.actual.png
+            repo/tests/visual_baselines/.provenance.json
+            repo/tests/ci/gpu_harness_report.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload regenerated baselines (update mode)
+        if: always() && steps.path_filter.outputs.run_harness == 'true' && steps.baseline_mode.outputs.mode == 'update'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-harness-recaptured-baselines
+          path: |
+            repo/tests/visual_baselines/**/*.png
+            repo/tests/visual_baselines/.provenance.json
+            repo/tests/ci/gpu_harness_report.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Check recapture PAT availability
+        id: recapture_pat
+        if: success() && steps.path_filter.outputs.run_harness == 'true' && steps.baseline_mode.outputs.mode == 'update'
+        env:
+          PAT_PROBE: ${{ secrets.BASELINE_UPDATE_PAT }}
+        run: |
+          if ([string]::IsNullOrEmpty($env:PAT_PROBE)) {
+            "available=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Host "::warning::BASELINE_UPDATE_PAT secret is not provisioned. Update-mode run will capture baselines as artifacts only; no recapture PR will be opened. Provision the secret in repo settings to enable the auto-PR flow."
+          } else {
+            "available=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+
+      - name: Open recapture PR
+        if: success() && steps.path_filter.outputs.run_harness == 'true' && steps.baseline_mode.outputs.mode == 'update' && steps.recapture_pat.outputs.available == 'true'
+        # SHA-pinned (third-party action handed BASELINE_UPDATE_PAT).
+        # `c5a7806660adbe173f04e3e038b0ccdcd758773c` is `peter-evans/create-pull-request@v6`
+        # as of 2026-05-17 — refreshed via:
+        #   gh api repos/peter-evans/create-pull-request/git/refs/tags/v6
+        # Bump intentionally (review the diff between the old and new SHA)
+        # rather than letting the floating major tag move silently. The
+        # tj-actions/changed-files March-2025 incident is the canonical
+        # cautionary tale for floating tags on actions that hold secrets.
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6
+        with:
+          token: ${{ secrets.BASELINE_UPDATE_PAT }}
+          path: repo
+          branch: ci/baseline-recapture/${{ github.run_id }}
+          base: master
+          commit-message: |
+            visual_baselines: recapture from run ${{ github.run_id }}
+
+            Trigger: ${{ github.event_name }} (${{ steps.baseline_mode.outputs.reason }})
+            Provenance is in the gpu-harness-recaptured-baselines artifact
+            and (after merge) in tests/visual_baselines/.provenance.json.
+          title: "visual_baselines: scheduled recapture (${{ github.run_id }})"
+          body: |
+            Automated baseline recapture from `baseline_qa.yml` run ${{ github.run_id }}.
+            Provenance JSON is attached to the `gpu-harness-recaptured-baselines`
+            workflow artifact for this run.
+
+            **Reviewer checklist:**
+            - [ ] Diffs are within sub-LSB rendering tolerances (no functional regression).
+            - [ ] Driver/GPU change documented per `tests/visual_baselines/README.md`.
+            - [ ] No new PNGs exceed the 256x256 fixture-size guideline unless justified.
+          add-paths: |
+            tests/visual_baselines/**/*.png
+            tests/visual_baselines/.provenance.json
+          delete-branch: true
+
+      - name: Append GPU harness summary
+        if: always() && steps.path_filter.outputs.run_harness == 'true'
+        run: |
+          $summaryFile = $env:GITHUB_STEP_SUMMARY
+          "## GPU Harness + Visual Gate" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+          "" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+          "- Mode: ``${{ steps.baseline_mode.outputs.mode }}`` (${{ steps.baseline_mode.outputs.reason }})" `
+            | Out-File -Append -FilePath $summaryFile -Encoding utf8
+          if (Test-Path "tests/visual_baselines/.provenance.json") {
+            $p = $null
+            try {
+              $p = Get-Content "tests/visual_baselines/.provenance.json" -Raw | ConvertFrom-Json -ErrorAction Stop
+            } catch {
+              Write-Host "::warning::Failed to parse provenance.json: $($_.Exception.Message)"
+            }
+            if ($p) {
+              "- GPU: $($p.gpu)" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+              "- Driver: $($p.driver)" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+              "- Runner: $($p.runner_id)" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            }
+          }
+          $r = $null
+          if (Test-Path "tests/ci/gpu_harness_report.json") {
+            try {
+              $r = Get-Content "tests/ci/gpu_harness_report.json" -Raw | ConvertFrom-Json -ErrorAction Stop
+            } catch {
+              Write-Host "::warning::Failed to parse gpu_harness_report.json: $($_.Exception.Message)"
+            }
+          }
+          if ($r) {
+            "" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "| Metric | Value |" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "|---|---|" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "| Test cases | $($r.totals.test_cases_passed)/$($r.totals.test_cases_total) |" `
+              | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "| Assertions | $($r.totals.assertions_passed)/$($r.totals.assertions_total) |" `
+              | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "| Wall seconds | $($r.wall_seconds) |" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "| Supervisor exit | $($r.supervisor_exit) |" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "### Per-batch breakdown" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "| Batch | RC | Cases | Asserts | Status | Wall (s) |" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "|---|---|---|---|---|---|" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            foreach ($b in $r.batches) {
+              "| $($b.name) | $($b.rc) | $($b.test_cases.passed)/$($b.test_cases.total) | $($b.assertions.passed)/$($b.assertions.total) | $($b.status) | $($b.wall_seconds) |" `
+                | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            }
+            if ($r.totals.test_cases_failed -gt 0 -or $r.totals.assertions_failed -gt 0) {
+              $actuals = Get-ChildItem "tests/visual_baselines" -Filter "*.actual.png" -ErrorAction SilentlyContinue
+              if ($actuals) {
+                "" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+                "**Visual-diff captures: $($actuals.Count)** (see ``gpu-harness-visual-diffs`` artifact)" `
+                  | Out-File -Append -FilePath $summaryFile -Encoding utf8
+              }
+            }
+          } else {
+            "" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+            "*No gpu_harness_report.json could be parsed — the harness may have crashed before writing the report, or the JSON was malformed.*" `
+              | Out-File -Append -FilePath $summaryFile -Encoding utf8
+          }
+
+      - name: Report skipped run
+        if: steps.path_filter.outputs.run_harness != 'true'
+        run: |
+          $summaryFile = $env:GITHUB_STEP_SUMMARY
+          "## GPU Harness + Visual Gate" | Out-File -Append -FilePath $summaryFile -Encoding utf8
+          "Skipped: ${{ steps.path_filter.outputs.reason }}" | Out-File -Append -FilePath $summaryFile -Encoding utf8
 
   cpu-tests:
     name: CPU-Only QA Tests (Linux)

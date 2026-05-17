@@ -17,7 +17,12 @@ namespace VisualCompare {
 
 inline constexpr const char *BASELINE_ROOT = "tests/visual_baselines";
 inline constexpr const char *BASELINE_MODE_ENV = "GS_VISUAL_BASELINE_MODE";
-inline constexpr const char *BASELINE_ROOT_ENV = "GS_VISUAL_BASELINE_ROOT";
+// Note: an earlier revision allowed `GS_VISUAL_BASELINE_ROOT` to override the
+// baseline directory to any absolute path. That was a path-traversal sink in
+// update mode (PNGs would be saved under attacker-controlled paths). The
+// override is removed in favor of walk-up resolution from the executable's
+// directory — same robustness across cwd configurations but no untrusted
+// input flows into the I/O path.
 
 struct ComparisonResult {
 	bool match = false;
@@ -45,19 +50,19 @@ inline bool is_update_mode() {
 // updated baselines to the wrong location (update mode misplaces artifacts).
 //
 // Resolution order:
-//   1. `GS_VISUAL_BASELINE_ROOT` env var (absolute) — explicit override for CI
-//      or unusual layouts.
-//   2. Walk up from the executable's directory looking for `tests/visual_baselines`;
+//   1. Walk up from the executable's directory looking for `tests/visual_baselines`;
 //      anchor there. Handles the standard `<repo>/bin/<godot>.exe` layout.
-//   3. Fall back to cwd-relative — preserves the historical behavior for
+//   2. Fall back to cwd-relative — preserves the historical behavior for
 //      callers that already run from the repo root.
+//
+// Deliberately no env-var override: any string accepted as an absolute path
+// here becomes a write target in update mode, and the test harness is
+// invoked from CI workflows that pass through PR-controlled environment in
+// some configurations. Walk-up resolution is sufficient for every legitimate
+// caller and doesn't introduce an untrusted-input I/O sink.
 inline String _baseline_root_absolute() {
 	OS *os = OS::get_singleton();
 	if (os) {
-		const String override_root = os->get_environment(BASELINE_ROOT_ENV).strip_edges();
-		if (!override_root.is_empty()) {
-			return override_root;
-		}
 		const String exe_path = os->get_executable_path();
 		if (!exe_path.is_empty()) {
 			String dir = exe_path.get_base_dir();
@@ -248,10 +253,19 @@ inline ComparisonResult compare_images(const Ref<Image> &p_a, const Ref<Image> &
 		result.psnr_db = 99.0;
 	}
 	result.match = (mismatched == 0);
-	result.diff_summary = vformat(
-			"mismatched=%u/%llu max_lsb=%d mean_lsb=%.3f psnr=%.2f dB",
-			mismatched, (unsigned long long)result.total_pixels,
-			max_lsb, result.mean_per_channel_diff_lsb, result.psnr_db);
+	// Use String::num_uint64 + concatenation instead of vformat("%d", int(...))
+	// for the pixel counters — `mismatched` is uint32_t (up to 4.3B) and
+	// `total_pixels` is uint64_t. The original int() casts would overflow for
+	// any image larger than ~2.1B pixels (16k×16k or larger) and produce
+	// negative-looking counters in the diff_summary, misleading CI triage on
+	// the very runs where accurate output matters most. Godot's vformat does
+	// not accept `%llu` (verified earlier in this PR), so explicit string
+	// conversion is the portable approach.
+	const String mismatched_str = String::num_uint64(uint64_t(mismatched));
+	const String total_str = String::num_uint64(result.total_pixels);
+	result.diff_summary = "mismatched=" + mismatched_str + "/" + total_str +
+			vformat(" max_lsb=%d mean_lsb=%.3f psnr=%.2f dB",
+					max_lsb, result.mean_per_channel_diff_lsb, result.psnr_db);
 	return result;
 }
 
