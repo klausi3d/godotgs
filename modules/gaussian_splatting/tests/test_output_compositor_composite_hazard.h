@@ -78,6 +78,7 @@ TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Compositor scratch-copy
 	source_format.texture_type = RD::TEXTURE_TYPE_2D;
 	source_format.format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
 	source_format.usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT |
+			RD::TEXTURE_USAGE_CAN_UPDATE_BIT |
 			RD::TEXTURE_USAGE_CAN_COPY_TO_BIT |
 			RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
 
@@ -91,6 +92,7 @@ TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Compositor scratch-copy
 	destination_format.format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
 	destination_format.usage_bits = RD::TEXTURE_USAGE_STORAGE_BIT |
 			RD::TEXTURE_USAGE_SAMPLING_BIT |
+			RD::TEXTURE_USAGE_CAN_UPDATE_BIT |
 			RD::TEXTURE_USAGE_CAN_COPY_TO_BIT |
 			RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
 
@@ -100,6 +102,46 @@ TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Compositor scratch-copy
 	REQUIRE(destination_tex.is_valid());
 	rd->set_resource_name(source_tex, "GS_HazardRepro_Source");
 	rd->set_resource_name(destination_tex, "GS_HazardRepro_Destination");
+
+	// OutputCompositor::copy_to_render_target routes into _copy_final_output_compute
+	// (the scratch-copy path this PR fixes) only when params.depth_test_enabled is
+	// true. Composite-without-depth falls through to copy_to_fb_rect — the graphics
+	// path that doesn't carry the hazard but also doesn't exercise the fix. Provide
+	// dummy depth textures here and set both to the far plane (depth=1.0) so the
+	// shader's `gs_depth < 0.999999` guard at viewport_blit.glsl:127 is false, the
+	// depth comparison short-circuits, and the test exercises the composite path
+	// deterministically across runs/drivers without depending on
+	// texture_create's zero-init behavior (which is not portable).
+	RD::TextureFormat depth_format;
+	depth_format.width = 256;
+	depth_format.height = 256;
+	depth_format.depth = 1;
+	depth_format.array_layers = 1;
+	depth_format.mipmaps = 1;
+	depth_format.texture_type = RD::TEXTURE_TYPE_2D;
+	depth_format.format = RD::DATA_FORMAT_D32_SFLOAT;
+	depth_format.usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT |
+			RD::TEXTURE_USAGE_CAN_UPDATE_BIT |
+			RD::TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	RID source_depth = rd->texture_create(depth_format, RD::TextureView());
+	RID destination_depth = rd->texture_create(depth_format, RD::TextureView());
+	REQUIRE(source_depth.is_valid());
+	REQUIRE(destination_depth.is_valid());
+	rd->set_resource_name(source_depth, "GS_HazardRepro_SourceDepth");
+	rd->set_resource_name(destination_depth, "GS_HazardRepro_DestinationDepth");
+
+	// Encode 256*256 floats of value 1.0 once and upload to both depths.
+	Vector<uint8_t> depth_far_bytes;
+	depth_far_bytes.resize(256 * 256 * sizeof(float));
+	{
+		const float far_depth = 1.0f;
+		uint8_t *dp = depth_far_bytes.ptrw();
+		for (int i = 0; i < 256 * 256; i++) {
+			memcpy(dp + i * sizeof(float), &far_depth, sizeof(float));
+		}
+	}
+	REQUIRE(rd->texture_update(source_depth, 0, depth_far_bytes) == OK);
+	REQUIRE(rd->texture_update(destination_depth, 0, depth_far_bytes) == OK);
 
 	Vector<uint8_t> destination_data = CompositeHazardRepro::_build_destination_gradient_256();
 	Vector<uint8_t> source_data = CompositeHazardRepro::_build_source_premultiplied_circle_256();
@@ -112,13 +154,24 @@ TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Compositor scratch-copy
 
 	OutputCopyParams params;
 	params.source_texture = source_tex;
+	params.source_depth = source_depth;
 	params.destination_texture = destination_tex;
+	params.destination_depth = destination_depth;
 	params.viewport_size = Size2i(256, 256);
 	params.composite_with_destination = true;
 	params.source_is_premultiplied = true;
+	params.depth_test_enabled = true;
+	params.z_near = 0.05f;
+	params.z_far = 4000.0f;
+	params.depth_linearize_mul = 1.0f;
+	params.depth_linearize_add = 1.0f;
+	params.depth_epsilon = 0.01f;
 
 	OutputCopyResult result = compositor->copy_to_render_target(params);
-	CHECK_MESSAGE(result.success, result.error.utf8().get_data());
+	if (!result.success) {
+		print_line(vformat("[HazardRepro] copy_to_render_target failed: %s", result.error));
+	}
+	CHECK(result.success);
 
 	const OutputCompositor::LastCompositeStats stats = compositor->get_last_composite_stats();
 	CHECK(stats.valid);
@@ -130,7 +183,10 @@ TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Compositor scratch-copy
 	String visual_reason;
 	const bool visual_ok = TestGaussianSplatting::VisualCompare::capture_and_compare(
 			rd, destination_tex, "composite_hazard_256x256.png", 1.0, 45.0, &visual_reason);
-	CHECK_MESSAGE(visual_ok, visual_reason.utf8().get_data());
+	if (!visual_ok) {
+		print_line(vformat("[HazardRepro] visual gate: %s", visual_reason));
+	}
+	CHECK(visual_ok);
 
 	// Second invocation must reuse the scratch entry (same format and extent).
 	Vector<uint8_t> destination_reset = CompositeHazardRepro::_build_destination_gradient_256();
@@ -144,6 +200,8 @@ TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Compositor scratch-copy
 	compositor->shutdown();
 	rd->free(source_tex);
 	rd->free(destination_tex);
+	rd->free(source_depth);
+	rd->free(destination_depth);
 }
 
 } // namespace TestGaussianSplatting

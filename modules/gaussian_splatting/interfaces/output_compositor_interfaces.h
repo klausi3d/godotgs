@@ -29,6 +29,14 @@ struct OutputCopyResult {
     Size2i source_size;
     Size2i dest_size;
     String error;
+    // True iff the caller's depth-test request (params.depth_test_enabled) was
+    // actually honored by the executed path. The graphics-blit fallback used
+    // when destination lacks TEXTURE_USAGE_CAN_COPY_FROM_BIT (which would
+    // otherwise require the scratch-copy compute path) does NOT carry depth
+    // information through copy_to_fb_rect, so callers that requested
+    // depth-tested compositing on such targets will see success=true here but
+    // depth_test_honored=false. Set to true when depth was not requested.
+    bool depth_test_honored = true;
 };
 
 // Parameters for framebuffer-based copy

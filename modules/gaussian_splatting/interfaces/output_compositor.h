@@ -187,12 +187,23 @@ private:
     // Scratch texture used to break the R/W hazard in the composite path: destination
     // is copied here before the compute dispatch, the shader reads from this via a
     // sampler, and only writes the destination (which is writeonly inside the shader).
+    // `format` is the canonical storage format used to allocate the scratch (SRGB
+    // inputs get swapped to UNORM equivalent to avoid sampler double-decode); the
+    // pool reuses entries across destinations that share the canonical format.
+    // `last_used_id` is bumped on every hit/insert and consumed by the LRU eviction.
     struct ViewportBlitScratch {
         RID texture;
         Size2i extent;
         RD::DataFormat format = RD::DATA_FORMAT_MAX;
         RenderingDevice *owner_device = nullptr;
+        uint64_t last_used_id = 0;
     };
+    // Per-(device, canonical-format) entry cap. Viewport resizes in the editor
+    // create one scratch entry per intermediate extent; without an LRU the pool
+    // accumulates indefinitely until shutdown. 4 is a balance between bounded
+    // memory (~32 MiB at 1080p RGBA8) and absorbing dock-resize trajectories.
+    static constexpr uint32_t VIEWPORT_BLIT_SCRATCH_MAX_PER_KIND = 4;
+    uint64_t viewport_blit_scratch_next_id = 0;
 
     // State
     bool initialized = false;

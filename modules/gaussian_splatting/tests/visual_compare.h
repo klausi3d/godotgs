@@ -17,6 +17,7 @@ namespace VisualCompare {
 
 inline constexpr const char *BASELINE_ROOT = "tests/visual_baselines";
 inline constexpr const char *BASELINE_MODE_ENV = "GS_VISUAL_BASELINE_MODE";
+inline constexpr const char *BASELINE_ROOT_ENV = "GS_VISUAL_BASELINE_ROOT";
 
 struct ComparisonResult {
 	bool match = false;
@@ -37,8 +38,47 @@ inline bool is_update_mode() {
 	return mode == "update";
 }
 
+// Resolve baselines to an absolute path so I/O is independent of the caller's
+// current working directory. The harness binary commonly lives in `bin/`, so a
+// raw cwd-relative `tests/visual_baselines` resolves to `bin/tests/...` and
+// silently misses committed baselines (compare mode false-fails) or writes
+// updated baselines to the wrong location (update mode misplaces artifacts).
+//
+// Resolution order:
+//   1. `GS_VISUAL_BASELINE_ROOT` env var (absolute) — explicit override for CI
+//      or unusual layouts.
+//   2. Walk up from the executable's directory looking for `tests/visual_baselines`;
+//      anchor there. Handles the standard `<repo>/bin/<godot>.exe` layout.
+//   3. Fall back to cwd-relative — preserves the historical behavior for
+//      callers that already run from the repo root.
+inline String _baseline_root_absolute() {
+	OS *os = OS::get_singleton();
+	if (os) {
+		const String override_root = os->get_environment(BASELINE_ROOT_ENV).strip_edges();
+		if (!override_root.is_empty()) {
+			return override_root;
+		}
+		const String exe_path = os->get_executable_path();
+		if (!exe_path.is_empty()) {
+			String dir = exe_path.get_base_dir();
+			for (int i = 0; i < 8 && !dir.is_empty(); i++) {
+				const String candidate = dir.path_join(BASELINE_ROOT);
+				if (DirAccess::dir_exists_absolute(candidate)) {
+					return candidate;
+				}
+				const String parent = dir.get_base_dir();
+				if (parent == dir) {
+					break;
+				}
+				dir = parent;
+			}
+		}
+	}
+	return String(BASELINE_ROOT);
+}
+
 inline String resolve_baseline_path(const String &p_relative) {
-	return String(BASELINE_ROOT).path_join(p_relative);
+	return _baseline_root_absolute().path_join(p_relative);
 }
 
 inline Error save_image_png(const Ref<Image> &p_image, const String &p_path) {
@@ -74,10 +114,25 @@ inline Ref<Image> read_back_texture(RenderingDevice *p_rd, RID p_texture) {
 
 	const RD::TextureFormat fmt = p_rd->texture_get_format(p_texture);
 	Image::Format godot_fmt;
+	// BGRA storage formats are common desktop render-target choices (D3D12
+	// defaults, some Vulkan swapchain formats). Godot's Image::FORMAT_RGBA8
+	// only accepts R,G,B,A byte order, so for BGRA inputs we swap R↔B in the
+	// readback buffer in place and tag the resulting Image as RGBA8.
+	// A8B8G8R8_*_PACK32 is byte-identical to R8G8B8A8 on little-endian
+	// (the "A8B8G8R8" names the order MSB→LSB of the packed uint32, which is
+	// R,G,B,A in memory on LE), so no swap is needed — same Image format.
+	bool needs_rb_swap = false;
 	switch (fmt.format) {
 		case RD::DATA_FORMAT_R8G8B8A8_UNORM:
 		case RD::DATA_FORMAT_R8G8B8A8_SRGB:
+		case RD::DATA_FORMAT_A8B8G8R8_UNORM_PACK32:
+		case RD::DATA_FORMAT_A8B8G8R8_SRGB_PACK32:
 			godot_fmt = Image::FORMAT_RGBA8;
+			break;
+		case RD::DATA_FORMAT_B8G8R8A8_UNORM:
+		case RD::DATA_FORMAT_B8G8R8A8_SRGB:
+			godot_fmt = Image::FORMAT_RGBA8;
+			needs_rb_swap = true;
 			break;
 		case RD::DATA_FORMAT_R16G16B16A16_SFLOAT:
 			godot_fmt = Image::FORMAT_RGBAH;
@@ -87,6 +142,20 @@ inline Ref<Image> read_back_texture(RenderingDevice *p_rd, RID p_texture) {
 			break;
 		default:
 			return Ref<Image>();
+	}
+
+	if (needs_rb_swap) {
+		uint8_t *bytes = data.ptrw();
+		const int64_t pixel_count = int64_t(fmt.width) * int64_t(fmt.height);
+		for (int64_t i = 0; i < pixel_count; i++) {
+			const int64_t offset = i * 4;
+			if (offset + 3 >= data.size()) {
+				break;
+			}
+			const uint8_t b = bytes[offset + 0];
+			bytes[offset + 0] = bytes[offset + 2];
+			bytes[offset + 2] = b;
+		}
 	}
 
 	return Image::create_from_data(fmt.width, fmt.height, false, godot_fmt, data);
@@ -135,7 +204,14 @@ inline ComparisonResult compare_images(const Ref<Image> &p_a, const Ref<Image> &
 	double sum_abs_lsb = 0.0;
 	int max_lsb = 0;
 	uint32_t mismatched = 0;
-	const int max_lsb_threshold = int(Math::ceil(p_max_per_channel_diff_lsb));
+	// Compare in float space — the previous int(Math::ceil(threshold)) form
+	// silently widened fractional tolerances (0.1 → 1, 1.1 → 2), so tests
+	// that intentionally asked for sub-LSB tolerance still treated single-
+	// LSB diffs as matches. Use the raw double threshold and compare against
+	// the per-pixel max diff. Note: pixel values are quantized to 0..255, so
+	// the smallest non-zero per-channel diff IS 1 — a threshold < 1.0
+	// effectively means "exact match".
+	const double max_lsb_threshold = p_max_per_channel_diff_lsb;
 
 	const uint8_t *pa = da.ptr();
 	const uint8_t *pb = db.ptr();
@@ -154,7 +230,7 @@ inline ComparisonResult compare_images(const Ref<Image> &p_a, const Ref<Image> &
 				pixel_max = abs_diff;
 			}
 		}
-		if (pixel_max > max_lsb_threshold) {
+		if (double(pixel_max) > max_lsb_threshold) {
 			mismatched++;
 		}
 		if (pixel_max > max_lsb) {
