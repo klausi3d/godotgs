@@ -515,13 +515,12 @@ def main() -> int:
                     flush=True,
                 )
     # Per-batch RID-leak totals scraped from the listener's stdout marker.
-    # Surfaced for visibility in the JSON report and the DONE line so post-
-    # mortem can spot growth across runs. NOT folded into gate_failed today:
-    # the listener's current 1 MiB threshold (gs_gpu_test_runner.cpp) catches
-    # Godot's RD allocator overhead as well as actual leaks, and the hazard
-    # test's intentional 4 textures + compositor reliably trip it at ~2.25 MiB.
-    # Tightening the threshold or distinguishing allocator overhead from real
-    # leaks is a follow-up — for now, advisory only.
+    # The listener's threshold was raised to 4 MiB in #335 (above the ~2.25 MiB
+    # of allocator-pool overhead observed on the hazard test on NVIDIA/Vulkan/
+    # release), so any non-zero value here is a real leak signal — fold into
+    # gate_failed below. If a future driver/runner's allocator pool trips the
+    # listener on the canonical hazard test, retune the threshold in
+    # gs_gpu_test_runner.cpp rather than the supervisor side.
     total_rid_leak_bytes = sum(r.rid_leak_bytes for r in results)
 
     # Batches where the doctest summary regex failed to match. Locale shifts,
@@ -541,6 +540,7 @@ def main() -> int:
         or (parsed_failures > 0)
         or bool(empty_required_batches)
         or bool(summary_parse_failures)
+        or (total_rid_leak_bytes > 0)
     )
     # Preserve the worst batch's exit code as the supervisor exit when a batch
     # itself failed (the module header promises "returns max(batch_rc)"). The
