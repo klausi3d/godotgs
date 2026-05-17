@@ -1,9 +1,11 @@
 #include "shader_compilation_helper.h"
 
+#include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
 #include "core/string/string_builder.h"
 #include "../logger/gs_logger.h"
 #include "quantization_config.h"
+#include "spirv_disk_cache.h"
 #include "tile_prefix_scan_utils.h"
 #include "tile_renderer.h"
 #include "../shaders/tile_binning.glsl.gen.h"
@@ -215,6 +217,34 @@ RID ShaderCompilationHelper::compile_shader_on_device(RenderingDevice *p_device,
         *r_processed_source = processed_source;
     }
 
+    SPIRVDiskCache *cache = SPIRVDiskCache::get();
+    const bool cache_active = cache && cache->is_enabled();
+    String cache_key;
+    if (cache_active) {
+        cache_key = cache->compute_key(processed_source, p_defines, p_device);
+
+        Vector<uint8_t> cached_spirv;
+        if (cache->try_load(cache_key, p_device, cached_spirv) && !cached_spirv.is_empty()) {
+            RenderingDevice::ShaderStageSPIRVData cached_stage;
+            cached_stage.shader_stage = RenderingDevice::SHADER_STAGE_COMPUTE;
+            cached_stage.spirv = cached_spirv;
+            Vector<RenderingDevice::ShaderStageSPIRVData> cached_stages;
+            cached_stages.push_back(cached_stage);
+
+            RID cached_shader = p_device->shader_create_from_spirv(cached_stages, p_shader_name);
+            if (cached_shader.is_valid()) {
+                GS_LOG_RENDERER_DEBUG(vformat("[SPIRVCache] hit key=%s shader=%s", cache_key, p_shader_name));
+                return cached_shader;
+            }
+            // Cached blob failed to materialize as a shader (corrupt or
+            // incompatible with current device state). Drop and recompile.
+            GS_LOG_RENDERER_DEBUG(vformat("[SPIRVCache] invalidated key=%s shader=%s", cache_key, p_shader_name));
+            cache->invalidate(cache_key, p_device);
+        } else {
+            GS_LOG_RENDERER_DEBUG(vformat("[SPIRVCache] miss key=%s shader=%s", cache_key, p_shader_name));
+        }
+    }
+
     String compile_error;
     Vector<uint8_t> spirv = p_device->shader_compile_spirv_from_source(RenderingDevice::SHADER_STAGE_COMPUTE, processed_source,
             RenderingDevice::SHADER_LANGUAGE_GLSL, &compile_error);
@@ -234,6 +264,14 @@ RID ShaderCompilationHelper::compile_shader_on_device(RenderingDevice *p_device,
     stages.push_back(stage_data);
 
     RID shader = p_device->shader_create_from_spirv(stages, p_shader_name);
+    // Only cache after shader_create_from_spirv accepts the blob. Storing on the
+    // compile side alone would let a driver-rejected SPIR-V (valid bytes but
+    // incompatible bindings/layout) poison the disk cache: a subsequent run
+    // would hit it, fail to materialize, invalidate, recompile, and re-store
+    // the same poisoned blob forever.
+    if (cache_active && !cache_key.is_empty() && shader.is_valid()) {
+        cache->store(cache_key, p_device, spirv);
+    }
     return shader;
 }
 
