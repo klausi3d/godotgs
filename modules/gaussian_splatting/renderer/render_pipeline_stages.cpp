@@ -934,16 +934,35 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 		// Cull did not produce usable output (FAILED, or SKIPPED with default-zeroed
 		// CullStageOutput). is_success() returns true for SUCCESS and FALLBACK, so
 		// this short-circuit catches the cases where the sort stage would receive
-		// poison input. Stage already recorded its own metrics/route_uid; mark sort
-		// SKIPPED so the cascade is visible instead of a stale SUCCESS, then render
-		// empty. Snapshot stays at the zero-safe defaults set above.
+		// poison input. Cull stage already recorded its own metrics + route_uid;
+		// mark sort SKIPPED so the cascade is visible instead of a stale SUCCESS,
+		// preserving the cull failure reason in sort_result so downstream observers
+		// (get_render_stats, diagnostics) attribute the cascade to its real cause.
+		// Snapshot stays at the zero-safe defaults set above.
 		if (frame_context.metrics) {
 			frame_context.metrics->sort = GaussianSplatRenderer::SortStageOutput();
+			const String sort_reason = cull_result.reason.is_empty()
+					? String("Sort skipped: cull failed")
+					: vformat("Sort skipped: cull %s (%s)", _stage_status_label(cull_result.status), cull_result.reason);
 			frame_context.metrics->sort_result = _make_stage_result(
 					GaussianSplatRenderer::StageResult::StageStatus::SKIPPED,
-					"Sort skipped: cull failed",
+					sort_reason,
 					false,
-					GaussianSplatRenderer::RenderFallbackReason::NONE);
+					cull_result.fallback_reason);
+		}
+		// Set route_uid so the debug HUD reflects the cascade rather than the
+		// previous frame's value. Only attribute a FAILURE UID when cull actually
+		// failed; benign SKIPPED-with-empty-output frames (e.g. "no visible
+		// splats") should not be reclassified as failures in route-based telemetry.
+		// The cull stage's own _record_pipeline_event already sets a SKIP route
+		// UID for those, so leaving route_uid alone preserves it; we only fill the
+		// failure UID when both (a) the result is genuinely failed and (b) no
+		// stage-specific UID was recorded.
+		const bool cull_genuinely_failed = cull_result.is_error ||
+				cull_result.status == GaussianSplatRenderer::StageResult::StageStatus::FAILED;
+		if (renderer && cull_genuinely_failed &&
+				RenderRouteUID::is_route_uid_missing(renderer->get_debug_state().route_uid)) {
+			renderer->get_debug_state().route_uid = RenderRouteUID::COMMON_FAIL_SORT_FAILED;
 		}
 		update_counts_from_snapshot();
 		render_sorted_splats_with_context(frame_context);
@@ -963,8 +982,16 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 		// Same is_success() guard as the cull short-circuit above: route FAILED and
 		// SKIPPED to the empty-render path so downstream consumers don't read poison
 		// from a default-zeroed SortStageOutput. Cull domain is preserved since cull
-		// completed successfully.
+		// completed successfully. Only attribute a FAILURE UID when sort actually
+		// failed; benign SKIPPED frames ("no visible splats") keep the sort stage's
+		// own skip-route attribution.
 		frame_context.snapshot.cull_visible_domain = cull_output.visible_domain;
+		const bool sort_genuinely_failed = sort_result.is_error ||
+				sort_result.status == GaussianSplatRenderer::StageResult::StageStatus::FAILED;
+		if (renderer && sort_genuinely_failed &&
+				RenderRouteUID::is_route_uid_missing(renderer->get_debug_state().route_uid)) {
+			renderer->get_debug_state().route_uid = RenderRouteUID::COMMON_FAIL_SORT_FAILED;
+		}
 		update_counts_from_snapshot();
 		render_sorted_splats_with_context(frame_context);
 		return;

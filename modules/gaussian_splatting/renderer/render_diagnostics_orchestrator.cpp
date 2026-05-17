@@ -984,7 +984,11 @@ void RenderDiagnosticsOrchestrator::record_rendering_error(const RenderingError 
 			? GaussianSplatRenderer::ErrorRecoveryStateMachine::State::DISABLED
 			: GaussianSplatRenderer::ErrorRecoveryStateMachine::State::DIAGNOSTIC;
 	transition_recovery_state(next_state, p_error.get_message());
-	GaussianRenderingDiagnostics::ensure_singleton();
+	// Do NOT call ensure_singleton() here: after module unload calls
+	// destroy_singleton(), reviving the instance on a stray late callback would
+	// leak it (no second destroy). Module init at register_types.cpp:122 is the
+	// canonical creation point; null-guarded get_singleton() is the safe access
+	// pattern.
 	if (GaussianRenderingDiagnostics::get_singleton()) {
 		GaussianRenderingDiagnostics::get_singleton()->notify_error(renderer, p_error);
 	}
@@ -1035,7 +1039,7 @@ void RenderDiagnosticsOrchestrator::increment_frame_counter() {
 	GaussianSplatRenderer::FrameStateProvider state_provider(renderer);
 	capture_frame_timing_sample();
 	state_provider.get_frame_state_mut().frame_counter++;
-	GaussianRenderingDiagnostics::ensure_singleton();
+	// See notify_error: avoid post-destroy resurrection.
 	if (GaussianRenderingDiagnostics::get_singleton()) {
 		GaussianRenderingDiagnostics::get_singleton()->notify_frame_completed(renderer);
 	}
@@ -1046,7 +1050,7 @@ void RenderDiagnosticsOrchestrator::emit_runtime_diagnostics_if_requested() {
 	if (!diagnostics_state.runtime_diagnostics_requested) {
 		return;
 	}
-	GaussianRenderingDiagnostics::ensure_singleton();
+	// See notify_error: avoid post-destroy resurrection.
 	if (GaussianRenderingDiagnostics::get_singleton()) {
 		GaussianRenderingDiagnostics::get_singleton()->request_runtime_report();
 	}
