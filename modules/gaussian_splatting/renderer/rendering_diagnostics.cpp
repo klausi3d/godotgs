@@ -20,6 +20,13 @@ void GaussianRenderingDiagnostics::ensure_singleton() {
     }
 }
 
+void GaussianRenderingDiagnostics::destroy_singleton() {
+    if (singleton) {
+        memdelete(singleton);
+        singleton = nullptr;
+    }
+}
+
 void GaussianRenderingDiagnostics::process_command_line_requests() {
     if (command_line_processed) {
         return;
