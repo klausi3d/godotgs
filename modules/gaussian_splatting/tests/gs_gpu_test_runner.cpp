@@ -169,18 +169,28 @@ int _run_doctest(int argc, char *argv[], const GsGpuTestOptions &opt) {
 	}
 
 	if (test_args.size() > 0) {
-		char **doctest_args = new char *[test_args.size()];
+		// RAII-owned argv storage. `CharString` owns its UTF-8 buffer (freed
+		// in its destructor on scope exit / unwind), so we don't need any
+		// explicit cleanup and a throwing applyCommandLine can't leak.
+		//
+		// Reserve up-front so push_back never reallocates after we start
+		// capturing pointers below — LocalVector::push_back reallocates on
+		// capacity growth, which would invalidate any prior `ptrw()` pointers.
+		LocalVector<CharString> argv_storage;
+		argv_storage.reserve(test_args.size());
 		for (uint32_t x = 0; x < test_args.size(); x++) {
-			CharString cs = test_args[x].utf8();
-			const char *str = cs.get_data();
-			doctest_args[x] = new char[strlen(str) + 1];
-			memcpy(doctest_args[x], str, strlen(str) + 1);
+			argv_storage.push_back(test_args[x].utf8());
 		}
-		ctx.applyCommandLine(test_args.size(), doctest_args);
-		for (uint32_t x = 0; x < test_args.size(); x++) {
-			delete[] doctest_args[x];
+
+		// Capture pointers AFTER all storage push_backs are done so the
+		// argv_storage layout is final and stable.
+		LocalVector<char *> doctest_argv;
+		doctest_argv.reserve(argv_storage.size());
+		for (uint32_t x = 0; x < argv_storage.size(); x++) {
+			doctest_argv.push_back(argv_storage[x].ptrw());
 		}
-		delete[] doctest_args;
+
+		ctx.applyCommandLine(int(doctest_argv.size()), doctest_argv.ptr());
 	}
 
 	return ctx.run();
