@@ -160,6 +160,16 @@ void GaussianData::_bind_methods() {
     ClassDB::bind_method(D_METHOD("restore_brush_stroke", "saved_state"), &GaussianData::restore_brush_stroke);
 }
 
+void GaussianData::set_streaming_chunk_bake(const PackedByteArray &p_records,
+        const PackedInt32Array &p_primary_indices,
+        const PackedByteArray &p_quantization,
+        uint32_t p_chunk_size_used) {
+    streaming_chunk_records = p_records;
+    streaming_primary_source_indices = p_primary_indices;
+    streaming_quantization_records = p_quantization;
+    streaming_chunk_size_used = p_chunk_size_used;
+}
+
 void GaussianData::_on_gaussian_storage_changed() {
     RWLockWrite lock(data_rwlock);
     _on_gaussian_storage_changed_locked();

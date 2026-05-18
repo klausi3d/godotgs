@@ -353,6 +353,15 @@ private:
     LocalVector<OctreeNode> octree;
     mutable bool octree_dirty = true;
 
+    // Streaming-chunk bake mirror (Phase B.1). Populated by
+    // GaussianSplatAsset::populate_gaussian_data() so the runtime streaming
+    // system can read it via `Ref<GaussianData>` without re-fetching the asset.
+    // Empty when the source asset has no bake (older imports).
+    PackedByteArray streaming_chunk_records;
+    PackedInt32Array streaming_primary_source_indices;
+    PackedByteArray streaming_quantization_records;
+    uint32_t streaming_chunk_size_used = 0;
+
     // Private octree helper
     void _subdivide_octree_node(uint32_t node_idx, int max_depth, uint32_t min_gaussians = 32);
     void _on_gaussian_storage_changed();
@@ -642,6 +651,25 @@ public:
             LocalVector<Vector3> &r_sh_high_order,
             uint32_t &r_sh_first_order_count,
             uint32_t &r_sh_high_order_count) const;
+
+    /// @}
+
+    /// @name Streaming Chunk Bake (Phase B.1)
+    /// @{
+
+    // Mirror of GaussianSplatAsset's baked streaming-chunk records, copied at
+    // populate time. Empty when the source asset predates the bake schema.
+    void set_streaming_chunk_bake(const PackedByteArray &p_records,
+            const PackedInt32Array &p_primary_indices,
+            const PackedByteArray &p_quantization,
+            uint32_t p_chunk_size_used);
+    bool has_baked_streaming_chunks() const {
+        return streaming_chunk_size_used > 0 && !streaming_chunk_records.is_empty();
+    }
+    uint32_t get_baked_chunk_size() const { return streaming_chunk_size_used; }
+    const PackedByteArray &get_streaming_chunk_records_raw() const { return streaming_chunk_records; }
+    const PackedInt32Array &get_streaming_primary_source_indices_raw() const { return streaming_primary_source_indices; }
+    const PackedByteArray &get_streaming_quantization_records_raw() const { return streaming_quantization_records; }
 
     /// @}
 

@@ -124,6 +124,15 @@ void GaussianSplatAsset::_bind_methods() {
     ClassDB::bind_method(D_METHOD("load_from_file", "path"), &GaussianSplatAsset::load_from_file);
     ClassDB::bind_method(D_METHOD("save_to_file", "path"), &GaussianSplatAsset::save_to_file);
 
+    ClassDB::bind_method(D_METHOD("set_streaming_chunk_records", "records"), &GaussianSplatAsset::set_streaming_chunk_records);
+    ClassDB::bind_method(D_METHOD("get_streaming_chunk_records"), &GaussianSplatAsset::get_streaming_chunk_records);
+    ClassDB::bind_method(D_METHOD("set_streaming_primary_source_indices", "indices"), &GaussianSplatAsset::set_streaming_primary_source_indices);
+    ClassDB::bind_method(D_METHOD("get_streaming_primary_source_indices"), &GaussianSplatAsset::get_streaming_primary_source_indices);
+    ClassDB::bind_method(D_METHOD("set_streaming_quantization_records", "records"), &GaussianSplatAsset::set_streaming_quantization_records);
+    ClassDB::bind_method(D_METHOD("get_streaming_quantization_records"), &GaussianSplatAsset::get_streaming_quantization_records);
+    ClassDB::bind_method(D_METHOD("set_streaming_chunk_size_used", "size"), &GaussianSplatAsset::set_streaming_chunk_size_used);
+    ClassDB::bind_method(D_METHOD("get_streaming_chunk_size_used"), &GaussianSplatAsset::get_streaming_chunk_size_used);
+
     ClassDB::bind_static_method("GaussianSplatAsset", D_METHOD("get_instance_count"), &GaussianSplatAsset::get_instance_count);
 
     ADD_PROPERTY(PropertyInfo(Variant::INT, "asset_type", PROPERTY_HINT_ENUM, "Static,Dynamic"), "set_asset_type", "get_asset_type");
@@ -148,6 +157,14 @@ void GaussianSplatAsset::_bind_methods() {
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "data/normals"), "set_normals", "get_normals");
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "data/brush_axes"), "set_brush_axes", "get_brush_axes");
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "data/stroke_ages"), "set_stroke_ages", "get_stroke_ages");
+    ADD_PROPERTY(PropertyInfo(Variant::PACKED_BYTE_ARRAY, "data/streaming_chunk_records", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE),
+            "set_streaming_chunk_records", "get_streaming_chunk_records");
+    ADD_PROPERTY(PropertyInfo(Variant::PACKED_INT32_ARRAY, "data/streaming_primary_source_indices", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE),
+            "set_streaming_primary_source_indices", "get_streaming_primary_source_indices");
+    ADD_PROPERTY(PropertyInfo(Variant::PACKED_BYTE_ARRAY, "data/streaming_quantization_records", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE),
+            "set_streaming_quantization_records", "get_streaming_quantization_records");
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "data/streaming_chunk_size_used", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE),
+            "set_streaming_chunk_size_used", "get_streaming_chunk_size_used");
 
     BIND_ENUM_CONSTANT(ASSET_TYPE_STATIC);
     BIND_ENUM_CONSTANT(ASSET_TYPE_DYNAMIC);
@@ -895,6 +912,26 @@ void GaussianSplatAsset::set_stroke_ages(const PackedFloat32Array &p_stroke_ages
     emit_changed();
 }
 
+void GaussianSplatAsset::set_streaming_chunk_records(const PackedByteArray &p_records) {
+    streaming_chunk_records = p_records;
+    _invalidate_gaussian_data_cache();
+}
+
+void GaussianSplatAsset::set_streaming_primary_source_indices(const PackedInt32Array &p_indices) {
+    streaming_primary_source_indices = p_indices;
+    _invalidate_gaussian_data_cache();
+}
+
+void GaussianSplatAsset::set_streaming_quantization_records(const PackedByteArray &p_records) {
+    streaming_quantization_records = p_records;
+    _invalidate_gaussian_data_cache();
+}
+
+void GaussianSplatAsset::set_streaming_chunk_size_used(uint32_t p_size) {
+    streaming_chunk_size_used = p_size;
+    _invalidate_gaussian_data_cache();
+}
+
 void GaussianSplatAsset::set_sh_component_terms(uint32_t p_first_order_terms, uint32_t p_high_order_terms) {
     if (sh_first_order_terms == p_first_order_terms && sh_high_order_terms == p_high_order_terms) {
         return;
@@ -1277,6 +1314,11 @@ bool GaussianSplatAsset::populate_gaussian_data(Ref<::GaussianData> &r_data) con
         g.render_meta = gaussian_set_dc_encoding(g.render_meta, staged_dc_encoding);
         r_data->set_gaussian(i, g);
     }
+
+    r_data->set_streaming_chunk_bake(streaming_chunk_records,
+            streaming_primary_source_indices,
+            streaming_quantization_records,
+            streaming_chunk_size_used);
 
     return true;
 }

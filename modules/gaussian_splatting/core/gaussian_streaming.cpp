@@ -1,4 +1,5 @@
 #include "gaussian_streaming.h"
+#include "../io/streaming_chunk_bake.h"
 #include "gs_project_settings.h"
 #include "residency_budget_controller.h"
 #include "streaming_queue_pressure_controller.h"
@@ -2114,6 +2115,28 @@ void GaussianStreamingSystem::_build_chunks_for_data(const Ref<GaussianData> &p_
     }
 
     const bool build_primary_spatial = (&out_chunks == &chunks);
+
+    // Fast path: re-hydrate chunk bookkeeping from import-time bake. Avoids
+    // re-walking every splat (the dominant per-asset register cost). Schema
+    // mismatch (different CHUNK_SIZE / corrupt blob) falls through to the
+    // full rebuild below.
+    if (p_data->has_baked_streaming_chunks() && p_data->get_baked_chunk_size() == CHUNK_SIZE) {
+        if (_populate_chunks_from_bake(p_data, out_chunks, build_primary_spatial)) {
+            if (build_primary_spatial) {
+                const PackedInt32Array &baked_primary = p_data->get_streaming_primary_source_indices_raw();
+                const int n = baked_primary.size();
+                if (n > 0) {
+                    asset_registry.primary_chunk_source_indices.resize(uint32_t(n));
+                    const int32_t *src = baked_primary.ptr();
+                    for (int i = 0; i < n; i++) {
+                        asset_registry.primary_chunk_source_indices[uint32_t(i)] = uint32_t(src[i]);
+                    }
+                }
+            }
+            return;
+        }
+    }
+
     const uint32_t splat_count = p_data->get_count();
     const uint32_t num_chunks = (splat_count + CHUNK_SIZE - 1) / CHUNK_SIZE;
     out_chunks.resize(num_chunks);
@@ -2240,6 +2263,85 @@ void GaussianStreamingSystem::_build_chunks_for_data(const Ref<GaussianData> &p_
             }
         }
     }
+}
+
+bool GaussianStreamingSystem::_populate_chunks_from_bake(const Ref<GaussianData> &p_data, LocalVector<StreamingChunk> &out_chunks, bool p_build_primary_spatial) {
+    if (p_data.is_null()) {
+        return false;
+    }
+    if (p_data->get_baked_chunk_size() != CHUNK_SIZE) {
+        return false;
+    }
+    Vector<StreamingChunkBakeRecord> records;
+    if (!StreamingChunkBakeIO::deserialize_records(p_data->get_streaming_chunk_records_raw(), records)) {
+        return false;
+    }
+
+    const uint32_t splat_count = p_data->get_count();
+    const uint32_t expected_num_chunks = (splat_count + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    if (uint32_t(records.size()) != expected_num_chunks) {
+        return false;
+    }
+
+    const PackedInt32Array &baked_primary = p_data->get_streaming_primary_source_indices_raw();
+    const bool has_baked_primary = !baked_primary.is_empty();
+    const bool want_primary_remap = p_build_primary_spatial && has_baked_primary;
+
+    // Baked quantization reuse: only valid if (a) runtime requests it, (b) the
+    // bake recorded matching params, (c) array sizes line up. Otherwise we
+    // recompute below using compute_from_gaussians.
+    const PackedByteArray &baked_quant_bytes = p_data->get_streaming_quantization_records_raw();
+    const int baked_quant_count = baked_quant_bytes.size() / int(sizeof(ChunkQuantizationInfo));
+    const bool baked_quant_size_matches = baked_quant_count == int(expected_num_chunks);
+    const ChunkQuantizationInfo *baked_quant_ptr = baked_quant_size_matches
+            ? reinterpret_cast<const ChunkQuantizationInfo *>(baked_quant_bytes.ptr())
+            : nullptr;
+
+    const bool quantize = per_chunk_quantization_enabled;
+    const LocalVector<Gaussian> *gaussians_storage = quantize ? &p_data->get_gaussian_storage() : nullptr;
+
+    out_chunks.resize(expected_num_chunks);
+    for (uint32_t i = 0; i < expected_num_chunks; i++) {
+        const StreamingChunkBakeRecord &rec = records[int(i)];
+        StreamingChunk &chunk = out_chunks[i];
+        chunk.start_idx = rec.start_idx;
+        chunk.count = rec.count;
+        chunk.source_index_remapped = want_primary_remap;
+        chunk.is_loaded = false;
+        chunk.is_visible = true;
+        chunk.upload_pending = false;
+        chunk.buffer_slot = UINT32_MAX;
+        chunk.quantization_computed = false;
+        chunk.effective_count = chunk.count;
+        chunk.center = rec.center;
+        chunk.max_radius = rec.max_radius;
+        chunk.bounds = rec.bounds;
+
+        if (quantize && gaussians_storage) {
+            bool reused = false;
+            if (baked_quant_ptr) {
+                const ChunkQuantizationInfo &src = baked_quant_ptr[i];
+                if (src.position_bits == quantization_position_bits &&
+                        src.scale_bits == quantization_scale_bits &&
+                        src.scales_quantized == quantization_scales_enabled) {
+                    chunk.quantization = src;
+                    chunk.quantization_computed = true;
+                    reused = true;
+                }
+            }
+            if (!reused) {
+                chunk.quantization.compute_from_gaussians(
+                        *gaussians_storage,
+                        chunk.start_idx,
+                        chunk.count,
+                        quantization_position_bits,
+                        quantization_scale_bits,
+                        quantization_scales_enabled);
+                chunk.quantization_computed = true;
+            }
+        }
+    }
+    return true;
 }
 
 void GaussianStreamingSystem::_build_chunks_for_payload_source(const Ref<ChunkPayloadSource> &p_source, LocalVector<StreamingChunk> &out_chunks) {
