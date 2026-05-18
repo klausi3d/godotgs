@@ -136,11 +136,18 @@ bool GSStartupTrace::flush_one_pending() {
 			return false;
 		}
 
-		// If the trace was disabled between begin_asset_open() and now, drain
-		// the count so it can't leak indefinitely, but don't emit.
+		// If the trace was disabled between begin_asset_open() and now, fully
+		// reset accumulator state so a later re-enable does not merge stale
+		// phases from this disabled window into a new asset-open line.
+		// Zeroing the count here makes the caller's drain loop exit on the
+		// next iteration; subsequent toggles start from a clean slate.
 		if (!is_enabled_fast()) {
-			pending_flush_count.fetch_sub(1, std::memory_order_acq_rel);
-			return true;
+			sealed_traces.clear();
+			totals_usec.clear();
+			insertion_order.clear();
+			active_begin_usec = 0;
+			pending_flush_count.store(0, std::memory_order_release);
+			return false;
 		}
 
 		// Drain the oldest sealed snapshot first so multiple back-to-back
