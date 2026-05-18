@@ -617,7 +617,12 @@ bool StreamingUploadPipeline::queue_chunk_load(GaussianStreamingSystem &system, 
         admission_policy.vram_regulator_allows_load =
                 !admission_policy.enforce_vram_regulator_gate ||
                 system.budget.vram_regulator->can_load_more_chunks(system.get_loaded_chunks());
-        admission_policy.atlas_slots_full = true;
+        system._try_grow_persistent_buffer_for_atlas_pressure(
+                system.get_loaded_chunks(),
+                system.get_regulated_max_chunks(),
+                admission_policy.enforce_vram_regulator_gate,
+                admission_policy.vram_regulator_allows_load);
+        admission_policy.atlas_slots_full = !system.atlas_allocator.has_free_slots();
 
         const uint32_t max_evictions_per_frame = system.eviction_controller.get_max_evictions_per_frame();
         const uint32_t chunks_evicted_this_frame = system.eviction_controller.get_chunks_evicted_this_frame();
