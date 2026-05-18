@@ -439,6 +439,14 @@ void SPIRVDiskCache::prune_above(uint64_t p_max_bytes) {
                 DirAccess::remove_absolute(full);
                 continue;
             }
+            // Reap leftover .bak rollback files from interrupted stores. These
+            // only exist when the process exited between final->.bak and
+            // .tmp->final. Without this they would persist forever and never
+            // count toward the cache cap.
+            if (fname.ends_with(".bak")) {
+                DirAccess::remove_absolute(full);
+                continue;
+            }
             if (!fname.ends_with(CACHE_FILE_EXT)) {
                 continue;
             }
