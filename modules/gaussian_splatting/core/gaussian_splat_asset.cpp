@@ -11,6 +11,7 @@
 #include "core/object/worker_thread_pool.h"
 #include "core/os/os.h"
 #include "core/os/thread.h"
+#include "core/variant/typed_array.h"
 #include "../logger/gs_logger.h"
 #include "../logger/startup_trace.h"
 #include "scene/resources/image_texture.h"
@@ -126,6 +127,7 @@ void GaussianSplatAsset::_bind_methods() {
     ClassDB::bind_method(D_METHOD("save_to_file", "path"), &GaussianSplatAsset::save_to_file);
 
     ClassDB::bind_static_method("GaussianSplatAsset", D_METHOD("get_instance_count"), &GaussianSplatAsset::get_instance_count);
+    ClassDB::bind_static_method("GaussianSplatAsset", D_METHOD("prefetch_parallel", "assets"), &GaussianSplatAsset::prefetch_parallel);
 
     ADD_PROPERTY(PropertyInfo(Variant::INT, "asset_type", PROPERTY_HINT_ENUM, "Static,Dynamic"), "set_asset_type", "get_asset_type");
     ADD_PROPERTY(PropertyInfo(Variant::INT, "splat_count"), "set_splat_count", "get_splat_count");
@@ -1315,6 +1317,18 @@ void GaussianSplatAsset::prefetch_gaussian_data_parallel(const LocalVector<Ref<G
     WorkerThreadPool::GroupID gid = WorkerThreadPool::get_singleton()->add_native_group_task(
             worker, &ctx, int(pending.size()), -1, true, String("GSAssetMaterialize"));
     WorkerThreadPool::get_singleton()->wait_for_group_task_completion(gid);
+}
+
+void GaussianSplatAsset::prefetch_parallel(const TypedArray<GaussianSplatAsset> &p_assets) {
+    LocalVector<Ref<GaussianSplatAsset>> refs;
+    refs.reserve(p_assets.size());
+    for (int i = 0; i < p_assets.size(); i++) {
+        Ref<GaussianSplatAsset> asset = p_assets[i];
+        if (asset.is_valid()) {
+            refs.push_back(asset);
+        }
+    }
+    prefetch_gaussian_data_parallel(refs);
 }
 
 bool GaussianSplatAsset::populate_gaussian_data(Ref<::GaussianData> &r_data) const {

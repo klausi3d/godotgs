@@ -195,6 +195,9 @@ public:
     // CPU SoA->AoS conversion — no RenderingDevice / RID work — and therefore
     // safe to run off the main thread per Godot's thread-safe APIs contract.
     static void prefetch_gaussian_data_parallel(const LocalVector<Ref<GaussianSplatAsset>> &p_assets);
+    // GDScript-callable wrapper around prefetch_gaussian_data_parallel(). Accepts
+    // a TypedArray and forwards valid entries to the LocalVector overload.
+    static void prefetch_parallel(const TypedArray<GaussianSplatAsset> &p_assets);
     Error populate_from_gaussian_data(const Ref<::GaussianData> &p_gaussian_data);
     Error save_to_file(const String &p_path) const;
 };
