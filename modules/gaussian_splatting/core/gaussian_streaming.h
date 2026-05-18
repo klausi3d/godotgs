@@ -235,6 +235,11 @@ public:
     Dictionary get_vram_debug_stats() const;
     bool is_vram_budget_warning_active() const;
     uint32_t get_effective_max_chunks() const;
+    // Returns the regulated max chunks (VRAM-budget cap), NOT clamped by the
+    // current runtime/buffer capacity. Use this when computing a growth
+    // ceiling for the persistent buffer; passing the runtime-clamped value
+    // from get_effective_max_chunks() would silently prevent expansion.
+    uint32_t get_regulated_max_chunks() const;
     uint32_t get_max_chunk_count_per_asset() const { return global_atlas_registry.get_max_chunk_count_per_asset(); }
     uint32_t get_max_chunk_splats() const { return global_atlas_registry.get_max_chunk_splats(); }
 

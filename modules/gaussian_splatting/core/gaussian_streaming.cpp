@@ -3142,7 +3142,7 @@ void GaussianStreamingSystem::_load_visible_chunks(uint32_t effective_max, uint3
                 budget.vram_regulator->can_load_more_chunks(budget.loaded_chunks_count);
         _try_grow_persistent_buffer_for_atlas_pressure(
                 budget.loaded_chunks_count,
-                effective_max,
+                get_regulated_max_chunks(),
                 admission_policy.enforce_vram_regulator_gate,
                 admission_policy.vram_regulator_allows_load);
         admission_policy.atlas_slots_full = !atlas_allocator.has_free_slots();
@@ -5019,7 +5019,7 @@ uint32_t GaussianStreamingSystem::_drain_sync_fallback_chunk_loads(
                 budget.vram_regulator->can_load_more_chunks(budget.loaded_chunks_count);
         _try_grow_persistent_buffer_for_atlas_pressure(
                 budget.loaded_chunks_count,
-                effective_max,
+                get_regulated_max_chunks(),
                 admission_policy.enforce_vram_regulator_gate,
                 admission_policy.vram_regulator_allows_load);
         admission_policy.atlas_slots_full = !atlas_allocator.has_free_slots();
@@ -5281,6 +5281,10 @@ uint32_t GaussianStreamingSystem::get_effective_max_chunks() const {
         return 0;
     }
     return MIN(regulated_max, runtime_capacity_max);
+}
+
+uint32_t GaussianStreamingSystem::get_regulated_max_chunks() const {
+    return budget.get_effective_max_chunks();
 }
 
 Dictionary GaussianStreamingTypes::BudgetState::get_vram_debug_stats() const {

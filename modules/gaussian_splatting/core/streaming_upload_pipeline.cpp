@@ -619,7 +619,7 @@ bool StreamingUploadPipeline::queue_chunk_load(GaussianStreamingSystem &system, 
                 system.budget.vram_regulator->can_load_more_chunks(system.get_loaded_chunks());
         system._try_grow_persistent_buffer_for_atlas_pressure(
                 system.get_loaded_chunks(),
-                system.get_effective_max_chunks(),
+                system.get_regulated_max_chunks(),
                 admission_policy.enforce_vram_regulator_gate,
                 admission_policy.vram_regulator_allows_load);
         admission_policy.atlas_slots_full = !system.atlas_allocator.has_free_slots();
