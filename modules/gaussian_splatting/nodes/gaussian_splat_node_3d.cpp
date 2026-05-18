@@ -1721,6 +1721,13 @@ void GaussianSplatNode3D::_load_asset() {
 
     asset_loading = true;
 
+    // Arm the startup trace once at the function entry so both code paths
+    // (ResourceLoader::load -> ResourceFormatLoaderGaussianSplat::load ->
+    // asset->load_from_file, AND the direct asset->load_from_file fallback)
+    // are covered. Arming inside only the fallback would miss the common
+    // successful ResourceLoader path.
+    GSStartupTrace::get_singleton()->begin_asset_open();
+
     Ref<GaussianSplatAsset> reloaded_asset;
     String load_error_message;
 
@@ -1754,7 +1761,6 @@ void GaussianSplatNode3D::_load_asset() {
 
     if (reloaded_asset.is_null() && !asset_source_path.is_empty()) {
         reloaded_asset.instantiate();
-        GSStartupTrace::get_singleton()->begin_asset_open();
         const Error load_error = reloaded_asset->load_from_file(asset_source_path);
         if (load_error != OK || reloaded_asset->get_splat_count() == 0) {
             load_error_message = vformat("Failed to reload GaussianSplatAsset source: %s (Error %d)",
@@ -2621,10 +2627,14 @@ void GaussianSplatNode3D::_drop_data_fw(const Point2 &p_point, const Variant &p_
         const String file_lower = files[0].to_lower();
         if (file_lower.ends_with(".ply") || file_lower.ends_with(".spz")) {
             const String file_path = files[0];
+            // Arm the trace before ResourceLoader::load so the common
+            // successful path (which routes through
+            // ResourceFormatLoaderGaussianSplat::load and ultimately calls
+            // asset->load_from_file) is covered alongside the fallback.
+            GSStartupTrace::get_singleton()->begin_asset_open();
             Ref<GaussianSplatAsset> dropped_asset = ResourceLoader::load(file_path, "GaussianSplatAsset");
             if (dropped_asset.is_null()) {
                 dropped_asset.instantiate();
-                GSStartupTrace::get_singleton()->begin_asset_open();
                 if (dropped_asset->load_from_file(file_path) != OK) {
                     ERR_PRINT(vformat("Failed to load dropped Gaussian splat asset: %s", file_path));
                     return;
