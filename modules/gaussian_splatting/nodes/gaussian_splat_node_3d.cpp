@@ -32,6 +32,7 @@
 #include <cstdint>
 
 #include "../logger/gs_logger.h"
+#include "../logger/startup_trace.h"
 
 // Project settings helpers provided by gs_project_settings.h (gs::settings namespace).
 namespace {
@@ -564,6 +565,7 @@ bool GaussianSplatNode3D::_set(const StringName &p_name, const Variant &p_value)
                 path));
         Ref<GaussianSplatAsset> migrated_asset;
         migrated_asset.instantiate();
+        GSStartupTrace::get_singleton()->begin_asset_open();
         const Error err = migrated_asset->load_from_file(path);
         if (err != OK || migrated_asset->get_splat_count() == 0) {
             ERR_PRINT(vformat(
@@ -1752,6 +1754,7 @@ void GaussianSplatNode3D::_load_asset() {
 
     if (reloaded_asset.is_null() && !asset_source_path.is_empty()) {
         reloaded_asset.instantiate();
+        GSStartupTrace::get_singleton()->begin_asset_open();
         const Error load_error = reloaded_asset->load_from_file(asset_source_path);
         if (load_error != OK || reloaded_asset->get_splat_count() == 0) {
             load_error_message = vformat("Failed to reload GaussianSplatAsset source: %s (Error %d)",
@@ -2621,6 +2624,7 @@ void GaussianSplatNode3D::_drop_data_fw(const Point2 &p_point, const Variant &p_
             Ref<GaussianSplatAsset> dropped_asset = ResourceLoader::load(file_path, "GaussianSplatAsset");
             if (dropped_asset.is_null()) {
                 dropped_asset.instantiate();
+                GSStartupTrace::get_singleton()->begin_asset_open();
                 if (dropped_asset->load_from_file(file_path) != OK) {
                     ERR_PRINT(vformat("Failed to load dropped Gaussian splat asset: %s", file_path));
                     return;

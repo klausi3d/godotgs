@@ -1095,7 +1095,10 @@ Error GaussianSplatAsset::load_from_file(const String &p_path) {
         return ERR_FILE_NOT_FOUND;
     }
 
-    GSStartupTrace::get_singleton()->begin_asset_open();
+    // GSStartupTrace is armed by render-context callers (the
+    // GaussianSplatNode3D load sites) so importers, tests, and other
+    // headless flows that call load_from_file directly do not queue
+    // pending traces that will never be drained.
 
 	uint64_t total_start_usec = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : 0;
 	uint64_t source_start_usec = total_start_usec;
