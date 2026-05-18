@@ -90,9 +90,14 @@ private:
 
 #define GS_STARTUP_SCOPE_CONCAT_INNER(a, b) a##b
 #define GS_STARTUP_SCOPE_CONCAT(a, b) GS_STARTUP_SCOPE_CONCAT_INNER(a, b)
+// The macro always constructs a GSStartupTraceScope so the RAII timer lives
+// for the enclosing block, not just the macro line. When the trace is
+// disabled, nullptr is passed and the constructor short-circuits cheaply.
+// The previous `if (...) {} else GSStartupTraceScope X(name)` form put the
+// variable inside the else branch, so its destructor fired immediately after
+// the macro statement and the scope measured nothing.
 #define GS_STARTUP_SCOPE(name) \
-	if (!GSStartupTrace::is_enabled_fast()) { \
-	} else \
-		GSStartupTraceScope GS_STARTUP_SCOPE_CONCAT(_gs_startup_scope_, __LINE__)(name)
+	GSStartupTraceScope GS_STARTUP_SCOPE_CONCAT(_gs_startup_scope_, __LINE__)( \
+			GSStartupTrace::is_enabled_fast() ? (name) : nullptr)
 
 #endif // GS_STARTUP_TRACE_H
