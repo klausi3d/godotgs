@@ -44,8 +44,6 @@ private:
     String cached_device_dir;
     uint64_t cached_device_id = 0;
     bool enabled = true;
-
-    static SPIRVDiskCache *singleton;
 };
 
 #endif // GAUSSIAN_SPLATTING_SPIRV_DISK_CACHE_H

@@ -144,20 +144,18 @@ static void _touch_file_mtime(const String &p_path) {
 
 } // namespace
 
-SPIRVDiskCache *SPIRVDiskCache::singleton = nullptr;
-
+// Function-local static. C++11 guarantees thread-safe initialization on first
+// call ("magic statics"), which is the simplest correct fix for the data race
+// the previous if-null/new pattern had under concurrent shader compilation.
 SPIRVDiskCache *SPIRVDiskCache::get() {
-    if (!singleton) {
-        singleton = memnew(SPIRVDiskCache);
-    }
-    return singleton;
+    static SPIRVDiskCache instance;
+    return &instance;
 }
 
 void SPIRVDiskCache::shutdown() {
-    if (singleton) {
-        memdelete(singleton);
-        singleton = nullptr;
-    }
+    // No-op: the singleton is a function-local static and is destroyed
+    // automatically at program exit. Kept as a public API for callers that
+    // expect a teardown hook.
 }
 
 bool SPIRVDiskCache::is_enabled() const {
@@ -338,23 +336,41 @@ void SPIRVDiskCache::store(const String &p_key, RenderingDevice *p_device, const
         return;
     }
 
-    // Atomic-ish rename: on Windows, DirAccess::rename overwrites if the target
-    // exists (FileAccess writes seal the tmp file when the Ref drops). On crash
-    // between write and rename we leak a .tmp; prune_above() reaps them.
+    // Atomic-ish replace: stash any existing blob in a .bak, install the new
+    // blob, then drop the .bak. If the install rename fails, restore the .bak
+    // so a transient I/O hiccup cannot drop a previously good cache entry.
     Ref<DirAccess> da = DirAccess::open(dir);
     if (da.is_null()) {
         DirAccess::remove_absolute(tmp_path);
         return;
     }
-    // If the destination exists from a prior store of the same key, remove it
-    // first so rename() succeeds across platforms.
-    if (FileAccess::exists(final_path)) {
-        da->remove(p_key + CACHE_FILE_EXT);
+    const String backup_name = p_key + CACHE_FILE_EXT + ".bak";
+    const String final_name = p_key + CACHE_FILE_EXT;
+    const String tmp_name = p_key + CACHE_TMP_EXT;
+    const String backup_path = dir + backup_name;
+
+    // Clean any leftover backup from a prior crash so the new stash can land.
+    if (FileAccess::exists(backup_path)) {
+        da->remove(backup_name);
     }
-    Error rename_err = da->rename(p_key + CACHE_TMP_EXT, p_key + CACHE_FILE_EXT);
+    bool backup_made = false;
+    if (FileAccess::exists(final_path)) {
+        if (da->rename(final_name, backup_name) == OK) {
+            backup_made = true;
+        }
+    }
+    Error rename_err = da->rename(tmp_name, final_name);
     if (rename_err != OK) {
-        // Best-effort cleanup of the orphan tmp.
-        da->remove(p_key + CACHE_TMP_EXT);
+        // Roll the backup back into place before giving up so we keep the
+        // last known-good blob.
+        da->remove(tmp_name);
+        if (backup_made) {
+            da->rename(backup_name, final_name);
+        }
+        return;
+    }
+    if (backup_made) {
+        da->remove(backup_name);
     }
 }
 
