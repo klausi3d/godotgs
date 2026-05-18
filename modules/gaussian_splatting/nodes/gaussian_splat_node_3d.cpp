@@ -649,6 +649,16 @@ void GaussianSplatNode3D::set_splat_asset(const Ref<GaussianSplatAsset> &p_asset
         return;
     }
 
+    // Arm the startup trace only when this assignment will drive a render
+    // pipeline. Out-of-tree assignment (e.g. tests, programmatic builders that
+    // configure the node before adding to a scene) and the three existing arm
+    // sites (_load_asset, _set ply_file_path migration, drop handler) already
+    // fire their own begin_asset_open() before this point - the asset_loading
+    // flag guards against double-arming on the reload path.
+    if (p_asset.is_valid() && is_inside_tree() && is_inside_world() && !asset_loading) {
+        GSStartupTrace::get_singleton()->begin_asset_open();
+    }
+
     if (splat_asset.is_valid() && splat_asset->is_connected("changed", callable_mp(this, &GaussianSplatNode3D::_on_asset_changed))) {
         splat_asset->disconnect("changed", callable_mp(this, &GaussianSplatNode3D::_on_asset_changed));
     }
