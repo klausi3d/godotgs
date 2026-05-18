@@ -9,8 +9,10 @@
 #include "core/streaming_chunk_payload_source.h"
 #include "renderer/gaussian_splat_renderer.h"
 #include "renderer/gpu_buffer_manager.h"
+#include "renderer/spirv_disk_cache.h"
 #include "core/gaussian_splat_manager.h"
 #include "core/config/engine.h"
+#include "core/config/project_settings.h"
 #include "io/ply_loader.h"
 #include "io/spz_loader.h"
 #include "io/i_gaussian_loader.h"
@@ -108,6 +110,26 @@ void initialize_gaussian_splatting_module(ModuleInitializationLevel p_level) {
                 singleton_info.name = "GaussianSplatManager";
                 singleton_info.ptr = gaussian_splat_manager_singleton;
                 Engine::get_singleton()->add_singleton(singleton_info);
+            }
+
+            // SPIR-V disk cache settings. Registered here (not in the manager)
+            // so they exist before any shader compile on first launch.
+            GLOBAL_DEF("rendering/gaussian_splatting/cache/spirv_cache_enabled", true);
+            GLOBAL_DEF(PropertyInfo(Variant::INT,
+                              "rendering/gaussian_splatting/cache/spirv_cache_max_mb",
+                              PROPERTY_HINT_RANGE, "4,1024,1"),
+                    64);
+            {
+                SPIRVDiskCache *spirv_cache = SPIRVDiskCache::get();
+                const bool cache_enabled = bool(GLOBAL_GET("rendering/gaussian_splatting/cache/spirv_cache_enabled"));
+                spirv_cache->set_enabled(cache_enabled);
+                int max_mb = int(GLOBAL_GET("rendering/gaussian_splatting/cache/spirv_cache_max_mb"));
+                if (max_mb < 4) {
+                    max_mb = 4;
+                } else if (max_mb > 1024) {
+                    max_mb = 1024;
+                }
+                spirv_cache->prune_above(uint64_t(max_mb) * 1024ull * 1024ull);
             }
 
             if (!gaussian_splat_scene_director_singleton) {
@@ -220,6 +242,7 @@ void uninitialize_gaussian_splatting_module(ModuleInitializationLevel p_level) {
             // Cleanup Custom Performance Monitors
             GaussianSplattingPerformanceMonitors::destroy_singleton();
             GaussianRenderingDiagnostics::destroy_singleton();
+            SPIRVDiskCache::shutdown();
             break;
 
 #ifdef TOOLS_ENABLED
