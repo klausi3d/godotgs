@@ -74,6 +74,11 @@ private:
 	HashMap<StringName, uint64_t> totals_usec;
 	LocalVector<StringName> insertion_order;
 	uint64_t active_begin_usec = 0;
+	// True once any flush has emitted. Used by begin_asset_open() to decide
+	// whether non-empty active represents the special first-open case
+	// (preserve pre-module-init phases) or stale phases recorded outside
+	// any in-flight open (drop them so they do not leak into the next line).
+	bool ever_flushed = false;
 };
 
 class GSStartupTraceScope {

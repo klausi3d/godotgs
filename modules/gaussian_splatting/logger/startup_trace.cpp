@@ -46,25 +46,34 @@ void GSStartupTrace::begin_asset_open() {
 		insertion_order.clear();
 		pending_flush_count.store(0, std::memory_order_relaxed);
 		active_begin_usec = 0;
+		ever_flushed = false;
 		return;
 	}
 
-	// If a prior begin_asset_open() has not yet been drained by the renderer,
-	// seal the active accumulator as that prior open's snapshot before
-	// starting the new one. This keeps each open's timings in its own line
-	// instead of merging multiple opens into one.
-	if (pending_flush_count.load(std::memory_order_relaxed) > 0 && !insertion_order.is_empty()) {
-		GSStartupTraceSnapshot snapshot;
-		snapshot.totals_usec = totals_usec;
-		snapshot.insertion_order = insertion_order;
-		snapshot.begin_usec = active_begin_usec;
-		sealed_traces.push_back(snapshot);
-		totals_usec.clear();
-		insertion_order.clear();
+	if (!insertion_order.is_empty()) {
+		if (pending_flush_count.load(std::memory_order_relaxed) > 0) {
+			// A prior begin_asset_open() has not yet been drained. Seal the
+			// active accumulator as that prior open's snapshot so this new
+			// open starts with a clean slate instead of merging.
+			GSStartupTraceSnapshot snapshot;
+			snapshot.totals_usec = totals_usec;
+			snapshot.insertion_order = insertion_order;
+			snapshot.begin_usec = active_begin_usec;
+			sealed_traces.push_back(snapshot);
+			totals_usec.clear();
+			insertion_order.clear();
+		} else if (ever_flushed) {
+			// count==0 means the prior open already flushed; any phases that
+			// have accumulated since (for example a GS_STARTUP_SCOPE that
+			// fired outside an asset-open boundary) are stale and would
+			// otherwise be attributed to this new open. Drop them.
+			totals_usec.clear();
+			insertion_order.clear();
+		}
+		// else (count==0 && !ever_flushed): first-ever begin with pre-open
+		// module-init phases in active. Preserve so the first
+		// [StartupTrace] line includes them.
 	}
-	// First call (pending_flush_count == 0) preserves any pre-open module-init
-	// phases already recorded in the active accumulator so the first
-	// [StartupTrace] line includes them.
 
 	OS *os = OS::get_singleton();
 	active_begin_usec = os ? os->get_ticks_usec() : 0;
@@ -79,6 +88,7 @@ void GSStartupTrace::reset() {
 	insertion_order.clear();
 	pending_flush_count.store(0, std::memory_order_relaxed);
 	active_begin_usec = 0;
+	ever_flushed = false;
 }
 
 // flush() and consume_pending_flush() used to be separate operations, but
@@ -146,6 +156,7 @@ bool GSStartupTrace::flush_one_pending() {
 			totals_usec.clear();
 			insertion_order.clear();
 			active_begin_usec = 0;
+			ever_flushed = false;
 			pending_flush_count.store(0, std::memory_order_release);
 			return false;
 		}
@@ -217,6 +228,7 @@ bool GSStartupTrace::flush_one_pending() {
 			active_begin_usec = 0;
 		}
 		emitted = true;
+		ever_flushed = true;
 	}
 
 	if (emitted) {
