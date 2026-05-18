@@ -1,5 +1,8 @@
 #include "register_types.h"
 
+#include "core/config/project_settings.h"
+#include "logger/startup_trace.h"
+
 #include "core/gaussian_data.h"
 #include "core/gaussian_splat_asset.h"
 #include "core/gaussian_splat_world.h"
@@ -65,6 +68,14 @@ static Ref<ResourceImporterGSplatWorld> gsplatworld_importer;
 #endif
 
 void initialize_gaussian_splatting_module(ModuleInitializationLevel p_level) {
+    // Register diagnostics setting before any GS code reads it; the trace
+    // singleton refreshes its cached enable flag after registration.
+    if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+        GLOBAL_DEF("rendering/gaussian_splatting/diagnostics/startup_trace", true);
+        GSStartupTrace::get_singleton()->refresh_enabled();
+        GSStartupTrace::get_singleton()->reset();
+    }
+    GS_STARTUP_SCOPE("module_register");
     switch (p_level) {
         case MODULE_INITIALIZATION_LEVEL_SCENE: {
             // Initialize configuration systems ahead of renderer setup.

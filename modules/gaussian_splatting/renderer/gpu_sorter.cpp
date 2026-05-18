@@ -68,6 +68,7 @@
 
 #include "../core/gaussian_splat_manager.h"
 #include "../logger/gs_logger.h"
+#include "../logger/startup_trace.h"
 #include "../interfaces/sync_policy.h"
 
 using GaussianSplatting::PassColors;
@@ -1474,6 +1475,7 @@ uint64_t RadixSort::_sort_async_internal(RID keys_buffer, RID values_buffer, uin
 }
 
 Error RadixSort::create_variant(RenderingDevice *device, uint32_t radix_bits) {
+    GS_STARTUP_SCOPE("sorter_create_variant");
     if (!device) {
         return ERR_CANT_CREATE;
     }

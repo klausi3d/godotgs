@@ -7,6 +7,7 @@
 #include "io_settings_utils.h"
 #include "../core/gaussian_splat_world.h"
 #include "../logger/gs_logger.h"
+#include "../logger/startup_trace.h"
 
 #include <climits>
 
@@ -78,6 +79,11 @@ Error PLYLoader::load_file(const String &p_path) {
         return ERR_FILE_NOT_FOUND;
     }
 
+    // Higher-level entry points (GaussianSplatAsset::load_from_file,
+    // load_gaussian_data_from_file) own the begin_asset_open() call; nesting
+    // one here would double-arm the pending-flush counter and split a single
+    // asset load across multiple [StartupTrace] lines.
+
     last_cache_hit = false;
     last_header_time_us = 0;
     last_parse_time_us = 0;
@@ -106,6 +112,10 @@ Error PLYLoader::load_file(const String &p_path) {
             last_cache_time_us = OS::get_singleton()->get_ticks_usec() - cache_start;
             last_cache_hit = true;
             last_load_time_us = OS::get_singleton()->get_ticks_usec() - start_time;
+            if (GSStartupTrace *trace = GSStartupTrace::get_singleton(); trace && trace->is_enabled()) {
+                trace->record_subphase("ply_header_parse", last_header_time_us);
+                trace->record_subphase("ply_cache_lookup", last_cache_time_us);
+            }
             GS_LOG_STREAMING_INFO(vformat("PLY cache hit: %d splats in %.2f ms",
                     header.vertex_count, last_load_time_us / 1000.0));
             return OK;
@@ -115,12 +125,19 @@ Error PLYLoader::load_file(const String &p_path) {
 
     // Parse data based on format
     uint64_t parse_start = OS::get_singleton()->get_ticks_usec();
-    if (header.is_binary) {
-        err = parse_binary_data(file);
-    } else {
-        err = parse_ascii_data(file);
+    {
+        GS_STARTUP_SCOPE("ply_payload_parse");
+        if (header.is_binary) {
+            err = parse_binary_data(file);
+        } else {
+            err = parse_ascii_data(file);
+        }
     }
     last_parse_time_us = OS::get_singleton()->get_ticks_usec() - parse_start;
+    if (GSStartupTrace *trace = GSStartupTrace::get_singleton(); trace && trace->is_enabled()) {
+        trace->record_subphase("ply_header_parse", last_header_time_us);
+        trace->record_subphase("ply_cache_lookup", last_cache_time_us);
+    }
 
     if (err != OK) {
         GS_LOG_ERROR_DEFAULT("Failed to parse PLY data");

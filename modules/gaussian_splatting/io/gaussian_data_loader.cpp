@@ -6,6 +6,11 @@
 
 Error load_gaussian_data_from_file(const String &p_path, GaussianDataLoadResult &r_result) {
     r_result = GaussianDataLoadResult();
+    // Do not arm GSStartupTrace here. This entry point is reached from
+    // headless tests, importers, and CLI tools where no renderer ever drains
+    // the pending-flush queue, so each call would leak a sealed_traces entry
+    // until process exit. The render-path entry point (GaussianSplatAsset::
+    // load_from_file) arms its own trace and routes around this loader.
 
     const String extension = p_path.get_extension().to_lower();
     if (extension == "spz") {

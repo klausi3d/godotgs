@@ -24,6 +24,7 @@
 #include "../interfaces/painterly_renderer.h"
 #include "../logger/gs_debug_trace.h"
 #include "../logger/gs_logger.h"
+#include "../logger/startup_trace.h"
 #include "../resources/color_grading_resource.h"
 #include "../core/gaussian_splat_scene_director.h"
 #include "gpu_sorting_config.h"
@@ -818,6 +819,25 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 		bool p_set_skip_metrics, bool p_clear_cull_state_on_skip) {
 	ERR_FAIL_NULL(renderer);
 	ERR_FAIL_COND(!p_frame_context.deps.validate());
+
+	// Drain every pending begin_asset_open() that arrived before this frame so
+	// multi-asset scene loads emit their full set of [StartupTrace] lines on
+	// the first rendered frame instead of trickling out one per frame. Each
+	// drained snapshot computes its own total= from its own begin_asset_open()
+	// timestamp, so deferring a snapshot to a later frame would inflate that
+	// open's total= relative to the time the user actually waited.
+	// flush_one_pending() performs the decrement and emission atomically so
+	// a concurrent begin_asset_open() cannot race the consume window.
+	struct StartupTraceFlushGuard {
+		~StartupTraceFlushGuard() {
+			GSStartupTrace *trace = GSStartupTrace::get_singleton();
+			if (!trace) {
+				return;
+			}
+			while (trace->flush_one_pending()) {
+			}
+		}
+	} startup_trace_flush_guard;
 
 	// Copy frame context first, then build frame_plan and update deps.
 	// The provider must be constructed AFTER this so it sees the updated deps.

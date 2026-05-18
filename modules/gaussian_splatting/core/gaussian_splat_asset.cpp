@@ -11,6 +11,7 @@
 #include "core/os/os.h"
 #include "core/os/thread.h"
 #include "../logger/gs_logger.h"
+#include "../logger/startup_trace.h"
 #include "scene/resources/image_texture.h"
 
 namespace {
@@ -1094,6 +1095,11 @@ Error GaussianSplatAsset::load_from_file(const String &p_path) {
         return ERR_FILE_NOT_FOUND;
     }
 
+    // GSStartupTrace is armed by render-context callers (the
+    // GaussianSplatNode3D load sites) so importers, tests, and other
+    // headless flows that call load_from_file directly do not queue
+    // pending traces that will never be drained.
+
 	uint64_t total_start_usec = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : 0;
 	uint64_t source_start_usec = total_start_usec;
 
@@ -1240,6 +1246,7 @@ Ref<::GaussianData> GaussianSplatAsset::get_gaussian_data() const {
 }
 
 bool GaussianSplatAsset::populate_gaussian_data(Ref<::GaussianData> &r_data) const {
+    GS_STARTUP_SCOPE("asset_populate_gaussian_data");
     if (splat_count == 0) {
         return false;
     }

@@ -19,6 +19,7 @@
 #include "pipeline_io_contracts.h"
 #include "resident_instance_contract_publisher.h"
 #include "../logger/gs_debug_trace.h"
+#include "../logger/startup_trace.h"
 #include "core/object/callable_method_pointer.h"
 
 using GaussianSplatting::ScopedGpuMarker;
@@ -794,6 +795,7 @@ void GaussianSplatRenderer::_notify_render_thread_dispatch_completed(uint64_t p_
 }
 
 GaussianSplatRenderer::GaussianSplatRenderer(RenderingDevice *p_device) {
+    GS_STARTUP_SCOPE("renderer_construct");
     // State buckets: frame_context_manager (view + frame metrics), device state (orchestrator-owned),
     // resource orchestrator state, streaming state (data orchestrator), debug_state_orchestrator, diagnostics_orchestrator.
     RenderingDevice *device = p_device;
