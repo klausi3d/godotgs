@@ -8,6 +8,7 @@
 #include "core/math/basis.h"
 #include "core/math/math_funcs.h"
 #include "core/math/quaternion.h"
+#include "core/object/worker_thread_pool.h"
 #include "core/os/os.h"
 #include "core/os/thread.h"
 #include "../logger/gs_logger.h"
@@ -211,6 +212,11 @@ GaussianSplatAsset::~GaussianSplatAsset() {
 }
 
 void GaussianSplatAsset::_invalidate_gaussian_data_cache() {
+    // Lock paired with get_gaussian_data() / has_gaussian_data_cached(). Setters
+    // and populate_from_gaussian_data() are expected to run on the asset's owner
+    // thread (the payload_sealed gate enforces that contract), but a worker
+    // could still observe a torn cache ref without this synchronization.
+    MutexLock cache_lock(populate_mutex);
     gaussian_data_cache.unref();
 }
 
@@ -1184,8 +1190,11 @@ Error GaussianSplatAsset::load_from_file(const String &p_path) {
 	}
 
 	// Preserve the authoritative GaussianData loaded from disk so later bootstrap
-	// does not reconstruct it from the asset arrays.
-	gaussian_data_cache = gaussian_data;
+	// does not reconstruct it from the asset arrays. Lock pairs with get_gaussian_data().
+	{
+		MutexLock cache_lock(populate_mutex);
+		gaussian_data_cache = gaussian_data;
+	}
 
 	const double total_load_ms = _elapsed_msec(total_start_usec);
 	import_metadata[StringName("runtime_load_timing")] = _build_runtime_load_timing(
@@ -1219,30 +1228,93 @@ Ref<::GaussianData> GaussianSplatAsset::get_gaussian_data() const {
     ERR_FAIL_COND_V_MSG(splat_count == 0, Ref<::GaussianData>(),
             "[GaussianSplatAsset] get_gaussian_data() called on unloaded asset (splat_count == 0); returning null.");
 
-    if (gaussian_data_cache.is_valid()) {
-        // The cache has been handed out once already; keep the payload sealed
-        // so no external code can mutate it behind the consumer's back.
-        payload_sealed = true;
-        return gaussian_data_cache;
+    {
+        MutexLock cache_lock(populate_mutex);
+        if (gaussian_data_cache.is_valid()) {
+            // Cache already handed out — keep payload sealed so external code
+            // cannot mutate it behind the consumer's back.
+            payload_sealed = true;
+            return gaussian_data_cache;
+        }
     }
 
+    // Build outside the mutex: the O(N) SoA->AoS conversion must not serialize
+    // parallel workers materializing distinct assets.
     Ref<::GaussianData> data;
     uint64_t rebuild_start_usec = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : 0;
     if (!populate_gaussian_data(data)) {
         return Ref<::GaussianData>();
     }
-
-    gaussian_data_cache = data;
-    // Asset arrays have been promoted to runtime authority (GaussianData).
-    // Seal so that asset->set_positions()/... cannot silently diverge the
-    // asset payload from the runtime GaussianData that was just handed out.
-    payload_sealed = true;
     const double rebuild_ms = _elapsed_msec(rebuild_start_usec);
+
+    {
+        MutexLock cache_lock(populate_mutex);
+        if (gaussian_data_cache.is_valid()) {
+            // Lost the race against another thread that finished first; drop our
+            // build and return the winner. The winner's payload is canonical.
+            payload_sealed = true;
+            return gaussian_data_cache;
+        }
+        gaussian_data_cache = data;
+        payload_sealed = true;
+    }
     GS_LOG_STREAMING_INFO(vformat(
             "[LoadTiming][GaussianSplatAsset] rebuilt GaussianData from asset arrays: splats=%d rebuild_ms=%.2f",
             splat_count,
             rebuild_ms));
     return gaussian_data_cache;
+}
+
+bool GaussianSplatAsset::has_gaussian_data_cached() const {
+    MutexLock cache_lock(populate_mutex);
+    return gaussian_data_cache.is_valid();
+}
+
+void GaussianSplatAsset::prefetch_gaussian_data_parallel(const LocalVector<Ref<GaussianSplatAsset>> &p_assets) {
+    GS_STARTUP_SCOPE("asset_prefetch_parallel");
+    // Collect only assets that still need materialization. Already-cached and
+    // null/unloaded entries are filtered here so the worker callback can be a
+    // plain pointer-indexed dispatch with no per-task null/valid checks.
+    LocalVector<GaussianSplatAsset *> pending;
+    pending.reserve(p_assets.size());
+    for (uint32_t i = 0; i < p_assets.size(); ++i) {
+        const Ref<GaussianSplatAsset> &ref = p_assets[i];
+        if (ref.is_null()) {
+            continue;
+        }
+        if (ref->splat_count == 0) {
+            continue;
+        }
+        if (ref->has_gaussian_data_cached()) {
+            continue;
+        }
+        pending.push_back(ref.ptr());
+    }
+
+    if (pending.is_empty()) {
+        return;
+    }
+
+    if (pending.size() == 1) {
+        // Single asset — skip pool overhead and run inline on the calling thread.
+        pending[0]->get_gaussian_data();
+        return;
+    }
+
+    // Pure CPU SoA->AoS conversion across distinct assets — no shared mutation,
+    // no RenderingDevice work. Each worker calls get_gaussian_data() on its
+    // assigned asset; the per-asset populate_mutex covers the cache store.
+    struct WorkCtx {
+        GaussianSplatAsset *const *items;
+    };
+    WorkCtx ctx{ pending.ptr() };
+    auto worker = [](void *p_userdata, uint32_t p_index) {
+        WorkCtx *c = static_cast<WorkCtx *>(p_userdata);
+        c->items[p_index]->get_gaussian_data();
+    };
+    WorkerThreadPool::GroupID gid = WorkerThreadPool::get_singleton()->add_native_group_task(
+            worker, &ctx, int(pending.size()), -1, true, String("GSAssetMaterialize"));
+    WorkerThreadPool::get_singleton()->wait_for_group_task_completion(gid);
 }
 
 bool GaussianSplatAsset::populate_gaussian_data(Ref<::GaussianData> &r_data) const {

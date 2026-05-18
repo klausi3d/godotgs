@@ -8,6 +8,8 @@
 #include "core/math/quaternion.h"
 #include "core/math/vector2.h"
 #include "core/math/vector3.h"
+#include "core/os/mutex.h"
+#include "core/templates/local_vector.h"
 #include "core/variant/typed_array.h"
 
 #include <atomic>
@@ -59,6 +61,11 @@ private:
     mutable Ref<ImageTexture> preview_texture_cache;
     bool has_sh_dc_coefficients = false;
     mutable Ref<::GaussianData> gaussian_data_cache;
+    // Serializes the cache check-and-store in get_gaussian_data() / populate_gaussian_data()
+    // so the O(N) SoA->AoS build can run on a WorkerThreadPool task (one task per asset).
+    // The mutex is NEVER held during the build itself — only around the cache reads/writes —
+    // to avoid serializing parallel workers materializing distinct assets.
+    mutable Mutex populate_mutex;
     // Once the asset has been "handed out" as runtime authority (via
     // get_gaussian_data() or populate_from_gaussian_data()), the packed
     // arrays become read-only from external callers. Public setters,
@@ -178,6 +185,16 @@ public:
     Error load_from_file(const String &p_path);
     Ref<::GaussianData> get_gaussian_data() const;
     bool populate_gaussian_data(Ref<::GaussianData> &r_data) const;
+    // True iff get_gaussian_data() would return immediately from cache. Used by the
+    // parallel prefetch path to skip already-materialized assets.
+    bool has_gaussian_data_cached() const;
+    // Parallel batch materialization. Each WorkerThreadPool task calls
+    // get_gaussian_data() on a distinct asset; assets that are already cached
+    // are no-ops. INVARIANT: the assets MUST be stable (not mutated by other
+    // threads) for the duration of this call. populate_gaussian_data() is pure
+    // CPU SoA->AoS conversion — no RenderingDevice / RID work — and therefore
+    // safe to run off the main thread per Godot's thread-safe APIs contract.
+    static void prefetch_gaussian_data_parallel(const LocalVector<Ref<GaussianSplatAsset>> &p_assets);
     Error populate_from_gaussian_data(const Ref<::GaussianData> &p_gaussian_data);
     Error save_to_file(const String &p_path) const;
 };
