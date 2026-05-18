@@ -206,8 +206,10 @@ int _run_doctest(int argc, char *argv[], const GsGpuTestOptions &opt) {
 static bool g_in_gs_gpu_mode = false;
 
 // doctest reporter that snapshots GPU memory before and after each test case
-// and emits an advisory line when a test leaves > 1 MiB of GPU memory behind.
-// Registered globally but gated by g_in_gs_gpu_mode (see comment above).
+// and emits an advisory line when a test leaves > LEAK_BYTES_THRESHOLD bytes
+// of GPU memory behind (4 MiB as of #341 — see the threshold's commentary
+// in test_case_end for the empirical basis). Registered globally but gated
+// by g_in_gs_gpu_mode (see comment above).
 struct GsGpuRidLeakListener : public doctest::IReporter {
 	explicit GsGpuRidLeakListener(const doctest::ContextOptions &) {}
 

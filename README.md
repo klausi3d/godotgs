@@ -40,7 +40,7 @@ No named stable (`v*`) release is published yet, so nightly is the only public i
 
 - Compatibility snapshot: Windows is `editor-tested` on the self-hosted Vulkan Forward+ lane with `NVIDIA GeForce RTX 3090` and now ships a nightly editor zip. Linux is `sample-project-tested` on `ubuntu-24.04` with `xvfb` and `mesa-vulkan-drivers 25.2.8-0ubuntu0.24.04.1` and ships a nightly editor tarball. macOS is currently `build-supported`.
 - Benchmark snapshot: the public dashboard currently contains one committed `static_baseline` row at 74.0 average FPS and 15.62 ms P99 frame time.
-- Visual proof: real editor screenshots and short workflow clips are still pending. The current figures are technical diagrams, not product captures.
+- Visual proof: real editor screenshots and short workflow clips are still pending. The current figures are technical diagrams, not product captures. A doctest-driven visual-compare lane now runs in `baseline_qa.yml` against seeded baselines in `tests/visual_baselines/`.
 
 ## For Reviewers
 
