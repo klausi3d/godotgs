@@ -24,7 +24,8 @@ public:
 
 	// Starts a new asset-open trace after the previous one has flushed. If the
 	// module has already recorded pre-open startup phases for the first asset,
-	// they are preserved until that first flush.
+	// they are preserved until that first flush. Arms a pending flush so the
+	// next rendered frame emits the accumulated [StartupTrace] line.
 	void begin_asset_open();
 
 	void reset();
@@ -37,6 +38,11 @@ public:
 
 	void flush(double p_total_ms);
 
+	// Atomically consumes the pending-flush flag set by begin_asset_open().
+	// Returns true exactly once per begin_asset_open() call so the renderer can
+	// emit one [StartupTrace] line on the first frame after each asset open.
+	bool consume_pending_flush();
+
 private:
 	GSStartupTrace();
 
@@ -44,6 +50,7 @@ private:
 
 	mutable Mutex state_mutex;
 	bool flushed = false;
+	std::atomic<bool> pending_flush{ false };
 	HashMap<StringName, uint64_t> totals_usec;
 	LocalVector<StringName> insertion_order;
 };

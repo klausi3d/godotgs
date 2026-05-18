@@ -44,16 +44,19 @@ void GSStartupTrace::begin_asset_open() {
 		totals_usec.clear();
 		insertion_order.clear();
 		flushed = false;
+		pending_flush.store(false, std::memory_order_relaxed);
 		return;
 	}
 
-	if (!flushed && !insertion_order.is_empty()) {
-		return;
+	// Preserve any pre-open module-init phases recorded for the first asset
+	// open. For subsequent asset opens (or after a flush), clear the
+	// accumulator so each open emits its own trace line.
+	if (flushed || insertion_order.is_empty()) {
+		totals_usec.clear();
+		insertion_order.clear();
+		flushed = false;
 	}
-
-	totals_usec.clear();
-	insertion_order.clear();
-	flushed = false;
+	pending_flush.store(true, std::memory_order_release);
 }
 
 void GSStartupTrace::reset() {
@@ -61,6 +64,11 @@ void GSStartupTrace::reset() {
 	totals_usec.clear();
 	insertion_order.clear();
 	flushed = false;
+	pending_flush.store(false, std::memory_order_relaxed);
+}
+
+bool GSStartupTrace::consume_pending_flush() {
+	return pending_flush.exchange(false, std::memory_order_acq_rel);
 }
 
 void GSStartupTrace::begin_scope(const StringName & /*p_phase*/) {
