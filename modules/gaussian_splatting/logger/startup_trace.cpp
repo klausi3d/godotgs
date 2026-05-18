@@ -41,34 +41,51 @@ void GSStartupTrace::begin_asset_open() {
 
 	MutexLock lock(state_mutex);
 	if (!is_enabled_fast()) {
+		sealed_traces.clear();
 		totals_usec.clear();
 		insertion_order.clear();
-		flushed = false;
-		pending_flush.store(false, std::memory_order_relaxed);
+		pending_flush_count.store(0, std::memory_order_relaxed);
 		return;
 	}
 
-	// Preserve any pre-open module-init phases recorded for the first asset
-	// open. For subsequent asset opens (or after a flush), clear the
-	// accumulator so each open emits its own trace line.
-	if (flushed || insertion_order.is_empty()) {
+	// If a prior begin_asset_open() has not yet been drained by the renderer,
+	// seal the active accumulator as that prior open's snapshot before
+	// starting the new one. This keeps each open's timings in its own line
+	// instead of merging multiple opens into one.
+	if (pending_flush_count.load(std::memory_order_relaxed) > 0 && !insertion_order.is_empty()) {
+		GSStartupTraceSnapshot snapshot;
+		snapshot.totals_usec = totals_usec;
+		snapshot.insertion_order = insertion_order;
+		sealed_traces.push_back(snapshot);
 		totals_usec.clear();
 		insertion_order.clear();
-		flushed = false;
 	}
-	pending_flush.store(true, std::memory_order_release);
+	// First call (pending_flush_count == 0) preserves any pre-open module-init
+	// phases already recorded in the active accumulator so the first
+	// [StartupTrace] line includes them.
+
+	pending_flush_count.fetch_add(1, std::memory_order_acq_rel);
 }
 
 void GSStartupTrace::reset() {
 	MutexLock lock(state_mutex);
+	sealed_traces.clear();
 	totals_usec.clear();
 	insertion_order.clear();
-	flushed = false;
-	pending_flush.store(false, std::memory_order_relaxed);
+	pending_flush_count.store(0, std::memory_order_relaxed);
 }
 
 bool GSStartupTrace::consume_pending_flush() {
-	return pending_flush.exchange(false, std::memory_order_acq_rel);
+	// Atomic decrement-if-positive: CAS loop guards against two consumers
+	// racing to drain the same begin_asset_open() event.
+	uint32_t expected = pending_flush_count.load(std::memory_order_acquire);
+	while (expected > 0) {
+		if (pending_flush_count.compare_exchange_weak(expected, expected - 1,
+					std::memory_order_acq_rel, std::memory_order_acquire)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 void GSStartupTrace::begin_scope(const StringName & /*p_phase*/) {
@@ -92,9 +109,6 @@ void GSStartupTrace::record_subphase(const StringName &p_phase, uint64_t p_durat
 	}
 
 	MutexLock lock(state_mutex);
-	if (flushed) {
-		return;
-	}
 
 	HashMap<StringName, uint64_t>::Iterator it = totals_usec.find(p_phase);
 	if (it == totals_usec.end()) {
@@ -116,18 +130,33 @@ void GSStartupTrace::flush(double p_total_ms) {
 	String line;
 	{
 		MutexLock lock(state_mutex);
-		if (flushed) {
+		if (!is_enabled_fast()) {
 			return;
 		}
-		flushed = true;
-		if (!is_enabled_fast() || insertion_order.is_empty()) {
+
+		// Drain the oldest sealed snapshot first so multiple back-to-back
+		// asset opens each emit their own line in arrival order. When no
+		// sealed snapshot is queued, emit the active accumulator and clear
+		// it so the next open starts fresh.
+		const HashMap<StringName, uint64_t> *emit_totals = nullptr;
+		const LocalVector<StringName> *emit_order = nullptr;
+		GSStartupTraceSnapshot popped;
+		if (!sealed_traces.is_empty()) {
+			popped = sealed_traces[0];
+			sealed_traces.remove_at(0);
+			emit_totals = &popped.totals_usec;
+			emit_order = &popped.insertion_order;
+		} else if (!insertion_order.is_empty()) {
+			emit_totals = &totals_usec;
+			emit_order = &insertion_order;
+		} else {
 			return;
 		}
 
 		line = "[StartupTrace]";
-		for (const StringName &phase : insertion_order) {
-			HashMap<StringName, uint64_t>::ConstIterator it = totals_usec.find(phase);
-			if (it == totals_usec.end()) {
+		for (const StringName &phase : *emit_order) {
+			HashMap<StringName, uint64_t>::ConstIterator it = emit_totals->find(phase);
+			if (it == emit_totals->end()) {
 				continue;
 			}
 			line += " ";
@@ -139,6 +168,14 @@ void GSStartupTrace::flush(double p_total_ms) {
 		line += " total=";
 		line += String::num(p_total_ms, 2);
 		line += "ms";
+
+		// Only clear the active accumulator after we have actually emitted
+		// from it (snapshots own their copy). This keeps active empty for
+		// the next open's phases.
+		if (emit_totals == &totals_usec) {
+			totals_usec.clear();
+			insertion_order.clear();
+		}
 	}
 
 	GS_LOG_RENDERER_INFO(line);

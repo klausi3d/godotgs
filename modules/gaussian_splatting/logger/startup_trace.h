@@ -9,6 +9,13 @@
 #include <atomic>
 #include <cstdint>
 
+// Per-asset-open snapshot of accumulated phases, sealed when a subsequent
+// begin_asset_open() arrives before the renderer has consumed the prior open.
+struct GSStartupTraceSnapshot {
+	HashMap<StringName, uint64_t> totals_usec;
+	LocalVector<StringName> insertion_order;
+};
+
 // Startup-time instrumentation that carries module-init phases into the first
 // asset-open, then resets on later asset-open begins after a flush.
 class GSStartupTrace {
@@ -38,9 +45,9 @@ public:
 
 	void flush(double p_total_ms);
 
-	// Atomically consumes the pending-flush flag set by begin_asset_open().
-	// Returns true exactly once per begin_asset_open() call so the renderer can
-	// emit one [StartupTrace] line on the first frame after each asset open.
+	// Atomically decrements the pending-flush counter if positive. Returns true
+	// exactly once per begin_asset_open() call so multiple opens that happen
+	// before the renderer drains them each get their own [StartupTrace] line.
 	bool consume_pending_flush();
 
 private:
@@ -49,8 +56,14 @@ private:
 	static std::atomic<bool> enabled;
 
 	mutable Mutex state_mutex;
-	bool flushed = false;
-	std::atomic<bool> pending_flush{ false };
+	// Counts begin_asset_open() calls that have not yet been flushed. A
+	// boolean here would collapse multiple back-to-back opens into one line.
+	std::atomic<uint32_t> pending_flush_count{ 0 };
+	// Sealed snapshots of prior asset-opens that arrived before the renderer
+	// drained them. Oldest-first; flush() pops index 0.
+	LocalVector<GSStartupTraceSnapshot> sealed_traces;
+	// Active accumulator for the currently-open asset (or pre-open module-init
+	// phases when no asset open has happened yet).
 	HashMap<StringName, uint64_t> totals_usec;
 	LocalVector<StringName> insertion_order;
 };
