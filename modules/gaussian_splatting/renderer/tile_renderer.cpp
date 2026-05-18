@@ -1465,53 +1465,78 @@ Error TileRenderer::initialize(RenderingDevice *p_rendering_device, const Vector
         return err;
     }
 
-    // Eager graphics raster pipeline pre-create (Phase 4): if the caller gave us a
-    // probable target size and color format AND the project setting is on, build
-    // the pipeline now using a framebuffer-format descriptor identical to the one
-    // the renderer will use at draw time (color + depth(R32) + normal(R16G16B16A16)).
-    // If the format guess is wrong on the first frame, the lazy reformat path will
-    // free this pipeline and rebuild it; raster_pipeline_reformats will tick.
+    if (p_initial_viewport.x > 0 && p_initial_viewport.y > 0) {
+        err = _ensure_resources(p_initial_viewport, config_state.tile_size, config_state.desired_output_format);
+        if (err != OK) {
+            return err;
+        }
+    } else {
+        grid_state.viewport_size = Vector2i();
+        grid_state.tiles_x = 0;
+        grid_state.tiles_y = 0;
+        grid_state.total_tiles = 0;
+    }
+
+    // Eager graphics raster pipeline pre-create (Phase 4): runs AFTER _ensure_resources()
+    // because _ensure_resources() takes the recreate path on first init (config_state.output_format
+    // starts as DATA_FORMAT_MAX) and TileRenderTargets::destroy_output_textures() frees
+    // owner.shader_resources.tile_raster_pipeline. Pre-creating before that would simply
+    // discard the eager pipeline and re-introduce the first-frame hitch.
+    //
+    // Format selection: if _ensure_resources() built a real framebuffer, reuse that
+    // framebuffer_format directly so the pipeline is bound to the EXACT format the
+    // renderer will draw against (no reformat on frame 1). Otherwise fall back to a
+    // probable framebuffer-format descriptor built from p_init_color_format + R32/R16G16B16A16.
+    // If the descriptor guess turns out wrong on the first frame, the lazy reformat path
+    // in dispatch_tile_rasterizer() will free this pipeline and rebuild it.
     const bool eager_enabled = GLOBAL_GET("rendering/gaussian_splatting/init/eager_raster_pipeline");
-    if (eager_enabled && p_init_target_size.x > 0 && p_init_target_size.y > 0 &&
-            p_init_color_format != RD::DATA_FORMAT_MAX && shader_resources.tile_raster_shader.is_valid()) {
+    if (eager_enabled && shader_resources.tile_raster_shader.is_valid()) {
         RenderingDevice *pipeline_device = _get_submission_device();
         if (!pipeline_device) {
             pipeline_device = device;
         }
         if (pipeline_device) {
-            Vector<RD::AttachmentFormat> attachment_formats;
-            RD::AttachmentFormat af_color;
-            af_color.format = p_init_color_format;
-            af_color.usage_flags = RD::TEXTURE_USAGE_STORAGE_BIT |
-                    RD::TEXTURE_USAGE_SAMPLING_BIT |
-                    RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT |
-                    RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT |
-                    RD::TEXTURE_USAGE_CAN_COPY_TO_BIT;
-            attachment_formats.push_back(af_color);
+            RD::FramebufferFormatID target_fb_format = RD::INVALID_ID;
+            if (render_targets.tile_framebuffer.is_valid() &&
+                    render_targets.tile_framebuffer_format != RD::INVALID_ID) {
+                // _ensure_resources() built a real framebuffer; bind directly to its format.
+                target_fb_format = render_targets.tile_framebuffer_format;
+            } else if (p_init_target_size.x > 0 && p_init_target_size.y > 0 &&
+                    p_init_color_format != RD::DATA_FORMAT_MAX) {
+                // Fall back to the caller-provided hint.
+                Vector<RD::AttachmentFormat> attachment_formats;
+                RD::AttachmentFormat af_color;
+                af_color.format = p_init_color_format;
+                af_color.usage_flags = RD::TEXTURE_USAGE_STORAGE_BIT |
+                        RD::TEXTURE_USAGE_SAMPLING_BIT |
+                        RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT |
+                        RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT |
+                        RD::TEXTURE_USAGE_CAN_COPY_TO_BIT;
+                attachment_formats.push_back(af_color);
 
-            RD::AttachmentFormat af_depth;
-            af_depth.format = RD::DATA_FORMAT_R32_SFLOAT;
-            af_depth.usage_flags = RD::TEXTURE_USAGE_STORAGE_BIT |
-                    RD::TEXTURE_USAGE_SAMPLING_BIT |
-                    RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT |
-                    RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT |
-                    RD::TEXTURE_USAGE_CAN_COPY_TO_BIT;
-            attachment_formats.push_back(af_depth);
+                RD::AttachmentFormat af_depth;
+                af_depth.format = RD::DATA_FORMAT_R32_SFLOAT;
+                af_depth.usage_flags = RD::TEXTURE_USAGE_STORAGE_BIT |
+                        RD::TEXTURE_USAGE_SAMPLING_BIT |
+                        RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT |
+                        RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT |
+                        RD::TEXTURE_USAGE_CAN_COPY_TO_BIT;
+                attachment_formats.push_back(af_depth);
 
-            RD::AttachmentFormat af_normal;
-            af_normal.format = RD::DATA_FORMAT_R16G16B16A16_SFLOAT;
-            af_normal.usage_flags = RD::TEXTURE_USAGE_STORAGE_BIT |
-                    RD::TEXTURE_USAGE_SAMPLING_BIT |
-                    RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT |
-                    RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT |
-                    RD::TEXTURE_USAGE_CAN_COPY_TO_BIT;
-            attachment_formats.push_back(af_normal);
+                RD::AttachmentFormat af_normal;
+                af_normal.format = RD::DATA_FORMAT_R16G16B16A16_SFLOAT;
+                af_normal.usage_flags = RD::TEXTURE_USAGE_STORAGE_BIT |
+                        RD::TEXTURE_USAGE_SAMPLING_BIT |
+                        RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT |
+                        RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT |
+                        RD::TEXTURE_USAGE_CAN_COPY_TO_BIT;
+                attachment_formats.push_back(af_normal);
 
-            RD::FramebufferFormatID probable_fb_format = pipeline_device->framebuffer_format_create(attachment_formats);
-            // Defensive: if initialize() is somehow re-entered without an intervening
-            // cleanup() (cached pipeline still live), free the stale RID before we
-            // overwrite the slot. cleanup() is the documented contract but this
-            // costs ~nothing and avoids a leak if the contract is broken.
+                target_fb_format = pipeline_device->framebuffer_format_create(attachment_formats);
+            }
+
+            // Defensive: if a stale pipeline survived (e.g. initialize() re-entered without
+            // cleanup()), free it before overwriting the slot.
             if (shader_resources.tile_raster_pipeline.is_valid()) {
                 if (pipeline_device->render_pipeline_is_valid(shader_resources.tile_raster_pipeline)) {
                     pipeline_device->free(shader_resources.tile_raster_pipeline);
@@ -1519,7 +1544,8 @@ Error TileRenderer::initialize(RenderingDevice *p_rendering_device, const Vector
                 shader_resources.tile_raster_pipeline = RID();
                 shader_resources.cached_raster_framebuffer_format = RD::INVALID_ID;
             }
-            if (probable_fb_format != RD::INVALID_ID) {
+
+            if (target_fb_format != RD::INVALID_ID) {
                 RD::PipelineRasterizationState raster_state;
                 raster_state.cull_mode = RD::POLYGON_CULL_DISABLED;
                 RD::PipelineMultisampleState ms_state;
@@ -1552,11 +1578,11 @@ Error TileRenderer::initialize(RenderingDevice *p_rendering_device, const Vector
                 blend_state.attachments.write[2].alpha_blend_op = RD::BLEND_OP_ADD;
 
                 RID eager_pipeline = pipeline_device->render_pipeline_create(shader_resources.tile_raster_shader,
-                        probable_fb_format, RD::INVALID_ID, RD::RENDER_PRIMITIVE_TRIANGLES, raster_state,
+                        target_fb_format, RD::INVALID_ID, RD::RENDER_PRIMITIVE_TRIANGLES, raster_state,
                         ms_state, depth_state, blend_state, 0);
                 if (eager_pipeline.is_valid()) {
                     shader_resources.tile_raster_pipeline = eager_pipeline;
-                    shader_resources.cached_raster_framebuffer_format = probable_fb_format;
+                    shader_resources.cached_raster_framebuffer_format = target_fb_format;
                 } else {
                     // Log once per process: repeated init calls (e.g. device change) must not
                     // flood the log when the pre-create consistently fails.
@@ -1566,7 +1592,10 @@ Error TileRenderer::initialize(RenderingDevice *p_rendering_device, const Vector
                         s_warned_pipeline_create = true;
                     }
                 }
-            } else {
+            } else if (p_init_target_size.x > 0 && p_init_target_size.y > 0 &&
+                    p_init_color_format != RD::DATA_FORMAT_MAX) {
+                // Only warn when a hint was provided but framebuffer_format_create rejected it;
+                // a hint-less init with no viewport is a normal "skip eager create" case.
                 static bool s_warned_fb_format = false;
                 if (!s_warned_fb_format) {
                     GS_LOG_WARN_DEFAULT("[TileRenderer] Eager raster pipeline pre-create: framebuffer_format_create returned invalid; lazy path will run.");
@@ -1574,18 +1603,6 @@ Error TileRenderer::initialize(RenderingDevice *p_rendering_device, const Vector
                 }
             }
         }
-    }
-
-    if (p_initial_viewport.x > 0 && p_initial_viewport.y > 0) {
-        err = _ensure_resources(p_initial_viewport, config_state.tile_size, config_state.desired_output_format);
-        if (err != OK) {
-            return err;
-        }
-    } else {
-        grid_state.viewport_size = Vector2i();
-        grid_state.tiles_x = 0;
-        grid_state.tiles_y = 0;
-        grid_state.total_tiles = 0;
     }
 
     return OK;
