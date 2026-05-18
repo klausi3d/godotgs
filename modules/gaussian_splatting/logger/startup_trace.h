@@ -47,16 +47,15 @@ public:
 	void record_subphase(const StringName &p_phase, uint64_t p_duration_usec);
 	void record_subphase(const char *p_phase, uint64_t p_duration_usec);
 
-	// Emits one [StartupTrace] line for the oldest pending open (or the
-	// active accumulator if no opens are sealed). total= is the elapsed time
-	// from that open's begin_asset_open() to now, not the frame-entry slice
-	// the caller is currently inside.
-	void flush();
-
-	// Atomically decrements the pending-flush counter if positive. Returns true
-	// exactly once per begin_asset_open() call so multiple opens that happen
-	// before the renderer drains them each get their own [StartupTrace] line.
-	bool consume_pending_flush();
+	// Drains one pending begin_asset_open() event: decrement pending count,
+	// pop the oldest sealed snapshot (or take the active accumulator), and
+	// emit one [StartupTrace] line. Returns true if a pending event was
+	// consumed (caller should keep looping to drain all pending). The
+	// decrement and emission happen under the same lock as begin_asset_open()
+	// so a concurrent begin cannot observe a count==0 window and skip
+	// sealing the previous open's accumulator. total= is computed from the
+	// drained snapshot's own begin_asset_open() timestamp.
+	bool flush_one_pending();
 
 private:
 	GSStartupTrace();

@@ -81,18 +81,12 @@ void GSStartupTrace::reset() {
 	active_begin_usec = 0;
 }
 
-bool GSStartupTrace::consume_pending_flush() {
-	// Atomic decrement-if-positive: CAS loop guards against two consumers
-	// racing to drain the same begin_asset_open() event.
-	uint32_t expected = pending_flush_count.load(std::memory_order_acquire);
-	while (expected > 0) {
-		if (pending_flush_count.compare_exchange_weak(expected, expected - 1,
-					std::memory_order_acq_rel, std::memory_order_acquire)) {
-			return true;
-		}
-	}
-	return false;
-}
+// flush() and consume_pending_flush() used to be separate operations, but
+// decrementing pending_flush_count outside the state_mutex creates a window in
+// which a concurrent begin_asset_open() observes count==0 and skips sealing
+// the previous open's accumulator. flush_one_pending() now performs the
+// decrement, snapshot pop, and emission all under the same mutex so begin's
+// seal check is consistent with the live count.
 
 void GSStartupTrace::begin_scope(const StringName & /*p_phase*/) {
 	// Scope start is captured by the RAII object itself; this hook is kept for
@@ -132,12 +126,21 @@ void GSStartupTrace::record_subphase(const char *p_phase, uint64_t p_duration_us
 	record_subphase(StringName(p_phase), p_duration_usec);
 }
 
-void GSStartupTrace::flush() {
+bool GSStartupTrace::flush_one_pending() {
 	String line;
+	bool emitted = false;
+	bool consumed = false;
 	{
 		MutexLock lock(state_mutex);
+		if (pending_flush_count.load(std::memory_order_relaxed) == 0) {
+			return false;
+		}
+
+		// If the trace was disabled between begin_asset_open() and now, drain
+		// the count so it can't leak indefinitely, but don't emit.
 		if (!is_enabled_fast()) {
-			return;
+			pending_flush_count.fetch_sub(1, std::memory_order_acq_rel);
+			return true;
 		}
 
 		// Drain the oldest sealed snapshot first so multiple back-to-back
@@ -158,8 +161,19 @@ void GSStartupTrace::flush() {
 			emit_totals = &totals_usec;
 			emit_order = &insertion_order;
 			emit_begin_usec = active_begin_usec;
-		} else {
-			return;
+		}
+
+		// Decrement under the lock so a concurrent begin_asset_open() either
+		// sees count>0 (and seals the previous accumulator correctly) or
+		// sees the post-emit state where active has already been cleared.
+		pending_flush_count.fetch_sub(1, std::memory_order_acq_rel);
+		consumed = true;
+
+		if (emit_totals == nullptr) {
+			// Pending event with no content to emit (begin_asset_open() fired
+			// before any scope recorded a phase). Decrement the count so the
+			// caller's drain loop can move on; nothing else to do.
+			return true;
 		}
 
 		// total= measures from begin_asset_open() to now so it reflects the
@@ -195,9 +209,13 @@ void GSStartupTrace::flush() {
 			insertion_order.clear();
 			active_begin_usec = 0;
 		}
+		emitted = true;
 	}
 
-	GS_LOG_RENDERER_INFO(line);
+	if (emitted) {
+		GS_LOG_RENDERER_INFO(line);
+	}
+	return consumed;
 }
 
 GSStartupTraceScope::GSStartupTraceScope(const char *p_phase) {

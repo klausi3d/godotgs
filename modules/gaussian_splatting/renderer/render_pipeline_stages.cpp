@@ -826,14 +826,15 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 	// drained snapshot computes its own total= from its own begin_asset_open()
 	// timestamp, so deferring a snapshot to a later frame would inflate that
 	// open's total= relative to the time the user actually waited.
+	// flush_one_pending() performs the decrement and emission atomically so
+	// a concurrent begin_asset_open() cannot race the consume window.
 	struct StartupTraceFlushGuard {
 		~StartupTraceFlushGuard() {
 			GSStartupTrace *trace = GSStartupTrace::get_singleton();
 			if (!trace) {
 				return;
 			}
-			while (trace->consume_pending_flush()) {
-				trace->flush();
+			while (trace->flush_one_pending()) {
 			}
 		}
 	} startup_trace_flush_guard;
