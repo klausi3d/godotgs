@@ -424,12 +424,21 @@ void RenderResourceOrchestrator::create_gpu_resources_safe() {
 					device_state->rd ? "valid" : "null"));
 		}
 #endif
+		// Phase 4 eager-raster-pipeline hint: orchestrator doesn't yet have the actual
+		// painterly framebuffer, so use the desired tile output format as the probable
+		// color attachment format. If the live framebuffer ends up using a different
+		// format on first frame, the lazy reformat path will tick raster_pipeline_reformats
+		// and rebuild. The size hint just gates whether we attempt the pre-create.
+		Size2i eager_target_size = default_viewport;
+		RD::DataFormat eager_color_format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
 		Error init_err = local_tile_renderer_state.renderer->initialize(
 				device_state->rd,
 				default_viewport,
 				TileRenderer::DEFAULT_TILE_SIZE,
 				RD::DATA_FORMAT_R8G8B8A8_UNORM,
-				device_state->rd);
+				device_state->rd,
+				eager_target_size,
+				eager_color_format);
 #ifdef DEBUG_ENABLED
 		if (log_enabled) {
 			GS_LOG_RENDERER_DEBUG(vformat("[GPU-RESOURCES] TileRenderer::initialize returned: %d", init_err));
@@ -540,6 +549,9 @@ void RenderResourceOrchestrator::update_gpu_pass_metrics_from_tile_renderer() {
 		metrics.gpu_timeline_stall_ms = 0.0f;
 		metrics.gpu_timeline_last_value = 0;
 		metrics.tile_sort_sync_fallback_count = 0;
+		// Note: leave raster_pipeline_reformats as-is across the "no rasterizer" branch.
+		// The counter is monotonic across the renderer's lifetime; resetting to 0 here
+		// would mask reformats that happened earlier in the session.
 		return;
 	}
 
@@ -569,6 +581,7 @@ void RenderResourceOrchestrator::update_gpu_pass_metrics_from_tile_renderer() {
 	metrics.tile_sort_sync_fallback_count = perf.sort_sync_fallback_count;
 	metrics.gpu_timing_frame_serial = perf.timing_frame_serial;
 	metrics.gpu_timing_frames_behind = perf.timing_frames_behind;
+	metrics.raster_pipeline_reformats = perf.raster_pipeline_reformats;
 
 	GPUPerformanceMonitor::SummaryMetrics timeline_summary =
 		tile_renderer_state->gpu_performance_monitor.get_summary_metrics();

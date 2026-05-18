@@ -179,6 +179,7 @@ static Array _production_metrics_contract() {
 	keys.push_back("raster_tile_splat_capacity");
 	keys.push_back("raster_max_raster_splats_per_tile");
 	keys.push_back("raster_shader_defines_hash");
+	keys.push_back("raster_pipeline_reformats");
 	keys.push_back("render_mode");
 	keys.push_back("stage_metrics_valid");
 	keys.push_back("stage_cull_status");
@@ -231,6 +232,7 @@ static void _append_raster_specialization_metrics(const GaussianSplatRenderer::P
 	r_metrics["raster_tile_splat_capacity"] = static_cast<int64_t>(p_perf.raster_tile_splat_capacity);
 	r_metrics["raster_max_raster_splats_per_tile"] = static_cast<int64_t>(p_perf.raster_max_raster_splats_per_tile);
 	r_metrics["raster_shader_defines_hash"] = String::num_uint64(p_perf.raster_shader_defines_hash);
+	r_metrics["raster_pipeline_reformats"] = static_cast<int64_t>(p_perf.raster_pipeline_reformats);
 }
 
 static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_renderer,
@@ -342,6 +344,7 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 	r_metrics["avg_frame_to_frame_ms"] = perf.avg_frame_to_frame_ms;
 	r_metrics["peak_frame_time_ms"] = perf.peak_frame_time_ms;
 	r_metrics["cull_projection_contract_mismatches"] = static_cast<int64_t>(perf.cull_projection_contract_mismatch_count);
+	r_metrics["raster_pipeline_reformats"] = static_cast<int64_t>(perf.raster_pipeline_reformats);
 	r_metrics["buffer_upload_time_ms"] = perf.buffer_upload_time_ms;
 	r_metrics["culling_time_ms"] = perf.culling_time_ms;
 	r_metrics["cull_route_uid"] = _normalize_cull_route_uid_for_stats(perf.cull_route_uid);

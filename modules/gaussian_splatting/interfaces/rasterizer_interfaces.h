@@ -221,6 +221,7 @@ struct RasterPerformance {
     uint64_t sort_sync_fallback_count = 0;
     uint64_t timing_frame_serial = 0;
     uint32_t timing_frames_behind = 0;
+    uint32_t raster_pipeline_reformats = 0;
 };
 
 // Rasterization result

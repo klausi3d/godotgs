@@ -87,7 +87,8 @@ public:
     ~TileRenderer();
 
     Error initialize(RenderingDevice *p_rendering_device, const Vector2i &p_initial_viewport = Vector2i(), int p_tile_size = -1,
-            RD::DataFormat p_format = RD::DATA_FORMAT_MAX, RenderingDevice *p_submission_device = nullptr);
+            RD::DataFormat p_format = RD::DATA_FORMAT_MAX, RenderingDevice *p_submission_device = nullptr,
+            const Size2i &p_init_target_size = Size2i(), RD::DataFormat p_init_color_format = RD::DATA_FORMAT_MAX);
     void cleanup();
 
     RID render(RenderingDevice *p_rendering_device, const RenderParams &p_params);
@@ -164,6 +165,7 @@ public:
     float get_tile_assignment_time() const { return perf_metrics.tile_assignment_ms; }
     float get_rasterization_time() const { return perf_metrics.rasterization_ms; }
 	uint64_t get_sort_sync_fallback_count() const { return perf_metrics.sort_sync_fallback_count; }
+	uint32_t get_raster_pipeline_reformat_count() const { return perf_metrics.raster_pipeline_reformats; }
 	float get_last_submission_cpu_ms() const { return timing_state.last_submission_cpu_ms; }
 	float get_last_gpu_frame_time_ms() const { return timing_state.last_frame_gpu_ms; }
 	bool is_last_gpu_frame_time_valid() const { return timing_state.frame_gpu_timing_valid; }
