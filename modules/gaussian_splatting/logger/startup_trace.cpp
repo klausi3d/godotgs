@@ -45,6 +45,7 @@ void GSStartupTrace::begin_asset_open() {
 		totals_usec.clear();
 		insertion_order.clear();
 		pending_flush_count.store(0, std::memory_order_relaxed);
+		active_begin_usec = 0;
 		return;
 	}
 
@@ -56,6 +57,7 @@ void GSStartupTrace::begin_asset_open() {
 		GSStartupTraceSnapshot snapshot;
 		snapshot.totals_usec = totals_usec;
 		snapshot.insertion_order = insertion_order;
+		snapshot.begin_usec = active_begin_usec;
 		sealed_traces.push_back(snapshot);
 		totals_usec.clear();
 		insertion_order.clear();
@@ -63,6 +65,9 @@ void GSStartupTrace::begin_asset_open() {
 	// First call (pending_flush_count == 0) preserves any pre-open module-init
 	// phases already recorded in the active accumulator so the first
 	// [StartupTrace] line includes them.
+
+	OS *os = OS::get_singleton();
+	active_begin_usec = os ? os->get_ticks_usec() : 0;
 
 	pending_flush_count.fetch_add(1, std::memory_order_acq_rel);
 }
@@ -73,6 +78,7 @@ void GSStartupTrace::reset() {
 	totals_usec.clear();
 	insertion_order.clear();
 	pending_flush_count.store(0, std::memory_order_relaxed);
+	active_begin_usec = 0;
 }
 
 bool GSStartupTrace::consume_pending_flush() {
@@ -126,7 +132,7 @@ void GSStartupTrace::record_subphase(const char *p_phase, uint64_t p_duration_us
 	record_subphase(StringName(p_phase), p_duration_usec);
 }
 
-void GSStartupTrace::flush(double p_total_ms) {
+void GSStartupTrace::flush() {
 	String line;
 	{
 		MutexLock lock(state_mutex);
@@ -140,18 +146,30 @@ void GSStartupTrace::flush(double p_total_ms) {
 		// it so the next open starts fresh.
 		const HashMap<StringName, uint64_t> *emit_totals = nullptr;
 		const LocalVector<StringName> *emit_order = nullptr;
+		uint64_t emit_begin_usec = 0;
 		GSStartupTraceSnapshot popped;
 		if (!sealed_traces.is_empty()) {
 			popped = sealed_traces[0];
 			sealed_traces.remove_at(0);
 			emit_totals = &popped.totals_usec;
 			emit_order = &popped.insertion_order;
+			emit_begin_usec = popped.begin_usec;
 		} else if (!insertion_order.is_empty()) {
 			emit_totals = &totals_usec;
 			emit_order = &insertion_order;
+			emit_begin_usec = active_begin_usec;
 		} else {
 			return;
 		}
+
+		// total= measures from begin_asset_open() to now so it reflects the
+		// end-to-end startup duration the user actually sees, not the
+		// frame-entry slice the caller happens to be inside.
+		OS *os = OS::get_singleton();
+		const uint64_t now_usec = os ? os->get_ticks_usec() : 0;
+		const double total_ms = (emit_begin_usec > 0 && now_usec >= emit_begin_usec)
+				? double(now_usec - emit_begin_usec) / 1000.0
+				: 0.0;
 
 		line = "[StartupTrace]";
 		for (const StringName &phase : *emit_order) {
@@ -166,7 +184,7 @@ void GSStartupTrace::flush(double p_total_ms) {
 			line += "ms";
 		}
 		line += " total=";
-		line += String::num(p_total_ms, 2);
+		line += String::num(total_ms, 2);
 		line += "ms";
 
 		// Only clear the active accumulator after we have actually emitted
@@ -175,6 +193,7 @@ void GSStartupTrace::flush(double p_total_ms) {
 		if (emit_totals == &totals_usec) {
 			totals_usec.clear();
 			insertion_order.clear();
+			active_begin_usec = 0;
 		}
 	}
 

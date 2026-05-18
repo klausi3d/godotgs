@@ -11,9 +11,13 @@
 
 // Per-asset-open snapshot of accumulated phases, sealed when a subsequent
 // begin_asset_open() arrives before the renderer has consumed the prior open.
+// begin_usec captures the OS::get_ticks_usec() value at begin_asset_open()
+// time so flush() can report end-to-end duration from open boundary to first
+// rendered frame, not just frame-entry time.
 struct GSStartupTraceSnapshot {
 	HashMap<StringName, uint64_t> totals_usec;
 	LocalVector<StringName> insertion_order;
+	uint64_t begin_usec = 0;
 };
 
 // Startup-time instrumentation that carries module-init phases into the first
@@ -43,7 +47,11 @@ public:
 	void record_subphase(const StringName &p_phase, uint64_t p_duration_usec);
 	void record_subphase(const char *p_phase, uint64_t p_duration_usec);
 
-	void flush(double p_total_ms);
+	// Emits one [StartupTrace] line for the oldest pending open (or the
+	// active accumulator if no opens are sealed). total= is the elapsed time
+	// from that open's begin_asset_open() to now, not the frame-entry slice
+	// the caller is currently inside.
+	void flush();
 
 	// Atomically decrements the pending-flush counter if positive. Returns true
 	// exactly once per begin_asset_open() call so multiple opens that happen
@@ -66,6 +74,7 @@ private:
 	// phases when no asset open has happened yet).
 	HashMap<StringName, uint64_t> totals_usec;
 	LocalVector<StringName> insertion_order;
+	uint64_t active_begin_usec = 0;
 };
 
 class GSStartupTraceScope {

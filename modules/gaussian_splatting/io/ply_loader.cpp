@@ -79,7 +79,10 @@ Error PLYLoader::load_file(const String &p_path) {
         return ERR_FILE_NOT_FOUND;
     }
 
-    GSStartupTrace::get_singleton()->begin_asset_open();
+    // Higher-level entry points (GaussianSplatAsset::load_from_file,
+    // load_gaussian_data_from_file) own the begin_asset_open() call; nesting
+    // one here would double-arm the pending-flush counter and split a single
+    // asset load across multiple [StartupTrace] lines.
 
     last_cache_hit = false;
     last_header_time_us = 0;

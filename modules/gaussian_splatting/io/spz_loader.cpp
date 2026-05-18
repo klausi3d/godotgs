@@ -1,5 +1,4 @@
 #include "spz_loader.h"
-#include "../logger/startup_trace.h"
 #include "core/os/os.h"
 #include "../logger/gs_logger.h"
 
@@ -121,7 +120,9 @@ Error SPZLoader::load_file(const String &p_path) {
         return ERR_FILE_NOT_FOUND;
     }
 
-    GSStartupTrace::get_singleton()->begin_asset_open();
+    // Higher-level loaders own begin_asset_open(); nesting it here would
+    // double-arm the trace counter and split a single asset open across
+    // multiple [StartupTrace] lines.
 
     int64_t file_size = file->get_length();
     GS_LOG_STREAMING_INFO(vformat("[SPZ-LOAD] File opened, size=%d MB", (int)(file_size / 1024 / 1024)));

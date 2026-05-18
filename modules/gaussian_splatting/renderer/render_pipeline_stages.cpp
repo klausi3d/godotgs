@@ -820,20 +820,18 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 	ERR_FAIL_NULL(renderer);
 	ERR_FAIL_COND(!p_frame_context.deps.validate());
 
-	const bool startup_trace_enabled = GSStartupTrace::is_enabled_fast();
-	const uint64_t startup_trace_frame_start_usec =
-			startup_trace_enabled && OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : 0;
-	// Consume the per-asset-open pending-flush flag set by
+	// Consume the per-asset-open pending-flush counter set by
 	// GSStartupTrace::begin_asset_open(). This decouples the flush from
 	// frame_counter==0 so each asset open (not only the very first) emits one
-	// [StartupTrace] line on its first rendered frame.
+	// [StartupTrace] line on its first rendered frame. flush() reads the
+	// open's begin timestamp itself, so total= measures from
+	// begin_asset_open() to here, not from the start of this function.
 	const bool startup_trace_should_flush =
-			startup_trace_enabled &&
+			GSStartupTrace::is_enabled_fast() &&
 			GSStartupTrace::get_singleton() &&
 			GSStartupTrace::get_singleton()->consume_pending_flush();
 	struct StartupTraceFlushGuard {
 		bool active;
-		uint64_t start_usec;
 		~StartupTraceFlushGuard() {
 			if (!active) {
 				return;
@@ -842,10 +840,9 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 			if (!trace) {
 				return;
 			}
-			const uint64_t now = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : start_usec;
-			trace->flush(double(now - start_usec) / 1000.0);
+			trace->flush();
 		}
-	} startup_trace_flush_guard{startup_trace_should_flush, startup_trace_frame_start_usec};
+	} startup_trace_flush_guard{startup_trace_should_flush};
 
 	// Copy frame context first, then build frame_plan and update deps.
 	// The provider must be constructed AFTER this so it sees the updated deps.
