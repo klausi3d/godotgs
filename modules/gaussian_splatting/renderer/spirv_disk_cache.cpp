@@ -2,6 +2,7 @@
 
 #include "../logger/gs_logger.h"
 
+#include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/os/os.h"
@@ -10,6 +11,16 @@
 #include "servers/rendering/rendering_device.h"
 
 #include <algorithm>
+
+#if defined(_WIN32)
+#include <sys/types.h>
+#include <sys/utime.h>
+#include <time.h>
+#else
+#include <sys/types.h>
+#include <time.h>
+#include <utime.h>
+#endif
 
 // =====================================================================================
 // Cache-key define audit (Phase 1 spirv disk cache).
@@ -106,6 +117,29 @@ static uint32_t _hash_string(const String &p_value, uint32_t p_seed) {
     }
     const CharString utf8 = p_value.utf8();
     return hash_murmur3_buffer(utf8.get_data(), utf8.length(), p_seed);
+}
+
+static void _touch_file_mtime(const String &p_path) {
+    // Best-effort LRU bump: set mtime to "now" so prune_above() (which evicts
+    // by mtime) keeps hot entries even when the cache exceeds its cap. Failure
+    // is silent — this is a perf hint, not a correctness path.
+    String global_path = p_path;
+    if (ProjectSettings *ps = ProjectSettings::get_singleton()) {
+        global_path = ps->globalize_path(p_path);
+    }
+#if defined(_WIN32)
+    struct __utimbuf64 times {};
+    times.actime = _time64(nullptr);
+    times.modtime = times.actime;
+    const Char16String utf16 = global_path.utf16();
+    _wutime64(reinterpret_cast<const wchar_t *>(utf16.get_data()), &times);
+#else
+    struct utimbuf times {};
+    times.actime = time(nullptr);
+    times.modtime = times.actime;
+    const CharString utf8 = global_path.utf8();
+    utime(utf8.get_data(), &times);
+#endif
 }
 
 } // namespace
@@ -257,9 +291,12 @@ bool SPIRVDiskCache::try_load(const String &p_key, RenderingDevice *p_device, Ve
         r_spirv.clear();
         return false;
     }
-    // Touch mtime so LRU prune treats this as recently used.
-    // FileAccess has no portable utime; rely on read access updating atime where
-    // supported and the OS-level mtime ordering on write-only files for prune.
+    // Release the file handle before touching mtime so the utime call on
+    // Windows isn't fighting our own open READ handle.
+    f.unref();
+    // Touch mtime via platform utime() so prune_above() (which evicts by mtime)
+    // treats this hit as recently used and won't evict it ahead of cold entries.
+    _touch_file_mtime(path);
     return true;
 }
 
