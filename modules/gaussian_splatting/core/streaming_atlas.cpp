@@ -24,6 +24,19 @@ void GaussianAtlasAllocator::reset(uint32_t p_slot_count) {
 	}
 }
 
+bool GaussianAtlasAllocator::resize_preserve(uint32_t p_new_capacity) {
+	if (p_new_capacity <= capacity) {
+		return false;
+	}
+	const uint32_t old_capacity = capacity;
+	free_slots.reserve(free_slots.size() + (p_new_capacity - old_capacity));
+	for (int32_t i = static_cast<int32_t>(p_new_capacity) - 1; i >= static_cast<int32_t>(old_capacity); i--) {
+		free_slots.push_back(static_cast<uint32_t>(i));
+	}
+	capacity = p_new_capacity;
+	return true;
+}
+
 bool GaussianAtlasAllocator::allocate_slot(uint64_t p_chunk_key, uint32_t &r_slot) {
 	if (const uint32_t *slot = slot_map.getptr(p_chunk_key)) {
 		r_slot = *slot;

@@ -137,12 +137,26 @@ uint64_t TileRenderer::TileRasterizerStage::dispatch_tile_rasterizer(uint32_t p_
         return 0;
     }
 
+    // Cache-invalidation rule: a render_pipeline is bound to ONE framebuffer-format
+    // ID at create time. If the live framebuffer's format ID changes (e.g. attachment
+    // reformat from the eager pre-create's "probable" guess to the actual texture
+    // formats), the cached pipeline is stale and must be freed before recreation.
+    const RD::FramebufferFormatID live_fb_format = submission_device->framebuffer_get_format(owner.render_targets.tile_framebuffer);
     if (owner.shader_resources.tile_raster_pipeline.is_valid() &&
-            owner.render_targets.tile_framebuffer_format != submission_device->framebuffer_get_format(owner.render_targets.tile_framebuffer)) {
+            owner.shader_resources.cached_raster_framebuffer_format != live_fb_format) {
+        static uint32_t s_reformat_log_count = 0;
+        if (s_reformat_log_count < 16) {
+            GS_LOG_RENDERER_INFO(vformat("[TileRenderer] raster pipeline reformat: from=%d to=%d",
+                    static_cast<int>(owner.shader_resources.cached_raster_framebuffer_format),
+                    static_cast<int>(live_fb_format)));
+            s_reformat_log_count++;
+        }
         if (submission_device->render_pipeline_is_valid(owner.shader_resources.tile_raster_pipeline)) {
             submission_device->free(owner.shader_resources.tile_raster_pipeline);
         }
         owner.shader_resources.tile_raster_pipeline = RID();
+        owner.shader_resources.cached_raster_framebuffer_format = RD::INVALID_ID;
+        owner.perf_metrics.raster_pipeline_reformats++;
     }
 
     uint32_t timestamp_base = submission_device->get_captured_timestamps_count();
@@ -151,7 +165,7 @@ uint64_t TileRenderer::TileRasterizerStage::dispatch_tile_rasterizer(uint32_t p_
     ScopedGpuMarker raster_marker(submission_device, "GS_TileRaster", Color(0.2f, 0.5f, 1.0f, 1.0f));
 
     if (owner.render_targets.tile_framebuffer_format == RD::INVALID_ID) {
-        owner.render_targets.tile_framebuffer_format = submission_device->framebuffer_get_format(owner.render_targets.tile_framebuffer);
+        owner.render_targets.tile_framebuffer_format = live_fb_format;
     }
 
     if (!owner.shader_resources.tile_raster_pipeline.is_valid()) {
@@ -196,6 +210,7 @@ uint64_t TileRenderer::TileRasterizerStage::dispatch_tile_rasterizer(uint32_t p_
                 owner.render_targets.tile_framebuffer_format, RD::INVALID_ID, RD::RENDER_PRIMITIVE_TRIANGLES, raster_state, ms_state,
                 depth_state, blend_state, 0);
         ERR_FAIL_COND_V(!owner.shader_resources.tile_raster_pipeline.is_valid(), 0);
+        owner.shader_resources.cached_raster_framebuffer_format = owner.render_targets.tile_framebuffer_format;
     }
 
     Rect2i viewport_rect(Vector2i(), owner.grid_state.viewport_size);

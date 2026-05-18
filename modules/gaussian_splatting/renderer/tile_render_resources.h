@@ -124,6 +124,10 @@ struct TileShaderResources {
 	RID tile_prefix_pipeline_pass3;
 	RID tile_raster_shader;
 	RID tile_raster_pipeline;
+	// Framebuffer format the cached tile_raster_pipeline was created against. The pipeline
+	// must be recreated if the live framebuffer's format ID differs (e.g. attachment
+	// reformat). Initialized to INVALID_ID when no pipeline exists.
+	RD::FramebufferFormatID cached_raster_framebuffer_format = RD::INVALID_ID;
 	RID tile_raster_compute_shader;
 	RID tile_raster_compute_pipeline;
 	RID tile_resolve_shader;
