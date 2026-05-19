@@ -39,6 +39,14 @@ public:
 			const SubsystemState &p_subsystem_state);
 	static void apply_data_source_plan(const DataSourcePlan &p_plan, PerformanceMetrics &p_metrics,
 			const ResourceState &p_resource_state);
+	static void stamp_stage_result_contract(StageResult &r_result, const char *p_stage_name,
+			const String &p_route_uid, GaussianSplatRenderer::IndexDomain p_input_domain,
+			GaussianSplatRenderer::IndexDomain p_output_domain, uint32_t p_input_count,
+			uint32_t p_output_count);
+	static StageResult make_downstream_skip_result(const char *p_stage_name,
+			const StageResult &p_upstream_result, const String &p_reason,
+			GaussianSplatRenderer::RenderFallbackReason p_fallback_reason);
+	static void finalize_stage_contracts(StageMetrics &r_metrics, const RenderFramePlan &p_frame_plan);
 	static RenderFramePlan build_frame_plan(const SceneState &p_scene_state,
 			const StreamingState &p_streaming_state,
 			const SortingState &p_sorting_state,

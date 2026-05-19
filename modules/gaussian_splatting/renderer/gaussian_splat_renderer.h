@@ -216,6 +216,8 @@ public:
     using SortStageOutput = GaussianRenderPipeline::SortStageOutput;
     using SplatDataSource = GaussianRenderPipeline::SplatDataSource;
     using InstanceBackendPolicy = GaussianRenderPipeline::InstanceBackendPolicy;
+    using RenderRouteBackend = GaussianRenderPipeline::RenderRouteBackend;
+    using RenderRouteDecision = GaussianRenderPipeline::RenderRouteDecision;
     using InstancePipelineBuffers = GaussianRenderPipeline::InstancePipelineBuffers;
     using PublishedInstanceAssetRemap = GaussianRenderPipeline::PublishedInstanceAssetRemap;
     using RenderFrameSnapshot = GaussianRenderPipeline::RenderFrameSnapshot;

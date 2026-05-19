@@ -186,6 +186,10 @@ static Array _production_metrics_contract() {
 	keys.push_back("stage_sort_status");
 	keys.push_back("stage_raster_status");
 	keys.push_back("stage_composite_status");
+	keys.push_back("stage_first_failure");
+	keys.push_back("stage_skip_cause");
+	keys.push_back("stage_has_degradation");
+	keys.push_back("stage_composite_depth_test_honored");
 	keys.push_back("route_uid");
 	keys.push_back("sort_route_uid");
 	keys.push_back("cull_route_uid");
@@ -315,6 +319,10 @@ static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_re
 	metrics["stage_sort_status"] = p_stage_valid ? _stage_status_to_string(p_stage_metrics.sort_result.status) : String("unknown");
 	metrics["stage_raster_status"] = p_stage_valid ? _stage_status_to_string(p_stage_metrics.raster_result.status) : String("unknown");
 	metrics["stage_composite_status"] = p_stage_valid ? _stage_status_to_string(p_stage_metrics.composite_result.status) : String("unknown");
+	metrics["stage_first_failure"] = p_stage_valid ? p_stage_metrics.first_failure_stage : String();
+	metrics["stage_skip_cause"] = p_stage_valid ? p_stage_metrics.skip_cause_stage : String();
+	metrics["stage_has_degradation"] = p_stage_valid ? p_stage_metrics.has_degradation : false;
+	metrics["stage_composite_depth_test_honored"] = p_stage_valid ? p_stage_metrics.composite_depth_test_honored : true;
 	metrics["route_uid"] = debug_state.route_uid;
 	metrics["sort_route_uid"] = debug_state.sort_route_uid;
 	metrics["cull_route_uid"] = _normalize_cull_route_uid_for_stats(perf.cull_route_uid);
@@ -442,6 +450,15 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 	r_metrics["stage_composite_status"] = p_stage_valid ? _stage_status_to_string(p_stage_metrics.composite_result.status) : String("unknown");
 	r_metrics["stage_composite_reason"] = p_stage_metrics.composite_result.reason;
 	r_metrics["stage_composite_is_error"] = p_stage_metrics.composite_result.is_error;
+	r_metrics["stage_first_failure"] = p_stage_metrics.first_failure_stage;
+	r_metrics["stage_skip_cause"] = p_stage_metrics.skip_cause_stage;
+	r_metrics["stage_first_failure_instance_index"] = static_cast<int64_t>(p_stage_metrics.first_failure_instance_index);
+	r_metrics["stage_first_skipped_instance_index"] = static_cast<int64_t>(p_stage_metrics.first_skipped_instance_index);
+	r_metrics["stage_has_degradation"] = p_stage_metrics.has_degradation;
+	r_metrics["stage_degradation_reason"] = p_stage_metrics.degradation_reason;
+	r_metrics["stage_composite_depth_test_honored"] = p_stage_metrics.composite_depth_test_honored;
+	r_metrics["stage_composite_degraded"] = p_stage_metrics.composite_result.degraded;
+	r_metrics["stage_composite_strict_contract_violation"] = p_stage_metrics.composite_result.strict_contract_violation;
 	r_metrics["route_uid"] = debug_state.route_uid;
 	r_metrics["sort_route_uid"] = debug_state.sort_route_uid;
 	_append_raster_specialization_metrics(perf, r_metrics);
@@ -1371,6 +1388,16 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 	stats["cull_route_reason"] = perf.cull_route_reason;
 	stats["cull_route_reason_label"] =
 			GaussianRenderRouteLabels::describe_cull_route_reason(perf.cull_route_reason);
+	if (debug_state.last_stage_metrics_valid) {
+		const GaussianSplatRenderer::StageMetrics &stage_metrics = debug_state.last_stage_metrics;
+		stats["stage_first_failure"] = stage_metrics.first_failure_stage;
+		stats["stage_skip_cause"] = stage_metrics.skip_cause_stage;
+		stats["stage_first_failure_instance_index"] = static_cast<int64_t>(stage_metrics.first_failure_instance_index);
+		stats["stage_first_skipped_instance_index"] = static_cast<int64_t>(stage_metrics.first_skipped_instance_index);
+		stats["stage_has_degradation"] = stage_metrics.has_degradation;
+		stats["stage_degradation_reason"] = stage_metrics.degradation_reason;
+		stats["stage_composite_depth_test_honored"] = stage_metrics.composite_depth_test_honored;
+	}
 	Dictionary effective_config_snapshot = g_sh_config.get_effective_config_snapshot();
 	GaussianEffectiveConfig::merge_into(effective_config_snapshot, g_pipeline_feature_set.get_effective_config_snapshot());
 	GaussianEffectiveConfig::set_entry(effective_config_snapshot,

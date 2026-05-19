@@ -658,6 +658,43 @@ static void _finalize_stage_io(GaussianSplatRenderer *p_renderer, const char *p_
 		_record_validation_event(p_renderer, p_stage, p_io);
 	}
 }
+
+static GaussianSplatRenderer::RenderRouteDecision _build_route_decision(
+		GaussianSplatRenderer::InstanceBackendPolicy p_instance_backend_policy,
+		const GaussianSplatRenderer::DataSourcePlan &p_data_source,
+		bool p_has_render_data,
+		const String &p_no_data_reason) {
+	GaussianSplatRenderer::RenderRouteDecision decision;
+	decision.valid = true;
+	decision.has_render_data = p_has_render_data;
+	decision.data_source = p_data_source.source.source_name;
+	if (!p_has_render_data) {
+		decision.selected_backend = GaussianSplatRenderer::RenderRouteBackend::NONE;
+		decision.selected_backend_name = GaussianRenderPipeline::render_route_backend_to_string(decision.selected_backend);
+		decision.route_uid = RenderRouteUID::COMMON_SKIP_NO_DATA;
+		decision.reason = p_no_data_reason.is_empty() ? String("no_render_data") : p_no_data_reason;
+		return decision;
+	}
+	switch (p_instance_backend_policy) {
+		case GaussianSplatRenderer::InstanceBackendPolicy::RESIDENT:
+			decision.selected_backend = GaussianSplatRenderer::RenderRouteBackend::RESIDENT;
+			decision.route_uid = RenderRouteUID::INSTANCE_RESIDENT;
+			decision.reason = "selected_resident_instance_backend";
+			break;
+		case GaussianSplatRenderer::InstanceBackendPolicy::STREAMING:
+			decision.selected_backend = GaussianSplatRenderer::RenderRouteBackend::STREAMING;
+			decision.route_uid = RenderRouteUID::INSTANCE_STREAMING;
+			decision.reason = "selected_streaming_instance_backend";
+			break;
+		case GaussianSplatRenderer::InstanceBackendPolicy::NONE:
+			decision.selected_backend = GaussianSplatRenderer::RenderRouteBackend::NONE;
+			decision.route_uid = RenderRouteUID::COMMON_UNSET_ROUTE;
+			decision.reason = "no_instance_backend_selected";
+			break;
+	}
+	decision.selected_backend_name = GaussianRenderPipeline::render_route_backend_to_string(decision.selected_backend);
+	return decision;
+}
 } // namespace
 
 // Frame planning static helpers (moved from GaussianSplatRenderer)
@@ -690,6 +727,99 @@ void RenderPipelineStages::apply_data_source_plan(const DataSourcePlan &p_plan, 
 	(void)p_resource_state;
 }
 
+void RenderPipelineStages::stamp_stage_result_contract(StageResult &r_result, const char *p_stage_name,
+		const String &p_route_uid, GaussianSplatRenderer::IndexDomain p_input_domain,
+		GaussianSplatRenderer::IndexDomain p_output_domain, uint32_t p_input_count,
+		uint32_t p_output_count) {
+	r_result.stage_name = p_stage_name ? String(p_stage_name) : String();
+	r_result.route_uid = p_route_uid;
+	r_result.input_domain = p_input_domain;
+	r_result.output_domain = p_output_domain;
+	r_result.input_count = p_input_count;
+	r_result.output_count = p_output_count;
+	if (r_result.status == StageResult::StageStatus::FAILED && r_result.first_failure_stage.is_empty()) {
+		r_result.first_failure_stage = r_result.stage_name;
+	}
+}
+
+RenderPipelineStages::StageResult RenderPipelineStages::make_downstream_skip_result(const char *p_stage_name,
+		const StageResult &p_upstream_result, const String &p_reason, RenderFallbackReason p_fallback_reason) {
+	StageResult result = _make_stage_result(StageResult::StageStatus::SKIPPED, p_reason, false, p_fallback_reason);
+	result.stage_name = p_stage_name ? String(p_stage_name) : String();
+	result.route_uid = p_upstream_result.route_uid;
+	result.first_failure_stage = !p_upstream_result.first_failure_stage.is_empty()
+			? p_upstream_result.first_failure_stage
+			: p_upstream_result.stage_name;
+	result.skip_cause_stage = !p_upstream_result.stage_name.is_empty()
+			? p_upstream_result.stage_name
+			: result.first_failure_stage;
+	return result;
+}
+
+void RenderPipelineStages::finalize_stage_contracts(StageMetrics &r_metrics, const RenderFramePlan &p_frame_plan) {
+	const String route_uid = p_frame_plan.route_decision.route_uid;
+	r_metrics.route_uid = route_uid;
+	r_metrics.selected_route_backend = p_frame_plan.route_decision.selected_backend_name;
+	if (r_metrics.cull_result.route_uid.is_empty()) {
+		r_metrics.cull_result.route_uid = route_uid;
+	}
+	if (r_metrics.sort_result.route_uid.is_empty()) {
+		r_metrics.sort_result.route_uid = route_uid;
+	}
+	if (r_metrics.raster_result.route_uid.is_empty()) {
+		r_metrics.raster_result.route_uid = route_uid;
+	}
+	if (r_metrics.composite_result.route_uid.is_empty()) {
+		r_metrics.composite_result.route_uid = route_uid;
+	}
+
+	if (!r_metrics.cull_result.first_failure_stage.is_empty()) {
+		r_metrics.first_failure_stage = r_metrics.cull_result.first_failure_stage;
+	} else if (!r_metrics.sort_result.first_failure_stage.is_empty()) {
+		r_metrics.first_failure_stage = r_metrics.sort_result.first_failure_stage;
+	} else if (!r_metrics.raster_result.first_failure_stage.is_empty()) {
+		r_metrics.first_failure_stage = r_metrics.raster_result.first_failure_stage;
+	} else if (!r_metrics.composite_result.first_failure_stage.is_empty()) {
+		r_metrics.first_failure_stage = r_metrics.composite_result.first_failure_stage;
+	}
+	if (r_metrics.first_failure_stage.is_empty()) {
+		if (r_metrics.cull_result.status == StageResult::StageStatus::FAILED) {
+			r_metrics.first_failure_stage = "cull";
+		} else if (r_metrics.sort_result.status == StageResult::StageStatus::FAILED) {
+			r_metrics.first_failure_stage = "sort";
+		} else if (r_metrics.raster_result.status == StageResult::StageStatus::FAILED) {
+			r_metrics.first_failure_stage = "raster";
+		} else if (r_metrics.composite_result.status == StageResult::StageStatus::FAILED) {
+			r_metrics.first_failure_stage = "composite";
+		}
+	}
+
+	if (!r_metrics.sort_result.skip_cause_stage.is_empty()) {
+		r_metrics.skip_cause_stage = r_metrics.sort_result.skip_cause_stage;
+	}
+	if (!r_metrics.raster_result.skip_cause_stage.is_empty()) {
+		r_metrics.skip_cause_stage = r_metrics.raster_result.skip_cause_stage;
+	}
+	if (!r_metrics.composite_result.skip_cause_stage.is_empty()) {
+		r_metrics.skip_cause_stage = r_metrics.composite_result.skip_cause_stage;
+	}
+
+	r_metrics.has_degradation = r_metrics.cull_result.degraded || r_metrics.sort_result.degraded ||
+			r_metrics.raster_result.degraded || r_metrics.composite_result.degraded;
+	r_metrics.composite_depth_test_honored = r_metrics.composite_result.depth_test_honored;
+	if (r_metrics.degradation_reason.is_empty()) {
+		if (!r_metrics.composite_result.degradation_reason.is_empty()) {
+			r_metrics.degradation_reason = r_metrics.composite_result.degradation_reason;
+		} else if (!r_metrics.raster_result.degradation_reason.is_empty()) {
+			r_metrics.degradation_reason = r_metrics.raster_result.degradation_reason;
+		} else if (!r_metrics.sort_result.degradation_reason.is_empty()) {
+			r_metrics.degradation_reason = r_metrics.sort_result.degradation_reason;
+		} else if (!r_metrics.cull_result.degradation_reason.is_empty()) {
+			r_metrics.degradation_reason = r_metrics.cull_result.degradation_reason;
+		}
+	}
+}
+
 RenderPipelineStages::RenderFramePlan RenderPipelineStages::build_frame_plan(
 		const SceneState &p_scene_state,
 		const StreamingState &p_streaming_state,
@@ -719,6 +849,8 @@ RenderPipelineStages::RenderFramePlan RenderPipelineStages::build_frame_plan(
 	plan.sort_skip_reason_code = p_sort_skip_reason_code;
 	plan.data_source = build_data_source_plan(p_scene_state, p_streaming_state, p_sorting_state,
 			p_instance_buffers, p_instance_backend_policy, p_resource_state, p_subsystem_state);
+	plan.route_decision = _build_route_decision(p_instance_backend_policy, plan.data_source,
+			p_has_render_data, p_cull_skip_reason);
 	return plan;
 }
 
@@ -923,11 +1055,15 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 					frame_plan.cull_skip_reason,
 					false,
 					frame_plan.cull_skip_reason_code);
+			stamp_stage_result_contract(frame_context.metrics->cull_result, "cull", frame_plan.route_decision.route_uid,
+					GaussianSplatRenderer::IndexDomain::UNKNOWN, GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
 			frame_context.metrics->sort_result = _make_stage_result(
 					StageResult::StageStatus::SKIPPED,
 					frame_plan.sort_skip_reason,
 					false,
 					frame_plan.sort_skip_reason_code);
+			stamp_stage_result_contract(frame_context.metrics->sort_result, "sort", frame_plan.route_decision.route_uid,
+					GaussianSplatRenderer::IndexDomain::UNKNOWN, GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
 		}
 		render_sorted_splats_with_context(frame_context);
 		return;
@@ -964,11 +1100,11 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 			const String sort_reason = cull_result.reason.is_empty()
 					? String("Sort skipped: cull failed")
 					: vformat("Sort skipped: cull %s (%s)", _stage_status_label(cull_result.status), cull_result.reason);
-			frame_context.metrics->sort_result = _make_stage_result(
-					GaussianSplatRenderer::StageResult::StageStatus::SKIPPED,
-					sort_reason,
-					false,
-					cull_result.fallback_reason);
+			frame_context.metrics->sort_result = make_downstream_skip_result(
+					"sort", cull_result, sort_reason, cull_result.fallback_reason);
+			stamp_stage_result_contract(frame_context.metrics->sort_result, "sort", cull_result.route_uid,
+					cull_result.output_domain, GaussianSplatRenderer::IndexDomain::UNKNOWN,
+					cull_result.output_count, 0);
 		}
 		// Set route_uid so the debug HUD reflects the cascade rather than the
 		// previous frame's value. Only attribute a FAILURE UID when cull actually
@@ -1057,6 +1193,9 @@ struct RenderPipelineStages::CullStage {
 		if (!gpu_culler) {
 			result = _make_stage_result(StageResult::StageStatus::FAILED, "Culling failed: GPU culler unavailable", true,
 					GaussianSplatRenderer::RenderFallbackReason::GPU_CULLER_UNAVAILABLE);
+			RenderPipelineStages::stamp_stage_result_contract(result, "cull", RenderRouteUID::COMMON_FAIL_NO_DEVICE,
+					GaussianSplatRenderer::IndexDomain::UNKNOWN, r_output.visible_domain,
+					r_output.candidate_count, r_output.visible_count);
 			_record_pipeline_event(renderer, "cull",
 					"fail: gpu_culler unavailable",
 					0, 0, true,
@@ -1101,6 +1240,9 @@ struct RenderPipelineStages::CullStage {
 		} else {
 			result = _make_stage_result(StageResult::StageStatus::SKIPPED, "Culling skipped: instance buffers missing", false,
 					GaussianSplatRenderer::RenderFallbackReason::DATA_UNAVAILABLE);
+			RenderPipelineStages::stamp_stage_result_contract(result, "cull", RenderRouteUID::COMMON_SKIP_NO_DATA,
+					GaussianSplatRenderer::IndexDomain::UNKNOWN, r_output.visible_domain,
+					0, 0);
 			_record_pipeline_event(renderer, "cull",
 					"skip: instance buffers missing",
 					0, 0, false,
@@ -1132,6 +1274,10 @@ struct RenderPipelineStages::CullStage {
 					"Culling failed: output domain unresolved", true,
 					GaussianSplatRenderer::RenderFallbackReason::NONE);
 		}
+		RenderPipelineStages::stamp_stage_result_contract(result, "cull",
+				result.status == StageResult::StageStatus::FAILED ? String(RenderRouteUID::COMMON_FAIL_SORT_FAILED) : String(RenderRouteUID::INSTANCE_CULL_GPU),
+				GaussianSplatRenderer::IndexDomain::UNKNOWN, r_output.visible_domain,
+				r_output.candidate_count, r_output.visible_count);
 		_record_pipeline_event(renderer, "cull",
 				vformat("output candidates=%d visible=%d domain=%s",
 						r_output.candidate_count, r_output.visible_count,
@@ -1182,13 +1328,22 @@ struct RenderPipelineStages::SortStage {
 			r_output = GaussianSplatRenderer::SortStageOutput();
 			r_output.input_count = p_input.input_count;
 			r_output.input_domain = p_input.input_domain;
+			const String sort_gpu_uid = RenderRouteUID::INSTANCE_SORT_GPU;
 
 			GaussianSplatRenderer::FrameStateProvider fallback_provider(renderer);
 			const GaussianSplatRenderer::IFrameStateView &state_view =
 					p_input.state_view ? *p_input.state_view : fallback_provider;
-			auto finalize_sort_metrics = [&](const StageResult &p_result) {
+			auto finalize_sort_metrics = [&](StageResult p_result) -> StageResult {
+				String sort_route_uid = renderer->get_debug_state().sort_route_uid;
+				if (RenderRouteUID::is_sort_route_uid_missing(sort_route_uid)) {
+					sort_route_uid = p_result.status == StageResult::StageStatus::FAILED
+							? String(RenderRouteUID::COMMON_FAIL_SORT_FAILED)
+							: String(sort_gpu_uid);
+				}
+				RenderPipelineStages::stamp_stage_result_contract(p_result, "sort", sort_route_uid,
+						r_output.input_domain, r_output.output_domain, r_output.input_count, r_output.sorted_count);
 				if (!p_input.metrics) {
-					return;
+					return p_result;
 				}
 				p_input.metrics->sort = r_output;
 				p_input.metrics->sort_result = p_result;
@@ -1201,9 +1356,9 @@ struct RenderPipelineStages::SortStage {
 				validation.count_invalid = count_invalid;
 				validation.count_error = "Sort output exceeds input count";
 				_finalize_stage_io(renderer, "sort", io, validation);
+				return p_result;
 			};
 
-			const String sort_gpu_uid = RenderRouteUID::INSTANCE_SORT_GPU;
 			GPUCuller *gpu_culler = state_view.get_gpu_culler();
 			if (!gpu_culler) {
 				result = _make_stage_result(StageResult::StageStatus::FAILED, "Sort failed: GPU culler unavailable", true,
@@ -1212,8 +1367,7 @@ struct RenderPipelineStages::SortStage {
 						r_output.input_count, 0, true,
 						GaussianSplatRenderer::RenderFallbackReason::GPU_CULLER_UNAVAILABLE,
 						RenderRouteUID::COMMON_FAIL_NO_DEVICE);
-				finalize_sort_metrics(result);
-				return result;
+				return finalize_sort_metrics(result);
 			}
 
 			GPUSortingPipeline *sorting_pipeline = state_view.get_sorting_pipeline();
@@ -1230,8 +1384,7 @@ struct RenderPipelineStages::SortStage {
 							r_output.input_count, 0, false,
 							GaussianSplatRenderer::RenderFallbackReason::DATA_UNAVAILABLE,
 							RenderRouteUID::COMMON_SKIP_NO_DATA);
-					finalize_sort_metrics(result);
-					return result;
+					return finalize_sort_metrics(result);
 				}
 				result = _make_stage_result(StageResult::StageStatus::FAILED,
 						vformat("Sort failed: unsupported input index domain '%s'",
@@ -1242,8 +1395,7 @@ struct RenderPipelineStages::SortStage {
 						r_output.input_count, 0, true,
 						GaussianSplatRenderer::RenderFallbackReason::NONE,
 						RenderRouteUID::COMMON_FAIL_SORT_FAILED);
-				finalize_sort_metrics(result);
-				return result;
+				return finalize_sort_metrics(result);
 			}
 			if (input_domain_chunk && !instance_buffers_ready) {
 				if (sorting_pipeline) {
@@ -1256,8 +1408,7 @@ struct RenderPipelineStages::SortStage {
 							r_output.input_count, 0, false,
 							GaussianSplatRenderer::RenderFallbackReason::DATA_UNAVAILABLE,
 							RenderRouteUID::COMMON_SKIP_NO_DATA);
-					finalize_sort_metrics(result);
-					return result;
+					return finalize_sort_metrics(result);
 				}
 				result = _make_stage_result(StageResult::StageStatus::FAILED,
 						"Sort failed: chunk-domain input requires instance sort buffers", true,
@@ -1266,8 +1417,7 @@ struct RenderPipelineStages::SortStage {
 						r_output.input_count, 0, true,
 						GaussianSplatRenderer::RenderFallbackReason::DATA_UNAVAILABLE,
 						RenderRouteUID::COMMON_FAIL_SORT_FAILED);
-				finalize_sort_metrics(result);
-				return result;
+				return finalize_sort_metrics(result);
 			}
 			if (input_domain_global && instance_buffers_ready) {
 				if (sorting_pipeline) {
@@ -1280,8 +1430,7 @@ struct RenderPipelineStages::SortStage {
 							r_output.input_count, 0, false,
 							GaussianSplatRenderer::RenderFallbackReason::DATA_UNAVAILABLE,
 							RenderRouteUID::COMMON_SKIP_NO_DATA);
-					finalize_sort_metrics(result);
-					return result;
+					return finalize_sort_metrics(result);
 				}
 				result = _make_stage_result(StageResult::StageStatus::FAILED,
 						"Sort failed: global-domain input is incompatible with instance sort buffers", true,
@@ -1290,8 +1439,7 @@ struct RenderPipelineStages::SortStage {
 						r_output.input_count, 0, true,
 						GaussianSplatRenderer::RenderFallbackReason::NONE,
 						RenderRouteUID::COMMON_FAIL_SORT_FAILED);
-				finalize_sort_metrics(result);
-				return result;
+				return finalize_sort_metrics(result);
 			}
 
 			if (sorting_pipeline) {
@@ -1335,8 +1483,7 @@ struct RenderPipelineStages::SortStage {
 						0, 0, false,
 						GaussianSplatRenderer::RenderFallbackReason::NO_VISIBLE_SPLATS,
 						RenderRouteUID::COMMON_SKIP_NO_VISIBLE);
-				finalize_sort_metrics(result);
-				return result;
+				return finalize_sort_metrics(result);
 			}
 
 			GaussianSplatRenderer::SortStageSummary summary =
@@ -1376,6 +1523,15 @@ struct RenderPipelineStages::SortStage {
 				r_output.sorted_count = 0;
 			}
 
+			String final_sort_route_uid = renderer->get_debug_state().sort_route_uid;
+			if (RenderRouteUID::is_sort_route_uid_missing(final_sort_route_uid)) {
+				final_sort_route_uid = result.status == StageResult::StageStatus::FAILED
+						? String(RenderRouteUID::COMMON_FAIL_SORT_FAILED)
+						: sort_gpu_uid;
+			}
+			RenderPipelineStages::stamp_stage_result_contract(result, "sort", final_sort_route_uid,
+					r_output.input_domain, r_output.output_domain, r_output.input_count, r_output.sorted_count);
+
 			if (p_input.metrics) {
 				p_input.metrics->sort = r_output;
 				p_input.metrics->sort_result = result;
@@ -1398,17 +1554,11 @@ struct RenderPipelineStages::SortStage {
 			if (sort_message.is_empty()) {
 				sort_message = "status=" + _stage_status_label(result.status);
 			}
-			String sort_route_uid = renderer->get_debug_state().sort_route_uid;
-			if (RenderRouteUID::is_sort_route_uid_missing(sort_route_uid)) {
-				sort_route_uid = result.status == StageResult::StageStatus::FAILED
-						? String(RenderRouteUID::COMMON_FAIL_SORT_FAILED)
-						: sort_gpu_uid;
-			}
 			_record_pipeline_event(renderer, "sort", sort_message,
 					r_output.input_count, r_output.sorted_count,
 					result.is_error || result.status == StageResult::StageStatus::FAILED,
 					result.fallback_reason,
-					sort_route_uid);
+					final_sort_route_uid);
 			return result;
 		}
 };
@@ -1553,6 +1703,9 @@ struct RenderPipelineStages::RasterCompositeStage {
 			r_raster_result = raster_stage->render_painterly_or_baseline_stage(raster_input, r_raster_output, painterly_status,
 					p_frame_start_usec);
 		}
+		stamp_stage_result_contract(r_raster_result, "raster", String(),
+				raster_input.sorted_index_domain, GaussianSplatRenderer::IndexDomain::UNKNOWN,
+				raster_input.sorted_splat_count, r_raster_output.color.is_valid() ? 1u : 0u);
 
 		if (p_context.metrics && (r_raster_output.reused_cached_render || r_raster_output.painterly_active)) {
 			auto &io = p_context.metrics->raster_io;
@@ -1568,9 +1721,11 @@ struct RenderPipelineStages::RasterCompositeStage {
 		}
 
 		if (r_raster_result.status == StageResult::StageStatus::FAILED) {
-			r_composite_result = _make_stage_result(StageResult::StageStatus::SKIPPED,
-					"Composite skipped: raster stage failed", false,
-					r_raster_result.fallback_reason);
+			r_composite_result = make_downstream_skip_result("composite", r_raster_result,
+					"Composite skipped: raster stage failed", r_raster_result.fallback_reason);
+			stamp_stage_result_contract(r_composite_result, "composite", r_raster_result.route_uid,
+					GaussianSplatRenderer::IndexDomain::UNKNOWN, GaussianSplatRenderer::IndexDomain::UNKNOWN,
+					0, 0);
 			if (p_context.metrics) {
 				p_context.metrics->raster = r_raster_output;
 				p_context.metrics->raster_result = r_raster_result;
@@ -1612,6 +1767,10 @@ struct RenderPipelineStages::RasterCompositeStage {
 		composite_input.state_view = &state_view;
 		uint64_t composite_start_usec = OS::get_singleton()->get_ticks_usec();
 		r_composite_result = composite_stage->execute(composite_input, r_composite_executed);
+		stamp_stage_result_contract(r_composite_result, "composite", r_raster_result.route_uid,
+				GaussianSplatRenderer::IndexDomain::UNKNOWN, GaussianSplatRenderer::IndexDomain::UNKNOWN,
+				r_raster_output.color.is_valid() ? 1u : 0u,
+				r_composite_executed ? 1u : 0u);
 		uint64_t composite_end_usec = OS::get_singleton()->get_ticks_usec();
 		r_composite_time_ms = r_composite_executed ? (composite_end_usec - composite_start_usec) / 1000.0f : 0.0f;
 		if (p_context.metrics) {
@@ -1714,6 +1873,9 @@ void RenderPipelineStages::reset_render_state_for_frame(const GaussianSplatRende
 	output_cache.last_viewport_copy_success = false;
 	output_cache.last_viewport_copy_source_size = Size2i();
 	output_cache.last_viewport_copy_dest_size = Size2i();
+	output_cache.last_depth_test_honored = true;
+	output_cache.last_copy_degraded = false;
+	output_cache.last_copy_degradation_reason = String();
 	GaussianSplatRenderer::PerformanceState &performance_state = state_mut.get_performance_state_mut();
 	auto &metrics = performance_state.metrics;
 	metrics.raster_path_reason = String();
@@ -2527,6 +2689,27 @@ RenderPipelineStages::StageResult RenderPipelineStages::CompositeStage::execute(
 			p_input.render_buffers, p_input.raster_output.color, render_target_copy, p_input.viewport_size,
 			p_input.defer_commit, p_input.raster_output.painterly_active, p_input.raster_output.depth);
 	r_did_composite = true;
+	StageResult composite_result;
+	if (output_cache.last_copy_degraded || !output_cache.last_depth_test_honored) {
+		const String degradation_reason = output_cache.last_copy_degradation_reason.is_empty()
+				? String("Composite depth test was not honored")
+				: output_cache.last_copy_degradation_reason;
+		const bool strict_failure = !output_cache.last_depth_test_honored && !output_cache.last_viewport_copy_success;
+		composite_result = _make_stage_result(
+				strict_failure ? StageResult::StageStatus::FAILED : StageResult::StageStatus::FALLBACK,
+				degradation_reason,
+				strict_failure,
+				GaussianSplatRenderer::RenderFallbackReason::NONE);
+		composite_result.depth_test_honored = output_cache.last_depth_test_honored;
+		composite_result.degraded = true;
+		composite_result.degradation_reason = degradation_reason;
+		composite_result.strict_contract_violation = strict_failure;
+		composite_result.used_graphics_fallback = degradation_reason.find("graphics fallback") >= 0;
+		if (strict_failure) {
+			fill_composite_io(true, degradation_reason);
+			return composite_result;
+		}
+	}
 	if (_pipeline_trace_enabled(renderer)) {
 		_record_pipeline_event(renderer, "composite",
 				vformat("executed copy_success=%s",
@@ -2534,7 +2717,7 @@ RenderPipelineStages::StageResult RenderPipelineStages::CompositeStage::execute(
 				trace_input_count, 1u, false);
 	}
 	fill_composite_io(false, String());
-	return StageResult();
+	return composite_result;
 }
 
 bool RenderPipelineStages::execute_raster_composite_pipeline(const GaussianSplatRenderer::RenderFrameContext &p_context,
@@ -2612,6 +2795,7 @@ void RenderPipelineStages::render_sorted_splats_with_context(const GaussianSplat
 
 	auto emit_stage_metrics = [&]() {
 		if (p_context.metrics) {
+			finalize_stage_contracts(*p_context.metrics, *frame_plan);
 			store_stage_metrics(*p_context.metrics);
 		} else {
 			clear_stage_metrics();
@@ -2640,21 +2824,33 @@ void RenderPipelineStages::render_sorted_splats_with_context(const GaussianSplat
 		log_stage_result("Cull", p_context.metrics->cull_result);
 		log_stage_result("Sort", p_context.metrics->sort_result);
 	}
-	if (p_context.metrics && p_context.metrics->sort_result.status == StageResult::StageStatus::FAILED) {
+	const bool upstream_stage_blocks_raster = p_context.metrics &&
+			(p_context.metrics->sort_result.status == StageResult::StageStatus::FAILED ||
+					(p_context.metrics->sort_result.status == StageResult::StageStatus::SKIPPED &&
+							!p_context.metrics->sort_result.skip_cause_stage.is_empty()));
+	if (upstream_stage_blocks_raster) {
 		performance_state.metrics.raster_path = "skipped";
-		const String reason = p_context.metrics->sort_result.reason.is_empty() ?
-				"Sort failed; skipping raster/composite" :
-				p_context.metrics->sort_result.reason;
-		_record_pipeline_event(renderer, "raster", "skip: sort failed",
-				p_context.metrics->sort.input_count, 0, true, p_context.metrics->sort_result.fallback_reason,
+		const String upstream_stage = !p_context.metrics->sort_result.skip_cause_stage.is_empty()
+				? p_context.metrics->sort_result.skip_cause_stage
+				: String("sort");
+		_record_pipeline_event(renderer, "raster", vformat("skip: %s blocked raster", upstream_stage),
+				p_context.metrics->sort.input_count, 0, false, p_context.metrics->sort_result.fallback_reason,
 				RenderRouteUID::COMMON_FAIL_SORT_FAILED);
-		_record_pipeline_event(renderer, "composite", "skip: sort failed",
+		_record_pipeline_event(renderer, "composite", vformat("skip: %s blocked composite", upstream_stage),
 				0, 0, false, p_context.metrics->sort_result.fallback_reason,
 				RenderRouteUID::COMMON_FAIL_SORT_FAILED);
-		StageResult raster_result = _make_stage_result(StageResult::StageStatus::FAILED,
-				"Raster skipped: sort failed", true, p_context.metrics->sort_result.fallback_reason);
-		StageResult composite_result = _make_stage_result(StageResult::StageStatus::SKIPPED,
-				"Composite skipped: sort failed", false, p_context.metrics->sort_result.fallback_reason);
+		StageResult raster_result = make_downstream_skip_result("raster", p_context.metrics->sort_result,
+				vformat("Raster skipped: %s blocked raster", upstream_stage),
+				p_context.metrics->sort_result.fallback_reason);
+		stamp_stage_result_contract(raster_result, "raster", p_context.metrics->sort_result.route_uid,
+				p_context.metrics->sort_result.output_domain, GaussianSplatRenderer::IndexDomain::UNKNOWN,
+				p_context.metrics->sort_result.output_count, 0);
+		StageResult composite_result = make_downstream_skip_result("composite", p_context.metrics->sort_result,
+				vformat("Composite skipped: %s blocked composite", upstream_stage),
+				p_context.metrics->sort_result.fallback_reason);
+		stamp_stage_result_contract(composite_result, "composite", p_context.metrics->sort_result.route_uid,
+				GaussianSplatRenderer::IndexDomain::UNKNOWN, GaussianSplatRenderer::IndexDomain::UNKNOWN,
+				0, 0);
 		p_context.metrics->raster_result = raster_result;
 		p_context.metrics->composite_result = composite_result;
 		auto &raster_io = p_context.metrics->raster_io;
@@ -2662,8 +2858,7 @@ void RenderPipelineStages::render_sorted_splats_with_context(const GaussianSplat
 				_get_sort_indices_buffer(state_view), RID(),
 				p_context.metrics->sort.input_count > 0);
 		StageIOValidationConfig raster_validation;
-		raster_validation.failed = true;
-		raster_validation.failed_error = reason;
+		raster_validation.record_event = false;
 		_finalize_stage_io(renderer, "raster", raster_io, raster_validation);
 		auto &composite_io = p_context.metrics->composite_io;
 		_init_stage_io(composite_io, p_context.frame_id, 0, 0, RID(), RID(), false);
@@ -2702,9 +2897,13 @@ void RenderPipelineStages::render_sorted_splats_with_context(const GaussianSplat
 			p_context.metrics->raster_result = _make_stage_result(StageResult::StageStatus::SKIPPED,
 					"Raster skipped: no visible splats", false,
 					GaussianSplatRenderer::RenderFallbackReason::NO_VISIBLE_SPLATS);
+			stamp_stage_result_contract(p_context.metrics->raster_result, "raster", RenderRouteUID::COMMON_SKIP_NO_VISIBLE,
+					p_context.snapshot.sorted_index_domain, GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
 			p_context.metrics->composite_result = _make_stage_result(StageResult::StageStatus::SKIPPED,
 					"Composite skipped: no visible splats", false,
 					GaussianSplatRenderer::RenderFallbackReason::NO_VISIBLE_SPLATS);
+			stamp_stage_result_contract(p_context.metrics->composite_result, "composite", RenderRouteUID::COMMON_SKIP_NO_VISIBLE,
+					GaussianSplatRenderer::IndexDomain::UNKNOWN, GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
 			auto &raster_io = p_context.metrics->raster_io;
 			_init_stage_io(raster_io, p_context.frame_id, 0, 0, RID(), RID(), false);
 			StageIOValidationConfig raster_validation;
@@ -2729,9 +2928,13 @@ void RenderPipelineStages::render_sorted_splats_with_context(const GaussianSplat
 			p_context.metrics->raster_result = _make_stage_result(StageResult::StageStatus::FAILED,
 					"Raster failed: RenderingDevice unavailable", true,
 					GaussianSplatRenderer::RenderFallbackReason::RENDERING_DEVICE_UNAVAILABLE);
-			p_context.metrics->composite_result = _make_stage_result(StageResult::StageStatus::FAILED,
-					"Composite failed: RenderingDevice unavailable", true,
+			stamp_stage_result_contract(p_context.metrics->raster_result, "raster", RenderRouteUID::COMMON_FAIL_NO_DEVICE,
+					p_context.snapshot.sorted_index_domain, GaussianSplatRenderer::IndexDomain::UNKNOWN, current_visible, 0);
+			p_context.metrics->composite_result = make_downstream_skip_result("composite",
+					p_context.metrics->raster_result, "Composite skipped: raster failed",
 					GaussianSplatRenderer::RenderFallbackReason::RENDERING_DEVICE_UNAVAILABLE);
+			stamp_stage_result_contract(p_context.metrics->composite_result, "composite", RenderRouteUID::COMMON_FAIL_NO_DEVICE,
+					GaussianSplatRenderer::IndexDomain::UNKNOWN, GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
 			auto &raster_io = p_context.metrics->raster_io;
 			_init_stage_io(raster_io, p_context.frame_id, current_visible, 0,
 					_get_sort_indices_buffer(state_view), RID(), current_visible > 0);

@@ -89,6 +89,9 @@ public:
         Size2i last_viewport_copy_source_size = Size2i();
         Size2i last_viewport_copy_dest_size = Size2i();
         bool last_viewport_copy_success = false;
+        bool last_depth_test_honored = true;
+        bool last_copy_degraded = false;
+        String last_copy_degradation_reason;
         RID last_render_target;
         bool cached_render_valid = false;
         Transform3D cached_render_camera_to_world_transform;

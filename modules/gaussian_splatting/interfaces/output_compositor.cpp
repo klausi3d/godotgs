@@ -1383,6 +1383,9 @@ void OutputCompositor::integrate_final_output(GaussianSplatRenderer *p_renderer,
 
     final_render_texture = p_final_output;
     output_cache.has_valid_render = p_final_output.is_valid();
+    output_cache.last_depth_test_honored = true;
+    output_cache.last_copy_degraded = false;
+    output_cache.last_copy_degradation_reason = String();
 
     if (render_buffers_rd && p_final_output.is_valid()) {
         Size2i viewport_size = p_viewport_size;
@@ -1455,6 +1458,9 @@ void OutputCompositor::integrate_final_output(GaussianSplatRenderer *p_renderer,
             if (missing_required_scene_depth && !allow_scene_blend_fallback) {
                 gs_log_scene_depth_contract_skip_once(!has_source_depth, !has_scene_depth);
                 output_cache.last_viewport_copy_success = false;
+                output_cache.last_depth_test_honored = false;
+                output_cache.last_copy_degraded = true;
+                output_cache.last_copy_degradation_reason = "strict depth composite skipped: source or scene depth missing";
             } else if (render_target_framebuffer.is_valid() && !depth_test_enabled) {
                 FramebufferCopyParams params;
                 params.source_texture = p_final_output;
@@ -1464,6 +1470,11 @@ void OutputCompositor::integrate_final_output(GaussianSplatRenderer *p_renderer,
                 params.composite_with_destination = true;
                 params.source_is_premultiplied = true;
                 copy_to_framebuffer(params);
+                if (missing_required_scene_depth && allow_scene_blend_fallback) {
+                    output_cache.last_depth_test_honored = false;
+                    output_cache.last_copy_degraded = true;
+                    output_cache.last_copy_degradation_reason = "relaxed depth composite fallback: source or scene depth missing";
+                }
             } else {
                 OutputCopyParams params;
                 params.source_texture = p_final_output;
@@ -1493,7 +1504,17 @@ void OutputCompositor::integrate_final_output(GaussianSplatRenderer *p_renderer,
                         }
                     }
                 }
-                copy_to_render_target(params);
+                OutputCopyResult copy_result = copy_to_render_target(params);
+                output_cache.last_depth_test_honored = copy_result.depth_test_honored;
+                if (!copy_result.depth_test_honored) {
+                    output_cache.last_copy_degraded = true;
+                    output_cache.last_copy_degradation_reason = copy_result.error.is_empty()
+                            ? String("depth composite fallback did not honor requested depth test")
+                            : copy_result.error;
+                    if (scene_depth_policy == GS_SCENE_COMPOSITE_DEPTH_POLICY_STRICT) {
+                        output_cache.last_viewport_copy_success = false;
+                    }
+                }
             }
         }
         r_render_target = composite_target.is_valid() ? composite_target : pipeline_render_target;

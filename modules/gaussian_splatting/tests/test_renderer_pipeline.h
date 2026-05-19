@@ -71,6 +71,72 @@ static_assert(offsetof(TileRenderParamsGPU, effector_spheres) == 704, "TileRende
 static_assert(offsetof(TileRenderParamsGPU, effector_configs) == 768, "TileRenderParamsGPU.effector_configs offset contract changed");
 static_assert(offsetof(TileRenderParamsGPU, effector_opacity_configs) == 832, "TileRenderParamsGPU.effector_opacity_configs offset contract changed");
 
+TEST_CASE("[GaussianSplatting] Stage cascade contract preserves first failure and downstream skip cause") {
+	GaussianSplatRenderer::StageResult sort_failure;
+	sort_failure.status = GaussianSplatRenderer::StageResult::StageStatus::FAILED;
+	sort_failure.is_error = true;
+	sort_failure.reason = "Sort failed: test injection";
+	RenderPipelineStages::stamp_stage_result_contract(sort_failure, "sort",
+			RenderRouteUID::COMMON_FAIL_SORT_FAILED,
+			GaussianSplatRenderer::IndexDomain::CHUNK_REF,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN, 8, 0);
+
+	GaussianSplatRenderer::StageResult raster_skip =
+			RenderPipelineStages::make_downstream_skip_result("raster", sort_failure,
+					"Raster skipped: sort blocked raster",
+					GaussianSplatRenderer::RenderFallbackReason::NONE);
+	RenderPipelineStages::stamp_stage_result_contract(raster_skip, "raster",
+			sort_failure.route_uid, sort_failure.output_domain,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN, sort_failure.output_count, 0);
+
+	CHECK(raster_skip.status == GaussianSplatRenderer::StageResult::StageStatus::SKIPPED);
+	CHECK(raster_skip.first_failure_stage == String("sort"));
+	CHECK(raster_skip.skip_cause_stage == String("sort"));
+	CHECK(raster_skip.route_uid == String(RenderRouteUID::COMMON_FAIL_SORT_FAILED));
+	CHECK(raster_skip.input_count == 0);
+	CHECK(raster_skip.output_count == 0);
+}
+
+TEST_CASE("[GaussianSplatting] Stage contract aggregation reports composite degradation") {
+	GaussianSplatRenderer::StageMetrics metrics;
+	metrics.cull_result.status = GaussianSplatRenderer::StageResult::StageStatus::SUCCESS;
+	RenderPipelineStages::stamp_stage_result_contract(metrics.cull_result, "cull",
+			RenderRouteUID::INSTANCE_CULL_GPU,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN,
+			GaussianSplatRenderer::IndexDomain::CHUNK_REF, 4, 4);
+	metrics.sort_result.status = GaussianSplatRenderer::StageResult::StageStatus::SUCCESS;
+	RenderPipelineStages::stamp_stage_result_contract(metrics.sort_result, "sort",
+			RenderRouteUID::INSTANCE_SORT_GPU,
+			GaussianSplatRenderer::IndexDomain::CHUNK_REF,
+			GaussianSplatRenderer::IndexDomain::SPLAT_REF, 4, 16);
+	metrics.raster_result.status = GaussianSplatRenderer::StageResult::StageStatus::SUCCESS;
+	RenderPipelineStages::stamp_stage_result_contract(metrics.raster_result, "raster",
+			RenderRouteUID::INSTANCE_RASTER_COMPUTE,
+			GaussianSplatRenderer::IndexDomain::SPLAT_REF,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN, 16, 1);
+	metrics.composite_result.status = GaussianSplatRenderer::StageResult::StageStatus::FALLBACK;
+	metrics.composite_result.depth_test_honored = false;
+	metrics.composite_result.degraded = true;
+	metrics.composite_result.degradation_reason = "relaxed depth composite fallback";
+	RenderPipelineStages::stamp_stage_result_contract(metrics.composite_result, "composite",
+			RenderRouteUID::INSTANCE_RASTER_COMPUTE,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN, 1, 1);
+
+	GaussianSplatRenderer::RenderFramePlan plan;
+	plan.route_decision.valid = true;
+	plan.route_decision.route_uid = RenderRouteUID::INSTANCE_STREAMING;
+	plan.route_decision.selected_backend_name = "streaming";
+	RenderPipelineStages::finalize_stage_contracts(metrics, plan);
+
+	CHECK(metrics.first_failure_stage.is_empty());
+	CHECK(metrics.has_degradation);
+	CHECK_FALSE(metrics.composite_depth_test_honored);
+	CHECK(metrics.degradation_reason == String("relaxed depth composite fallback"));
+	CHECK(metrics.route_uid == String(RenderRouteUID::INSTANCE_STREAMING));
+	CHECK(metrics.selected_route_backend == String("streaming"));
+}
+
 // Utility to ensure we have a GaussianSplatManager available during the test run.
 // Note: Named with "Pipeline" suffix to avoid redefinition with test_render_validation.h
 class ScopedGaussianManagerPipeline {

@@ -17,6 +17,19 @@ The following custom monitors are exported under the `gaussian_splatting/` prefi
 - `route_uid`: active render-route UID for the current frame diagnostics.
 - `sort_route_uid`: active sort-route UID for the current frame diagnostics.
 
+## Route and stage contracts
+
+Each rendered frame carries a `RenderRouteDecision` through `RenderFramePlan`. Stage results for cull, sort,
+raster, and composite carry the selected route UID, input/output domains, input/output counts, first failure,
+skip cause, and degradation flags.
+
+Downstream stages that did not execute because an upstream stage failed are `skipped`, not `failed`. The first
+executed failing stage keeps `failed`, and skipped stages publish `stage_skip_cause` so diagnostics can attribute
+the cascade without treating derived empty output as a second failure.
+
+Composite depth degradation is part of the stage contract. When `depth_test_honored` is false, relaxed policy
+reports a composite degradation; strict policy reports a composite contract violation/failure.
+
 ## Telemetry availability
 
 Use `telemetry_active` to distinguish unavailable monitor samples from valid runtime zeros.
