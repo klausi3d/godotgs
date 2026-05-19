@@ -51,6 +51,16 @@ private:
     PackedFloat32Array brush_axes;                  // Painterly brush axes
     PackedFloat32Array stroke_ages;                 // Painterly stroke age metadata
 
+    // Streaming chunk bake (Phase B.1 startup optimization). Baked at import
+    // so GaussianStreamingSystem::_build_chunks_for_data can skip the per-
+    // splat center / bounds loop. Serialized as raw byte blobs of POD records
+    // (see io/streaming_chunk_bake.h). streaming_chunk_size_used == 0 means
+    // "no bake present" so old caches fall through to the runtime compute path.
+    PackedByteArray streaming_chunk_records;
+    PackedInt32Array streaming_primary_source_indices;
+    PackedByteArray streaming_quantization_records;
+    uint32_t streaming_chunk_size_used = 0;
+
     uint32_t splat_count = 0;
     uint32_t sh_first_order_terms = 0;
     uint32_t sh_high_order_terms = 0;
@@ -81,6 +91,7 @@ private:
     void _recalculate_sh_component_counts();
     void _ensure_buffer_sizes();
     void _invalidate_gaussian_data_cache();
+    void _invalidate_streaming_bake();
     void _invalidate_bounds_metadata();
     // Returns true when runtime mutation of the packed payload is still
     // allowed. Emits a loud diagnostic when the payload is sealed and the
@@ -203,6 +214,20 @@ public:
     static void prefetch_parallel(const TypedArray<GaussianSplatAsset> &p_assets);
     Error populate_from_gaussian_data(const Ref<::GaussianData> &p_gaussian_data);
     Error save_to_file(const String &p_path) const;
+
+    // Streaming-chunk bake accessors (Phase B.1).
+    void set_streaming_chunk_records(const PackedByteArray &p_records);
+    PackedByteArray get_streaming_chunk_records() const { return streaming_chunk_records; }
+    void set_streaming_primary_source_indices(const PackedInt32Array &p_indices);
+    PackedInt32Array get_streaming_primary_source_indices() const { return streaming_primary_source_indices; }
+    void set_streaming_quantization_records(const PackedByteArray &p_records);
+    PackedByteArray get_streaming_quantization_records() const { return streaming_quantization_records; }
+    void set_streaming_chunk_size_used(uint32_t p_size);
+    uint32_t get_streaming_chunk_size_used() const { return streaming_chunk_size_used; }
+
+    bool has_baked_streaming_chunks() const {
+        return streaming_chunk_size_used > 0 && !streaming_chunk_records.is_empty();
+    }
 };
 
 VARIANT_ENUM_CAST(GaussianSplatAsset::AssetType);

@@ -126,6 +126,15 @@ void GaussianSplatAsset::_bind_methods() {
     ClassDB::bind_method(D_METHOD("load_from_file", "path"), &GaussianSplatAsset::load_from_file);
     ClassDB::bind_method(D_METHOD("save_to_file", "path"), &GaussianSplatAsset::save_to_file);
 
+    ClassDB::bind_method(D_METHOD("set_streaming_chunk_records", "records"), &GaussianSplatAsset::set_streaming_chunk_records);
+    ClassDB::bind_method(D_METHOD("get_streaming_chunk_records"), &GaussianSplatAsset::get_streaming_chunk_records);
+    ClassDB::bind_method(D_METHOD("set_streaming_primary_source_indices", "indices"), &GaussianSplatAsset::set_streaming_primary_source_indices);
+    ClassDB::bind_method(D_METHOD("get_streaming_primary_source_indices"), &GaussianSplatAsset::get_streaming_primary_source_indices);
+    ClassDB::bind_method(D_METHOD("set_streaming_quantization_records", "records"), &GaussianSplatAsset::set_streaming_quantization_records);
+    ClassDB::bind_method(D_METHOD("get_streaming_quantization_records"), &GaussianSplatAsset::get_streaming_quantization_records);
+    ClassDB::bind_method(D_METHOD("set_streaming_chunk_size_used", "size"), &GaussianSplatAsset::set_streaming_chunk_size_used);
+    ClassDB::bind_method(D_METHOD("get_streaming_chunk_size_used"), &GaussianSplatAsset::get_streaming_chunk_size_used);
+
     ClassDB::bind_static_method("GaussianSplatAsset", D_METHOD("get_instance_count"), &GaussianSplatAsset::get_instance_count);
     ClassDB::bind_static_method("GaussianSplatAsset", D_METHOD("prefetch_parallel", "assets"), &GaussianSplatAsset::prefetch_parallel);
 
@@ -151,6 +160,14 @@ void GaussianSplatAsset::_bind_methods() {
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "data/normals"), "set_normals", "get_normals");
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "data/brush_axes"), "set_brush_axes", "get_brush_axes");
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "data/stroke_ages"), "set_stroke_ages", "get_stroke_ages");
+    ADD_PROPERTY(PropertyInfo(Variant::PACKED_BYTE_ARRAY, "data/streaming_chunk_records", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE),
+            "set_streaming_chunk_records", "get_streaming_chunk_records");
+    ADD_PROPERTY(PropertyInfo(Variant::PACKED_INT32_ARRAY, "data/streaming_primary_source_indices", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE),
+            "set_streaming_primary_source_indices", "get_streaming_primary_source_indices");
+    ADD_PROPERTY(PropertyInfo(Variant::PACKED_BYTE_ARRAY, "data/streaming_quantization_records", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE),
+            "set_streaming_quantization_records", "get_streaming_quantization_records");
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "data/streaming_chunk_size_used", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE),
+            "set_streaming_chunk_size_used", "get_streaming_chunk_size_used");
 
     BIND_ENUM_CONSTANT(ASSET_TYPE_STATIC);
     BIND_ENUM_CONSTANT(ASSET_TYPE_DYNAMIC);
@@ -222,6 +239,13 @@ void GaussianSplatAsset::_invalidate_gaussian_data_cache() {
     gaussian_data_cache.unref();
 }
 
+void GaussianSplatAsset::_invalidate_streaming_bake() {
+    streaming_chunk_records = PackedByteArray();
+    streaming_primary_source_indices = PackedInt32Array();
+    streaming_quantization_records = PackedByteArray();
+    streaming_chunk_size_used = 0;
+}
+
 bool GaussianSplatAsset::_runtime_mutation_permitted(const char *p_method) const {
     if (!payload_sealed) {
         return true;
@@ -285,6 +309,11 @@ void GaussianSplatAsset::set_splat_count(uint32_t p_count) {
         import_metadata[StringName("splat_count")] = (int)p_count;
         _invalidate_bounds_metadata();
         _invalidate_gaussian_data_cache();
+        // Bake describes per-chunk geometry; any splat-layout mutation stales it.
+        // Safe to clear during deserialization because data/streaming_* properties
+        // are registered AFTER data/* arrays in _bind_methods, so the bake install
+        // setters run last and re-populate.
+        _invalidate_streaming_bake();
         emit_changed();
     }
 }
@@ -732,6 +761,10 @@ void GaussianSplatAsset::set_positions(const PackedFloat32Array &p_positions) {
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_bounds_metadata();
     _invalidate_gaussian_data_cache();
+    // Any splat-layout mutation stales the bake; data/streaming_* properties
+    // are registered AFTER data/* arrays in _bind_methods, so deserialization
+    // re-installs the bake after the array setters clear it here.
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -748,6 +781,7 @@ void GaussianSplatAsset::set_colors(const PackedColorArray &p_colors) {
     _ensure_buffer_sizes();
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -765,6 +799,7 @@ void GaussianSplatAsset::set_scales(const PackedFloat32Array &p_scales) {
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_bounds_metadata();
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -782,6 +817,7 @@ void GaussianSplatAsset::set_rotations(const PackedFloat32Array &p_rotations) {
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_bounds_metadata();
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -798,6 +834,7 @@ void GaussianSplatAsset::set_sh_dc_coefficients(const PackedFloat32Array &p_coef
     _ensure_buffer_sizes();
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -815,6 +852,7 @@ void GaussianSplatAsset::set_sh_first_order_coefficients(const PackedFloat32Arra
     _ensure_buffer_sizes();
     import_metadata[StringName("sh_first_order_terms")] = (int)sh_first_order_terms;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -832,6 +870,7 @@ void GaussianSplatAsset::set_sh_high_order_coefficients(const PackedFloat32Array
     _ensure_buffer_sizes();
     import_metadata[StringName("sh_high_order_terms")] = (int)sh_high_order_terms;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -847,6 +886,7 @@ void GaussianSplatAsset::set_opacity_logits(const PackedFloat32Array &p_opacity_
     _ensure_buffer_sizes();
     import_metadata[StringName("opacity_encoding")] = StringName("logit");
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -862,6 +902,7 @@ void GaussianSplatAsset::set_palette_ids(const PackedInt32Array &p_palette_ids) 
     _ensure_buffer_sizes();
     import_metadata[StringName("has_palette_ids")] = palette_ids.size() == splat_count;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -879,11 +920,12 @@ void GaussianSplatAsset::set_painterly_flags(const PackedInt32Array &p_flags) {
     import_metadata[StringName("has_painterly_flags")] = has_painterly_lane;
     import_metadata[StringName("has_brush_override_ids")] = has_painterly_lane;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_brush_override_ids(const PackedInt32Array &p_override_ids) {
-    // set_painterly_flags() performs its own gate check.
+    // set_painterly_flags() performs its own gate check and bake invalidation.
     set_painterly_flags(p_override_ids);
 }
 
@@ -899,6 +941,7 @@ void GaussianSplatAsset::set_normals(const PackedFloat32Array &p_normals) {
     _ensure_buffer_sizes();
     import_metadata[StringName("has_normals")] = normals.size() >= splat_count * 3;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -914,6 +957,7 @@ void GaussianSplatAsset::set_brush_axes(const PackedFloat32Array &p_brush_axes) 
     _ensure_buffer_sizes();
     import_metadata[StringName("has_brush_axes")] = brush_axes.size() >= splat_count * 2;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -929,7 +973,28 @@ void GaussianSplatAsset::set_stroke_ages(const PackedFloat32Array &p_stroke_ages
     _ensure_buffer_sizes();
     import_metadata[StringName("has_stroke_age")] = stroke_ages.size() == splat_count;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
+}
+
+void GaussianSplatAsset::set_streaming_chunk_records(const PackedByteArray &p_records) {
+    streaming_chunk_records = p_records;
+    _invalidate_gaussian_data_cache();
+}
+
+void GaussianSplatAsset::set_streaming_primary_source_indices(const PackedInt32Array &p_indices) {
+    streaming_primary_source_indices = p_indices;
+    _invalidate_gaussian_data_cache();
+}
+
+void GaussianSplatAsset::set_streaming_quantization_records(const PackedByteArray &p_records) {
+    streaming_quantization_records = p_records;
+    _invalidate_gaussian_data_cache();
+}
+
+void GaussianSplatAsset::set_streaming_chunk_size_used(uint32_t p_size) {
+    streaming_chunk_size_used = p_size;
+    _invalidate_gaussian_data_cache();
 }
 
 void GaussianSplatAsset::set_sh_component_terms(uint32_t p_first_order_terms, uint32_t p_high_order_terms) {
@@ -1418,6 +1483,11 @@ bool GaussianSplatAsset::populate_gaussian_data(Ref<::GaussianData> &r_data) con
         r_data->set_gaussian(i, g);
     }
 
+    r_data->set_streaming_chunk_bake(streaming_chunk_records,
+            streaming_primary_source_indices,
+            streaming_quantization_records,
+            streaming_chunk_size_used);
+
     return true;
 }
 
@@ -1443,6 +1513,11 @@ Error GaussianSplatAsset::populate_from_gaussian_data(const Ref<::GaussianData> 
     const bool previous_seal = payload_sealed;
     payload_sealed = false;
     _invalidate_gaussian_data_cache();
+    // The persisted bake describes the prior source-array layout; rewriting
+    // the asset arrays invalidates it. Without clearing, a same-count rewrite
+    // would let has_baked_streaming_chunks() short-circuit chunk rebuild
+    // against stale bounds/centers.
+    _invalidate_streaming_bake();
 
     int count = p_gaussian_data->get_count();
     if (count <= 0) {

@@ -55,7 +55,13 @@ public:
     //   v6: imported GaussianSplatAsset payloads are saved as binary .res
     //       instead of text .tres to avoid multi-hundred-MB text parsing during
     //       scene loads.
-    virtual int get_format_version() const override { return 6; }
+    //   v7: per-chunk streaming bake (start_idx/count/center/max_radius/bounds)
+    //       now stored on the asset so GaussianStreamingSystem::register_asset
+    //       can skip the per-splat center/bounds pass on scene load. Old
+    //       caches without the bake fall through to the runtime compute path
+    //       (no breakage), but reimporting recovers the ~7-9s startup win on
+    //       multi-million-splat scenes.
+    virtual int get_format_version() const override { return 7; }
 
     // Validation helpers
     Error validate_ply_properties(const Ref<class PLYLoader> &p_loader) const;

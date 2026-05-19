@@ -4,6 +4,7 @@
 
 #include "ply_loader.h"
 #include "gaussian_import_preset.h"
+#include "streaming_chunk_bake.h"
 #include "../editor/gaussian_import_settings_dialog.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_saver.h"
@@ -515,6 +516,16 @@ Error ResourceImporterPLY::import(ResourceUID::ID p_source_id, const String &p_s
 
     asset->set_import_metadata(import_metadata);
     asset->set_source_path(p_source_file);
+
+    // Phase B.1: bake per-chunk spatial bookkeeping so runtime
+    // GaussianStreamingSystem::_build_chunks_for_data can skip the per-splat
+    // pass on scene load. Materialize from the asset's post-transform arrays
+    // rather than the loader's `gaussian_data`: sort_by_opacity, density
+    // merge, and max_splats reorder/reduce splats before they are written to
+    // the asset, so baking from the pre-transform layout would write chunk
+    // bounds/counts that do not match the saved arrays (Codex P1 on #349).
+    Ref<::GaussianData> post_transform_data = asset->get_gaussian_data();
+    bake_streaming_chunks_for_asset(asset, post_transform_data, /*include_primary*/ false, /*quant*/ nullptr);
 
     String save_path = p_save_path + "." + get_save_extension();
     err = ResourceSaver::save(asset, save_path);
