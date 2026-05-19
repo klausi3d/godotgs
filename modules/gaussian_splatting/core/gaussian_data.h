@@ -371,6 +371,11 @@ private:
     // SH layout and runtime overlays are preserved, but octree/animation
     // caches derived from splat state must be flushed.
     void _invalidate_derived_caches_locked();
+    // Clears the streaming-chunk bake mirror. Any mutation that changes splat
+    // positions/scales/colors/count must drop the cached bake so the streaming
+    // system rebuilds chunks against the mutated data instead of reusing stale
+    // centers/bounds/quantization records. Caller must hold the write lock.
+    void _invalidate_streaming_bake_locked();
     void _bump_content_revision() { content_revision.fetch_add(1, std::memory_order_relaxed); }
     void _set_spherical_harmonics_locked(int p_index, const float *p_coeffs, int p_count);
     bool _clear_runtime_modifications_locked();
