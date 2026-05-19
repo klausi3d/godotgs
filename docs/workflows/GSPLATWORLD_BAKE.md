@@ -31,6 +31,14 @@ Use this workflow when you want to merge multiple Gaussian splat assets into one
 3. Set the output path first.
 4. Run the bake once, then validate the baked world in a clean scene.
 
+## Payload Mode
+
+For runtime worlds, keep baked `.gsplatworld` files uncompressed when you want out-of-core file-backed streaming. Normal uncompressed loads attach a staged chunk payload source and do not allocate resident `GaussianData` by default.
+
+Compressed `.gsplatworld` output is resident-only. It can still use the streaming system for GPU residency, LOD, and culling, but the full gaussian payload must be decoded into CPU memory before rendering because the current compressed layout is not random-access by chunk.
+
+Generic save/load/save round trips preserve streamable uncompressed worlds. Use an explicit resident compressed export path only when the file is intended to be resident-only.
+
 ## Common Failure Modes
 
 | Symptom | Likely cause | What to do |
@@ -40,6 +48,7 @@ Use this workflow when you want to merge multiple Gaussian splat assets into one
 | `Multiple GaussianSplatContainer nodes found...` | Auto-discovery is ambiguous | Pass `--container=<nodepath>` |
 | `Output must end with .gsplatworld` | Output extension is unsupported | Rename the output file |
 | Misaligned runtime world | The baked world is applied to a transformed runtime node | Reset `GaussianSplatWorld3D` to identity before applying the world data |
+| Streaming route policy still reports resident-only payload | The world file is compressed or was loaded resident explicitly | Re-export the world as uncompressed and load normally for out-of-core source streaming |
 
 ## Related Pages
 
