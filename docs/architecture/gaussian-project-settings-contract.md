@@ -33,6 +33,13 @@ It scans production Gaussian C++ source for literal settings and common static
 path constants, then fails when a key is referenced without manifest metadata or
 when a manifest entry no longer appears in source.
 
+Public setting removals are guarded by
+`modules/gaussian_splatting/config/project_settings_public_api_baseline.json`.
+Any live public, cleanup-candidate, or deprecated-alias setting must be in that
+baseline. A future PR that removes a public setting from source must keep the
+baseline entry and add an explicit retired-setting record instead of simply
+deleting the manifest entry.
+
 Run it with:
 
 ```bash
@@ -65,6 +72,7 @@ Current candidates include:
 - `rendering/gaussian_splatting/cull/overflow_autotune_enabled`
 - `rendering/gaussian_splatting/debug/enable_mainloop_probes`
 - `rendering/gaussian_splatting/max_gpu_buffer_count`
+- `rendering/gaussian_splatting/pipeline/enable_all_experimental`
 - `rendering/gaussian_splatting/streaming/async_io_enabled`
 - Sorting threshold knobs loaded by `SortingStrategyConfig` but not used by the live AUTO selector policy.
 - Quantization chunk-size knobs that currently need producer-path proof before support or removal.

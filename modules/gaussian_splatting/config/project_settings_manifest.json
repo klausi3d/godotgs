@@ -967,8 +967,10 @@
     {
       "effective_state": "PipelineFeatureSet::loaded_provenance_snapshot/effective_provenance_snapshot.enable_all_experimental",
       "key": "rendering/gaussian_splatting/pipeline/enable_all_experimental",
-      "notes": "Experimental renderer feature switches stay disabled unless explicitly requested and runtime prerequisites validate; no GPU support is implied by inventory presence.",
-      "test_coverage": "inventory_only"
+      "notes": "Cleanup candidate from #357: hidden debug override expands into multiple experimental renderer features at once and needs behavior tests plus an explicit support/deprecation decision before it can be treated as ordinary public API.",
+      "publicness": "cleanup_candidate",
+      "scope": "debug",
+      "test_coverage": "needs_behavior_test"
     },
     {
       "effective_state": "PipelineFeatureSet::loaded_provenance_snapshot/effective_provenance_snapshot.enable_fast_raster",

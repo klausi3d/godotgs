@@ -8,13 +8,14 @@ strict/warn-only policy (strict fails, warn-only skips).
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import importlib.util
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -505,13 +506,18 @@ def _run_project_settings_manifest_guard() -> tuple[bool, list[str]]:
             f"Missing ProjectSettings manifest guard script: {PROJECT_SETTINGS_MANIFEST_GUARD_SCRIPT.relative_to(ROOT)}"
         ]
 
-    code, out, err = _run_command([sys.executable, str(PROJECT_SETTINGS_MANIFEST_GUARD_SCRIPT)])
-    output_lines = [line for line in (out + err).splitlines() if line.strip()]
+    output_lines: list[str] = []
+    for args in (
+        [sys.executable, str(PROJECT_SETTINGS_MANIFEST_GUARD_SCRIPT), "--self-test"],
+        [sys.executable, str(PROJECT_SETTINGS_MANIFEST_GUARD_SCRIPT)],
+    ):
+        code, out, err = _run_command(args)
+        output_lines.extend(line for line in (out + err).splitlines() if line.strip())
 
-    if code != 0:
-        if not output_lines:
-            output_lines = [f"ProjectSettings manifest guard failed with exit code {code}."]
-        return False, output_lines
+        if code != 0:
+            if not output_lines:
+                output_lines = [f"ProjectSettings manifest guard failed with exit code {code}."]
+            return False, output_lines
 
     return True, output_lines
 
@@ -721,6 +727,401 @@ def _parse_doctest_results(output: str) -> tuple[int, int, int, int, int, bool]:
     )
 
 
+GuardRunner = Callable[[], tuple[bool, list[str]]]
+GuardStep = Callable[[], int | None]
+TestRun = tuple[str, list[str], bool]
+
+
+@dataclass
+class DoctestLaneStats:
+    passed_tests: int
+    passed_asserts: int
+    skipped_markers: int
+    has_executed_coverage: bool
+
+
+@dataclass
+class DoctestTotals:
+    lanes: int = 0
+    passed_tests: int = 0
+    passed_asserts: int = 0
+    skipped_markers: int = 0
+    lanes_with_skip_markers: int = 0
+    lanes_with_executed_coverage: int = 0
+    lanes_unavailable: int = 0
+
+    def add_lane_stats(self, stats: DoctestLaneStats) -> None:
+        self.passed_tests += stats.passed_tests
+        self.passed_asserts += stats.passed_asserts
+        self.skipped_markers += stats.skipped_markers
+        if stats.skipped_markers > 0:
+            self.lanes_with_skip_markers += 1
+        if stats.has_executed_coverage:
+            self.lanes_with_executed_coverage += 1
+
+
+def _print_module_messages(messages: Iterable[str]) -> None:
+    for message in messages:
+        prefix = "[module-tests] " if not message.startswith("[module-tests]") else ""
+        print(f"{prefix}{message}")
+
+
+def _print_output_if_present(output: str) -> None:
+    stripped_output = output.strip()
+    if stripped_output:
+        print(stripped_output)
+
+
+def _run_message_guard(
+    runner: GuardRunner,
+    failure_summary: str,
+    success_summary: str | None = None,
+    *,
+    success_always: bool = False,
+    success_when_empty: bool = False,
+) -> int | None:
+    ok, messages = runner()
+    _print_module_messages(messages)
+    if not ok:
+        print(f"[module-tests] {failure_summary}")
+        return 1
+    if success_summary and (success_always or (success_when_empty and not messages)):
+        print(f"[module-tests] {success_summary}")
+    return None
+
+
+def _run_history_artifact_guard_step(mode: str) -> int | None:
+    ok, exit_code, messages = _run_history_artifact_guard(mode)
+    _print_module_messages(messages)
+    if not ok:
+        print("[module-tests] History artifact guard failed.")
+        return exit_code
+    return None
+
+
+def _run_render_guard_step(base_ref: str | None) -> int | None:
+    guard_ok, guard_messages = _check_render_path_guards(base_ref)
+    _print_module_messages(guard_messages)
+    if not guard_ok:
+        print("[module-tests] Renderer guard checks failed.")
+        return 1
+    print("[module-tests] Renderer guard checks passed.")
+    return None
+
+
+def _run_static_guard_step() -> int | None:
+    guards_ok, guard_failures = _run_static_format_guards()
+    if not guards_ok:
+        print("[module-tests] Static format safety guard(s) failed:")
+        for failure in guard_failures:
+            print(f"[module-tests]  - {failure}")
+        return 1
+    print(f"[module-tests] Static format safety guards passed ({len(STATIC_FORMAT_GUARDS)} checks).")
+    return None
+
+
+def _first_guard_failure(steps: Iterable[GuardStep]) -> int | None:
+    for step in steps:
+        exit_code = step()
+        if exit_code is not None:
+            return exit_code
+    return None
+
+
+def _run_required_message_guards() -> int | None:
+    required_guards: tuple[tuple[GuardRunner, str, str], ...] = (
+        (_run_tracked_backup_guard, "Tracked backup-file guard failed.", "Tracked backup-file guard passed."),
+        (_run_tracked_artifact_guard, "Tracked artifact hygiene guard failed.", "Tracked artifact hygiene guard passed."),
+    )
+    for runner, failure_summary, success_summary in required_guards:
+        exit_code = _run_message_guard(
+            runner,
+            failure_summary,
+            success_summary,
+            success_always=True,
+        )
+        if exit_code is not None:
+            return exit_code
+    return None
+
+
+def _run_optional_message_guards(cli_args: argparse.Namespace) -> int | None:
+    optional_message_guards: list[tuple[bool, GuardRunner, str, str]] = [
+        (
+            not cli_args.skip_build_metadata_guard,
+            _run_build_metadata_guard,
+            "Build metadata guard failed.",
+            "Build metadata guard passed.",
+        ),
+        (
+            True,
+            _run_shader_dependency_guard,
+            "Shader dependency guard failed.",
+            "Shader dependency guard passed.",
+        ),
+        (
+            True,
+            _run_project_settings_manifest_guard,
+            "ProjectSettings manifest guard failed.",
+            "ProjectSettings manifest guard passed.",
+        ),
+        (
+            True,
+            _run_gaussian_layout_guard,
+            "Gaussian layout guard failed.",
+            "Gaussian layout guard passed.",
+        ),
+        (
+            True,
+            _run_benchmark_asset_guard,
+            "Benchmark asset path guard failed.",
+            "Benchmark asset path guard passed.",
+        ),
+    ]
+    for enabled, runner, failure_summary, success_summary in optional_message_guards:
+        if not enabled:
+            continue
+        exit_code = _run_message_guard(
+            runner,
+            failure_summary,
+            success_summary,
+            success_when_empty=True,
+        )
+        if exit_code is not None:
+            return exit_code
+    return None
+
+
+def _run_configured_render_and_static_guards(cli_args: argparse.Namespace) -> int | None:
+    if not cli_args.skip_render_guards:
+        base_ref = _resolve_guard_base_ref(cli_args.base_ref)
+        exit_code = _run_render_guard_step(base_ref)
+        if exit_code is not None:
+            return exit_code
+
+    if not cli_args.skip_static_guards:
+        exit_code = _run_static_guard_step()
+        if exit_code is not None:
+            return exit_code
+
+    return None
+
+
+def _run_ci_guard_steps(cli_args: argparse.Namespace) -> int | None:
+    history_guard_mode, history_guard_mode_warning = _resolve_history_artifact_guard_mode()
+    if history_guard_mode_warning:
+        print(f"[module-tests] {history_guard_mode_warning}")
+
+    return _first_guard_failure(
+        (
+            _run_required_message_guards,
+            lambda: _run_history_artifact_guard_step(history_guard_mode),
+            lambda: _run_optional_message_guards(cli_args),
+            lambda: _run_configured_render_and_static_guards(cli_args),
+        )
+    )
+
+
+def _build_module_test_runs(run_gpu: bool) -> list[TestRun]:
+    test_runs = []
+    for name, test_filters, exclude_filters, strict in MODULE_TEST_FILTERS:
+        run_args = _build_doctest_run_args(test_filters, exclude_filters)
+        test_runs.append((name, run_args, strict))
+
+    if run_gpu:
+        for name, test_filters, exclude_filters, strict in REQUIRES_RD_TEST_FILTERS:
+            run_args = _build_doctest_run_args(test_filters, exclude_filters)
+            test_runs.append((name, run_args, strict))
+    return test_runs
+
+
+def _report_unavailable_lane(
+    name: str,
+    output: str,
+    tests_unavailable_mode: str,
+    allow_tests_unavailable: bool,
+) -> bool:
+    if tests_unavailable_mode == "strict" and not allow_tests_unavailable:
+        print(
+            f"[module-tests] '{name}' unavailable: binary does not support --test "
+            "(build with tests=yes)."
+        )
+        _print_output_if_present(output)
+        print(
+            f"[module-tests] Failing because strict mode is active. "
+            f"Use --allow-tests-unavailable or {ALLOW_TESTS_UNAVAILABLE_ENV}=1 "
+            "for an explicit local opt-out."
+        )
+        return False
+
+    print(f"[module-tests] Skipping '{name}' (tests not enabled in binary).")
+    _print_output_if_present(output)
+    return True
+
+
+def _report_failed_lane(name: str, strict: bool, output: str) -> bool:
+    if not strict:
+        print(
+            f"[module-tests] '{name}' crashed or failed "
+            "(advisory lane, continuing)."
+        )
+        _print_output_if_present(output)
+        return True
+
+    print(f"[module-tests] '{name}' failed.")
+    _print_output_if_present(output)
+    return False
+
+
+def _report_lane_failure(name: str, reason: str, output: str) -> None:
+    print(f"[module-tests] '{name}' failed: {reason}")
+    _print_output_if_present(output)
+
+
+def _report_advisory_no_coverage(
+    name: str,
+    output: str,
+    passed_tests: int,
+    passed_asserts: int,
+    skipped_markers: int,
+) -> None:
+    if skipped_markers > 0:
+        print(
+            f"[module-tests] '{name}' executed only skipped doctest coverage "
+            f"(passed_tests={passed_tests}, passed_assertions={passed_asserts}, "
+            f"skipped_markers={skipped_markers}); treating this lane as advisory and continuing."
+        )
+    else:
+        print(
+            f"[module-tests] '{name}' has no executed coverage "
+            f"(passed_tests={passed_tests}, passed_assertions={passed_asserts}); "
+            "treating this lane as advisory and continuing."
+        )
+    _print_output_if_present(output)
+
+
+def _enforce_skipped_marker_policy(name: str, strict: bool, output: str, skipped_markers: int) -> bool:
+    if skipped_markers <= 0:
+        return True
+
+    print(f"[module-tests] '{name}' reported {skipped_markers} skipped doctest marker(s).")
+    if strict and _is_ci():
+        _report_lane_failure(name, "skipped doctest coverage is not allowed in CI.", output)
+        return False
+    return True
+
+
+def _handle_no_executed_coverage(
+    name: str,
+    strict: bool,
+    output: str,
+    passed_tests: int,
+    passed_asserts: int,
+    skipped_markers: int,
+) -> DoctestLaneStats | None:
+    if not strict:
+        _report_advisory_no_coverage(name, output, passed_tests, passed_asserts, skipped_markers)
+        return DoctestLaneStats(passed_tests, passed_asserts, skipped_markers, False)
+
+    reason = (
+        f"no executed coverage (passed_tests={passed_tests}, passed_assertions={passed_asserts}, "
+        f"skipped_markers={skipped_markers})."
+    )
+    _report_lane_failure(name, reason, output)
+    return None
+
+
+def _validate_successful_lane(name: str, strict: bool, output: str) -> DoctestLaneStats | None:
+    (
+        passed_tests,
+        failed_tests,
+        passed_asserts,
+        failed_asserts,
+        skipped_markers,
+        summary_found,
+    ) = _parse_doctest_results(output)
+
+    if not summary_found:
+        _report_lane_failure(name, "missing doctest summary in output.", output)
+        return None
+
+    if failed_tests > 0 or failed_asserts > 0:
+        reason = (
+            f"{failed_tests} failed test(s), {failed_asserts} failed assertion(s), "
+            f"{skipped_markers} skipped doctest marker(s)."
+        )
+        _report_lane_failure(name, reason, output)
+        return None
+
+    if not _enforce_skipped_marker_policy(name, strict, output, skipped_markers):
+        return None
+
+    has_executed_coverage = passed_tests > 0 and passed_asserts > 0
+    if not has_executed_coverage:
+        return _handle_no_executed_coverage(
+            name,
+            strict,
+            output,
+            passed_tests,
+            passed_asserts,
+            skipped_markers,
+        )
+
+    return DoctestLaneStats(passed_tests, passed_asserts, skipped_markers, True)
+
+
+def _print_lane_passed(name: str, stats: DoctestLaneStats) -> None:
+    skipped_suffix = ""
+    if stats.skipped_markers > 0:
+        skipped_suffix = f", {stats.skipped_markers} skipped doctest marker(s)"
+    print(
+        f"[module-tests] '{name}' passed: {stats.passed_tests} test(s), "
+        f"{stats.passed_asserts} assertion(s){skipped_suffix}."
+    )
+
+
+def _print_doctest_totals(totals: DoctestTotals) -> None:
+    print(
+        f"[module-tests] Gaussian splatting module tests passed "
+        f"(lanes={totals.lanes}, lanes_with_coverage={totals.lanes_with_executed_coverage}, "
+        f"lanes_with_skips={totals.lanes_with_skip_markers}, lanes_unavailable={totals.lanes_unavailable}, "
+        f"skipped_markers={totals.skipped_markers}, passed_tests={totals.passed_tests}, "
+        f"passed_assertions={totals.passed_asserts})."
+    )
+
+
+def _run_doctest_lanes(
+    godot: str,
+    test_runs: Iterable[TestRun],
+    tests_unavailable_mode: str,
+    allow_tests_unavailable: bool,
+) -> int:
+    totals = DoctestTotals()
+    for name, run_args, strict in test_runs:
+        totals.lanes += 1
+        ok, skipped, output = _run_godot(godot, run_args)
+        if skipped:
+            if not _report_unavailable_lane(name, output, tests_unavailable_mode, allow_tests_unavailable):
+                return 1
+            totals.lanes_unavailable += 1
+            continue
+
+        if not ok:
+            if _report_failed_lane(name, strict, output):
+                continue
+            return 1
+
+        stats = _validate_successful_lane(name, strict, output)
+        if stats is None:
+            return 1
+        totals.add_lane_stats(stats)
+        if stats.has_executed_coverage:
+            _print_lane_passed(name, stats)
+
+    _print_doctest_totals(totals)
+    return 0
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Gaussian Splatting module tests and CI guards.")
     parser.add_argument("--godot-binary", default=os.environ.get("GODOT_BINARY", "godot"),
@@ -773,118 +1174,9 @@ def main() -> int:
     allow_tests_unavailable = cli_args.allow_tests_unavailable or _env_truthy(
         os.environ.get(ALLOW_TESTS_UNAVAILABLE_ENV, "")
     )
-    total_lanes = 0
-    total_passed_tests = 0
-    total_passed_asserts = 0
-    total_skipped_markers = 0
-    lanes_with_skip_markers = 0
-    lanes_with_executed_coverage = 0
-    lanes_unavailable = 0
-    history_guard_mode, history_guard_mode_warning = _resolve_history_artifact_guard_mode()
-    if history_guard_mode_warning:
-        print(f"[module-tests] {history_guard_mode_warning}")
-
-    backup_guard_ok, backup_guard_messages = _run_tracked_backup_guard()
-    for message in backup_guard_messages:
-        prefix = "[module-tests] " if not message.startswith("[module-tests]") else ""
-        print(f"{prefix}{message}")
-    if not backup_guard_ok:
-        print("[module-tests] Tracked backup-file guard failed.")
-        return 1
-    print("[module-tests] Tracked backup-file guard passed.")
-
-    artifact_guard_ok, artifact_guard_messages = _run_tracked_artifact_guard()
-    for message in artifact_guard_messages:
-        prefix = "[module-tests] " if not message.startswith("[module-tests]") else ""
-        print(f"{prefix}{message}")
-    if not artifact_guard_ok:
-        print("[module-tests] Tracked artifact hygiene guard failed.")
-        return 1
-    print("[module-tests] Tracked artifact hygiene guard passed.")
-
-    history_guard_ok, history_guard_exit_code, history_guard_messages = _run_history_artifact_guard(
-        history_guard_mode
-    )
-    for message in history_guard_messages:
-        prefix = "[module-tests] " if not message.startswith("[module-tests]") else ""
-        print(f"{prefix}{message}")
-    if not history_guard_ok:
-        print("[module-tests] History artifact guard failed.")
-        return history_guard_exit_code
-
-    if not cli_args.skip_build_metadata_guard:
-        build_metadata_ok, build_metadata_messages = _run_build_metadata_guard()
-        for message in build_metadata_messages:
-            prefix = "[module-tests] " if not message.startswith("[module-tests]") else ""
-            print(f"{prefix}{message}")
-        if not build_metadata_ok:
-            print("[module-tests] Build metadata guard failed.")
-            return 1
-        if not build_metadata_messages:
-            print("[module-tests] Build metadata guard passed.")
-
-    shader_dependency_ok, shader_dependency_messages = _run_shader_dependency_guard()
-    for message in shader_dependency_messages:
-        prefix = "[module-tests] " if not message.startswith("[module-tests]") else ""
-        print(f"{prefix}{message}")
-    if not shader_dependency_ok:
-        print("[module-tests] Shader dependency guard failed.")
-        return 1
-    if not shader_dependency_messages:
-        print("[module-tests] Shader dependency guard passed.")
-
-    settings_manifest_ok, settings_manifest_messages = _run_project_settings_manifest_guard()
-    for message in settings_manifest_messages:
-        prefix = "[module-tests] " if not message.startswith("[module-tests]") else ""
-        print(f"{prefix}{message}")
-    if not settings_manifest_ok:
-        print("[module-tests] ProjectSettings manifest guard failed.")
-        return 1
-    if not settings_manifest_messages:
-        print("[module-tests] ProjectSettings manifest guard passed.")
-
-    gaussian_layout_ok, gaussian_layout_messages = _run_gaussian_layout_guard()
-    for message in gaussian_layout_messages:
-        prefix = "[module-tests] " if not message.startswith("[module-tests]") else ""
-        print(f"{prefix}{message}")
-    if not gaussian_layout_ok:
-        print("[module-tests] Gaussian layout guard failed.")
-        return 1
-    if not gaussian_layout_messages:
-        print("[module-tests] Gaussian layout guard passed.")
-
-    benchmark_asset_guard_ok, benchmark_asset_guard_messages = _run_benchmark_asset_guard()
-    for message in benchmark_asset_guard_messages:
-        prefix = "[module-tests] " if not message.startswith("[module-tests]") else ""
-        print(f"{prefix}{message}")
-    if not benchmark_asset_guard_ok:
-        print("[module-tests] Benchmark asset path guard failed.")
-        return 1
-    if not benchmark_asset_guard_messages:
-        print("[module-tests] Benchmark asset path guard passed.")
-
-    base_ref: str | None = None
-    if not cli_args.skip_render_guards:
-        base_ref = _resolve_guard_base_ref(cli_args.base_ref)
-
-    if not cli_args.skip_render_guards:
-        guard_ok, guard_messages = _check_render_path_guards(base_ref)
-        for message in guard_messages:
-            prefix = "[module-tests] " if not message.startswith("[module-tests]") else ""
-            print(f"{prefix}{message}")
-        if not guard_ok:
-            print("[module-tests] Renderer guard checks failed.")
-            return 1
-        print("[module-tests] Renderer guard checks passed.")
-
-    if not cli_args.skip_static_guards:
-        guards_ok, guard_failures = _run_static_format_guards()
-        if not guards_ok:
-            print("[module-tests] Static format safety guard(s) failed:")
-            for failure in guard_failures:
-                print(f"[module-tests]  - {failure}")
-            return 1
-        print(f"[module-tests] Static format safety guards passed ({len(STATIC_FORMAT_GUARDS)} checks).")
+    guard_exit_code = _run_ci_guard_steps(cli_args)
+    if guard_exit_code is not None:
+        return guard_exit_code
 
     if cli_args.guard_only:
         print("[module-tests] Guard-only mode complete.")
@@ -902,140 +1194,13 @@ def main() -> int:
         f"{' (explicit override enabled)' if allow_tests_unavailable else ''}."
     )
 
-    test_runs = []
-    for name, test_filters, exclude_filters, strict in MODULE_TEST_FILTERS:
-        run_args = _build_doctest_run_args(test_filters, exclude_filters)
-        test_runs.append((name, run_args, strict))
-
-    # Opt-in requires-RD lane: activated by GS_RUN_GPU_TESTS=1 env var or --gpu flag.
-    # Under --test mode every test here will skip (no RenderingDevice).  This is
-    # expected — the lane validates that tagged tests compile and skip gracefully.
     run_gpu = os.environ.get(GS_RUN_GPU_TESTS_ENV, "0") == "1" or cli_args.gpu
-    if run_gpu:
-        for name, test_filters, exclude_filters, strict in REQUIRES_RD_TEST_FILTERS:
-            run_args = _build_doctest_run_args(test_filters, exclude_filters)
-            test_runs.append((name, run_args, strict))
-
-    for name, run_args, strict in test_runs:
-        total_lanes += 1
-        ok, skipped, output = _run_godot(godot, run_args)
-        if skipped:
-            if tests_unavailable_mode == "strict" and not allow_tests_unavailable:
-                print(
-                    f"[module-tests] '{name}' unavailable: binary does not support --test "
-                    "(build with tests=yes)."
-                )
-                if output.strip():
-                    print(output.strip())
-                print(
-                    f"[module-tests] Failing because strict mode is active. "
-                    f"Use --allow-tests-unavailable or {ALLOW_TESTS_UNAVAILABLE_ENV}=1 "
-                    "for an explicit local opt-out."
-                )
-                return 1
-
-            print(f"[module-tests] Skipping '{name}' (tests not enabled in binary).")
-            if output.strip():
-                print(output.strip())
-            lanes_unavailable += 1
-            continue
-
-        if not ok:
-            if not strict:
-                print(
-                    f"[module-tests] '{name}' crashed or failed "
-                    "(advisory lane, continuing)."
-                )
-                if output.strip():
-                    print(output.strip())
-                continue
-            print(f"[module-tests] '{name}' failed.")
-            if output.strip():
-                print(output.strip())
-            return 1
-
-        (
-            passed_tests,
-            failed_tests,
-            passed_asserts,
-            failed_asserts,
-            skipped_markers,
-            summary_found,
-        ) = _parse_doctest_results(output)
-        total_passed_tests += passed_tests
-        total_passed_asserts += passed_asserts
-        total_skipped_markers += skipped_markers
-        if skipped_markers > 0:
-            lanes_with_skip_markers += 1
-        if not summary_found:
-            print(f"[module-tests] '{name}' failed: missing doctest summary in output.")
-            if output.strip():
-                print(output.strip())
-            return 1
-
-        if failed_tests > 0 or failed_asserts > 0:
-            print(
-                f"[module-tests] '{name}' failed: {failed_tests} failed test(s), "
-                f"{failed_asserts} failed assertion(s), {skipped_markers} skipped doctest marker(s)."
-            )
-            if output.strip():
-                print(output.strip())
-            return 1
-
-        if skipped_markers > 0:
-            print(f"[module-tests] '{name}' reported {skipped_markers} skipped doctest marker(s).")
-            if strict and _is_ci():
-                print(
-                    f"[module-tests] '{name}' failed: skipped doctest coverage is not allowed in CI."
-                )
-                if output.strip():
-                    print(output.strip())
-                return 1
-
-        if passed_tests <= 0 or passed_asserts <= 0:
-            # Keep the canonical headless Gaussian lanes strict. Secondary lanes
-            # remain advisory and may not match on every platform/parser variant.
-            if not strict:
-                if skipped_markers > 0:
-                    print(
-                        f"[module-tests] '{name}' executed only skipped doctest coverage "
-                        f"(passed_tests={passed_tests}, passed_assertions={passed_asserts}, "
-                        f"skipped_markers={skipped_markers}); treating this lane as advisory and continuing."
-                    )
-                else:
-                    print(
-                        f"[module-tests] '{name}' has no executed coverage "
-                        f"(passed_tests={passed_tests}, passed_assertions={passed_asserts}); "
-                        "treating this lane as advisory and continuing."
-                    )
-                if output.strip():
-                    print(output.strip())
-                continue
-
-            print(
-                f"[module-tests] '{name}' failed: no executed coverage "
-                f"(passed_tests={passed_tests}, passed_assertions={passed_asserts}, "
-                f"skipped_markers={skipped_markers})."
-            )
-            if output.strip():
-                print(output.strip())
-            return 1
-
-        lanes_with_executed_coverage += 1
-        print(
-            f"[module-tests] '{name}' passed: {passed_tests} test(s), "
-            f"{passed_asserts} assertion(s)"
-            f"{', ' + str(skipped_markers) + ' skipped doctest marker(s)' if skipped_markers > 0 else ''}."
-        )
-
-    print(
-        f"[module-tests] Gaussian splatting module tests passed "
-        f"(lanes={total_lanes}, lanes_with_coverage={lanes_with_executed_coverage}, "
-        f"lanes_with_skips={lanes_with_skip_markers}, lanes_unavailable={lanes_unavailable}, "
-        f"skipped_markers={total_skipped_markers}, passed_tests={total_passed_tests}, "
-        f"passed_assertions={total_passed_asserts})."
+    return _run_doctest_lanes(
+        godot,
+        _build_module_test_runs(run_gpu),
+        tests_unavailable_mode,
+        allow_tests_unavailable,
     )
-    return 0
 
 
 if __name__ == "__main__":
