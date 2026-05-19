@@ -113,7 +113,10 @@ public:
     AssetType get_asset_type() const { return asset_type; }
 
     void set_splat_count(uint32_t p_count);
-    uint32_t get_splat_count() const { return splat_count; }
+    // Takes populate_mutex so concurrent prefetch workers cannot observe a torn
+    // read against set_splat_count() / copy_from(). Mutex is recursive, so it
+    // is safe to call from within a setter that already holds the lock.
+    uint32_t get_splat_count() const;
 
     // Getters
     PackedFloat32Array get_positions() const;

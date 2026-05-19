@@ -289,6 +289,14 @@ void GaussianSplatAsset::set_splat_count(uint32_t p_count) {
     }
 }
 
+uint32_t GaussianSplatAsset::get_splat_count() const {
+    // Lock pairs with set_splat_count() / copy_from() so concurrent readers
+    // (prefetch worker filter, get_gaussian_data() early-out) see either the
+    // pre- or post-update value, never a torn one.
+    MutexLock cache_lock(populate_mutex);
+    return splat_count;
+}
+
 // ---------------------------------------------------------------------------
 // Raw-array getters: warn once when the asset has no loaded data so that
 // callers can distinguish "empty because unloaded" from "legitimately empty".
@@ -1255,10 +1263,10 @@ Error GaussianSplatAsset::save_to_file(const String &p_path) const {
 // is still in populate_gaussian_data(). Per-asset mutex preserves cross-asset
 // parallelism in prefetch_gaussian_data_parallel.
 Ref<::GaussianData> GaussianSplatAsset::get_gaussian_data() const {
+    MutexLock cache_lock(populate_mutex);
     ERR_FAIL_COND_V_MSG(splat_count == 0, Ref<::GaussianData>(),
             "[GaussianSplatAsset] get_gaussian_data() called on unloaded asset (splat_count == 0); returning null.");
 
-    MutexLock cache_lock(populate_mutex);
     if (gaussian_data_cache.is_valid()) {
         // Cache already handed out — keep payload sealed so external code
         // cannot mutate it behind the consumer's back.
@@ -1310,7 +1318,7 @@ void GaussianSplatAsset::prefetch_gaussian_data_parallel(const LocalVector<Ref<G
         if (ref.is_null()) {
             continue;
         }
-        if (ref->splat_count == 0) {
+        if (ref->get_splat_count() == 0) {
             continue;
         }
         if (ref->has_gaussian_data_cached()) {
