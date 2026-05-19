@@ -2124,8 +2124,12 @@ void GaussianStreamingSystem::_build_chunks_for_data(const Ref<GaussianData> &p_
         if (_populate_chunks_from_bake(p_data, out_chunks, build_primary_spatial)) {
             if (build_primary_spatial) {
                 const PackedInt32Array &baked_primary = p_data->get_streaming_primary_source_indices_raw();
+                const uint32_t expected = p_data->get_count();
                 const int n = baked_primary.size();
-                if (n > 0) {
+                // Mirror _populate_chunks_from_bake: only adopt the remap when
+                // it covers the full splat range; a truncated remap would
+                // alias tail splats and is rejected upstream.
+                if (n > 0 && uint32_t(n) == expected) {
                     asset_registry.primary_chunk_source_indices.resize(uint32_t(n));
                     const int32_t *src = baked_primary.ptr();
                     for (int i = 0; i < n; i++) {
@@ -2285,7 +2289,17 @@ bool GaussianStreamingSystem::_populate_chunks_from_bake(const Ref<GaussianData>
 
     const PackedInt32Array &baked_primary = p_data->get_streaming_primary_source_indices_raw();
     const bool has_baked_primary = !baked_primary.is_empty();
-    const bool want_primary_remap = p_build_primary_spatial && has_baked_primary;
+    // Only enable per-chunk source remap when the baked remap covers every
+    // splat. A truncated/corrupt remap (e.g. crash mid-bake or stale schema)
+    // would drop tail splats via failed _resolve_primary_chunk_source_index;
+    // contiguous indices match the asset's storage order and are the safe
+    // fallback the no-bake path produces.
+    const bool baked_primary_size_matches = has_baked_primary && uint32_t(baked_primary.size()) == splat_count;
+    if (has_baked_primary && !baked_primary_size_matches) {
+        WARN_PRINT(vformat("[Streaming] Baked primary source remap length (%d) does not match splat count (%u); falling back to contiguous indices.",
+                baked_primary.size(), splat_count));
+    }
+    const bool want_primary_remap = p_build_primary_spatial && baked_primary_size_matches;
 
     // Baked quantization reuse: only valid if (a) runtime requests it, (b) the
     // bake recorded matching params, (c) array sizes line up. Otherwise we

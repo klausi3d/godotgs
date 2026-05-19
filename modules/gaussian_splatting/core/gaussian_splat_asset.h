@@ -84,6 +84,7 @@ private:
     void _recalculate_sh_component_counts();
     void _ensure_buffer_sizes();
     void _invalidate_gaussian_data_cache();
+    void _invalidate_streaming_bake();
     void _invalidate_bounds_metadata();
     // Returns true when runtime mutation of the packed payload is still
     // allowed. Emits a loud diagnostic when the payload is sealed and the

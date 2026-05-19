@@ -231,6 +231,13 @@ void GaussianSplatAsset::_invalidate_gaussian_data_cache() {
     gaussian_data_cache.unref();
 }
 
+void GaussianSplatAsset::_invalidate_streaming_bake() {
+    streaming_chunk_records = PackedByteArray();
+    streaming_primary_source_indices = PackedInt32Array();
+    streaming_quantization_records = PackedByteArray();
+    streaming_chunk_size_used = 0;
+}
+
 bool GaussianSplatAsset::_runtime_mutation_permitted(const char *p_method) const {
     if (!payload_sealed) {
         return true;
@@ -1340,6 +1347,11 @@ Error GaussianSplatAsset::populate_from_gaussian_data(const Ref<::GaussianData> 
     const bool previous_seal = payload_sealed;
     payload_sealed = false;
     _invalidate_gaussian_data_cache();
+    // The persisted bake describes the prior source-array layout; rewriting
+    // the asset arrays invalidates it. Without clearing, a same-count rewrite
+    // would let has_baked_streaming_chunks() short-circuit chunk rebuild
+    // against stale bounds/centers.
+    _invalidate_streaming_bake();
 
     int count = p_gaussian_data->get_count();
     if (count <= 0) {
