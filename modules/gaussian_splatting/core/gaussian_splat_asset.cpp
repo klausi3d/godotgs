@@ -293,6 +293,11 @@ void GaussianSplatAsset::set_splat_count(uint32_t p_count) {
         import_metadata[StringName("splat_count")] = (int)p_count;
         _invalidate_bounds_metadata();
         _invalidate_gaussian_data_cache();
+        // Bake describes per-chunk geometry; any splat-layout mutation stales it.
+        // Safe to clear during deserialization because data/streaming_* properties
+        // are registered AFTER data/* arrays in _bind_methods, so the bake install
+        // setters run last and re-populate.
+        _invalidate_streaming_bake();
         emit_changed();
     }
 }
@@ -731,6 +736,10 @@ void GaussianSplatAsset::set_positions(const PackedFloat32Array &p_positions) {
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_bounds_metadata();
     _invalidate_gaussian_data_cache();
+    // Any splat-layout mutation stales the bake; data/streaming_* properties
+    // are registered AFTER data/* arrays in _bind_methods, so deserialization
+    // re-installs the bake after the array setters clear it here.
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -746,6 +755,7 @@ void GaussianSplatAsset::set_colors(const PackedColorArray &p_colors) {
     _ensure_buffer_sizes();
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -762,6 +772,7 @@ void GaussianSplatAsset::set_scales(const PackedFloat32Array &p_scales) {
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_bounds_metadata();
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -778,6 +789,7 @@ void GaussianSplatAsset::set_rotations(const PackedFloat32Array &p_rotations) {
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_bounds_metadata();
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -793,6 +805,7 @@ void GaussianSplatAsset::set_sh_dc_coefficients(const PackedFloat32Array &p_coef
     _ensure_buffer_sizes();
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -809,6 +822,7 @@ void GaussianSplatAsset::set_sh_first_order_coefficients(const PackedFloat32Arra
     _ensure_buffer_sizes();
     import_metadata[StringName("sh_first_order_terms")] = (int)sh_first_order_terms;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -825,6 +839,7 @@ void GaussianSplatAsset::set_sh_high_order_coefficients(const PackedFloat32Array
     _ensure_buffer_sizes();
     import_metadata[StringName("sh_high_order_terms")] = (int)sh_high_order_terms;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -839,6 +854,7 @@ void GaussianSplatAsset::set_opacity_logits(const PackedFloat32Array &p_opacity_
     _ensure_buffer_sizes();
     import_metadata[StringName("opacity_encoding")] = StringName("logit");
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -853,6 +869,7 @@ void GaussianSplatAsset::set_palette_ids(const PackedInt32Array &p_palette_ids) 
     _ensure_buffer_sizes();
     import_metadata[StringName("has_palette_ids")] = palette_ids.size() == splat_count;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -869,11 +886,12 @@ void GaussianSplatAsset::set_painterly_flags(const PackedInt32Array &p_flags) {
     import_metadata[StringName("has_painterly_flags")] = has_painterly_lane;
     import_metadata[StringName("has_brush_override_ids")] = has_painterly_lane;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_brush_override_ids(const PackedInt32Array &p_override_ids) {
-    // set_painterly_flags() performs its own gate check.
+    // set_painterly_flags() performs its own gate check and bake invalidation.
     set_painterly_flags(p_override_ids);
 }
 
@@ -888,6 +906,7 @@ void GaussianSplatAsset::set_normals(const PackedFloat32Array &p_normals) {
     _ensure_buffer_sizes();
     import_metadata[StringName("has_normals")] = normals.size() >= splat_count * 3;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -902,6 +921,7 @@ void GaussianSplatAsset::set_brush_axes(const PackedFloat32Array &p_brush_axes) 
     _ensure_buffer_sizes();
     import_metadata[StringName("has_brush_axes")] = brush_axes.size() >= splat_count * 2;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
@@ -916,6 +936,7 @@ void GaussianSplatAsset::set_stroke_ages(const PackedFloat32Array &p_stroke_ages
     _ensure_buffer_sizes();
     import_metadata[StringName("has_stroke_age")] = stroke_ages.size() == splat_count;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
