@@ -1043,6 +1043,12 @@ void GaussianSplatAsset::_ensure_buffer_sizes() {
 }
 
 void GaussianSplatAsset::set_import_metadata(const Dictionary &p_metadata) {
+    // Public/bound setter: take populate_mutex across the Dictionary write so a
+    // concurrent prefetch worker holding the lock in populate_gaussian_data()
+    // cannot observe a torn metadata read (dc_encoding / gaussian_2d_mode) and
+    // cache GaussianData built from inconsistent state. Recursive mutex permits
+    // the nested _invalidate_gaussian_data_cache() acquire.
+    MutexLock cache_lock(populate_mutex);
     import_metadata = p_metadata;
     import_metadata[StringName("splat_count")] = (int)splat_count;
     import_metadata[StringName("quality_preset")] = import_quality_preset;
