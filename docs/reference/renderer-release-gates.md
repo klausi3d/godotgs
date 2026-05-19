@@ -8,12 +8,15 @@ the checker is `tests/ci/check_renderer_release_gates.py`.
 ## Predicate
 
 A public alpha is not satisfied by a nightly, a manual workflow choice, a green
-advisory report, or a path-filtered subset of renderer checks. A candidate must
-declare `release_channel=public-alpha` or match a `v*-alpha*` release tag, then
-pass the manifest predicate:
+advisory report, or a path-filtered subset of renderer checks. Candidate mode
+machine-enforces that a candidate declares `release_channel=public-alpha` or
+matches a `v*-alpha*` release tag, then passes the manifest predicate:
 
+- an issue snapshot is required, either through `--issues-json` or an embedded
+  candidate evidence `issue_snapshot`;
 - open `priority:P0`, `release blocker`, and alpha-relevant `priority:P1` issues
-  must be classified as `blocking`, `accepted_alpha_limitation`, or `post_alpha`;
+  in that snapshot must be classified as `blocking`,
+  `accepted_alpha_limitation`, or `post_alpha`;
 - any `accepted_alpha_limitation` must have a user-facing entry in
   `docs/development/known-public-alpha-limitations.md`;
 - Linux and Windows artifacts, runtime validation, GPU harness output,
@@ -21,6 +24,15 @@ pass the manifest predicate:
   acceptance, and open-world proof must all be present;
 - missing GPU runner availability, manual inputs, path filters, or advisory
   open-world proof cannot downgrade a public-alpha candidate to pass.
+
+## Workflow Policy Scope
+
+The contract checker currently validates that required workflow files exist and
+contain the required job markers. It does not yet parse GitHub Actions YAML
+deeply enough to prove manual-input bypasses, path-filter bypasses, Linux-only
+publishing, unmatched release-file allowances, or open-world advisory-only
+behavior. Those no-downgrade rules remain documented review policy in the
+manifest until a workflow-behavior parser is added.
 
 ## Renderer Evidence
 
@@ -64,7 +76,8 @@ Run the contract check locally or in CI:
 python3 tests/ci/check_renderer_release_gates.py --mode contract
 ```
 
-Candidate release validation accepts an evidence bundle and optional issue JSON:
+Candidate release validation requires an evidence bundle and an issue snapshot
+unless the evidence bundle embeds `issue_snapshot`:
 
 ```bash
 python3 tests/ci/check_renderer_release_gates.py \

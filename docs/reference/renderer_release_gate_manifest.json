@@ -49,36 +49,35 @@
     ]
   },
   "workflow_policy": {
+    "machine_enforcement_scope": "workflow-presence-and-required-job-markers",
+    "documented_non_enforced_rules": [
+      "manual workflow inputs must not bypass public-alpha readiness",
+      "path filters must not downgrade public-alpha readiness",
+      "public-alpha release publication must not be Linux-only",
+      "public-alpha release publication must not allow unmatched release files",
+      "open-world proof must be blocking rather than advisory"
+    ],
     "required_workflows": [
       {
         "file": ".github/workflows/gaussian_production_gates.yml",
         "required_for_public_alpha": true,
-        "required_jobs": ["guards", "module-validation"],
-        "must_enforce_readiness": true,
-        "manual_input_may_disable": false,
-        "path_filter_may_disable": false
+        "required_jobs": ["guards", "module-validation"]
       },
       {
         "file": ".github/workflows/baseline_qa.yml",
         "required_for_public_alpha": true,
-        "required_jobs": ["Run GPU harness"],
-        "manual_input_may_disable": false,
-        "path_filter_may_disable": false
+        "required_jobs": ["Run GPU harness"]
       },
       {
         "file": ".github/workflows/release_builds.yml",
         "required_for_public_alpha": true,
-        "required_jobs": ["build_linux", "build_windows", "publish_release"],
-        "manual_input_may_disable": false,
-        "path_filter_may_disable": false,
-        "linux_only_release_allowed": false,
-        "unmatched_release_files_allowed": false
+        "required_jobs": ["build_linux", "build_windows", "publish_release"]
       }
     ],
     "open_world_proof": {
-      "required_for_public_alpha": true,
-      "advisory_only_allowed": false,
-      "required_artifact_group": "open_world_proof"
+      "required_for_public_alpha_candidate_artifacts": true,
+      "required_artifact_group": "open_world_proof",
+      "workflow_blocking_behavior_machine_enforced": false
     }
   },
   "visual_acceptance": {

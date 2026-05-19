@@ -40,9 +40,12 @@ python tests/ci/check_renderer_release_gates.py --mode contract
 ```
 
 The contract check is deterministic and GPU-free. Public-alpha candidate mode
-adds the evidence bundle and live issue-label snapshot so P0, release-blocker,
-and alpha-relevant P1 issues cannot be bypassed by release notes or manual
-workflow choices.
+requires the evidence bundle, a public-alpha channel/tag selector, and a live
+issue-label snapshot so P0, release-blocker, and alpha-relevant P1 issues cannot
+be bypassed by release notes or manual workflow choices. The workflow-policy
+portion of the checker validates required workflow files and job markers only;
+the stronger no-downgrade workflow rules remain documented review policy until
+the checker grows a real GitHub Actions behavior parser.
 
 ## Scheduled Triggers
 
