@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "policy_id": "renderer-public-alpha-release-gates",
+  "status": "foundation",
+  "owner_issues": [350, 360],
+  "public_alpha_predicate": {
+    "channel": "public-alpha",
+    "accepted_tag_patterns": ["v*-alpha*"],
+    "not_satisfied_by": ["nightly", "stable", "manual workflow intent", "advisory evidence"],
+    "candidate_manifest_field": "release_channel=public-alpha",
+    "disallow_path_filter_downgrade": true,
+    "disallow_manual_downgrade": true,
+    "disallow_missing_gpu_runner_downgrade": true,
+    "disallow_open_world_advisory_only": true,
+    "required_issue_query": {
+      "blocking_labels_any": ["priority:P0", "release blocker"],
+      "alpha_relevant_p1_labels_all": ["priority:P1", "alpha-relevant"],
+      "allowed_classifications": ["blocking", "accepted_alpha_limitation", "post_alpha"],
+      "accepted_limitation_requires_docs_path": true
+    }
+  },
+  "known_limitations_page": "docs/development/known-public-alpha-limitations.md",
+  "requires_gpu_test_snapshot": {
+    "source_glob": "modules/gaussian_splatting/tests/**/*.{h,cpp}",
+    "test_count": 93,
+    "sha256": "704a15f3989517fe04c16d9c6cae847f97d65db3c26324b851cf58eb2d6b04d0",
+    "deferred_tags_any": ["SceneTree", "Importer"],
+    "deferred_count": 29,
+    "new_or_missing_test_policy": "fail-contract-check",
+    "closure_policy": "deferred RequiresGPU coverage blocks #350/#360 closure unless each remaining test has an explicit waiver below"
+  },
+  "deferred_requires_gpu_waivers": [],
+  "gpu_harness_policy": {
+    "script": "tests/ci/run_gpu_harness.py",
+    "blocking_profile": "renderer-release-foundation",
+    "required_batches": [
+      {
+        "name": "CompositorHazard",
+        "minimum_test_cases": 1,
+        "allow_skips": false,
+        "allow_timeout": false,
+        "allow_rid_leaks": false,
+        "reference_artifacts": ["tests/visual_baselines/composite_hazard_256x256.png"]
+      }
+    ],
+    "follow_up_hooks": [
+      "Promote the harness to a release-renderer/core-gpu profile that requires GpuSorting, MemoryStream, Streaming, renderer route/stage diagnostics, and SceneTree/Importer batches once #329 bootstrap work lands.",
+      "Wire release-candidate CI to call run_gpu_harness.py with the blocking profile instead of relying on default advisory batches."
+    ]
+  },
+  "workflow_policy": {
+    "required_workflows": [
+      {
+        "file": ".github/workflows/gaussian_production_gates.yml",
+        "required_for_public_alpha": true,
+        "required_jobs": ["guards", "module-validation"],
+        "must_enforce_readiness": true,
+        "manual_input_may_disable": false,
+        "path_filter_may_disable": false
+      },
+      {
+        "file": ".github/workflows/baseline_qa.yml",
+        "required_for_public_alpha": true,
+        "required_jobs": ["Run GPU harness"],
+        "manual_input_may_disable": false,
+        "path_filter_may_disable": false
+      },
+      {
+        "file": ".github/workflows/release_builds.yml",
+        "required_for_public_alpha": true,
+        "required_jobs": ["build_linux", "build_windows", "publish_release"],
+        "manual_input_may_disable": false,
+        "path_filter_may_disable": false,
+        "linux_only_release_allowed": false,
+        "unmatched_release_files_allowed": false
+      }
+    ],
+    "open_world_proof": {
+      "required_for_public_alpha": true,
+      "advisory_only_allowed": false,
+      "required_artifact_group": "open_world_proof"
+    }
+  },
+  "visual_acceptance": {
+    "tracked_actual_png_allowed": false,
+    "blocking_references": [
+      {
+        "id": "compositor_hazard_256",
+        "path": "tests/visual_baselines/composite_hazard_256x256.png",
+        "required": true
+      }
+    ],
+    "candidate_rules": {
+      "capture_count_min": 1,
+      "capture_reference_match_count_must_equal_capture_count": true,
+      "capture_ssim_min_must_be_non_null": true,
+      "capture_psnr_min_must_be_non_null": true
+    }
+  },
+  "benchmark_acceptance": {
+    "authoritative_public_snapshot": false,
+    "candidate_required_lanes": [
+      "static_baseline",
+      "streaming_corridor",
+      "city_flyover",
+      "instance_storm",
+      "integrity_sentinel",
+      "parity_fidelity"
+    ],
+    "required_fields_non_null": [
+      "lane_id",
+      "commit_sha",
+      "godot_binary_commit",
+      "godot_binary_mtime_utc",
+      "gpu",
+      "driver",
+      "os_build",
+      "render_backend",
+      "avg_fps",
+      "p99_frame_ms",
+      "route_uid",
+      "stage_statuses",
+      "fallback_counters",
+      "queue_pressure",
+      "proof_status"
+    ],
+    "timeout_report_policy": "fail",
+    "gpu_timing_policy": "positive_gpu_time_only_when_gpu_timing_available_otherwise_explicitly_unavailable",
+    "fallback_route_policy": "fail unless lane explicitly allows exact fallback route"
+  },
+  "artifact_requirements": {
+    "required_groups": [
+      "linux_release_archive",
+      "windows_release_archive",
+      "runtime_validation_report",
+      "gpu_harness_report",
+      "production_evidence_summary",
+      "benchmark_suite_report",
+      "compatibility_source_snapshot",
+      "docs_release_acceptance_report",
+      "known_limitations_page",
+      "open_world_proof"
+    ],
+    "each_artifact_requires": ["path", "sha256", "godot_binary_commit", "godot_binary_mtime_utc"]
+  },
+  "references": [
+    "docs/reference/renderer-release-gates.md",
+    "docs/development/known-public-alpha-limitations.md",
+    "docs/performance/index.md",
+    "docs/assets/data/benchmark_latest.json",
+    "tests/visual_baselines/README.md",
+    "tests/runtime/runtime_scenarios.json"
+  ]
+}

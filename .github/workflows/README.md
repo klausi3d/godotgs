@@ -30,6 +30,20 @@ GitHub's Actions tab can also show historical workflow names from past runs, dis
 | `release_builds.yml` | `release_name` | optional string |
 | `release_builds.yml` | `keep_nightlies` | integer string |
 
+## Renderer Release Gate Contract
+
+The renderer/public-alpha evidence policy is maintained in
+`docs/reference/renderer_release_gate_manifest.json` and validated with:
+
+```bash
+python tests/ci/check_renderer_release_gates.py --mode contract
+```
+
+The contract check is deterministic and GPU-free. Public-alpha candidate mode
+adds the evidence bundle and live issue-label snapshot so P0, release-blocker,
+and alpha-relevant P1 issues cannot be bypassed by release notes or manual
+workflow choices.
+
 ## Scheduled Triggers
 
 | Workflow | Schedule (UTC) | Behavior |
