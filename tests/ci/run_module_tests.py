@@ -22,6 +22,7 @@ MODULE_SOURCE_DIR = ROOT / "modules" / "gaussian_splatting"
 RENDERER_DIR = MODULE_SOURCE_DIR / "renderer"
 BUILD_METADATA_GUARD_SCRIPT = MODULE_SOURCE_DIR / "tests" / "check_build_metadata_consistency.py"
 SHADER_DEPENDENCY_GUARD_SCRIPT = MODULE_SOURCE_DIR / "tests" / "check_shader_dependency_contract.py"
+PROJECT_SETTINGS_MANIFEST_GUARD_SCRIPT = MODULE_SOURCE_DIR / "tests" / "check_project_settings_manifest.py"
 GAUSSIAN_LAYOUT_GUARD_SCRIPT = ROOT / "tests" / "ci" / "check_gaussian_layout_sync.py"
 HISTORY_ARTIFACT_AUDIT_SCRIPT = ROOT / "scripts" / "repo" / "history_artifact_audit.py"
 SYNTHETIC_ASSET_PREP_SCRIPT = ROOT / "tests" / "runtime" / "prepare_synthetic_assets.py"
@@ -498,6 +499,23 @@ def _run_shader_dependency_guard() -> tuple[bool, list[str]]:
     return True, output_lines
 
 
+def _run_project_settings_manifest_guard() -> tuple[bool, list[str]]:
+    if not PROJECT_SETTINGS_MANIFEST_GUARD_SCRIPT.is_file():
+        return False, [
+            f"Missing ProjectSettings manifest guard script: {PROJECT_SETTINGS_MANIFEST_GUARD_SCRIPT.relative_to(ROOT)}"
+        ]
+
+    code, out, err = _run_command([sys.executable, str(PROJECT_SETTINGS_MANIFEST_GUARD_SCRIPT)])
+    output_lines = [line for line in (out + err).splitlines() if line.strip()]
+
+    if code != 0:
+        if not output_lines:
+            output_lines = [f"ProjectSettings manifest guard failed with exit code {code}."]
+        return False, output_lines
+
+    return True, output_lines
+
+
 def _run_gaussian_layout_guard() -> tuple[bool, list[str]]:
     if not GAUSSIAN_LAYOUT_GUARD_SCRIPT.is_file():
         return False, [
@@ -814,6 +832,16 @@ def main() -> int:
         return 1
     if not shader_dependency_messages:
         print("[module-tests] Shader dependency guard passed.")
+
+    settings_manifest_ok, settings_manifest_messages = _run_project_settings_manifest_guard()
+    for message in settings_manifest_messages:
+        prefix = "[module-tests] " if not message.startswith("[module-tests]") else ""
+        print(f"{prefix}{message}")
+    if not settings_manifest_ok:
+        print("[module-tests] ProjectSettings manifest guard failed.")
+        return 1
+    if not settings_manifest_messages:
+        print("[module-tests] ProjectSettings manifest guard passed.")
 
     gaussian_layout_ok, gaussian_layout_messages = _run_gaussian_layout_guard()
     for message in gaussian_layout_messages:
