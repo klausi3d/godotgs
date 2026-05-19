@@ -1057,7 +1057,12 @@ void GaussianSplatAsset::set_import_metadata(const Dictionary &p_metadata) {
     emit_changed();
 }
 
+// Invariant: every bound setter below that mutates `import_metadata` acquires
+// `populate_mutex` on entry. A concurrent prefetch_parallel() worker reads
+// metadata under the same lock in populate_gaussian_data(), so writers must
+// hold the lock or snapshot before dispatch.
 void GaussianSplatAsset::set_import_quality_preset(const String &p_preset) {
+    MutexLock cache_lock(populate_mutex);
     String lower = p_preset.to_lower();
     if (import_quality_preset == lower) {
         return;
@@ -1068,6 +1073,7 @@ void GaussianSplatAsset::set_import_quality_preset(const String &p_preset) {
 }
 
 void GaussianSplatAsset::set_compression_flags(uint32_t p_flags) {
+    MutexLock cache_lock(populate_mutex);
     if (compression_flags == p_flags) {
         return;
     }
@@ -1077,6 +1083,7 @@ void GaussianSplatAsset::set_compression_flags(uint32_t p_flags) {
 }
 
 void GaussianSplatAsset::set_preview_image(const Ref<Image> &p_image) {
+    MutexLock cache_lock(populate_mutex);
     if (preview_image == p_image) {
         return;
     }
@@ -1119,6 +1126,7 @@ void GaussianSplatAsset::set_thumbnail(const Ref<Texture2D> &p_thumbnail) {
 }
 
 void GaussianSplatAsset::set_source_path(const String &p_path) {
+    MutexLock cache_lock(populate_mutex);
     if (import_metadata.has(StringName("source_path")) && (String)import_metadata[StringName("source_path")] == p_path) {
         return;
     }
@@ -1227,19 +1235,21 @@ Error GaussianSplatAsset::load_from_file(const String &p_path) {
 		return populate_err;
 	}
 
-	// Preserve the authoritative GaussianData loaded from disk so later bootstrap
-	// does not reconstruct it from the asset arrays. Lock pairs with get_gaussian_data().
+	const double total_load_ms = _elapsed_msec(total_start_usec);
+	// Preserve the authoritative GaussianData loaded from disk and stamp the
+	// runtime-load metadata under the same lock so a concurrent prefetch
+	// worker cannot observe a partial metadata write paired with the cached
+	// GaussianData. Lock pairs with get_gaussian_data() and
+	// populate_gaussian_data().
 	{
 		MutexLock cache_lock(populate_mutex);
 		gaussian_data_cache = gaussian_data;
+		import_metadata[StringName("runtime_load_timing")] = _build_runtime_load_timing(
+				source_stage, cache_hit, source_stage_ms, materialize_ms, total_load_ms, source_stats);
+		import_metadata[StringName("runtime_load_source")] = source_stage;
+		import_metadata[StringName("runtime_load_cache_hit")] = cache_hit;
+		import_metadata[StringName("runtime_load_source_path")] = p_path;
 	}
-
-	const double total_load_ms = _elapsed_msec(total_start_usec);
-	import_metadata[StringName("runtime_load_timing")] = _build_runtime_load_timing(
-			source_stage, cache_hit, source_stage_ms, materialize_ms, total_load_ms, source_stats);
-	import_metadata[StringName("runtime_load_source")] = source_stage;
-	import_metadata[StringName("runtime_load_cache_hit")] = cache_hit;
-	import_metadata[StringName("runtime_load_source_path")] = p_path;
 
 	GS_LOG_STREAMING_INFO(vformat(
 			"[LoadTiming][GaussianSplatAsset] file=%s path=%s splats=%d source_stage=%s cache_hit=%s source_ms=%.2f materialize_ms=%.2f total_ms=%.2f",
