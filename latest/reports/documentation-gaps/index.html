@@ -3468,17 +3468,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingcoregaussian_splat_assetcpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/core/gaussian_splat_asset.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingasset_managementasset_dependency_managercpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3974,6 +3963,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingcoregaussian_splat_assetcpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/core/gaussian_splat_asset.cpp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingiogaussian_splat_world_iocpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4407,17 +4407,6 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/renderer/sh_config.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingcoregaussian_splat_asseth" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/core/gaussian_splat_asset.h
       
     </span>
   </a>
@@ -4946,6 +4935,17 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/interfaces/output_compositor.h
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingcoregaussian_splat_asseth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/core/gaussian_splat_asset.h
       
     </span>
   </a>
@@ -8350,76 +8350,6 @@
 <li>line 257: func _compute_luma_buffer(img: Image) -&gt; PackedFloat32Array:...</li>
 <li>line 270: func _get_ssim_kernel() -&gt; PackedFloat32Array:...</li>
 </ul>
-<h2 id="modulesgaussian_splattingcoregaussian_splat_assetcpp">modules/gaussian_splatting/core/gaussian_splat_asset.cpp<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_splat_assetcpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 19: static double _elapsed_msec(uint64_t p_start_usec) {...</li>
-<li>line 24: static GaussianDCEncoding _resolve_dc_encoding_from_metadata...</li>
-<li>line 56: void GaussianSplatAsset::_bind_methods() {...</li>
-<li>line 161: bool GaussianSplatAsset::_set(const StringName &amp;p_name, cons...</li>
-<li>line 192: bool GaussianSplatAsset::_get(const StringName &amp;p_name, Vari...</li>
-<li>line 201: void GaussianSplatAsset::_get_property_list(List&lt;PropertyInf...</li>
-<li>line 213: void GaussianSplatAsset::_invalidate_gaussian_data_cache() {...</li>
-<li>line 217: bool GaussianSplatAsset::_runtime_mutation_permitted(const c...</li>
-<li>line 230: Error GaussianSplatAsset::copy_from(const Ref<resource> &amp;p_r...</resource></li>
-<li>line 250: void GaussianSplatAsset::_invalidate_bounds_metadata() {...</li>
-<li>line 255: void GaussianSplatAsset::set_asset_type(AssetType p_type) {...</li>
-<li>line 262: void GaussianSplatAsset::set_splat_count(uint32_t p_count) {...</li>
-<li>line 282: PackedFloat32Array GaussianSplatAsset::get_positions() const...</li>
-<li>line 289: PackedColorArray GaussianSplatAsset::get_colors() const {...</li>
-<li>line 296: PackedFloat32Array GaussianSplatAsset::get_scales() const {...</li>
-<li>line 303: PackedFloat32Array GaussianSplatAsset::get_rotations() const...</li>
-<li>line 310: PackedFloat32Array GaussianSplatAsset::get_sh_dc_coefficient...</li>
-<li>line 317: PackedFloat32Array GaussianSplatAsset::get_sh_first_order_co...</li>
-<li>line 324: PackedFloat32Array GaussianSplatAsset::get_sh_high_order_coe...</li>
-<li>line 331: PackedFloat32Array GaussianSplatAsset::get_opacity_logits() ...</li>
-<li>line 338: PackedInt32Array GaussianSplatAsset::get_palette_ids() const...</li>
-<li>line 345: PackedInt32Array GaussianSplatAsset::get_painterly_flags() c...</li>
-<li>line 352: PackedInt32Array GaussianSplatAsset::get_brush_override_ids(...</li>
-<li>line 359: PackedFloat32Array GaussianSplatAsset::get_normals() const {...</li>
-<li>line 366: PackedFloat32Array GaussianSplatAsset::get_brush_axes() cons...</li>
-<li>line 373: PackedFloat32Array GaussianSplatAsset::get_stroke_ages() con...</li>
-<li>line 386: PackedVector3Array GaussianSplatAsset::get_position_vectors(...</li>
-<li>line 418: PackedVector3Array GaussianSplatAsset::get_scale_vectors() c...</li>
-<li>line 450: TypedArray<quaternion> GaussianSplatAsset::get_rotation_quat...</quaternion></li>
-<li>line 480: PackedFloat32Array GaussianSplatAsset::get_spherical_harmoni...</li>
-<li>line 560: PackedFloat32Array GaussianSplatAsset::get_opacities() const...</li>
-<li>line 590: PackedInt32Array GaussianSplatAsset::get_palette_ids_buffer(...</li>
-<li>line 609: PackedInt32Array GaussianSplatAsset::get_painterly_flags_buf...</li>
-<li>line 628: PackedInt32Array GaussianSplatAsset::get_brush_override_ids_...</li>
-<li>line 632: PackedVector3Array GaussianSplatAsset::get_normal_vectors() ...</li>
-<li>line 655: PackedVector2Array GaussianSplatAsset::get_brush_axes_vector...</li>
-<li>line 678: PackedFloat32Array GaussianSplatAsset::get_stroke_ages_buffe...</li>
-<li>line 696: void GaussianSplatAsset::set_positions(const PackedFloat32Ar...</li>
-<li>line 713: void GaussianSplatAsset::set_colors(const PackedColorArray &amp;...</li>
-<li>line 728: void GaussianSplatAsset::set_scales(const PackedFloat32Array...</li>
-<li>line 744: void GaussianSplatAsset::set_rotations(const PackedFloat32Ar...</li>
-<li>line 760: void GaussianSplatAsset::set_sh_dc_coefficients(const Packed...</li>
-<li>line 775: void GaussianSplatAsset::set_sh_first_order_coefficients(con...</li>
-<li>line 791: void GaussianSplatAsset::set_sh_high_order_coefficients(cons...</li>
-<li>line 807: void GaussianSplatAsset::set_opacity_logits(const PackedFloa...</li>
-<li>line 821: void GaussianSplatAsset::set_palette_ids(const PackedInt32Ar...</li>
-<li>line 835: void GaussianSplatAsset::set_painterly_flags(const PackedInt...</li>
-<li>line 851: void GaussianSplatAsset::set_brush_override_ids(const Packed...</li>
-<li>line 856: void GaussianSplatAsset::set_normals(const PackedFloat32Arra...</li>
-<li>line 870: void GaussianSplatAsset::set_brush_axes(const PackedFloat32A...</li>
-<li>line 884: void GaussianSplatAsset::set_stroke_ages(const PackedFloat32...</li>
-<li>line 898: void GaussianSplatAsset::set_sh_component_terms(uint32_t p_f...</li>
-<li>line 914: void GaussianSplatAsset::_recalculate_sh_component_counts() ...</li>
-<li>line 936: void GaussianSplatAsset::_ensure_buffer_sizes() {...</li>
-<li>line 1007: void GaussianSplatAsset::set_import_metadata(const Dictionar...</li>
-<li>line 1016: void GaussianSplatAsset::set_import_quality_preset(const Str...</li>
-<li>line 1026: void GaussianSplatAsset::set_compression_flags(uint32_t p_fl...</li>
-<li>line 1035: void GaussianSplatAsset::set_preview_image(const Ref<a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="" data-desc-position="bottom"><img></a> ...</li>
-<li>line 1046: Ref<texture2d> GaussianSplatAsset::get_preview_texture() con...</texture2d></li>
-<li>line 1065: void GaussianSplatAsset::set_thumbnail(const Ref<texture2d> ...</texture2d></li>
-<li>line 1077: void GaussianSplatAsset::set_source_path(const String &amp;p_pat...</li>
-<li>line 1085: String GaussianSplatAsset::get_source_path() const {...</li>
-<li>line 1092: Error GaussianSplatAsset::load_from_file(const String &amp;p_pat...</li>
-<li>line 1210: Error GaussianSplatAsset::save_to_file(const String &amp;p_path)...</li>
-<li>line 1218: Ref&lt;::GaussianData&gt; GaussianSplatAsset::get_gaussian_data() ...</li>
-<li>line 1248: bool GaussianSplatAsset::populate_gaussian_data(Ref&lt;::Gaussi...</li>
-<li>line 1284: Error GaussianSplatAsset::populate_from_gaussian_data(const ...</li>
-</ul>
 <h2 id="modulesgaussian_splattingasset_managementasset_dependency_managercpp">modules/gaussian_splatting/asset_management/asset_dependency_manager.cpp<a class="headerlink" href="#modulesgaussian_splattingasset_managementasset_dependency_managercpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 15: static bool asset_id_from_string_checked(const String &amp;p_ass...</li>
@@ -9463,6 +9393,80 @@
 <li>line 7: void TileRenderer::TileAsyncReadback::on_overflow_flag_readb...</li>
 <li>line 26: void TileRenderer::TileAsyncReadback::on_tile_counts_readbac...</li>
 </ul>
+<h2 id="modulesgaussian_splattingcoregaussian_splat_assetcpp">modules/gaussian_splatting/core/gaussian_splat_asset.cpp<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_splat_assetcpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 21: static double _elapsed_msec(uint64_t p_start_usec) {...</li>
+<li>line 26: static GaussianDCEncoding _resolve_dc_encoding_from_metadata...</li>
+<li>line 58: void GaussianSplatAsset::_bind_methods() {...</li>
+<li>line 164: bool GaussianSplatAsset::_set(const StringName &amp;p_name, cons...</li>
+<li>line 195: bool GaussianSplatAsset::_get(const StringName &amp;p_name, Vari...</li>
+<li>line 204: void GaussianSplatAsset::_get_property_list(List&lt;PropertyInf...</li>
+<li>line 216: void GaussianSplatAsset::_invalidate_gaussian_data_cache() {...</li>
+<li>line 225: bool GaussianSplatAsset::_runtime_mutation_permitted(const c...</li>
+<li>line 238: Error GaussianSplatAsset::copy_from(const Ref<resource> &amp;p_r...</resource></li>
+<li>line 263: void GaussianSplatAsset::_invalidate_bounds_metadata() {...</li>
+<li>line 268: void GaussianSplatAsset::set_asset_type(AssetType p_type) {...</li>
+<li>line 275: void GaussianSplatAsset::set_splat_count(uint32_t p_count) {...</li>
+<li>line 292: uint32_t GaussianSplatAsset::get_splat_count() const {...</li>
+<li>line 306: PackedFloat32Array GaussianSplatAsset::get_positions() const...</li>
+<li>line 313: PackedColorArray GaussianSplatAsset::get_colors() const {...</li>
+<li>line 320: PackedFloat32Array GaussianSplatAsset::get_scales() const {...</li>
+<li>line 327: PackedFloat32Array GaussianSplatAsset::get_rotations() const...</li>
+<li>line 334: PackedFloat32Array GaussianSplatAsset::get_sh_dc_coefficient...</li>
+<li>line 341: PackedFloat32Array GaussianSplatAsset::get_sh_first_order_co...</li>
+<li>line 348: PackedFloat32Array GaussianSplatAsset::get_sh_high_order_coe...</li>
+<li>line 355: PackedFloat32Array GaussianSplatAsset::get_opacity_logits() ...</li>
+<li>line 362: PackedInt32Array GaussianSplatAsset::get_palette_ids() const...</li>
+<li>line 369: PackedInt32Array GaussianSplatAsset::get_painterly_flags() c...</li>
+<li>line 376: PackedInt32Array GaussianSplatAsset::get_brush_override_ids(...</li>
+<li>line 383: PackedFloat32Array GaussianSplatAsset::get_normals() const {...</li>
+<li>line 390: PackedFloat32Array GaussianSplatAsset::get_brush_axes() cons...</li>
+<li>line 397: PackedFloat32Array GaussianSplatAsset::get_stroke_ages() con...</li>
+<li>line 410: PackedVector3Array GaussianSplatAsset::get_position_vectors(...</li>
+<li>line 442: PackedVector3Array GaussianSplatAsset::get_scale_vectors() c...</li>
+<li>line 474: TypedArray<quaternion> GaussianSplatAsset::get_rotation_quat...</quaternion></li>
+<li>line 504: PackedFloat32Array GaussianSplatAsset::get_spherical_harmoni...</li>
+<li>line 584: PackedFloat32Array GaussianSplatAsset::get_opacities() const...</li>
+<li>line 614: PackedInt32Array GaussianSplatAsset::get_palette_ids_buffer(...</li>
+<li>line 633: PackedInt32Array GaussianSplatAsset::get_painterly_flags_buf...</li>
+<li>line 652: PackedInt32Array GaussianSplatAsset::get_brush_override_ids_...</li>
+<li>line 656: PackedVector3Array GaussianSplatAsset::get_normal_vectors() ...</li>
+<li>line 679: PackedVector2Array GaussianSplatAsset::get_brush_axes_vector...</li>
+<li>line 702: PackedFloat32Array GaussianSplatAsset::get_stroke_ages_buffe...</li>
+<li>line 720: void GaussianSplatAsset::set_positions(const PackedFloat32Ar...</li>
+<li>line 738: void GaussianSplatAsset::set_colors(const PackedColorArray &amp;...</li>
+<li>line 754: void GaussianSplatAsset::set_scales(const PackedFloat32Array...</li>
+<li>line 771: void GaussianSplatAsset::set_rotations(const PackedFloat32Ar...</li>
+<li>line 788: void GaussianSplatAsset::set_sh_dc_coefficients(const Packed...</li>
+<li>line 804: void GaussianSplatAsset::set_sh_first_order_coefficients(con...</li>
+<li>line 821: void GaussianSplatAsset::set_sh_high_order_coefficients(cons...</li>
+<li>line 838: void GaussianSplatAsset::set_opacity_logits(const PackedFloa...</li>
+<li>line 853: void GaussianSplatAsset::set_palette_ids(const PackedInt32Ar...</li>
+<li>line 868: void GaussianSplatAsset::set_painterly_flags(const PackedInt...</li>
+<li>line 885: void GaussianSplatAsset::set_brush_override_ids(const Packed...</li>
+<li>line 890: void GaussianSplatAsset::set_normals(const PackedFloat32Arra...</li>
+<li>line 905: void GaussianSplatAsset::set_brush_axes(const PackedFloat32A...</li>
+<li>line 920: void GaussianSplatAsset::set_stroke_ages(const PackedFloat32...</li>
+<li>line 935: void GaussianSplatAsset::set_sh_component_terms(uint32_t p_f...</li>
+<li>line 952: void GaussianSplatAsset::_recalculate_sh_component_counts() ...</li>
+<li>line 974: void GaussianSplatAsset::_ensure_buffer_sizes() {...</li>
+<li>line 1045: void GaussianSplatAsset::set_import_metadata(const Dictionar...</li>
+<li>line 1064: void GaussianSplatAsset::set_import_quality_preset(const Str...</li>
+<li>line 1075: void GaussianSplatAsset::set_compression_flags(uint32_t p_fl...</li>
+<li>line 1085: void GaussianSplatAsset::set_preview_image(const Ref<a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="" data-desc-position="bottom"><img></a> ...</li>
+<li>line 1097: Ref<texture2d> GaussianSplatAsset::get_preview_texture() con...</texture2d></li>
+<li>line 1116: void GaussianSplatAsset::set_thumbnail(const Ref<texture2d> ...</texture2d></li>
+<li>line 1128: void GaussianSplatAsset::set_source_path(const String &amp;p_pat...</li>
+<li>line 1137: String GaussianSplatAsset::get_source_path() const {...</li>
+<li>line 1144: Error GaussianSplatAsset::load_from_file(const String &amp;p_pat...</li>
+<li>line 1267: Error GaussianSplatAsset::save_to_file(const String &amp;p_path)...</li>
+<li>line 1281: Ref&lt;::GaussianData&gt; GaussianSplatAsset::get_gaussian_data() ...</li>
+<li>line 1313: bool GaussianSplatAsset::has_gaussian_data_cached() const {...</li>
+<li>line 1325: void GaussianSplatAsset::prefetch_gaussian_data_parallel(con...</li>
+<li>line 1372: void GaussianSplatAsset::prefetch_parallel(const TypedArray&lt;...</li>
+<li>line 1384: bool GaussianSplatAsset::populate_gaussian_data(Ref&lt;::Gaussi...</li>
+<li>line 1424: Error GaussianSplatAsset::populate_from_gaussian_data(const ...</li>
+</ul>
 <h2 id="modulesgaussian_splattingiogaussian_splat_world_iocpp">modules/gaussian_splatting/io/gaussian_splat_world_io.cpp<a class="headerlink" href="#modulesgaussian_splattingiogaussian_splat_world_iocpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 38: static bool fits_within(uint64_t p_offset, uint64_t p_size, ...</li>
@@ -10146,20 +10150,6 @@
 <li>line 125: Dictionary SHConfig::get_effective_config_snapshot() const {...</li>
 <li>line 136: void initialize_sh_config() {...</li>
 </ul>
-<h2 id="modulesgaussian_splattingcoregaussian_splat_asseth">modules/gaussian_splatting/core/gaussian_splat_asset.h<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_splat_asseth" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 94: bool is_loaded() const { return splat_count &gt; 0; }...</li>
-<li>line 106: AssetType get_asset_type() const { return asset_type; }...</li>
-<li>line 109: uint32_t get_splat_count() const { return splat_count; }...</li>
-<li>line 137: uint32_t get_sh_first_order_terms() const { return sh_first_...</li>
-<li>line 138: uint32_t get_sh_high_order_terms() const { return sh_high_or...</li>
-<li>line 157: static uint32_t get_instance_count() { return instance_count...</li>
-<li>line 160: Dictionary get_import_metadata() const { return import_metad...</li>
-<li>line 163: String get_import_quality_preset() const { return import_qua...</li>
-<li>line 166: uint32_t get_compression_flags() const { return compression_...</li>
-<li>line 169: Ref<a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="" data-desc-position="bottom"><img></a> get_preview_image() const { return preview_image;...</li>
-<li>line 173: Ref<texture2d> get_thumbnail() const { return get_preview_te...</texture2d></li>
-</ul>
 <h2 id="modulesgaussian_splattingteststest_memory_leak_detectionh">modules/gaussian_splatting/tests/test_memory_leak_detection.h<a class="headerlink" href="#modulesgaussian_splattingteststest_memory_leak_detectionh" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 40: Error initialize(RenderingDevice *p_rd) {...</li>
@@ -10609,6 +10599,19 @@
 <li>line 145: uint32_t get_viewport_blit_scratch_count() const { return vi...</li>
 <li>line 162: LastCompositeStats get_last_composite_stats() const { return...</li>
 </ul>
+<h2 id="modulesgaussian_splattingcoregaussian_splat_asseth">modules/gaussian_splatting/core/gaussian_splat_asset.h<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_splat_asseth" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 101: bool is_loaded() const { return splat_count &gt; 0; }...</li>
+<li>line 113: AssetType get_asset_type() const { return asset_type; }...</li>
+<li>line 147: uint32_t get_sh_first_order_terms() const { return sh_first_...</li>
+<li>line 148: uint32_t get_sh_high_order_terms() const { return sh_high_or...</li>
+<li>line 167: static uint32_t get_instance_count() { return instance_count...</li>
+<li>line 170: Dictionary get_import_metadata() const { return import_metad...</li>
+<li>line 173: String get_import_quality_preset() const { return import_qua...</li>
+<li>line 176: uint32_t get_compression_flags() const { return compression_...</li>
+<li>line 179: Ref<a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="" data-desc-position="bottom"><img></a> get_preview_image() const { return preview_image;...</li>
+<li>line 183: Ref<texture2d> get_thumbnail() const { return get_preview_te...</texture2d></li>
+</ul>
 <h2 id="modulesgaussian_splattingrenderergpu_performance_monitorh">modules/gaussian_splatting/renderer/gpu_performance_monitor.h<a class="headerlink" href="#modulesgaussian_splattingrenderergpu_performance_monitorh" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 24: bool poll_timeline_value(RID p_timeline_semaphore, uint64_t ...</li>
@@ -10937,7 +10940,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 19, 2026 06:50:19 UTC">May 19, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 19, 2026 11:08:09 UTC">May 19, 2026</span>
   </span>
 
     
