@@ -18,6 +18,7 @@
 #include "test_data_authority_hardening.h"
 #include "test_gpu_streaming.h"
 #include "test_gpu_sorting.h"
+#include "test_gpu_buffer_manager_lifetime.h"
 #include "test_asset_dependency_manager.h"
 #include "test_batched_async_readback.h"
 #include "test_render_device_manager_ownership.h"

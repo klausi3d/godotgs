@@ -125,20 +125,46 @@ Error GPUBufferManager::_create_buffer_set(BufferSet &r_set, uint32_t p_gaussian
     ERR_FAIL_NULL_V(device, ERR_CANT_CREATE);
 
     Vector<uint8_t> empty_data;
+    r_set.reset();
+    r_set.device = device;
+    auto rollback_set = [&]() {
+        if (r_set.gaussian_buffer.is_valid()) {
+            device->free(r_set.gaussian_buffer);
+        }
+        if (r_set.sort_key_buffer.is_valid()) {
+            device->free(r_set.sort_key_buffer);
+        }
+        if (r_set.sorted_indices_buffer.is_valid()) {
+            device->free(r_set.sorted_indices_buffer);
+        }
+        if (r_set.fence.is_valid()) {
+            device->free(r_set.fence);
+        }
+        r_set.reset();
+    };
 
     empty_data.resize(p_gaussian_size);
     r_set.gaussian_buffer = device->storage_buffer_create(p_gaussian_size, empty_data);
-    ERR_FAIL_COND_V(!r_set.gaussian_buffer.is_valid(), ERR_CANT_CREATE);
+    if (!r_set.gaussian_buffer.is_valid()) {
+        rollback_set();
+        return ERR_CANT_CREATE;
+    }
     device->set_resource_name(r_set.gaussian_buffer, "GS_GPUBufferManager_GaussianBuffer");
 
     empty_data.resize(p_sort_key_size);
     r_set.sort_key_buffer = device->storage_buffer_create(p_sort_key_size, empty_data);
-    ERR_FAIL_COND_V(!r_set.sort_key_buffer.is_valid(), ERR_CANT_CREATE);
+    if (!r_set.sort_key_buffer.is_valid()) {
+        rollback_set();
+        return ERR_CANT_CREATE;
+    }
     device->set_resource_name(r_set.sort_key_buffer, "GS_GPUBufferManager_SortKeyBuffer");
 
     empty_data.resize(p_index_size);
     r_set.sorted_indices_buffer = device->storage_buffer_create(p_index_size, empty_data);
-    ERR_FAIL_COND_V(!r_set.sorted_indices_buffer.is_valid(), ERR_CANT_CREATE);
+    if (!r_set.sorted_indices_buffer.is_valid()) {
+        rollback_set();
+        return ERR_CANT_CREATE;
+    }
     device->set_resource_name(r_set.sorted_indices_buffer, "GS_GPUBufferManager_SortedIndicesBuffer");
 
     r_set.fence = RID();
@@ -152,9 +178,6 @@ Error GPUBufferManager::_create_buffer_set(BufferSet &r_set, uint32_t p_gaussian
     r_set.debug_cpu_writing = false;
     r_set.debug_gpu_reading = false;
 #endif
-
-    r_set.device = device;
-
     return OK;
 }
 
@@ -211,14 +234,25 @@ Error GPUBufferManager::create_buffers() {
 
     Vector<uint8_t> uniform_data;
     uniform_data.resize(uniform_buffer_size);
+    Error uniform_error = OK;
     {
         GaussianSplatManager::ScopedSubmissionLock submission_lock;
         RenderingDevice *device = _acquire_submission_device(rd, submission_lock);
-        ERR_FAIL_NULL_V(device, ERR_CANT_CREATE);
-        uniform_buffer = device->uniform_buffer_create(uniform_buffer_size, uniform_data);
-        ERR_FAIL_COND_V(!uniform_buffer.is_valid(), ERR_CANT_CREATE);
-        device->set_resource_name(uniform_buffer, "GS_GPUBufferManager_UniformBuffer");
-        uniform_buffer_device = device;
+        if (!device) {
+            uniform_error = ERR_CANT_CREATE;
+        } else {
+            uniform_buffer = device->uniform_buffer_create(uniform_buffer_size, uniform_data);
+            if (!uniform_buffer.is_valid()) {
+                uniform_error = ERR_CANT_CREATE;
+            } else {
+                device->set_resource_name(uniform_buffer, "GS_GPUBufferManager_UniformBuffer");
+                uniform_buffer_device = device;
+            }
+        }
+    }
+    if (uniform_error != OK) {
+        cleanup_buffers();
+        return uniform_error;
     }
 
     buffers_created = true;
@@ -228,6 +262,53 @@ Error GPUBufferManager::create_buffers() {
 
     return OK;
 }
+
+bool GPUBufferManager::_has_allocated_resources() const {
+    if (uniform_buffer.is_valid()) {
+        return true;
+    }
+    for (uint32_t i = 0; i < BUFFER_COUNT; i++) {
+        const BufferSet &set = buffer_sets[i];
+        if (set.gaussian_buffer.is_valid() || set.sort_key_buffer.is_valid() ||
+                set.sorted_indices_buffer.is_valid() || set.fence.is_valid()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+#ifdef TESTS_ENABLED
+bool GPUBufferManager::test_simulate_partial_allocation_cleanup(RenderingDevice *p_test_rd) {
+    ERR_FAIL_NULL_V(p_test_rd, false);
+
+    cleanup_buffers();
+    rd = p_test_rd;
+    buffers_created = false;
+
+    Vector<uint8_t> payload;
+    payload.resize(64);
+    BufferSet &set = buffer_sets[0];
+    set.reset();
+    set.device = p_test_rd;
+    set.gaussian_buffer = p_test_rd->storage_buffer_create(payload.size(), payload);
+    ERR_FAIL_COND_V(!set.gaussian_buffer.is_valid(), false);
+    p_test_rd->set_resource_name(set.gaussian_buffer, "GS_GPUBufferManager_TestPartialAllocation");
+
+    RID partial_buffer = set.gaussian_buffer;
+    cleanup_buffers();
+
+    Vector<uint8_t> update_bytes;
+    update_bytes.resize(4);
+    const bool partial_buffer_still_valid =
+            p_test_rd->buffer_update(partial_buffer, 0, update_bytes.size(), update_bytes.ptr()) == OK;
+    if (partial_buffer_still_valid) {
+        p_test_rd->free(partial_buffer);
+        return false;
+    }
+
+    return !_has_allocated_resources();
+}
+#endif
 
 void GPUBufferManager::_mark_buffer_ready(uint32_t p_index) {
     BufferSet &set = _get_buffer_set(p_index);
@@ -375,13 +456,20 @@ bool GPUBufferManager::_begin_frame_internal(bool p_block) {
 }
 
 void GPUBufferManager::cleanup_buffers() {
-    if (!rd || !buffers_created) {
+    if (!_has_allocated_resources()) {
+        buffers_created = false;
         _reset_state(true);
         return;
     }
 
-    _flush_pending_submission(true);
-    gs_device_utils::safe_submit_and_sync(rd);
+    if (rd) {
+        _flush_pending_submission(true);
+        gs_device_utils::safe_submit_and_sync(rd);
+    } else {
+        pending_submission_device = nullptr;
+        pending_submission_needs_submit = false;
+        pending_submission_requires_sync = false;
+    }
 
     for (uint32_t i = 0; i < BUFFER_COUNT; i++) {
         _destroy_buffer_set(buffer_sets[i]);
