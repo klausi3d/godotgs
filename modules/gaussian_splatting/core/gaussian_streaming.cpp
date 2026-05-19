@@ -2119,8 +2119,14 @@ void GaussianStreamingSystem::_build_chunks_for_data(const Ref<GaussianData> &p_
     // Fast path: re-hydrate chunk bookkeeping from import-time bake. Avoids
     // re-walking every splat (the dominant per-asset register cost). Schema
     // mismatch (different CHUNK_SIZE / corrupt blob) falls through to the
-    // full rebuild below.
-    if (p_data->has_baked_streaming_chunks() && p_data->get_baked_chunk_size() == CHUNK_SIZE) {
+    // full rebuild below. When this build owns the primary spatial remap we
+    // also require the bake to carry one; importers currently skip Morton
+    // sort, so without this gate primary datasets would silently fall back to
+    // contiguous chunks and lose culling/streaming locality.
+    const bool bake_usable_for_primary =
+            !build_primary_spatial || p_data->has_baked_primary_source_indices();
+    if (p_data->has_baked_streaming_chunks() && p_data->get_baked_chunk_size() == CHUNK_SIZE &&
+            bake_usable_for_primary) {
         if (_populate_chunks_from_bake(p_data, out_chunks, build_primary_spatial)) {
             if (build_primary_spatial) {
                 const PackedInt32Array &baked_primary = p_data->get_streaming_primary_source_indices_raw();

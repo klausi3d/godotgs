@@ -666,6 +666,14 @@ public:
     bool has_baked_streaming_chunks() const {
         return streaming_chunk_size_used > 0 && !streaming_chunk_records.is_empty();
     }
+    // True only when the baked primary-source remap is full-length and thus
+    // safe to adopt without losing tail splats. Importers that skip Morton
+    // sort leave this empty, in which case the fast path must defer to the
+    // full rebuild so callers requesting primary spatial still get one.
+    bool has_baked_primary_source_indices() const {
+        return !streaming_primary_source_indices.is_empty() &&
+                streaming_primary_source_indices.size() == int(gaussians.size());
+    }
     uint32_t get_baked_chunk_size() const { return streaming_chunk_size_used; }
     const PackedByteArray &get_streaming_chunk_records_raw() const { return streaming_chunk_records; }
     const PackedInt32Array &get_streaming_primary_source_indices_raw() const { return streaming_primary_source_indices; }
