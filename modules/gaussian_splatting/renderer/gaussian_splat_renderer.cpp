@@ -2281,11 +2281,13 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
         const String resident_rejection_reason =
                 vformat("%s_not_feasible:%s", backend_plan.resident_backend_reason, resident_attempt_reason);
         const String resident_rejection_route_uid = _resident_not_feasible_route_uid(resident_attempt_reason);
-        get_performance_state().metrics.cull_route_uid = resident_rejection_route_uid;
-        get_performance_state().metrics.cull_route_reason = String("resident_not_feasible_") + resident_attempt_reason;
         if (debug_state_orchestrator) {
             get_debug_state().route_uid = resident_rejection_route_uid;
         }
+        publish_route_skip_stage_metrics(resident_rejection_route_uid, InstanceBackendPolicy::RESIDENT,
+                String("resident_not_feasible_") + resident_attempt_reason,
+                "Cull skipped: resident route not feasible",
+                RenderFallbackReason::DATA_UNAVAILABLE);
         _set_instance_backend_diagnostics(InstanceBackendPolicy::RESIDENT,
                 resident_rejection_reason,
                 false,
@@ -2329,9 +2331,17 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
             }
             fallback_route_uid = debug_state.route_uid;
         }
+        if (fallback_route_uid.is_empty()) {
+            const char *state_token = backend_plan.streaming_ready ? "UNKNOWN" : "MISSING_STREAMING_SYSTEM";
+            fallback_route_uid = _streaming_not_ready_route_uid(state_token);
+        }
         const String &reason = backend_plan.streaming_ready
                 ? backend_plan.streaming_not_ready_fallback_reason
                 : backend_plan.streaming_unavailable_fallback_reason;
+        publish_route_skip_stage_metrics(fallback_route_uid, InstanceBackendPolicy::STREAMING,
+                _streaming_not_ready_reason_code(fallback_route_uid),
+                "Cull skipped: streaming path not ready",
+                RenderFallbackReason::STREAMING_DATA_UNAVAILABLE);
         _set_instance_backend_diagnostics(InstanceBackendPolicy::STREAMING, reason,
                 has_instance_pipeline_buffers(), "atlas_emulation");
         WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Streaming requested but not ready (route=%s); frame skipped to preserve single-route-per-frame contract.",
@@ -2683,6 +2693,35 @@ void GaussianSplatRenderer::clear_instance_pipeline_buffers() {
     instance_backend_policy = InstanceBackendPolicy::NONE;
     instance_contract_shape = "none";
     instance_contract_source_generation = 0;
+}
+
+void GaussianSplatRenderer::publish_route_skip_stage_metrics(const String &p_route_uid,
+        InstanceBackendPolicy p_backend_policy, const String &p_cull_route_reason,
+        const String &p_cull_stage_reason, RenderFallbackReason p_fallback_reason) {
+    get_debug_state().route_uid = p_route_uid;
+    get_performance_state().metrics.cull_route_uid = p_route_uid;
+    get_performance_state().metrics.cull_route_reason = p_cull_route_reason;
+    get_performance_state().metrics.raster_path = "skipped";
+    get_frame_state().visible_splat_count.store(0, std::memory_order_release);
+    get_frame_state().render_time_ms = 0.0f;
+    get_frame_state().sort_time_ms = 0.0f;
+    get_sorting_state().sorted_splat_count = 0;
+
+    const String cull_stage_reason = p_cull_stage_reason.is_empty()
+            ? String("Cull skipped: route not ready")
+            : p_cull_stage_reason;
+    const String sort_stage_reason = p_cull_stage_reason.is_empty()
+            ? String("Sort skipped: route not ready")
+            : vformat("Sort skipped: %s", p_cull_stage_reason);
+    StageMetrics metrics = RenderPipelineStages::make_route_skip_metrics(p_route_uid,
+            instance_backend_policy_to_string(p_backend_policy), cull_stage_reason, sort_stage_reason,
+            p_fallback_reason);
+    if (debug_state_orchestrator) {
+        debug_state_orchestrator->store_stage_metrics(metrics);
+    } else {
+        get_debug_state().last_stage_metrics = metrics;
+        get_debug_state().last_stage_metrics_valid = true;
+    }
 }
 
 bool GaussianSplatRenderer::update_instance_buffer(LocalVector<InstanceDataGPU> &p_instances, const PublishedInstanceAssetRemap &p_remap) {

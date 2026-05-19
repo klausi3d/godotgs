@@ -19,6 +19,7 @@ static void _reset_output_cache_after_readiness_failure(OutputCompositor::Output
 	r_output_cache.last_depth_test_honored = true;
 	r_output_cache.last_copy_degraded = false;
 	r_output_cache.last_copy_degradation_reason = String();
+	r_output_cache.last_strict_depth_contract_required = false;
 	r_output_cache.render_buffers_commit_pending = false;
 	r_output_cache.pending_render_buffers_size = Size2i();
 	r_output_cache.pending_painterly_commit = false;

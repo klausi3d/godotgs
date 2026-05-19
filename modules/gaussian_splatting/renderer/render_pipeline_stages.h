@@ -46,6 +46,12 @@ public:
 	static StageResult make_downstream_skip_result(const char *p_stage_name,
 			const StageResult &p_upstream_result, const String &p_reason,
 			GaussianSplatRenderer::RenderFallbackReason p_fallback_reason);
+	static StageMetrics make_route_skip_metrics(const String &p_route_uid,
+			const String &p_selected_backend, const String &p_cull_reason,
+			const String &p_sort_reason, GaussianSplatRenderer::RenderFallbackReason p_fallback_reason);
+		static StageResult make_composite_copy_result(bool p_copy_attempted, bool p_copy_success,
+				const String &p_copy_error, bool p_copy_degraded, const String &p_degradation_reason,
+				bool p_depth_test_honored, bool p_viewport_copy_success, bool p_strict_depth_contract_required);
 	static void finalize_stage_contracts(StageMetrics &r_metrics, const RenderFramePlan &p_frame_plan);
 	static RenderFramePlan build_frame_plan(const SceneState &p_scene_state,
 			const StreamingState &p_streaming_state,

@@ -221,6 +221,13 @@ void OutputCompositor::test_reset_last_viewport_copy_state() {
     output_cache.last_viewport_copy_success = false;
     output_cache.last_viewport_copy_source_size = Size2i();
     output_cache.last_viewport_copy_dest_size = Size2i();
+    output_cache.last_output_copy_attempted = false;
+    output_cache.last_output_copy_success = false;
+    output_cache.last_output_copy_error = String();
+    output_cache.last_depth_test_honored = true;
+    output_cache.last_copy_degraded = false;
+    output_cache.last_copy_degradation_reason = String();
+    output_cache.last_strict_depth_contract_required = false;
 }
 
 void OutputCompositor::set_device_manager(Ref<RenderDeviceManager> p_device_manager) {
@@ -1383,9 +1390,13 @@ void OutputCompositor::integrate_final_output(GaussianSplatRenderer *p_renderer,
 
     final_render_texture = p_final_output;
     output_cache.has_valid_render = p_final_output.is_valid();
+    output_cache.last_output_copy_attempted = false;
+    output_cache.last_output_copy_success = false;
+    output_cache.last_output_copy_error = String();
     output_cache.last_depth_test_honored = true;
     output_cache.last_copy_degraded = false;
     output_cache.last_copy_degradation_reason = String();
+    output_cache.last_strict_depth_contract_required = false;
 
     if (render_buffers_rd && p_final_output.is_valid()) {
         Size2i viewport_size = p_viewport_size;
@@ -1445,6 +1456,8 @@ void OutputCompositor::integrate_final_output(GaussianSplatRenderer *p_renderer,
 
         const bool scene_depth_test_requested = gs_get_composite_depth_test_enabled();
         const GSSceneCompositeDepthPolicy scene_depth_policy = gs_get_scene_composite_depth_policy();
+        output_cache.last_strict_depth_contract_required =
+                scene_depth_test_requested && scene_depth_policy == GS_SCENE_COMPOSITE_DEPTH_POLICY_STRICT;
 
         RID scene_depth = render_buffers_rd ? render_buffers_rd->get_depth_texture() : RID();
         const bool has_source_depth = p_cached_depth.is_valid();
@@ -1457,6 +1470,9 @@ void OutputCompositor::integrate_final_output(GaussianSplatRenderer *p_renderer,
         if (!composited && (render_target_framebuffer.is_valid() || composite_target.is_valid())) {
             if (missing_required_scene_depth && !allow_scene_blend_fallback) {
                 gs_log_scene_depth_contract_skip_once(!has_source_depth, !has_scene_depth);
+                output_cache.last_output_copy_attempted = true;
+                output_cache.last_output_copy_success = false;
+                output_cache.last_output_copy_error = "strict depth composite skipped: source or scene depth missing";
                 output_cache.last_viewport_copy_success = false;
                 output_cache.last_depth_test_honored = false;
                 output_cache.last_copy_degraded = true;
@@ -1469,7 +1485,14 @@ void OutputCompositor::integrate_final_output(GaussianSplatRenderer *p_renderer,
                 params.viewport_size = viewport_size;
                 params.composite_with_destination = true;
                 params.source_is_premultiplied = true;
-                copy_to_framebuffer(params);
+                output_cache.last_output_copy_attempted = true;
+                const bool framebuffer_copy_success = copy_to_framebuffer(params);
+                output_cache.last_output_copy_success = framebuffer_copy_success;
+                if (!framebuffer_copy_success) {
+                    output_cache.last_output_copy_error = "framebuffer copy failed";
+                    output_cache.last_copy_degraded = true;
+                    output_cache.last_copy_degradation_reason = output_cache.last_output_copy_error;
+                }
                 if (missing_required_scene_depth && allow_scene_blend_fallback) {
                     output_cache.last_depth_test_honored = false;
                     output_cache.last_copy_degraded = true;
@@ -1505,8 +1528,23 @@ void OutputCompositor::integrate_final_output(GaussianSplatRenderer *p_renderer,
                     }
                 }
                 OutputCopyResult copy_result = copy_to_render_target(params);
-                output_cache.last_depth_test_honored = copy_result.depth_test_honored;
-                if (!copy_result.depth_test_honored) {
+                const bool relaxed_missing_depth_fallback = missing_required_scene_depth && allow_scene_blend_fallback;
+                output_cache.last_output_copy_attempted = true;
+                output_cache.last_output_copy_success = copy_result.success;
+                output_cache.last_output_copy_error = copy_result.error;
+                output_cache.last_depth_test_honored = relaxed_missing_depth_fallback ? false : copy_result.depth_test_honored;
+                if (!copy_result.success) {
+                    output_cache.last_copy_degraded = true;
+                    output_cache.last_copy_degradation_reason = copy_result.error.is_empty()
+                            ? String("render target copy failed")
+                            : copy_result.error;
+                }
+                if (relaxed_missing_depth_fallback) {
+                    output_cache.last_copy_degraded = true;
+                    if (copy_result.success) {
+                        output_cache.last_copy_degradation_reason = "relaxed depth composite fallback: source or scene depth missing";
+                    }
+                } else if (!copy_result.depth_test_honored) {
                     output_cache.last_copy_degraded = true;
                     output_cache.last_copy_degradation_reason = copy_result.error.is_empty()
                             ? String("depth composite fallback did not honor requested depth test")
@@ -1516,6 +1554,12 @@ void OutputCompositor::integrate_final_output(GaussianSplatRenderer *p_renderer,
                     }
                 }
             }
+        } else if (!composited) {
+            output_cache.last_output_copy_attempted = true;
+            output_cache.last_output_copy_success = false;
+            output_cache.last_output_copy_error = "no valid render target for final output copy";
+            output_cache.last_copy_degraded = true;
+            output_cache.last_copy_degradation_reason = output_cache.last_output_copy_error;
         }
         r_render_target = composite_target.is_valid() ? composite_target : pipeline_render_target;
     }

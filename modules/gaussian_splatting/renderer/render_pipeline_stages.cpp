@@ -95,6 +95,102 @@ static String _fallback_reason_label(GaussianSplatRenderer::RenderFallbackReason
 	return "unknown";
 }
 
+static void _ensure_stage_route_uid(GaussianSplatRenderer::StageResult &r_result, const String &p_route_uid) {
+	if (r_result.route_uid.is_empty()) {
+		r_result.route_uid = p_route_uid;
+	}
+}
+
+static void _ensure_stage_metric_route_uids(GaussianSplatRenderer::StageMetrics &r_metrics,
+		const String &p_route_uid) {
+	_ensure_stage_route_uid(r_metrics.cull_result, p_route_uid);
+	_ensure_stage_route_uid(r_metrics.sort_result, p_route_uid);
+	_ensure_stage_route_uid(r_metrics.raster_result, p_route_uid);
+	_ensure_stage_route_uid(r_metrics.composite_result, p_route_uid);
+}
+
+static bool _assign_stage_first_failure_detail(String &r_first_failure_stage,
+		const GaussianSplatRenderer::StageResult *const *p_results, int p_result_count) {
+	for (int i = 0; i < p_result_count; i++) {
+		const GaussianSplatRenderer::StageResult *result = p_results[i];
+		if (result && !result->first_failure_stage.is_empty()) {
+			r_first_failure_stage = result->first_failure_stage;
+			return true;
+		}
+	}
+	return false;
+}
+
+static void _adopt_failed_stage_name(String &r_first_failure_stage,
+		const GaussianSplatRenderer::StageResult &p_result, const char *p_stage_name) {
+	if (!r_first_failure_stage.is_empty()) {
+		return;
+	}
+	if (p_result.status != GaussianSplatRenderer::StageResult::StageStatus::FAILED) {
+		return;
+	}
+	r_first_failure_stage = p_stage_name ? String(p_stage_name) : String();
+}
+
+static void _resolve_first_failure_stage(GaussianSplatRenderer::StageMetrics &r_metrics) {
+	const GaussianSplatRenderer::StageResult *ordered_results[] = {
+		&r_metrics.cull_result,
+		&r_metrics.sort_result,
+		&r_metrics.raster_result,
+		&r_metrics.composite_result,
+	};
+	if (_assign_stage_first_failure_detail(r_metrics.first_failure_stage, ordered_results, 4)) {
+		return;
+	}
+
+	_adopt_failed_stage_name(r_metrics.first_failure_stage, r_metrics.cull_result, "cull");
+	_adopt_failed_stage_name(r_metrics.first_failure_stage, r_metrics.sort_result, "sort");
+	_adopt_failed_stage_name(r_metrics.first_failure_stage, r_metrics.raster_result, "raster");
+	_adopt_failed_stage_name(r_metrics.first_failure_stage, r_metrics.composite_result, "composite");
+}
+
+static void _adopt_skip_cause_stage(String &r_skip_cause_stage,
+		const GaussianSplatRenderer::StageResult &p_result) {
+	if (!p_result.skip_cause_stage.is_empty()) {
+		r_skip_cause_stage = p_result.skip_cause_stage;
+	}
+}
+
+static bool _any_stage_degraded(const GaussianSplatRenderer::StageMetrics &p_metrics) {
+	const bool degraded[] = {
+		p_metrics.cull_result.degraded,
+		p_metrics.sort_result.degraded,
+		p_metrics.raster_result.degraded,
+		p_metrics.composite_result.degraded,
+	};
+	for (int i = 0; i < 4; i++) {
+		if (degraded[i]) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static void _adopt_degradation_reason(String &r_degradation_reason,
+		const GaussianSplatRenderer::StageResult &p_result) {
+	if (!r_degradation_reason.is_empty()) {
+		return;
+	}
+	if (p_result.degradation_reason.is_empty()) {
+		return;
+	}
+	r_degradation_reason = p_result.degradation_reason;
+}
+
+static void _resolve_stage_degradation_summary(GaussianSplatRenderer::StageMetrics &r_metrics) {
+	r_metrics.has_degradation = _any_stage_degraded(r_metrics);
+	r_metrics.composite_depth_test_honored = r_metrics.composite_result.depth_test_honored;
+	_adopt_degradation_reason(r_metrics.degradation_reason, r_metrics.composite_result);
+	_adopt_degradation_reason(r_metrics.degradation_reason, r_metrics.raster_result);
+	_adopt_degradation_reason(r_metrics.degradation_reason, r_metrics.sort_result);
+	_adopt_degradation_reason(r_metrics.degradation_reason, r_metrics.cull_result);
+}
+
 static bool _pipeline_trace_enabled(GaussianSplatRenderer *p_renderer) {
 	return p_renderer && p_renderer->get_debug_config().enable_pipeline_trace;
 }
@@ -747,12 +843,69 @@ RenderPipelineStages::StageResult RenderPipelineStages::make_downstream_skip_res
 	StageResult result = _make_stage_result(StageResult::StageStatus::SKIPPED, p_reason, false, p_fallback_reason);
 	result.stage_name = p_stage_name ? String(p_stage_name) : String();
 	result.route_uid = p_upstream_result.route_uid;
-	result.first_failure_stage = !p_upstream_result.first_failure_stage.is_empty()
-			? p_upstream_result.first_failure_stage
-			: p_upstream_result.stage_name;
+	if (!p_upstream_result.first_failure_stage.is_empty()) {
+		result.first_failure_stage = p_upstream_result.first_failure_stage;
+	} else if (p_upstream_result.status == StageResult::StageStatus::FAILED || p_upstream_result.is_error) {
+		result.first_failure_stage = p_upstream_result.stage_name;
+	}
 	result.skip_cause_stage = !p_upstream_result.stage_name.is_empty()
 			? p_upstream_result.stage_name
-			: result.first_failure_stage;
+			: p_upstream_result.skip_cause_stage;
+	return result;
+}
+
+RenderPipelineStages::StageMetrics RenderPipelineStages::make_route_skip_metrics(const String &p_route_uid,
+		const String &p_selected_backend, const String &p_cull_reason, const String &p_sort_reason,
+		RenderFallbackReason p_fallback_reason) {
+	StageMetrics metrics;
+	metrics.cull = GaussianSplatRenderer::CullStageOutput();
+	metrics.sort = GaussianSplatRenderer::SortStageOutput();
+	metrics.route_uid = p_route_uid;
+	metrics.selected_route_backend = p_selected_backend;
+	metrics.cull_result = _make_stage_result(StageResult::StageStatus::SKIPPED, p_cull_reason, false,
+			p_fallback_reason);
+	stamp_stage_result_contract(metrics.cull_result, "cull", p_route_uid,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN, GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
+	metrics.sort_result = make_downstream_skip_result("sort", metrics.cull_result, p_sort_reason,
+			p_fallback_reason);
+	stamp_stage_result_contract(metrics.sort_result, "sort", p_route_uid,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN, GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
+	metrics.raster_result = make_downstream_skip_result("raster", metrics.cull_result,
+			"Raster skipped: route not ready", p_fallback_reason);
+	stamp_stage_result_contract(metrics.raster_result, "raster", p_route_uid,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN, GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
+	metrics.composite_result = make_downstream_skip_result("composite", metrics.cull_result,
+			"Composite skipped: route not ready", p_fallback_reason);
+	stamp_stage_result_contract(metrics.composite_result, "composite", p_route_uid,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN, GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
+	metrics.skip_cause_stage = "cull";
+	return metrics;
+}
+
+RenderPipelineStages::StageResult RenderPipelineStages::make_composite_copy_result(bool p_copy_attempted,
+		bool p_copy_success, const String &p_copy_error, bool p_copy_degraded,
+		const String &p_degradation_reason, bool p_depth_test_honored,
+		bool p_viewport_copy_success, bool p_strict_depth_contract_required) {
+	const bool copy_failed = p_copy_attempted && !p_copy_success;
+	if (!copy_failed && !p_copy_degraded && p_depth_test_honored) {
+		return StageResult();
+	}
+
+	const String copy_error = !p_copy_error.is_empty() ? p_copy_error : p_degradation_reason;
+	const String reason = !copy_error.is_empty()
+			? copy_error
+			: String("Composite depth test was not honored");
+	const bool strict_depth_contract_failed = !p_depth_test_honored && p_copy_degraded &&
+			p_strict_depth_contract_required && !p_viewport_copy_success;
+	const bool strict_failure = copy_failed || strict_depth_contract_failed;
+	StageResult result = _make_stage_result(
+			strict_failure ? StageResult::StageStatus::FAILED : StageResult::StageStatus::FALLBACK,
+			reason, strict_failure, GaussianSplatRenderer::RenderFallbackReason::NONE);
+	result.depth_test_honored = p_depth_test_honored;
+	result.degraded = true;
+	result.degradation_reason = reason;
+	result.strict_contract_violation = strict_failure;
+	result.used_graphics_fallback = reason.find("graphics fallback") >= 0;
 	return result;
 }
 
@@ -760,64 +913,12 @@ void RenderPipelineStages::finalize_stage_contracts(StageMetrics &r_metrics, con
 	const String route_uid = p_frame_plan.route_decision.route_uid;
 	r_metrics.route_uid = route_uid;
 	r_metrics.selected_route_backend = p_frame_plan.route_decision.selected_backend_name;
-	if (r_metrics.cull_result.route_uid.is_empty()) {
-		r_metrics.cull_result.route_uid = route_uid;
-	}
-	if (r_metrics.sort_result.route_uid.is_empty()) {
-		r_metrics.sort_result.route_uid = route_uid;
-	}
-	if (r_metrics.raster_result.route_uid.is_empty()) {
-		r_metrics.raster_result.route_uid = route_uid;
-	}
-	if (r_metrics.composite_result.route_uid.is_empty()) {
-		r_metrics.composite_result.route_uid = route_uid;
-	}
-
-	if (!r_metrics.cull_result.first_failure_stage.is_empty()) {
-		r_metrics.first_failure_stage = r_metrics.cull_result.first_failure_stage;
-	} else if (!r_metrics.sort_result.first_failure_stage.is_empty()) {
-		r_metrics.first_failure_stage = r_metrics.sort_result.first_failure_stage;
-	} else if (!r_metrics.raster_result.first_failure_stage.is_empty()) {
-		r_metrics.first_failure_stage = r_metrics.raster_result.first_failure_stage;
-	} else if (!r_metrics.composite_result.first_failure_stage.is_empty()) {
-		r_metrics.first_failure_stage = r_metrics.composite_result.first_failure_stage;
-	}
-	if (r_metrics.first_failure_stage.is_empty()) {
-		if (r_metrics.cull_result.status == StageResult::StageStatus::FAILED) {
-			r_metrics.first_failure_stage = "cull";
-		} else if (r_metrics.sort_result.status == StageResult::StageStatus::FAILED) {
-			r_metrics.first_failure_stage = "sort";
-		} else if (r_metrics.raster_result.status == StageResult::StageStatus::FAILED) {
-			r_metrics.first_failure_stage = "raster";
-		} else if (r_metrics.composite_result.status == StageResult::StageStatus::FAILED) {
-			r_metrics.first_failure_stage = "composite";
-		}
-	}
-
-	if (!r_metrics.sort_result.skip_cause_stage.is_empty()) {
-		r_metrics.skip_cause_stage = r_metrics.sort_result.skip_cause_stage;
-	}
-	if (!r_metrics.raster_result.skip_cause_stage.is_empty()) {
-		r_metrics.skip_cause_stage = r_metrics.raster_result.skip_cause_stage;
-	}
-	if (!r_metrics.composite_result.skip_cause_stage.is_empty()) {
-		r_metrics.skip_cause_stage = r_metrics.composite_result.skip_cause_stage;
-	}
-
-	r_metrics.has_degradation = r_metrics.cull_result.degraded || r_metrics.sort_result.degraded ||
-			r_metrics.raster_result.degraded || r_metrics.composite_result.degraded;
-	r_metrics.composite_depth_test_honored = r_metrics.composite_result.depth_test_honored;
-	if (r_metrics.degradation_reason.is_empty()) {
-		if (!r_metrics.composite_result.degradation_reason.is_empty()) {
-			r_metrics.degradation_reason = r_metrics.composite_result.degradation_reason;
-		} else if (!r_metrics.raster_result.degradation_reason.is_empty()) {
-			r_metrics.degradation_reason = r_metrics.raster_result.degradation_reason;
-		} else if (!r_metrics.sort_result.degradation_reason.is_empty()) {
-			r_metrics.degradation_reason = r_metrics.sort_result.degradation_reason;
-		} else if (!r_metrics.cull_result.degradation_reason.is_empty()) {
-			r_metrics.degradation_reason = r_metrics.cull_result.degradation_reason;
-		}
-	}
+	_ensure_stage_metric_route_uids(r_metrics, route_uid);
+	_resolve_first_failure_stage(r_metrics);
+	_adopt_skip_cause_stage(r_metrics.skip_cause_stage, r_metrics.sort_result);
+	_adopt_skip_cause_stage(r_metrics.skip_cause_stage, r_metrics.raster_result);
+	_adopt_skip_cause_stage(r_metrics.skip_cause_stage, r_metrics.composite_result);
+	_resolve_stage_degradation_summary(r_metrics);
 }
 
 RenderPipelineStages::RenderFramePlan RenderPipelineStages::build_frame_plan(
@@ -1876,6 +1977,7 @@ void RenderPipelineStages::reset_render_state_for_frame(const GaussianSplatRende
 	output_cache.last_depth_test_honored = true;
 	output_cache.last_copy_degraded = false;
 	output_cache.last_copy_degradation_reason = String();
+	output_cache.last_strict_depth_contract_required = false;
 	GaussianSplatRenderer::PerformanceState &performance_state = state_mut.get_performance_state_mut();
 	auto &metrics = performance_state.metrics;
 	metrics.raster_path_reason = String();
@@ -2689,26 +2791,14 @@ RenderPipelineStages::StageResult RenderPipelineStages::CompositeStage::execute(
 			p_input.render_buffers, p_input.raster_output.color, render_target_copy, p_input.viewport_size,
 			p_input.defer_commit, p_input.raster_output.painterly_active, p_input.raster_output.depth);
 	r_did_composite = true;
-	StageResult composite_result;
-	if (output_cache.last_copy_degraded || !output_cache.last_depth_test_honored) {
-		const String degradation_reason = output_cache.last_copy_degradation_reason.is_empty()
-				? String("Composite depth test was not honored")
-				: output_cache.last_copy_degradation_reason;
-		const bool strict_failure = !output_cache.last_depth_test_honored && !output_cache.last_viewport_copy_success;
-		composite_result = _make_stage_result(
-				strict_failure ? StageResult::StageStatus::FAILED : StageResult::StageStatus::FALLBACK,
-				degradation_reason,
-				strict_failure,
-				GaussianSplatRenderer::RenderFallbackReason::NONE);
-		composite_result.depth_test_honored = output_cache.last_depth_test_honored;
-		composite_result.degraded = true;
-		composite_result.degradation_reason = degradation_reason;
-		composite_result.strict_contract_violation = strict_failure;
-		composite_result.used_graphics_fallback = degradation_reason.find("graphics fallback") >= 0;
-		if (strict_failure) {
-			fill_composite_io(true, degradation_reason);
-			return composite_result;
-		}
+	StageResult composite_result = RenderPipelineStages::make_composite_copy_result(
+			output_cache.last_output_copy_attempted, output_cache.last_output_copy_success,
+			output_cache.last_output_copy_error, output_cache.last_copy_degraded,
+			output_cache.last_copy_degradation_reason, output_cache.last_depth_test_honored,
+			output_cache.last_viewport_copy_success, output_cache.last_strict_depth_contract_required);
+	if (composite_result.status == StageResult::StageStatus::FAILED) {
+		fill_composite_io(true, composite_result.reason);
+		return composite_result;
 	}
 	if (_pipeline_trace_enabled(renderer)) {
 		_record_pipeline_event(renderer, "composite",

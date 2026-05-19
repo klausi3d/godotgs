@@ -1383,7 +1383,13 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 	GaussianSplatRenderer::PerformanceState &performance_state = state_mut.get_performance_state_mut();
 	GaussianSplatRenderer::ResourceState &resource_state = state_mut.get_resource_state_mut();
 	auto publish_not_ready_route = [&](StreamingReadinessState p_state) {
-		state_mut.get_debug_state_mut().route_uid = _streaming_not_ready_route_uid(p_state);
+		const String route_uid = _streaming_not_ready_route_uid(p_state);
+		state_mut.get_debug_state_mut().route_uid = route_uid;
+		const String reason_code = String("streaming_not_ready_") +
+				String(_streaming_readiness_state_token(p_state)).to_lower();
+		renderer->publish_route_skip_stage_metrics(route_uid, GaussianSplatRenderer::InstanceBackendPolicy::STREAMING,
+				reason_code, "Cull skipped: streaming path not ready",
+				GaussianSplatRenderer::RenderFallbackReason::STREAMING_DATA_UNAVAILABLE);
 	};
 	if (!streaming_state.current_streaming_system.is_valid()) {
 		const StreamingReadinessState readiness_state = StreamingReadinessState::MISSING_STREAMING_SYSTEM;

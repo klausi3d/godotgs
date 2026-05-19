@@ -782,6 +782,9 @@ public:
     bool has_instance_asset_remap() const { return instance_asset_remap.valid; }
     const PublishedInstanceAssetRemap &get_instance_asset_remap() const { return instance_asset_remap; }
     InstanceBackendPolicy get_instance_backend_policy() const { return instance_backend_policy; }
+    void publish_route_skip_stage_metrics(const String &p_route_uid, InstanceBackendPolicy p_backend_policy,
+            const String &p_cull_route_reason, const String &p_cull_stage_reason,
+            RenderFallbackReason p_fallback_reason);
     const String &get_instance_contract_shape() const { return instance_contract_shape; }
     bool is_instance_contract_ready() const { return instance_pipeline_buffers_valid; }
     bool get_submission_residency_hint(int32_t *r_hint, String *r_source = nullptr) const;

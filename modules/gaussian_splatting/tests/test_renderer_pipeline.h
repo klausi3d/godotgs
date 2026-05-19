@@ -97,6 +97,103 @@ TEST_CASE("[GaussianSplatting] Stage cascade contract preserves first failure an
 	CHECK(raster_skip.output_count == 0);
 }
 
+TEST_CASE("[GaussianSplatting] Downstream skip contract does not invent first failure for benign upstream skips") {
+	GaussianSplatRenderer::StageResult cull_skip;
+	cull_skip.status = GaussianSplatRenderer::StageResult::StageStatus::SKIPPED;
+	cull_skip.reason = "Culling skipped: instance buffers missing";
+	RenderPipelineStages::stamp_stage_result_contract(cull_skip, "cull",
+			RenderRouteUID::COMMON_SKIP_NO_DATA,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
+
+	GaussianSplatRenderer::StageResult sort_skip =
+			RenderPipelineStages::make_downstream_skip_result("sort", cull_skip,
+					"Sort skipped: cull skipped",
+					GaussianSplatRenderer::RenderFallbackReason::DATA_UNAVAILABLE);
+	RenderPipelineStages::stamp_stage_result_contract(sort_skip, "sort", cull_skip.route_uid,
+			cull_skip.output_domain, GaussianSplatRenderer::IndexDomain::UNKNOWN, cull_skip.output_count, 0);
+
+	CHECK(sort_skip.status == GaussianSplatRenderer::StageResult::StageStatus::SKIPPED);
+	CHECK(sort_skip.first_failure_stage.is_empty());
+	CHECK(sort_skip.skip_cause_stage == String("cull"));
+
+	GaussianSplatRenderer::StageMetrics metrics;
+	metrics.cull_result = cull_skip;
+	metrics.sort_result = sort_skip;
+	metrics.raster_result = RenderPipelineStages::make_downstream_skip_result("raster", sort_skip,
+			"Raster skipped: sort skipped", GaussianSplatRenderer::RenderFallbackReason::DATA_UNAVAILABLE);
+	metrics.composite_result = RenderPipelineStages::make_downstream_skip_result("composite", sort_skip,
+			"Composite skipped: sort skipped", GaussianSplatRenderer::RenderFallbackReason::DATA_UNAVAILABLE);
+	GaussianSplatRenderer::RenderFramePlan plan;
+	plan.route_decision.valid = true;
+	plan.route_decision.route_uid = RenderRouteUID::COMMON_SKIP_NO_DATA;
+	plan.route_decision.selected_backend_name = "streaming";
+	RenderPipelineStages::finalize_stage_contracts(metrics, plan);
+
+	CHECK(metrics.first_failure_stage.is_empty());
+	CHECK(metrics.skip_cause_stage == String("sort"));
+}
+
+TEST_CASE("[GaussianSplatting] Composite copy failure becomes a failed stage result") {
+	GaussianSplatRenderer::StageResult result = RenderPipelineStages::make_composite_copy_result(
+			true, false, "framebuffer copy failed", false, String(), true, false, false);
+
+	CHECK(result.status == GaussianSplatRenderer::StageResult::StageStatus::FAILED);
+	CHECK(result.is_error);
+	CHECK(result.strict_contract_violation);
+	CHECK(result.reason == String("framebuffer copy failed"));
+}
+
+TEST_CASE("[GaussianSplatting] Composite viewport scaling degradation is not a strict copy failure") {
+	GaussianSplatRenderer::StageResult result = RenderPipelineStages::make_composite_copy_result(
+			true, true, String(), false, String(), false, false, false);
+
+	CHECK(result.status == GaussianSplatRenderer::StageResult::StageStatus::FALLBACK);
+	CHECK(!result.is_error);
+	CHECK(!result.strict_contract_violation);
+	CHECK(result.depth_test_honored == false);
+	CHECK(result.degraded);
+	CHECK(result.reason == String("Composite depth test was not honored"));
+}
+
+TEST_CASE("[GaussianSplatting] Strict depth contract break becomes a failed composite stage") {
+	GaussianSplatRenderer::StageResult result = RenderPipelineStages::make_composite_copy_result(
+			true, true, String(), true,
+			"depth composite fallback did not honor requested depth test", false, false, true);
+
+	CHECK(result.status == GaussianSplatRenderer::StageResult::StageStatus::FAILED);
+	CHECK(result.is_error);
+	CHECK(result.strict_contract_violation);
+	CHECK(result.depth_test_honored == false);
+	CHECK(result.reason == String("depth composite fallback did not honor requested depth test"));
+}
+
+TEST_CASE("[GaussianSplatting] Strict depth degradation with a viewport copy remains fallback") {
+	GaussianSplatRenderer::StageResult result = RenderPipelineStages::make_composite_copy_result(
+			true, true, String(), true,
+			"depth composite fallback did not honor requested depth test", false, true, true);
+
+	CHECK(result.status == GaussianSplatRenderer::StageResult::StageStatus::FALLBACK);
+	CHECK_FALSE(result.is_error);
+	CHECK_FALSE(result.strict_contract_violation);
+	CHECK(result.depth_test_honored == false);
+	CHECK(result.degraded);
+	CHECK(result.reason == String("depth composite fallback did not honor requested depth test"));
+}
+
+TEST_CASE("[GaussianSplatting] Relaxed depth degradation with scaled viewport remains fallback") {
+	GaussianSplatRenderer::StageResult result = RenderPipelineStages::make_composite_copy_result(
+			true, true, String(), true,
+			"relaxed depth composite fallback: source or scene depth missing", false, false, false);
+
+	CHECK(result.status == GaussianSplatRenderer::StageResult::StageStatus::FALLBACK);
+	CHECK_FALSE(result.is_error);
+	CHECK_FALSE(result.strict_contract_violation);
+	CHECK(result.depth_test_honored == false);
+	CHECK(result.degraded);
+	CHECK(result.reason == String("relaxed depth composite fallback: source or scene depth missing"));
+}
+
 TEST_CASE("[GaussianSplatting] Stage contract aggregation reports composite degradation") {
 	GaussianSplatRenderer::StageMetrics metrics;
 	metrics.cull_result.status = GaussianSplatRenderer::StageResult::StageStatus::SUCCESS;
@@ -135,6 +232,43 @@ TEST_CASE("[GaussianSplatting] Stage contract aggregation reports composite degr
 	CHECK(metrics.degradation_reason == String("relaxed depth composite fallback"));
 	CHECK(metrics.route_uid == String(RenderRouteUID::INSTANCE_STREAMING));
 	CHECK(metrics.selected_route_backend == String("streaming"));
+}
+
+TEST_CASE("[GaussianSplatting] Route skip metrics replace stale stage metrics for the current frame") {
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate();
+	CHECK(renderer.is_valid());
+	if (!renderer.is_valid()) {
+		return;
+	}
+
+	GaussianSplatRenderer::StageMetrics stale_metrics;
+	stale_metrics.cull_result.status = GaussianSplatRenderer::StageResult::StageStatus::SUCCESS;
+	RenderPipelineStages::stamp_stage_result_contract(stale_metrics.cull_result, "cull",
+			RenderRouteUID::INSTANCE_CULL_GPU,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN,
+			GaussianSplatRenderer::IndexDomain::CHUNK_REF, 4, 4);
+	renderer->get_debug_state().last_stage_metrics = stale_metrics;
+	renderer->get_debug_state().last_stage_metrics_valid = true;
+
+	renderer->publish_route_skip_stage_metrics(
+			RenderRouteUID::COMMON_SKIP_STREAMING_NOT_READY,
+			GaussianSplatRenderer::InstanceBackendPolicy::STREAMING,
+			"streaming_not_ready_unknown",
+			"Cull skipped: streaming path not ready",
+			GaussianSplatRenderer::RenderFallbackReason::STREAMING_DATA_UNAVAILABLE);
+
+	const GaussianSplatRenderer::DebugState &debug_state = renderer->get_debug_state();
+	CHECK(debug_state.last_stage_metrics_valid);
+	CHECK(debug_state.last_stage_metrics.route_uid == String(RenderRouteUID::COMMON_SKIP_STREAMING_NOT_READY));
+	CHECK(debug_state.last_stage_metrics.cull_result.status == GaussianSplatRenderer::StageResult::StageStatus::SKIPPED);
+	CHECK(debug_state.last_stage_metrics.sort_result.status == GaussianSplatRenderer::StageResult::StageStatus::SKIPPED);
+	CHECK(debug_state.last_stage_metrics.raster_result.status == GaussianSplatRenderer::StageResult::StageStatus::SKIPPED);
+	CHECK(debug_state.last_stage_metrics.composite_result.status == GaussianSplatRenderer::StageResult::StageStatus::SKIPPED);
+	CHECK(debug_state.last_stage_metrics.first_failure_stage.is_empty());
+	CHECK(debug_state.last_stage_metrics.cull_result.route_uid == String(RenderRouteUID::COMMON_SKIP_STREAMING_NOT_READY));
+
+	renderer.unref();
 }
 
 // Utility to ensure we have a GaussianSplatManager available during the test run.
