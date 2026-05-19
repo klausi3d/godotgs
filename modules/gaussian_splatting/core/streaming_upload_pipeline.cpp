@@ -1626,12 +1626,12 @@ void StreamingUploadPipeline::cancel_chunk_jobs(
                 release_slot = true;
             }
             if (!chunk.is_loaded && chunk.upload_pending) {
-                if (system._has_pending_upload_retirement(asset_id, chunk_idx, chunk.buffer_slot)) {
-                    system._assert_chunk_state_invariant(asset_id, chunk_idx, chunk, "clear_pending_upload_pipeline.post");
-                    continue;
+                const bool pending_retirement = system._has_pending_upload_retirement(asset_id, chunk_idx, chunk.buffer_slot);
+                if (pending_retirement) {
+                    system._assert_chunk_state_invariant(asset_id, chunk_idx, chunk, "cancel_chunk_jobs.pending_retirement");
                 }
                 uint32_t mapped_slot = UINT32_MAX;
-                if (!_chunk_slot_matches_allocator(system.atlas_allocator, chunk_key, chunk.buffer_slot, &mapped_slot)) {
+                if (!pending_retirement && !_chunk_slot_matches_allocator(system.atlas_allocator, chunk_key, chunk.buffer_slot, &mapped_slot)) {
                     if (mapped_slot != UINT32_MAX) {
                         system.atlas_allocator.release_slot(chunk_key);
                     }

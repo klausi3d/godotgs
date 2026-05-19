@@ -122,6 +122,7 @@ private:
 
     uint64_t last_streaming_update_usec = 0;
     float last_streaming_frame_delta_seconds = ESTIMATED_FRAME_DELTA_60FPS;
+    bool per_frame_counters_reset_for_streaming_update = false;
     bool effective_max_guard_warning_emitted = false;
     uint32_t effective_max_guard_warning_regulated = 0;
     uint32_t effective_max_guard_warning_capacity = 0;
@@ -345,6 +346,10 @@ public:
     bool _test_begin_chunk_upload(uint32_t p_asset_id, uint32_t p_chunk_idx, StreamingChunk &p_chunk, uint32_t p_buffer_slot) {
         return _begin_chunk_upload(p_asset_id, p_chunk_idx, p_chunk, p_buffer_slot);
     }
+    uint32_t _test_get_reserved_chunk_count() const { return _get_reserved_chunk_count(); }
+    uint32_t _test_get_retired_upload_slots_this_frame() const { return budget.retired_upload_slots_this_frame; }
+    uint64_t _test_get_retired_upload_bytes_this_frame() const { return budget.retired_upload_bytes_this_frame; }
+    uint64_t _test_get_failed_upload_retirements() const { return budget.failed_upload_retirements; }
     bool _test_stage_chunk_upload_retirement(uint32_t p_asset_id, uint32_t p_chunk_idx,
             StreamingChunk &p_chunk, uint32_t p_buffer_slot, uint64_t p_bytes,
             uint32_t p_retire_after_frames, StreamingUploadCompletionMode p_mode) {
@@ -352,6 +357,15 @@ public:
                 p_bytes, SHCompressionMetrics(), nullptr, p_retire_after_frames, p_mode);
     }
     void _test_process_upload_retirements() { _process_upload_retirements(); }
+    void _test_rollback_pending_chunk(uint32_t p_asset_id, uint32_t p_chunk_idx, StreamingChunk &p_chunk, bool p_release_slot) {
+        _rollback_pending_chunk(p_asset_id, p_chunk_idx, p_chunk, p_release_slot);
+    }
+    bool _test_enqueue_sync_fallback_chunk_load(uint32_t p_asset_id, uint32_t p_chunk_idx, bool p_prioritize = false) {
+        return _enqueue_sync_fallback_chunk_load(p_asset_id, p_chunk_idx, p_prioritize);
+    }
+    uint32_t _test_drain_sync_fallback_chunk_loads(uint32_t p_effective_max, uint32_t &r_evictions_left, bool &r_eviction_blocked) {
+        return _drain_sync_fallback_chunk_loads(p_effective_max, r_evictions_left, r_eviction_blocked);
+    }
     void _test_evict_unrequested_chunks(uint32_t p_asset_id, AtlasAssetState &p_asset, LocalVector<StreamingChunk> &p_asset_chunks) {
         _evict_unrequested_chunks(p_asset_id, p_asset, p_asset_chunks);
     }

@@ -644,6 +644,193 @@ bool _chunk_slot_matches_allocator(const GaussianAtlasAllocator &p_allocator, ui
     return has_slot && mapped_slot == p_expected_slot;
 }
 
+bool _record_streaming_invariant(bool p_invalid_state,
+        GaussianStreamingTypes::DiagnosticsState &r_diagnostics,
+        uint64_t &r_counter,
+        const char *p_context,
+        const String &p_message) {
+    if (!p_invalid_state) {
+        return false;
+    }
+    r_counter++;
+    r_diagnostics.last_invariant_context = p_context;
+    r_diagnostics.last_invariant_message = p_message;
+    WARN_PRINT(p_message);
+    return true;
+}
+
+bool _validate_pending_upload_chunk_invariant(const GaussianAtlasAllocator &p_allocator,
+        const GaussianStreamingTypes::StreamingChunk &p_chunk,
+        uint64_t p_chunk_key,
+        uint32_t p_asset_id,
+        uint32_t p_chunk_idx,
+        const char *p_context,
+        GaussianStreamingTypes::DiagnosticsState &r_diagnostics) {
+    if (_record_streaming_invariant(p_chunk.is_loaded, r_diagnostics,
+                r_diagnostics.invariant_upload_lifecycle_violations,
+                p_context,
+                vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d cannot be both loaded and upload_pending.",
+                        p_context, p_asset_id, p_chunk_idx))) {
+        return true;
+    }
+    if (_record_streaming_invariant(p_chunk.gpu_resident, r_diagnostics,
+                r_diagnostics.invariant_upload_lifecycle_violations,
+                p_context,
+                vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d pending upload cannot be GPU-resident.",
+                        p_context, p_asset_id, p_chunk_idx))) {
+        return true;
+    }
+    if (_record_streaming_invariant(p_chunk.buffer_slot == UINT32_MAX, r_diagnostics,
+                r_diagnostics.invariant_upload_lifecycle_violations,
+                p_context,
+                vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d upload_pending requires a valid buffer_slot.",
+                        p_context, p_asset_id, p_chunk_idx))) {
+        return true;
+    }
+
+    uint32_t mapped_slot = UINT32_MAX;
+    const bool slot_match = _chunk_slot_matches_allocator(p_allocator, p_chunk_key, p_chunk.buffer_slot, &mapped_slot);
+    return _record_streaming_invariant(!slot_match, r_diagnostics,
+            r_diagnostics.invariant_slot_ownership_violations,
+            p_context,
+            vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d upload_pending slot=%d not tracked by allocator (mapped=%d).",
+                    p_context, p_asset_id, p_chunk_idx, p_chunk.buffer_slot,
+                    mapped_slot == UINT32_MAX ? -1 : int(mapped_slot)));
+}
+
+bool _validate_loaded_chunk_invariant(const GaussianAtlasAllocator &p_allocator,
+        const GaussianStreamingTypes::StreamingChunk &p_chunk,
+        uint64_t p_chunk_key,
+        uint32_t p_asset_id,
+        uint32_t p_chunk_idx,
+        const char *p_context,
+        GaussianStreamingTypes::DiagnosticsState &r_diagnostics) {
+    if (_record_streaming_invariant(!p_chunk.gpu_resident, r_diagnostics,
+                r_diagnostics.invariant_upload_lifecycle_violations,
+                p_context,
+                vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d loaded chunk is not GPU-resident.",
+                        p_context, p_asset_id, p_chunk_idx))) {
+        return true;
+    }
+    if (_record_streaming_invariant(p_chunk.buffer_slot == UINT32_MAX, r_diagnostics,
+                r_diagnostics.invariant_upload_lifecycle_violations,
+                p_context,
+                vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d loaded chunk is missing buffer_slot.",
+                        p_context, p_asset_id, p_chunk_idx))) {
+        return true;
+    }
+
+    uint32_t mapped_slot = UINT32_MAX;
+    const bool slot_match = _chunk_slot_matches_allocator(p_allocator, p_chunk_key, p_chunk.buffer_slot, &mapped_slot);
+    return _record_streaming_invariant(!slot_match, r_diagnostics,
+            r_diagnostics.invariant_slot_ownership_violations,
+            p_context,
+            vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d loaded slot=%d not tracked by allocator (mapped=%d).",
+                    p_context, p_asset_id, p_chunk_idx, p_chunk.buffer_slot,
+                    mapped_slot == UINT32_MAX ? -1 : int(mapped_slot)));
+}
+
+void _validate_idle_chunk_invariant(const GaussianAtlasAllocator &p_allocator,
+        const GaussianStreamingTypes::StreamingChunk &p_chunk,
+        uint64_t p_chunk_key,
+        uint32_t p_asset_id,
+        uint32_t p_chunk_idx,
+        const char *p_context,
+        bool p_allow_deferred_allocator_release,
+        GaussianStreamingTypes::DiagnosticsState &r_diagnostics) {
+    uint32_t mapped_slot = UINT32_MAX;
+    const bool slot_tracked = p_allocator.get_slot(p_chunk_key, mapped_slot);
+    if (_record_streaming_invariant(p_chunk.buffer_slot != UINT32_MAX, r_diagnostics,
+                r_diagnostics.invariant_upload_lifecycle_violations,
+                p_context,
+                vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d has buffer_slot=%d while not loaded/pending.",
+                        p_context, p_asset_id, p_chunk_idx, p_chunk.buffer_slot))) {
+        return;
+    }
+    if (p_allow_deferred_allocator_release) {
+        return;
+    }
+    _record_streaming_invariant(slot_tracked, r_diagnostics,
+            r_diagnostics.invariant_slot_ownership_violations,
+            p_context,
+            vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d allocator tracks slot=%d while chunk is not loaded/pending.",
+                    p_context, p_asset_id, p_chunk_idx, mapped_slot));
+}
+
+void _subtract_pending_upload_bytes(GaussianStreamingTypes::BudgetState &r_budget, uint64_t p_bytes) {
+    r_budget.pending_upload_bytes = r_budget.pending_upload_bytes > p_bytes
+            ? (r_budget.pending_upload_bytes - p_bytes)
+            : 0;
+}
+
+void _release_pending_upload_slot(GaussianStreamingTypes::BudgetState &r_budget) {
+    if (r_budget.pending_upload_slots > 0) {
+        r_budget.pending_upload_slots--;
+    }
+}
+
+template <typename UploadRetirementTicket>
+void _release_failed_upload_retirement(GaussianAtlasAllocator &r_allocator,
+        GaussianStreamingTypes::BudgetState &r_budget,
+        uint64_t &r_last_completed_upload_ticket_id,
+        const UploadRetirementTicket &p_ticket,
+        uint64_t p_chunk_key) {
+    _release_chunk_slot_if_matches(r_allocator, p_chunk_key, p_ticket.buffer_slot);
+    _subtract_pending_upload_bytes(r_budget, p_ticket.bytes);
+    _release_pending_upload_slot(r_budget);
+    r_budget.failed_upload_retirements++;
+    r_last_completed_upload_ticket_id = p_ticket.ticket_id;
+}
+
+template <typename UploadRetirementTicket>
+void _release_cancelled_upload_retirement(GaussianAtlasAllocator &r_allocator,
+        GaussianStreamingTypes::BudgetState &r_budget,
+        uint64_t &r_last_completed_upload_ticket_id,
+        const UploadRetirementTicket &p_ticket,
+        uint64_t p_chunk_key) {
+    _release_chunk_slot_if_matches(r_allocator, p_chunk_key, p_ticket.buffer_slot);
+    _subtract_pending_upload_bytes(r_budget, p_ticket.bytes);
+    _release_pending_upload_slot(r_budget);
+    r_last_completed_upload_ticket_id = p_ticket.ticket_id;
+}
+
+template <typename UploadRetirementTicket>
+bool _retirement_ticket_matches_chunk(const UploadRetirementTicket &p_ticket,
+        const GaussianStreamingTypes::StreamingChunk &p_chunk) {
+    return p_chunk.upload_pending && !p_chunk.is_loaded &&
+            p_chunk.buffer_slot == p_ticket.buffer_slot &&
+            p_chunk.upload_ticket_id == p_ticket.ticket_id;
+}
+
+template <typename UploadRetirementTicket>
+bool _retirement_state_mismatch_can_rollback(const UploadRetirementTicket &p_ticket,
+        const GaussianStreamingTypes::StreamingChunk &p_chunk) {
+    return !p_chunk.is_loaded && p_chunk.buffer_slot == p_ticket.buffer_slot;
+}
+
+template <typename UploadRetirementTicket>
+void _mark_upload_ticket_gpu_retired(GaussianStreamingTypes::StreamingChunk &r_chunk,
+        const UploadRetirementTicket &p_ticket) {
+    r_chunk.upload_lifecycle_state = GaussianStreamingTypes::STREAMING_UPLOAD_STATE_GPU_RETIRED;
+    r_chunk.upload_completion_mode = p_ticket.completion_mode;
+}
+
+template <typename UploadRetirementTicket>
+void _record_successful_upload_retirement(GaussianStreamingTypes::BudgetState &r_budget,
+        SHCompressionMetrics &r_total_metrics,
+        uint64_t &r_last_completed_upload_ticket_id,
+        String &r_last_upload_completion_mode,
+        const UploadRetirementTicket &p_ticket) {
+    r_budget.chunks_loaded_this_frame++;
+    r_budget.retired_upload_bytes_this_frame += p_ticket.bytes;
+    r_budget.retired_upload_slots_this_frame++;
+    r_total_metrics.raw_bytes += p_ticket.metrics.raw_bytes;
+    r_total_metrics.compressed_bytes += p_ticket.metrics.compressed_bytes;
+    r_total_metrics.coefficient_count += p_ticket.metrics.coefficient_count;
+    r_last_completed_upload_ticket_id = p_ticket.ticket_id;
+    r_last_upload_completion_mode = _streaming_upload_completion_mode_name(p_ticket.completion_mode);
+}
+
 bool _is_finite_transform3d(const Transform3D &p_transform) {
     if (!Math::is_finite(p_transform.origin.x) ||
             !Math::is_finite(p_transform.origin.y) ||
@@ -2885,7 +3072,11 @@ void GaussianStreamingSystem::_run_streaming_frame_pipeline(const Transform3D &c
     // Update LOD blend factors for smooth transitions (LODGE technique)
     _update_chunk_lod_blend_factors(camera_pos);
 
-    _reset_per_frame_counters();
+    if (per_frame_counters_reset_for_streaming_update) {
+        per_frame_counters_reset_for_streaming_update = false;
+    } else {
+        _reset_per_frame_counters();
+    }
 
     // Get effective max chunks from regulator
     if (effective_max < regulated_max) {
@@ -3067,11 +3258,11 @@ uint64_t GaussianStreamingSystem::_get_total_vram_usage_bytes() const {
 }
 
 uint32_t GaussianStreamingSystem::_get_reserved_chunk_count() const {
-    return budget.loaded_chunks_count + get_pending_upload_retirement_slots();
+    return budget.loaded_chunks_count + budget.pending_upload_slots;
 }
 
 uint64_t GaussianStreamingSystem::_get_pending_upload_bytes_for_diagnostics() const {
-    return get_pending_upload_retirement_bytes();
+    return budget.pending_upload_bytes;
 }
 
 void GaussianStreamingSystem::_load_zero_visible_recovery_config_from_project_settings() {
@@ -3562,86 +3753,30 @@ Error GaussianStreamingSystem::_load_chunk(uint32_t chunk_idx) {
 void GaussianStreamingSystem::_assert_chunk_state_invariant(uint32_t asset_id, uint32_t chunk_idx,
         const StreamingChunk &chunk, const char *context,
         bool allow_deferred_allocator_release) {
-    auto record_invariant = [&](bool p_condition, uint64_t &p_counter, const String &p_message) -> bool {
-        if (!p_condition) {
-            return false;
-        }
-        p_counter++;
-        diagnostics.last_invariant_context = context;
-        diagnostics.last_invariant_message = p_message;
-        WARN_PRINT(p_message);
-        return true;
-    };
-
     const uint64_t chunk_key = _make_chunk_key(asset_id, chunk_idx);
-    if (record_invariant(chunk.count == 0 || chunk.count > CHUNK_SIZE,
+    if (_record_streaming_invariant(chunk.count == 0 || chunk.count > CHUNK_SIZE,
+                diagnostics,
                 diagnostics.invariant_upload_lifecycle_violations,
+                context,
                 vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d count=%d must be in [1, %d].",
                         context, asset_id, chunk_idx, chunk.count, CHUNK_SIZE))) {
         return;
     }
     if (chunk.upload_pending) {
-        if (record_invariant(chunk.is_loaded, diagnostics.invariant_upload_lifecycle_violations,
-                    vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d cannot be both loaded and upload_pending.",
-                            context, asset_id, chunk_idx))) {
-            return;
-        }
-        if (record_invariant(chunk.gpu_resident, diagnostics.invariant_upload_lifecycle_violations,
-                    vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d pending upload cannot be GPU-resident.",
-                            context, asset_id, chunk_idx))) {
-            return;
-        }
-        if (record_invariant(chunk.buffer_slot == UINT32_MAX, diagnostics.invariant_upload_lifecycle_violations,
-                    vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d upload_pending requires a valid buffer_slot.",
-                            context, asset_id, chunk_idx))) {
-            return;
-        }
-        uint32_t mapped_slot = UINT32_MAX;
-        const bool slot_match = _chunk_slot_matches_allocator(atlas_allocator, chunk_key, chunk.buffer_slot, &mapped_slot);
-        if (record_invariant(!slot_match, diagnostics.invariant_slot_ownership_violations,
-                    vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d upload_pending slot=%d not tracked by allocator (mapped=%d).",
-                            context, asset_id, chunk_idx, chunk.buffer_slot, mapped_slot == UINT32_MAX ? -1 : int(mapped_slot)))) {
-            return;
-        }
+        _validate_pending_upload_chunk_invariant(atlas_allocator, chunk, chunk_key,
+                asset_id, chunk_idx, context, diagnostics);
         return;
     }
 
     if (chunk.is_loaded) {
-        if (record_invariant(!chunk.gpu_resident, diagnostics.invariant_upload_lifecycle_violations,
-                    vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d loaded chunk is not GPU-resident.",
-                            context, asset_id, chunk_idx))) {
-            return;
-        }
-        if (record_invariant(chunk.buffer_slot == UINT32_MAX, diagnostics.invariant_upload_lifecycle_violations,
-                    vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d loaded chunk is missing buffer_slot.",
-                            context, asset_id, chunk_idx))) {
-            return;
-        }
-        uint32_t mapped_slot = UINT32_MAX;
-        const bool slot_match = _chunk_slot_matches_allocator(atlas_allocator, chunk_key, chunk.buffer_slot, &mapped_slot);
-        if (record_invariant(!slot_match, diagnostics.invariant_slot_ownership_violations,
-                    vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d loaded slot=%d not tracked by allocator (mapped=%d).",
-                            context, asset_id, chunk_idx, chunk.buffer_slot, mapped_slot == UINT32_MAX ? -1 : int(mapped_slot)))) {
-            return;
-        }
+        _validate_loaded_chunk_invariant(atlas_allocator, chunk, chunk_key,
+                asset_id, chunk_idx, context, diagnostics);
         return;
     }
 
-    uint32_t mapped_slot = UINT32_MAX;
-    const bool slot_tracked = atlas_allocator.get_slot(chunk_key, mapped_slot);
-    if (record_invariant(chunk.buffer_slot != UINT32_MAX, diagnostics.invariant_upload_lifecycle_violations,
-                vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d has buffer_slot=%d while not loaded/pending.",
-                        context, asset_id, chunk_idx, chunk.buffer_slot))) {
-        return;
-    }
     // Some cancellation/error paths clear chunk state first and release allocator slot immediately after.
-    if (!allow_deferred_allocator_release) {
-        if (record_invariant(slot_tracked, diagnostics.invariant_slot_ownership_violations,
-                    vformat("[Streaming] Invalid chunk state (%s): asset=%d chunk=%d allocator tracks slot=%d while chunk is not loaded/pending.",
-                            context, asset_id, chunk_idx, mapped_slot))) {
-            return;
-        }
-    }
+    _validate_idle_chunk_invariant(atlas_allocator, chunk, chunk_key, asset_id, chunk_idx,
+            context, allow_deferred_allocator_release, diagnostics);
 }
 
 bool GaussianStreamingSystem::_begin_chunk_upload(uint32_t asset_id, uint32_t chunk_idx,
@@ -3768,6 +3903,7 @@ void GaussianStreamingSystem::_rollback_pending_chunk(uint32_t asset_id, uint32_
         return;
     }
 
+    const bool was_upload_pending = chunk.upload_pending;
     const uint32_t slot = chunk.buffer_slot;
     if (release_slot && slot != UINT32_MAX) {
         _release_chunk_slot_if_matches(atlas_allocator, _make_chunk_key(asset_id, chunk_idx), slot);
@@ -3779,7 +3915,7 @@ void GaussianStreamingSystem::_rollback_pending_chunk(uint32_t asset_id, uint32_
                 : 0;
         chunk.pending_upload_bytes = 0;
     }
-    if (budget.pending_upload_slots > 0) {
+    if (was_upload_pending && budget.pending_upload_slots > 0) {
         budget.pending_upload_slots--;
     }
     chunk.upload_pending = false;
@@ -3814,38 +3950,21 @@ void GaussianStreamingSystem::_process_upload_retirements() {
 
         AtlasAssetState *asset = _get_asset_state(ticket.asset_id);
         if (!asset || asset->generation != ticket.asset_generation) {
-            _release_chunk_slot_if_matches(atlas_allocator,
-                    _make_chunk_key(ticket.asset_id, ticket.chunk_idx), ticket.buffer_slot);
-            budget.pending_upload_bytes = budget.pending_upload_bytes > ticket.bytes
-                    ? (budget.pending_upload_bytes - ticket.bytes)
-                    : 0;
-            if (budget.pending_upload_slots > 0) {
-                budget.pending_upload_slots--;
-            }
-            budget.failed_upload_retirements++;
-            last_completed_upload_ticket_id = ticket.ticket_id;
+            _release_cancelled_upload_retirement(atlas_allocator, budget, last_completed_upload_ticket_id,
+                    ticket, _make_chunk_key(ticket.asset_id, ticket.chunk_idx));
             continue;
         }
 
         LocalVector<StreamingChunk> &asset_chunks = _get_asset_chunks(*asset);
         if (ticket.chunk_idx >= asset_chunks.size()) {
-            _release_chunk_slot_if_matches(atlas_allocator,
-                    _make_chunk_key(ticket.asset_id, ticket.chunk_idx), ticket.buffer_slot);
-            budget.pending_upload_bytes = budget.pending_upload_bytes > ticket.bytes
-                    ? (budget.pending_upload_bytes - ticket.bytes)
-                    : 0;
-            if (budget.pending_upload_slots > 0) {
-                budget.pending_upload_slots--;
-            }
-            budget.failed_upload_retirements++;
-            last_completed_upload_ticket_id = ticket.ticket_id;
+            _release_failed_upload_retirement(atlas_allocator, budget, last_completed_upload_ticket_id,
+                    ticket, _make_chunk_key(ticket.asset_id, ticket.chunk_idx));
             continue;
         }
 
         StreamingChunk &chunk = asset_chunks[ticket.chunk_idx];
-        if (!chunk.upload_pending || chunk.is_loaded || chunk.buffer_slot != ticket.buffer_slot ||
-                chunk.upload_ticket_id != ticket.ticket_id) {
-            if (!chunk.is_loaded && chunk.buffer_slot == ticket.buffer_slot) {
+        if (!_retirement_ticket_matches_chunk(ticket, chunk)) {
+            if (_retirement_state_mismatch_can_rollback(ticket, chunk)) {
                 _mark_chunk_upload_failed(ticket.asset_id, ticket.chunk_idx, chunk,
                         "_process_upload_retirements.state_mismatch");
                 _rollback_pending_chunk(ticket.asset_id, ticket.chunk_idx, chunk, true);
@@ -3857,17 +3976,10 @@ void GaussianStreamingSystem::_process_upload_retirements() {
             continue;
         }
 
-        chunk.upload_lifecycle_state = GaussianStreamingTypes::STREAMING_UPLOAD_STATE_GPU_RETIRED;
-        chunk.upload_completion_mode = ticket.completion_mode;
+        _mark_upload_ticket_gpu_retired(chunk, ticket);
         _complete_chunk_load_common(ticket.asset_id, ticket.chunk_idx, chunk);
-        budget.chunks_loaded_this_frame++;
-        budget.retired_upload_bytes_this_frame += ticket.bytes;
-        budget.retired_upload_slots_this_frame++;
-        total_sh_metrics.raw_bytes += ticket.metrics.raw_bytes;
-        total_sh_metrics.compressed_bytes += ticket.metrics.compressed_bytes;
-        total_sh_metrics.coefficient_count += ticket.metrics.coefficient_count;
-        last_completed_upload_ticket_id = ticket.ticket_id;
-        last_upload_completion_mode = _streaming_upload_completion_mode_name(ticket.completion_mode);
+        _record_successful_upload_retirement(budget, total_sh_metrics,
+                last_completed_upload_ticket_id, last_upload_completion_mode, ticket);
     }
 
     pending_upload_retirements.resize(write_idx);
@@ -4142,7 +4254,11 @@ bool GaussianStreamingSystem::_upload_chunk_to_gpu(RenderingDevice *submission_r
     submission_rd->buffer_update(persistent_buffer, buffer_offset,
             chunk_count * sizeof(PackedGaussian),
             chunk_data.ptr());
-    gs_device_utils::safe_submit_and_sync(submission_rd);
+    if (submission_rd->is_main_rendering_device()) {
+        gs_device_utils::safe_submit(submission_rd);
+    } else {
+        gs_device_utils::safe_submit_and_sync(submission_rd);
+    }
     return true;
 }
 
@@ -4259,6 +4375,8 @@ void GaussianStreamingSystem::begin_frame() {
     FrameData &frame = frame_data[current_frame_idx];
     frame.frame_number = total_frame_count++;
     frame.visible_chunks.clear();
+    _reset_per_frame_counters();
+    per_frame_counters_reset_for_streaming_update = true;
     _process_upload_retirements();
     if (memory_stream_proxy.is_valid()) {
         memory_stream_proxy->begin_frame(frame.frame_number);
@@ -4993,71 +5111,11 @@ uint32_t GaussianStreamingSystem::get_pending_upload_jobs() {
 }
 
 uint32_t GaussianStreamingSystem::get_pending_upload_retirement_slots() const {
-    uint32_t pending_chunks = 0;
-    for (uint32_t i = 0; i < chunks.size(); i++) {
-        const StreamingChunk &chunk = chunks[i];
-        if (chunk.upload_pending) {
-            pending_chunks++;
-        }
-    }
-    for (uint32_t asset_id : asset_registry.atlas_asset_order) {
-        const AtlasAssetState *asset = asset_registry.atlas_assets.getptr(asset_id);
-        if (!asset || asset->uses_primary_chunks) {
-            continue;
-        }
-        const LocalVector<StreamingChunk> &asset_chunks = asset->asset_chunks;
-        for (uint32_t chunk_idx = 0; chunk_idx < asset_chunks.size(); chunk_idx++) {
-            const StreamingChunk &chunk = asset_chunks[chunk_idx];
-            if (chunk.upload_pending) {
-                pending_chunks++;
-            }
-        }
-    }
-    for (uint32_t i = 0; i < pending_upload_retirements.size(); i++) {
-        const PendingUploadRetirement &ticket = pending_upload_retirements[i];
-        const AtlasAssetState *asset = asset_registry.atlas_assets.getptr(ticket.asset_id);
-        const bool asset_missing = !asset;
-        const bool primary_missing = ticket.asset_id == PRIMARY_ASSET_ID && ticket.chunk_idx >= chunks.size();
-        const bool non_primary_missing = asset && !asset->uses_primary_chunks && ticket.chunk_idx >= asset->asset_chunks.size();
-        if (asset_missing || primary_missing || non_primary_missing) {
-            pending_chunks++;
-        }
-    }
-    return pending_chunks;
+    return budget.pending_upload_slots;
 }
 
 uint64_t GaussianStreamingSystem::get_pending_upload_retirement_bytes() const {
-    uint64_t pending_bytes = 0;
-    for (uint32_t i = 0; i < chunks.size(); i++) {
-        const StreamingChunk &chunk = chunks[i];
-        if (chunk.upload_pending) {
-            pending_bytes += chunk.pending_upload_bytes;
-        }
-    }
-    for (uint32_t asset_id : asset_registry.atlas_asset_order) {
-        const AtlasAssetState *asset = asset_registry.atlas_assets.getptr(asset_id);
-        if (!asset || asset->uses_primary_chunks) {
-            continue;
-        }
-        const LocalVector<StreamingChunk> &asset_chunks = asset->asset_chunks;
-        for (uint32_t chunk_idx = 0; chunk_idx < asset_chunks.size(); chunk_idx++) {
-            const StreamingChunk &chunk = asset_chunks[chunk_idx];
-            if (chunk.upload_pending) {
-                pending_bytes += chunk.pending_upload_bytes;
-            }
-        }
-    }
-    for (uint32_t i = 0; i < pending_upload_retirements.size(); i++) {
-        const PendingUploadRetirement &ticket = pending_upload_retirements[i];
-        const AtlasAssetState *asset = asset_registry.atlas_assets.getptr(ticket.asset_id);
-        const bool asset_missing = !asset;
-        const bool primary_missing = ticket.asset_id == PRIMARY_ASSET_ID && ticket.chunk_idx >= chunks.size();
-        const bool non_primary_missing = asset && !asset->uses_primary_chunks && ticket.chunk_idx >= asset->asset_chunks.size();
-        if (asset_missing || primary_missing || non_primary_missing) {
-            pending_bytes += ticket.bytes;
-        }
-    }
-    return pending_bytes;
+    return budget.pending_upload_bytes;
 }
 
 uint32_t GaussianStreamingSystem::get_visible_count() const {
@@ -5582,7 +5640,6 @@ uint32_t GaussianStreamingSystem::_drain_sync_fallback_chunk_loads(
                     OK);
             drained++;
             scheduler.last_sync_fallback_drained_count++;
-            budget.chunks_loaded_this_frame++;
             continue;
         }
 
