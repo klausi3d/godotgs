@@ -92,6 +92,16 @@ void _tamper_first_payload_byte(StreamingUploadPipeline &p_uploads) {
     payload_bytes[0] ^= 0x01;
 }
 
+void _advance_frames_until_upload_retired(Ref<GaussianStreamingSystem> p_system, uint32_t p_max_frames = 8) {
+    for (uint32_t i = 0; i < p_max_frames; i++) {
+        p_system->begin_frame();
+        p_system->end_frame();
+        if (p_system->get_pending_upload_retirement_slots() == 0) {
+            return;
+        }
+    }
+}
+
 } // namespace
 
 TEST_CASE("[Streaming Pipeline] stop_pack_threads clears partial lifecycle state") {
@@ -123,6 +133,50 @@ TEST_CASE("[Streaming Pipeline] sync pack rescue does not steal worker-owned pac
     CHECK(uploads._test_promote_pack_jobs_sync(1) == 0);
     CHECK(uploads.get_pack_queue_depth_cached() == 1);
     CHECK(uploads.get_upload_queue_depth_cached() == 0);
+}
+
+TEST_CASE("[Streaming Pipeline] upload retirement gates chunk residency until frame barrier") {
+    GaussianStreamingSystem system;
+    LocalVector<GaussianStreamingTypes::StreamingChunk> &chunks = system._test_get_primary_chunks();
+    chunks.resize(1);
+    GaussianStreamingTypes::StreamingChunk &chunk = chunks[0];
+    chunk.start_idx = 0;
+    chunk.count = 128;
+    chunk.is_visible = true;
+    chunk.effective_count = chunk.count;
+    system._test_register_primary_asset_for_chunks();
+    system._test_reset_atlas_allocator(1);
+
+    const uint64_t chunk_key = system._test_make_chunk_key(0, 0);
+    uint32_t buffer_slot = UINT32_MAX;
+    REQUIRE(system._test_atlas_allocator().allocate_slot(chunk_key, buffer_slot));
+    REQUIRE(system._test_begin_chunk_upload(0, 0, chunk, buffer_slot));
+    REQUIRE(system._test_stage_chunk_upload_retirement(0, 0, chunk, buffer_slot,
+            uint64_t(chunk.count) * sizeof(PackedGaussian),
+            2,
+            GaussianStreamingTypes::STREAMING_UPLOAD_COMPLETION_MAIN_RD_FRAME_DELAY_BARRIER));
+
+    CHECK(chunk.upload_pending);
+    CHECK_FALSE(chunk.is_loaded);
+    CHECK_FALSE(chunk.gpu_resident);
+    CHECK(system.get_loaded_chunks() == 0);
+    CHECK(system.get_pending_upload_retirement_slots() == 1);
+    CHECK(system.get_pending_upload_retirement_bytes() == uint64_t(chunk.count) * sizeof(PackedGaussian));
+    CHECK(system._test_atlas_allocator().get_free_slot_count() == 0);
+
+    system._test_process_upload_retirements();
+    CHECK_FALSE(chunk.is_loaded);
+    system.begin_frame();
+    CHECK_FALSE(chunk.is_loaded);
+    CHECK(chunk.upload_pending);
+    system.begin_frame();
+
+    CHECK(chunk.is_loaded);
+    CHECK(chunk.gpu_resident);
+    CHECK_FALSE(chunk.upload_pending);
+    CHECK(system.get_loaded_chunks() == 1);
+    CHECK(system.get_pending_upload_retirement_slots() == 0);
+    CHECK(system.get_pending_upload_retirement_bytes() == 0);
 }
 
 TEST_CASE("[Streaming Pipeline] upload payload checksum validation is off by default") {
@@ -166,8 +220,7 @@ TEST_CASE("[Streaming Pipeline] production upload path skips payload checksum ha
     _tamper_first_payload_byte(uploads);
 
     uploads.process_upload_queue(system_ref);
-    system->begin_frame();
-    system->end_frame();
+    _advance_frames_until_upload_retired(system);
 
     CHECK(StreamingUploadPipeline::_test_get_payload_checksum_hash_calls() == 0);
     CHECK(system->get_pending_pack_jobs() == 0);
@@ -216,8 +269,7 @@ TEST_CASE("[Streaming Pipeline] async chunk upload rejects tampered payload chec
     _tamper_first_payload_byte(uploads);
 
     uploads.process_upload_queue(system_ref);
-    system->begin_frame();
-    system->end_frame();
+    _advance_frames_until_upload_retired(system);
 
     CHECK(StreamingUploadPipeline::_test_get_payload_checksum_hash_calls() >= 2);
     CHECK(system->get_pending_pack_jobs() == 0);
@@ -286,8 +338,7 @@ TEST_CASE("[Streaming Pipeline] enabling checksum validation rejects pending job
 
     uploads._test_set_upload_payload_checksum_validation_enabled(true);
     uploads.process_upload_queue(system_ref);
-    system->begin_frame();
-    system->end_frame();
+    _advance_frames_until_upload_retired(system);
 
     CHECK(StreamingUploadPipeline::_test_get_payload_checksum_hash_calls() == 0);
     CHECK(system->get_pending_pack_jobs() == 0);

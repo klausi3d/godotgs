@@ -61,6 +61,7 @@ private:
     using ZeroVisibleRecoveryState = StreamingVisibilityController::ZeroVisibleRecoveryState;
 
     using BudgetState = GaussianStreamingTypes::BudgetState;
+    using StreamingUploadCompletionMode = GaussianStreamingTypes::StreamingUploadCompletionMode;
 
     // Ring buffer for frame synchronization
     FrameData frame_data[RING_BUFFER_FRAMES];
@@ -134,6 +135,23 @@ private:
     uint32_t invalid_camera_log_interval_frames = 120;
     ConfigOverrides config_overrides;
     bool config_overrides_active = false;
+
+    struct PendingUploadRetirement {
+        uint64_t ticket_id = 0;
+        uint32_t asset_id = 0;
+        uint32_t chunk_idx = UINT32_MAX;
+        uint32_t buffer_slot = UINT32_MAX;
+        uint32_t asset_generation = 0;
+        uint64_t submit_frame = 0;
+        uint64_t retire_frame = 0;
+        uint64_t bytes = 0;
+        uint8_t completion_mode = GaussianStreamingTypes::STREAMING_UPLOAD_COMPLETION_NONE;
+        SHCompressionMetrics metrics;
+    };
+    LocalVector<PendingUploadRetirement> pending_upload_retirements;
+    uint64_t next_upload_ticket_id = 1;
+    uint64_t last_completed_upload_ticket_id = 0;
+    String last_upload_completion_mode = "none";
 
     // Streaming orchestration hooks
     Ref<GaussianMemoryStream> memory_stream_proxy;
@@ -211,6 +229,8 @@ public:
     uint32_t get_loaded_chunks() const { return budget.loaded_chunks_count; }
     uint32_t get_pending_pack_jobs();
     uint32_t get_pending_upload_jobs();
+    uint32_t get_pending_upload_retirement_slots() const;
+    uint64_t get_pending_upload_retirement_bytes() const;
     SHCompressionMetrics get_total_sh_metrics() const { return total_sh_metrics; }
     Dictionary get_task_debug_state() const;
     Dictionary get_streaming_analytics() const;
@@ -325,6 +345,13 @@ public:
     bool _test_begin_chunk_upload(uint32_t p_asset_id, uint32_t p_chunk_idx, StreamingChunk &p_chunk, uint32_t p_buffer_slot) {
         return _begin_chunk_upload(p_asset_id, p_chunk_idx, p_chunk, p_buffer_slot);
     }
+    bool _test_stage_chunk_upload_retirement(uint32_t p_asset_id, uint32_t p_chunk_idx,
+            StreamingChunk &p_chunk, uint32_t p_buffer_slot, uint64_t p_bytes,
+            uint32_t p_retire_after_frames, StreamingUploadCompletionMode p_mode) {
+        return _stage_chunk_upload_retirement(p_asset_id, p_chunk_idx, p_chunk, p_buffer_slot,
+                p_bytes, SHCompressionMetrics(), nullptr, p_retire_after_frames, p_mode);
+    }
+    void _test_process_upload_retirements() { _process_upload_retirements(); }
     void _test_evict_unrequested_chunks(uint32_t p_asset_id, AtlasAssetState &p_asset, LocalVector<StreamingChunk> &p_asset_chunks) {
         _evict_unrequested_chunks(p_asset_id, p_asset, p_asset_chunks);
     }
@@ -387,6 +414,8 @@ private:
     uint32_t _compute_runtime_chunk_capacity_limit() const;
     uint64_t _get_auxiliary_vram_overhead_bytes() const;
     uint64_t _get_total_vram_usage_bytes() const;
+    uint32_t _get_reserved_chunk_count() const;
+    uint64_t _get_pending_upload_bytes_for_diagnostics() const;
     void _load_zero_visible_recovery_config_from_project_settings();
     void _update_camera_tracking(const Vector3 &camera_pos, float p_frame_delta_seconds);
     void _handle_zero_visible_chunk_recovery();
@@ -412,6 +441,15 @@ private:
             const Vector<PackedGaussian> &chunk_data, uint32_t asset_id, uint32_t chunk_idx,
             uint32_t buffer_slot, uint32_t chunk_count) const;
     bool _begin_chunk_upload(uint32_t asset_id, uint32_t chunk_idx, StreamingChunk &chunk, uint32_t buffer_slot);
+    bool _stage_chunk_upload_retirement(uint32_t asset_id, uint32_t chunk_idx,
+            StreamingChunk &chunk, uint32_t buffer_slot, uint64_t bytes,
+            const SHCompressionMetrics &metrics, RenderingDevice *submission_rd,
+            uint32_t override_retire_after_frames = UINT32_MAX,
+            StreamingUploadCompletionMode override_completion_mode =
+                    GaussianStreamingTypes::STREAMING_UPLOAD_COMPLETION_NONE);
+    void _process_upload_retirements();
+    bool _has_pending_upload_retirement(uint32_t asset_id, uint32_t chunk_idx, uint32_t buffer_slot) const;
+    void _mark_chunk_upload_failed(uint32_t asset_id, uint32_t chunk_idx, StreamingChunk &chunk, const char *context);
     void _rollback_pending_chunk(uint32_t asset_id, uint32_t chunk_idx, StreamingChunk &chunk, bool release_slot);
     void _assert_chunk_state_invariant(uint32_t asset_id, uint32_t chunk_idx,
             const StreamingChunk &chunk, const char *context,

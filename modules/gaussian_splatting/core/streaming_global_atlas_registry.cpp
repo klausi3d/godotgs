@@ -444,7 +444,7 @@ void StreamingGlobalAtlasRegistry::update_chunk_meta_entry(GaussianStreamingSyst
 
 	const GaussianStreamingSystem::StreamingChunk &chunk = asset_chunks[chunk_idx];
 	ChunkMetaGPU meta = {};
-	const bool resident = chunk.is_loaded && !chunk.upload_pending && chunk.buffer_slot != UINT32_MAX;
+	const bool resident = chunk.is_loaded && chunk.gpu_resident && !chunk.upload_pending && chunk.buffer_slot != UINT32_MAX;
 	const uint32_t effective_splat_count = MIN(chunk.effective_count, chunk.count);
 	const uint32_t sh_band_limit = uint32_t(CLAMP(chunk.sh_band_level, 0, 3));
 	if (resident) {

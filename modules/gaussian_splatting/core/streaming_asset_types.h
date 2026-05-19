@@ -13,6 +13,23 @@
 
 namespace GaussianStreamingTypes {
 
+enum StreamingUploadLifecycleState : uint8_t {
+    STREAMING_UPLOAD_STATE_NONE = 0,
+    STREAMING_UPLOAD_STATE_CPU_PACKED = 1,
+    STREAMING_UPLOAD_STATE_RD_UPDATE_SUBMITTED = 2,
+    STREAMING_UPLOAD_STATE_GPU_RETIRE_PENDING = 3,
+    STREAMING_UPLOAD_STATE_GPU_RETIRED = 4,
+    STREAMING_UPLOAD_STATE_FAILED_OR_ROLLED_BACK = 5,
+};
+
+enum StreamingUploadCompletionMode : uint8_t {
+    STREAMING_UPLOAD_COMPLETION_NONE = 0,
+    STREAMING_UPLOAD_COMPLETION_LOCAL_RD_SUBMIT_SYNC = 1,
+    STREAMING_UPLOAD_COMPLETION_MAIN_RD_FRAME_DELAY_BARRIER = 2,
+    STREAMING_UPLOAD_COMPLETION_TIMELINE_UNAVAILABLE_FRAME_DELAY = 3,
+    STREAMING_UPLOAD_COMPLETION_TEST_MANUAL = 4,
+};
+
 enum ResidencyRequestState : uint8_t {
     RESIDENCY_REQUEST_STATE_IDLE = 0,
     RESIDENCY_REQUEST_STATE_COLLECTED = 1,
@@ -42,9 +59,16 @@ struct StreamingChunk {
     float max_radius = 0.0f;
     float distance = 0.0f;
     bool is_loaded = false;
+    bool gpu_resident = false;
     bool is_visible = true;
     bool upload_pending = false;
     RenderingDevice *upload_device = nullptr;
+    uint8_t upload_lifecycle_state = STREAMING_UPLOAD_STATE_NONE;
+    uint8_t upload_completion_mode = STREAMING_UPLOAD_COMPLETION_NONE;
+    uint64_t upload_ticket_id = 0;
+    uint64_t upload_submit_frame = 0;
+    uint64_t upload_retire_frame = 0;
+    uint64_t pending_upload_bytes = 0;
     uint64_t last_used_frame = 0;
     uint64_t last_loaded_frame = 0;
     uint32_t buffer_slot = UINT32_MAX;
