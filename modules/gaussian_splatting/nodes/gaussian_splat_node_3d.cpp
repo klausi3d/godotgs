@@ -385,10 +385,7 @@ void GaussianSplatNode3D::_notification_enter_world() {
 }
 
 void GaussianSplatNode3D::_notification_exit_tree() {
-    if (debug_hud_control) {
-        debug_hud_control->set_visible(false);
-        debug_hud_control->set_process(false);
-    }
+    _destroy_debug_hud_control();
     visible_in_viewport = false;
     _update_visibility();
     _clear_parent_visibility_tracking();
@@ -2041,16 +2038,36 @@ void GaussianSplatNode3D::_ensure_debug_hud_control() {
     debug_hud_layer->add_child(debug_hud_control);
 }
 
+void GaussianSplatNode3D::_destroy_debug_hud_control() {
+    if (debug_hud_control) {
+        debug_hud_control->set_splat_node(nullptr);
+        debug_hud_control->set_visible(false);
+        debug_hud_control->set_process(false);
+        Node *parent = debug_hud_control->get_parent();
+        if (parent) {
+            parent->remove_child(debug_hud_control);
+        }
+        memdelete(debug_hud_control);
+        debug_hud_control = nullptr;
+    }
+
+    if (debug_hud_layer) {
+        Node *parent = debug_hud_layer->get_parent();
+        if (parent) {
+            parent->remove_child(debug_hud_layer);
+        }
+        memdelete(debug_hud_layer);
+        debug_hud_layer = nullptr;
+    }
+}
+
 void GaussianSplatNode3D::_update_debug_hud_visibility() {
     bool should_show_hud = show_performance_hud || show_residency_hud;
     if (renderer.is_valid()) {
         should_show_hud = renderer->is_debug_show_performance_hud() || renderer->is_debug_show_residency_hud();
     }
     if (!should_show_hud) {
-        if (debug_hud_control) {
-            debug_hud_control->set_visible(false);
-            debug_hud_control->set_process(false);
-        }
+        _destroy_debug_hud_control();
         return;
     }
 

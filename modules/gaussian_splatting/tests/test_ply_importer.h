@@ -196,6 +196,56 @@ TEST_CASE("[GaussianSplatting][PLYLoader] Cache version mismatch forces re-parse
     DirAccess::remove_absolute(cache_path);
 }
 
+TEST_CASE("[GaussianSplatting][PLYLoader] Cache source path mismatch forces re-parse") {
+    const String ply_path = _make_ply_fixture_path("cache_source_path");
+
+    {
+        Ref<FileAccess> f = FileAccess::open(ply_path, FileAccess::WRITE);
+        REQUIRE_MESSAGE(f.is_valid(), "Should create test PLY file");
+        f->store_string(MINIMAL_PLY_CONTENT);
+        float v0[14] = { 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0 };
+        f->store_buffer((const uint8_t *)v0, sizeof(v0));
+        float v1[14] = { 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 0 };
+        f->store_buffer((const uint8_t *)v1, sizeof(v1));
+    }
+
+    {
+        PLYLoader loader;
+        Error err = loader.load_file(ply_path);
+        CHECK_MESSAGE(err == OK, "Initial PLY load should succeed");
+        CHECK(loader.get_splat_count() == 2);
+    }
+
+    const String cache_path = ply_path.get_basename() + ".gsplatcache";
+    if (FileAccess::exists(cache_path)) {
+        ResourceFormatLoaderGaussianSplatWorld format_loader;
+        Error load_err = OK;
+        Ref<GaussianSplatWorld> world = format_loader.load_resident(cache_path, &load_err);
+        REQUIRE_MESSAGE(world.is_valid(), "Cache should be a valid GaussianSplatWorld");
+
+        Dictionary metadata = world->get_metadata();
+        metadata[StringName("cache_source_path")] = ply_path + ".other";
+        world->set_metadata(metadata);
+        ResourceFormatSaverGaussianSplatWorld format_saver;
+        format_saver.save_resident_uncompressed(world, cache_path);
+
+        PLYLoader loader;
+        Error err = loader.load_file(ply_path);
+        CHECK_MESSAGE(err == OK, "PLY load should still succeed (re-parse fallback)");
+        CHECK(loader.get_splat_count() == 2);
+
+        Dictionary stats = loader.get_load_statistics();
+        if (stats.has("cache_hit")) {
+            CHECK_MESSAGE(!(bool)stats["cache_hit"], "Source-path-mismatched cache should not be a cache hit");
+        }
+    } else {
+        MESSAGE("Cache file not created (caching may be disabled); skipping source path guard test");
+    }
+
+    _remove_ply_fixture(ply_path);
+    DirAccess::remove_absolute(cache_path);
+}
+
 TEST_CASE("[GaussianSplatting][PLYLoader] Legacy sibling gsplatworld caches are ignored") {
     const String ply_path = _make_ply_fixture_path("legacy_cache_migration");
 

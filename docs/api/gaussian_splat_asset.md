@@ -120,9 +120,9 @@ Use `GaussianSplatAsset` to store, serialize, and exchange Gaussian splat data a
     </tr>
     <tr>
       <td><code>import/thumbnail</code></td>
-      <td><code>Texture2D</code></td>
-      <td><code>set_thumbnail</code>, <code>get_thumbnail</code></td>
-      <td>Optional preview thumbnail for the asset browser.</td>
+      <td><code>Image</code></td>
+      <td><code>set_preview_image</code>, <code>get_preview_image</code>, legacy <code>set_thumbnail</code>/<code>get_thumbnail</code></td>
+      <td>Optional preview thumbnail stored as CPU image data. Texture creation is main-thread-only; threaded import/preview paths should use the image API.</td>
       <td><code>modules/gaussian_splatting/core/gaussian_splat_asset.cpp:90</code></td>
     </tr>
     <tr>
@@ -225,6 +225,14 @@ Use `GaussianSplatAsset` to store, serialize, and exchange Gaussian splat data a
     </tr>
   </tbody>
 </table>
+
+### Threading and Snapshot Contract
+
+`GaussianSplatAsset` serializes payload arrays, import metadata, preview image state, runtime cache handout, and `copy_from()` hot-reload replacement with its internal `populate_mutex`. Code that needs a coherent view of more than one asset field should use `capture_payload_snapshot()` and work from the copied `PayloadSnapshot`; this is the contract used by the node asset refresh and editor thumbnail generation paths.
+
+Packed-array setters remain import/deserialization APIs, not live runtime mutation APIs. After `get_gaussian_data()` hands out runtime authority, the asset is sealed and public packed setters reject mutation. `copy_from()` is the explicit hot-reload replacement boundary and is serialized against snapshot reads.
+
+Preview thumbnails are stored as `Image` data. `get_preview_texture()`, `get_thumbnail()`, and editor `generate_thumbnail()` create `ImageTexture` resources and must run on the main thread. Worker/import code should call `get_preview_image()`, `set_preview_image()`, or thumbnail image generation APIs only.
 
 ### Methods
 

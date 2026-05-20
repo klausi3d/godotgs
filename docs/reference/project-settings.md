@@ -102,6 +102,8 @@ These settings are registered with `GLOBAL_DEF(...)` and grouped by key prefix.
   </tbody>
 </table>
 
+`gsplatworld_compression_enabled` is legacy import/cache policy. Generic `ResourceSaver::save()` preserves `.gsplatworld` streamability and does not use this setting to compress source-backed world round trips. Compressed `.gsplatworld` output is resident-only and must be requested through an explicit resident compressed export path.
+
 #### Quality
 
 <table>

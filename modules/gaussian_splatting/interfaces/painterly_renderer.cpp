@@ -1613,10 +1613,10 @@ Error PainterlyRenderer::populate_painterly_gbuffer(GaussianSplatRenderer *p_ren
         manager_gaussian_handle = resource_state.buffer_manager->get_gaussian_handle();
         manager_sorted_handle = resource_state.buffer_manager->get_sorted_indices_handle();
         if (manager_gaussian_handle.is_valid()) {
-            p_renderer->track_resource_owner(manager_gaussian_handle.buffer, manager_gaussian_handle.device);
+            p_renderer->track_resource_owner(manager_gaussian_handle.buffer, manager_gaussian_handle.device, false, "painterly_buffer_manager_gaussian");
         }
         if (manager_sorted_handle.is_valid()) {
-            p_renderer->track_resource_owner(manager_sorted_handle.buffer, manager_sorted_handle.device);
+            p_renderer->track_resource_owner(manager_sorted_handle.buffer, manager_sorted_handle.device, false, "painterly_buffer_manager_sorted_indices");
         }
         manager_gaussian_buffer = manager_gaussian_handle.buffer;
         manager_sorted_indices = manager_sorted_handle.buffer;

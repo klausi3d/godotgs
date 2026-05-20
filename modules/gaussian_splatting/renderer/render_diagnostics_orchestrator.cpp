@@ -1362,6 +1362,17 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 	stats["cull_route_label"] = GaussianRenderRouteLabels::describe_cull_route_uid(normalized_cull_route_uid);
 	stats["requested_route_policy"] = debug_state.requested_route_policy;
 	stats["requested_route_policy_source"] = debug_state.requested_route_policy_source;
+	const bool resident_payload_active = scene_state.gaussian_data.is_valid() && scene_state.gaussian_data->get_count() > 0;
+	const bool payload_source_active = !resident_payload_active && scene_state.payload_source_splat_count > 0;
+	const String payload_mode = payload_source_active ? String("streamable_uncompressed")
+			: (resident_payload_active ? String("resident_only") : String("empty"));
+	const String payload_resident_only_reason = payload_source_active ? String()
+			: (resident_payload_active ? String("resident_payload_no_file_source") : String("no_renderable_payload"));
+	stats["payload_mode"] = payload_mode;
+	stats["payload_streamable"] = payload_source_active;
+	stats["payload_source_active"] = payload_source_active;
+	stats["resident_payload_active"] = resident_payload_active;
+	stats["payload_resident_only_reason"] = payload_resident_only_reason;
 	stats["instance_backend_policy"] = debug_state.instance_backend_policy;
 	stats["backend_selection_reason"] = debug_state.backend_selection_reason;
 	stats["backend_selection_reason_label"] =
@@ -1383,6 +1394,11 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 			debug_state.instance_backend_policy,
 			debug_state.backend_selection_reason,
 			GaussianRenderRouteLabels::describe_backend_selection_reason(debug_state.backend_selection_reason));
+	GaussianEffectiveConfig::set_entry(effective_config_snapshot,
+			StringName("payload_mode"),
+			payload_mode,
+			payload_resident_only_reason,
+			payload_source_active ? String("out-of-core source-backed reads active") : String("resident-only payload"));
 	String active_route_display = String(stats["route_label"]);
 	if (!normalized_route_uid.is_empty()) {
 		active_route_display += " [" + normalized_route_uid + "]";

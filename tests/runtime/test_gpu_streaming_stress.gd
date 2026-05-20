@@ -3,50 +3,7 @@ extends SceneTree
 # Runtime large-tier stress probe for the large-world proof ladder. Exercises
 # the radix path and validates that performance counters are being populated.
 
-const STREAM_TIERS := [
-    {
-        "name": "tier_250k",
-        "size": 250000,
-        "max_first_visible_ms": 2500.0,
-        "min_residency_ratio": 0.70,
-        "max_frame_p95_ms": 90.0,
-        "max_frame_p95_to_avg_ratio": 2.25,
-        "max_fallback_rate": 0.40,
-        "enforce": false
-    },
-    {
-        "name": "tier_1m",
-        "size": 1000000,
-        "max_first_visible_ms": 3500.0,
-        "min_residency_ratio": 0.75,
-        # Recalibrated after the shared-renderer teardown race (PR #282) and
-        # the instance-grading RID pass-through (PR #283) made tier_1m
-        # actually run to completion. The prior 120 ms budget was set before
-        # any clean run existed — the lifecycle and grading bugs caused tier_1m
-        # to bail on stale state before its real frame timing could be
-        # measured. First measurements from a healthy pipeline:
-        #   - self-hosted Windows CI, post-grading-fix: 163.5 ms p95
-        #   - local dev (RTX-class):                    155–168 ms p95
-        # 200 ms leaves ~22 % noise margin above the CI reading without making
-        # the gate meaningless. Narrow the budget downward in a dedicated perf
-        # pass once there is a multi-run baseline to argue from; do not treat
-        # this value as a performance target in its own right.
-        "max_frame_p95_ms": 200.0,
-        "max_frame_p95_to_avg_ratio": 2.25,
-        "max_fallback_rate": 0.35,
-        "enforce": true
-    },
-    {
-        "name": "tier_2_5m",
-        "size": 2500000,
-        "max_first_visible_ms": 5000.0,
-        "min_residency_ratio": 0.75,
-        "max_frame_p95_ms": 160.0,
-        "max_frame_p95_to_avg_ratio": 2.50,
-        "max_fallback_rate": 0.35,
-        "enforce": false
-    }
-]
+const StreamingGpuTierBudget = preload("streaming_gpu_tier_budget.gd")
 const BASELINE_TIER_NAME := "tier_1m"
 const SORT_METHOD_NAME := "GPU_RADIX"
 const TARGET_SORT_MS := 2.5
@@ -80,6 +37,31 @@ func _init() -> void:
 func _is_headless_runtime() -> bool:
     return OS.has_feature("headless") or DisplayServer.get_name() == "headless"
 
+func _stream_tiers() -> Array:
+    return [
+        {
+            "name": "tier_250k",
+            "size": 250000,
+            "max_first_visible_ms": 2500.0,
+            "min_residency_ratio": 0.70,
+            "max_frame_p95_ms": 90.0,
+            "max_frame_p95_to_avg_ratio": 2.25,
+            "max_fallback_rate": 0.40,
+            "enforce": false
+        },
+        StreamingGpuTierBudget.tier_1m_budget(),
+        {
+            "name": "tier_2_5m",
+            "size": 2500000,
+            "max_first_visible_ms": 5000.0,
+            "min_residency_ratio": 0.75,
+            "max_frame_p95_ms": 160.0,
+            "max_frame_p95_to_avg_ratio": 2.50,
+            "max_fallback_rate": 0.35,
+            "enforce": false
+        }
+    ]
+
 ## Initializes the renderer and exercises streaming datasets.
 func _run() -> void:
     if _is_headless_runtime():
@@ -104,7 +86,7 @@ func _run() -> void:
 
     var tier_results: Array = []
     var baseline_found := false
-    for tier in STREAM_TIERS:
+    for tier in _stream_tiers():
         var tier_result := await _exercise_tier(tier)
         tier_results.append(tier_result)
         if String(tier_result.get("name", "")) == BASELINE_TIER_NAME:
@@ -221,61 +203,6 @@ func _evaluate_sort_evidence(stats: Dictionary, history: Array) -> Dictionary:
             "gpu_sorter_total_sorts": total_sorts,
             "history_entries": history_entries
         }
-    }
-
-func _evaluate_tier_budget(tier: Dictionary, tier_result: Dictionary, residency: Dictionary) -> Dictionary:
-    var budget_failures: Array[String] = []
-    var telemetry_failures: Array[String] = []
-    var within_budget := true
-
-    var first_visible_ms := float(tier_result.get("first_visible_ms", -1.0))
-    var residency_ratio := float(residency.get("residency_ratio", 0.0))
-    var frame_p95_ms := float(tier_result.get("frame_p95_ms", 0.0))
-    var frame_p95_to_avg_ratio := float(tier_result.get("frame_p95_to_avg_ratio", 0.0))
-    var source_data_available := bool(tier_result.get("source_data_available", false))
-    var fallback_rate_available := bool(tier_result.get("fallback_rate_available", false))
-    var fallback_rate: Variant = tier_result.get("fallback_rate", null)
-
-    var max_first_visible_ms := float(tier.get("max_first_visible_ms", 0.0))
-    if first_visible_ms < 0.0:
-        within_budget = false
-        budget_failures.append("first_visible_missing")
-    elif max_first_visible_ms > 0.0 and first_visible_ms > max_first_visible_ms:
-        within_budget = false
-        budget_failures.append("first_visible_exceeded")
-
-    var min_residency_ratio := float(tier.get("min_residency_ratio", 0.0))
-    if residency_ratio < min_residency_ratio:
-        within_budget = false
-        budget_failures.append("residency_ratio_low")
-
-    var max_frame_p95_ms := float(tier.get("max_frame_p95_ms", 0.0))
-    if max_frame_p95_ms > 0.0 and frame_p95_ms > max_frame_p95_ms:
-        within_budget = false
-        budget_failures.append("frame_p95_exceeded")
-    var max_frame_p95_to_avg_ratio := float(tier.get("max_frame_p95_to_avg_ratio", 0.0))
-    if max_frame_p95_to_avg_ratio > 0.0 and frame_p95_to_avg_ratio > max_frame_p95_to_avg_ratio:
-        within_budget = false
-        budget_failures.append("frame_p95_to_avg_ratio_high")
-
-    var max_fallback_rate := float(tier.get("max_fallback_rate", 1.0))
-    if not source_data_available:
-        within_budget = false
-        telemetry_failures.append("fallback_source_data_missing")
-    elif not fallback_rate_available:
-        within_budget = false
-        telemetry_failures.append("fallback_rate_missing")
-    elif fallback_rate == null:
-        within_budget = false
-        telemetry_failures.append("fallback_rate_missing")
-    elif float(fallback_rate) > max_fallback_rate:
-        within_budget = false
-        budget_failures.append("fallback_rate_high")
-
-    return {
-        "within_budget": within_budget,
-        "budget_failures": budget_failures,
-        "telemetry_failures": telemetry_failures
     }
 
 ## Runs a streaming and sorting pass for a configured tier.
@@ -522,7 +449,7 @@ func _exercise_tier(tier: Dictionary) -> Dictionary:
 
     _validate_sort_metrics(SORT_METHOD_NAME, size, stats, sort_history)
     var residency := _validate_residency(size, stats)
-    var budget_eval := _evaluate_tier_budget(tier, {
+    var budget_eval := StreamingGpuTierBudget.evaluate_tier_budget(tier, {
         "first_visible_ms": first_visible_ms,
         "frame_p95_ms": frame_p95_ms,
         "frame_p95_to_avg_ratio": frame_p95_to_avg_ratio,

@@ -27,7 +27,17 @@ static bool _checked_mul_u64(uint64_t p_a, uint64_t p_b, uint64_t &r_result) {
 	return true;
 }
 
-static Error _validate_gsplatworld_header(const String &p_source_file) {
+struct GSplatWorldHeaderInfo {
+	bool compressed = false;
+	bool resident_payload = false;
+	uint32_t splat_count = 0;
+	uint32_t chunk_count = 0;
+	uint32_t sh_degree = 0;
+	uint32_t sh_first_order = 0;
+	uint32_t sh_high_order = 0;
+};
+
+static Error _validate_gsplatworld_header(const String &p_source_file, GSplatWorldHeaderInfo *r_info = nullptr) {
 	constexpr uint32_t world_magic = 0x57505347u; // 'GSPW' little-endian.
 	constexpr uint32_t world_version = 1u;
 	constexpr uint32_t max_sh_degree = 3u;
@@ -36,6 +46,7 @@ static Error _validate_gsplatworld_header(const String &p_source_file) {
 	constexpr uint32_t flag_has_chunks = 1u << 2u;
 	constexpr uint32_t flag_has_high_sh = 1u << 3u;
 	constexpr uint32_t flag_compressed = 1u << 4u;
+	constexpr uint32_t flag_resident_payload = 1u << 5u;
 	constexpr uint64_t header_size_bytes = 104u;
 	constexpr uint64_t chunk_record_size_bytes = 56u;
 
@@ -147,6 +158,16 @@ static Error _validate_gsplatworld_header(const String &p_source_file) {
 		}
 	}
 
+	if (r_info) {
+		r_info->compressed = (flags & flag_compressed) != 0u;
+		r_info->resident_payload = (flags & flag_resident_payload) != 0u;
+		r_info->splat_count = splat_count;
+		r_info->chunk_count = chunk_count;
+		r_info->sh_degree = sh_degree;
+		r_info->sh_first_order = sh_first_order;
+		r_info->sh_high_order = sh_high_order;
+	}
+
 	return OK;
 }
 
@@ -244,7 +265,8 @@ Error ResourceImporterGSplatWorld::import(ResourceUID::ID p_source_id, const Str
 		r_platform_variants->clear();
 	}
 
-	Error validation_err = _validate_gsplatworld_header(p_source_file);
+	GSplatWorldHeaderInfo header_info;
+	Error validation_err = _validate_gsplatworld_header(p_source_file, &header_info);
 	if (validation_err != OK) {
 		GS_LOG_ERROR_DEFAULT(vformat("GaussianSplatWorld importer rejected invalid payload %s (error %d)",
 				p_source_file, validation_err));
@@ -273,9 +295,24 @@ Error ResourceImporterGSplatWorld::import(ResourceUID::ID p_source_id, const Str
 	}
 
 	if (r_metadata) {
+		const bool resident_only = header_info.compressed || header_info.resident_payload;
+		const String resident_only_reason = header_info.compressed
+				? String("compressed_world_has_no_random_access_chunks")
+				: (header_info.resident_payload ? String("explicit_resident_payload") : String());
 		Dictionary import_metadata;
 		import_metadata[StringName("source_path")] = p_source_file;
 		import_metadata[StringName("resource_path")] = save_path;
+		import_metadata[StringName("compressed")] = header_info.compressed;
+		import_metadata[StringName("payload_mode")] = resident_only
+				? String("resident_only")
+				: String("streamable_uncompressed");
+		import_metadata[StringName("streamable")] = !resident_only;
+		import_metadata[StringName("resident_only_reason")] = resident_only_reason;
+		import_metadata[StringName("splat_count")] = static_cast<int64_t>(header_info.splat_count);
+		import_metadata[StringName("chunk_count")] = static_cast<int64_t>(header_info.chunk_count);
+		import_metadata[StringName("sh_degree")] = static_cast<int64_t>(header_info.sh_degree);
+		import_metadata[StringName("sh_first_order")] = static_cast<int64_t>(header_info.sh_first_order);
+		import_metadata[StringName("sh_high_order")] = static_cast<int64_t>(header_info.sh_high_order);
 		*r_metadata = import_metadata;
 	}
 

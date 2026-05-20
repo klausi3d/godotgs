@@ -8,6 +8,7 @@ Use this folder for architecture-level documentation and deep technical referenc
 - [Render pipeline architecture](render-pipeline.md)
 - [Culling and hierarchy](culling-and-hierarchy.md)
 - [Lighting system architecture](lighting-system.md)
+- [Gaussian ProjectSettings contract](gaussian-project-settings-contract.md)
 - [Unified Gaussian pipeline refactor plan](gaussian-pipeline-unification-plan.md)
 - [Resident-instanced renderer contract](gaussian-resident-instanced-contract.md)
 - [Gaussian pipeline deprecation and deletion plan](gaussian-pipeline-deprecation-deletion-plan.md)

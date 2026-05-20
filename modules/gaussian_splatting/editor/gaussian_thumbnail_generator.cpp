@@ -104,39 +104,41 @@ static void _mix_color_array_samples(uint64_t &r_hash, const PackedColorArray &p
 
 } // namespace
 
-uint64_t GaussianThumbnailGenerator::_compute_asset_fingerprint(const Ref<GaussianSplatAsset> &p_asset) const {
+uint64_t GaussianThumbnailGenerator::_compute_asset_fingerprint(const Ref<GaussianSplatAsset> &p_asset,
+        const GaussianSplatAsset::PayloadSnapshot &p_snapshot) const {
     if (p_asset.is_null()) {
         return 0;
     }
 
     uint64_t hash = 1469598103934665603ULL;
-    hash = _mix_hash64(hash, uint64_t(p_asset->get_splat_count()));
-    hash = _mix_hash64(hash, uint64_t(p_asset->get_compression_flags()));
-    hash = _mix_hash64(hash, uint64_t(p_asset->get_source_path().hash()));
+    hash = _mix_hash64(hash, uint64_t(p_snapshot.splat_count));
+    hash = _mix_hash64(hash, uint64_t(p_snapshot.compression_flags));
+    hash = _mix_hash64(hash, uint64_t(String(p_snapshot.import_metadata.get(StringName("source_path"), String())).hash()));
     hash = _mix_hash64(hash, uint64_t(p_asset->get_path().hash()));
 
-    Dictionary metadata = p_asset->get_import_metadata();
+    const Dictionary &metadata = p_snapshot.import_metadata;
     if (!metadata.is_empty()) {
         hash = _mix_hash64(hash, uint64_t(String(metadata.get(StringName("import_time"), String())).hash()));
         hash = _mix_hash64(hash, uint64_t(String(metadata.get(StringName("source_file"), String())).hash()));
     }
 
-    _mix_float_array_samples(hash, p_asset->get_positions());
-    _mix_color_array_samples(hash, p_asset->get_colors());
-    _mix_float_array_samples(hash, p_asset->get_scales());
-    _mix_float_array_samples(hash, p_asset->get_rotations());
-    _mix_float_array_samples(hash, p_asset->get_opacities());
-    _mix_float_array_samples(hash, p_asset->get_normals());
+    _mix_float_array_samples(hash, p_snapshot.positions);
+    _mix_color_array_samples(hash, p_snapshot.colors);
+    _mix_float_array_samples(hash, p_snapshot.scales);
+    _mix_float_array_samples(hash, p_snapshot.rotations);
+    _mix_float_array_samples(hash, p_snapshot.opacity_logits);
+    _mix_float_array_samples(hash, p_snapshot.normals);
 
     return hash;
 }
 
-String GaussianThumbnailGenerator::_build_cache_key(const Ref<GaussianSplatAsset> &p_asset, int p_size, ThumbnailStyle p_style) const {
+String GaussianThumbnailGenerator::_build_cache_key(const Ref<GaussianSplatAsset> &p_asset,
+        const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_size, ThumbnailStyle p_style) const {
     if (p_asset.is_null()) {
         return String();
     }
 
-    String asset_id = p_asset->get_source_path();
+    String asset_id = p_snapshot.import_metadata.get(StringName("source_path"), String());
     if (asset_id.is_empty()) {
         asset_id = p_asset->get_path();
     }
@@ -144,7 +146,7 @@ String GaussianThumbnailGenerator::_build_cache_key(const Ref<GaussianSplatAsset
         asset_id = "<in-memory>";
     }
 
-    const uint64_t fingerprint = _compute_asset_fingerprint(p_asset);
+    const uint64_t fingerprint = _compute_asset_fingerprint(p_asset, p_snapshot);
     return asset_id + "|" + String::num_uint64(fingerprint) + "|" + itos(p_size) + "|" + itos(int(p_style));
 }
 
@@ -211,7 +213,7 @@ void GaussianThumbnailGenerator::_save_to_disk_cache(uint64_t p_fingerprint, int
     p_image->save_png(path);
 }
 
-Dictionary GaussianThumbnailGenerator::_project_to_canvas(const Ref<GaussianSplatAsset> &p_asset, int p_size,
+Dictionary GaussianThumbnailGenerator::_project_to_canvas(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_size,
         Vector<int> &r_hits, Vector<Color> &r_accum) const {
     Dictionary result;
     r_hits.clear();
@@ -227,10 +229,10 @@ Dictionary GaussianThumbnailGenerator::_project_to_canvas(const Ref<GaussianSpla
         accum_ptr[i] = Color();
     }
 
-    PackedFloat32Array positions = p_asset->get_positions();
-    PackedColorArray colors = p_asset->get_colors();
-    PackedFloat32Array scales = p_asset->get_scales();
-    const int splat_count = p_asset->get_splat_count();
+    const PackedFloat32Array &positions = p_snapshot.positions;
+    const PackedColorArray &colors = p_snapshot.colors;
+    const PackedFloat32Array &scales = p_snapshot.scales;
+    const int splat_count = p_snapshot.splat_count;
 
     Vector3 min_pos(FLT_MAX, FLT_MAX, FLT_MAX);
     Vector3 max_pos(-FLT_MAX, -FLT_MAX, -FLT_MAX);
@@ -300,10 +302,10 @@ Dictionary GaussianThumbnailGenerator::_project_to_canvas(const Ref<GaussianSpla
     return result;
 }
 
-Ref<Image> GaussianThumbnailGenerator::_generate_color_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const {
+Ref<Image> GaussianThumbnailGenerator::_generate_color_thumbnail(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_size) const {
     Vector<int> hits;
     Vector<Color> accum;
-    _project_to_canvas(p_asset, p_size, hits, accum);
+    _project_to_canvas(p_snapshot, p_size, hits, accum);
 
     Ref<Image> image = Image::create_empty(p_size, p_size, false, Image::FORMAT_RGBA8);
     image->fill(Color(0.08f, 0.08f, 0.08f, 1.0f));
@@ -323,10 +325,10 @@ Ref<Image> GaussianThumbnailGenerator::_generate_color_thumbnail(const Ref<Gauss
     return image;
 }
 
-Ref<Image> GaussianThumbnailGenerator::_generate_density_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const {
+Ref<Image> GaussianThumbnailGenerator::_generate_density_thumbnail(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_size) const {
     Vector<int> hits;
     Vector<Color> accum;
-    _project_to_canvas(p_asset, p_size, hits, accum);
+    _project_to_canvas(p_snapshot, p_size, hits, accum);
 
     int max_hit = 1;
     const int *hits_ptr = hits.ptr();
@@ -349,18 +351,18 @@ Ref<Image> GaussianThumbnailGenerator::_generate_density_thumbnail(const Ref<Gau
     return image;
 }
 
-Ref<Image> GaussianThumbnailGenerator::_generate_normals_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const {
+Ref<Image> GaussianThumbnailGenerator::_generate_normals_thumbnail(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_size) const {
     Vector<int> hits;
     Vector<Color> accum;
-    Dictionary projection = _project_to_canvas(p_asset, p_size, hits, accum);
+    Dictionary projection = _project_to_canvas(p_snapshot, p_size, hits, accum);
 
     Ref<Image> image = Image::create_empty(p_size, p_size, false, Image::FORMAT_RGBA8);
     image->fill(Color(0.3f, 0.3f, 0.4f, 1.0f));
 
-    PackedFloat32Array positions = p_asset->get_positions();
-    PackedFloat32Array rotations = p_asset->get_rotations();
-    PackedFloat32Array normals_array = p_asset->get_normals();
-    const int splat_count = p_asset->get_splat_count();
+    const PackedFloat32Array &positions = p_snapshot.positions;
+    const PackedFloat32Array &rotations = p_snapshot.rotations;
+    const PackedFloat32Array &normals_array = p_snapshot.normals;
+    const int splat_count = p_snapshot.splat_count;
     const int rot_size = rotations.size();
     const bool has_normals = normals_array.size() >= splat_count * 3;
 
@@ -428,10 +430,10 @@ Ref<Image> GaussianThumbnailGenerator::_generate_normals_thumbnail(const Ref<Gau
     return image;
 }
 
-Ref<Image> GaussianThumbnailGenerator::_generate_heatmap_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const {
+Ref<Image> GaussianThumbnailGenerator::_generate_heatmap_thumbnail(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_size) const {
     Vector<int> hits;
     Vector<Color> accum;
-    _project_to_canvas(p_asset, p_size, hits, accum);
+    _project_to_canvas(p_snapshot, p_size, hits, accum);
 
     int max_hit = 1;
     const int *hits_ptr = hits.ptr();
@@ -462,10 +464,11 @@ Ref<Image> GaussianThumbnailGenerator::generate_thumbnail_image(const Ref<Gaussi
         ThumbnailStyle p_style) const {
     ERR_FAIL_COND_V(p_size <= 0, Ref<Image>());
     ERR_FAIL_COND_V(p_asset.is_null(), Ref<Image>());
-    ERR_FAIL_COND_V(p_asset->get_splat_count() == 0, Ref<Image>());
+    const GaussianSplatAsset::PayloadSnapshot snapshot = p_asset->capture_payload_snapshot();
+    ERR_FAIL_COND_V(snapshot.splat_count == 0, Ref<Image>());
 
-    const String cache_key = _build_cache_key(p_asset, p_size, p_style);
-    const uint64_t fingerprint = _compute_asset_fingerprint(p_asset);
+    const String cache_key = _build_cache_key(p_asset, snapshot, p_size, p_style);
+    const uint64_t fingerprint = _compute_asset_fingerprint(p_asset, snapshot);
 
     // Check in-memory cache first.
     if (!cache_key.is_empty()) {
@@ -497,19 +500,19 @@ Ref<Image> GaussianThumbnailGenerator::generate_thumbnail_image(const Ref<Gaussi
 
     switch (p_style) {
         case THUMBNAIL_STYLE_COLOR:
-            generated = _generate_color_thumbnail(p_asset, p_size);
+            generated = _generate_color_thumbnail(snapshot, p_size);
             break;
         case THUMBNAIL_STYLE_DENSITY:
-            generated = _generate_density_thumbnail(p_asset, p_size);
+            generated = _generate_density_thumbnail(snapshot, p_size);
             break;
         case THUMBNAIL_STYLE_NORMALS:
-            generated = _generate_normals_thumbnail(p_asset, p_size);
+            generated = _generate_normals_thumbnail(snapshot, p_size);
             break;
         case THUMBNAIL_STYLE_HEATMAP:
-            generated = _generate_heatmap_thumbnail(p_asset, p_size);
+            generated = _generate_heatmap_thumbnail(snapshot, p_size);
             break;
         default:
-            generated = _generate_color_thumbnail(p_asset, p_size);
+            generated = _generate_color_thumbnail(snapshot, p_size);
             break;
     }
 
@@ -531,16 +534,15 @@ Ref<Image> GaussianThumbnailGenerator::generate_thumbnail_image(const Ref<Gaussi
 
 Ref<Texture2D> GaussianThumbnailGenerator::generate_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size,
         ThumbnailStyle p_style) const {
+    ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), Ref<Texture2D>(),
+            "GaussianThumbnailGenerator::generate_thumbnail() creates an ImageTexture and must run on the main thread. Use generate_thumbnail_image() from worker/import paths.");
     Ref<Image> image = generate_thumbnail_image(p_asset, p_size, p_style);
     if (image.is_null() || image->is_empty()) {
         return Ref<Texture2D>();
     }
 
-    // Safe to call from `EditorResourcePreview`'s worker threads in editor
-    // mode: the main thread pumps the RS command queue so the sync RS call
-    // chain underneath `create_from_image` completes. The `--headless
-    // --import` deadlock case that motivated #251 is avoided by having the
-    // importer call `generate_thumbnail_image()` directly (no RS calls).
+    // Texture creation crosses RenderingServer state. Worker/import paths must
+    // remain CPU-only and use generate_thumbnail_image().
     return ImageTexture::create_from_image(image);
 }
 

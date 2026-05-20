@@ -147,6 +147,11 @@ struct DebugState {
 	String sort_route_uid;
 	String requested_route_policy = "streaming";
 	String requested_route_policy_source = "default_fallback";
+	String payload_mode = "empty";
+	String payload_resident_only_reason = "no_renderable_payload";
+	bool payload_streamable = false;
+	bool payload_source_active = false;
+	bool resident_payload_active = false;
 	String instance_backend_policy = "none";
 	String backend_selection_reason = "not_evaluated";
 	String instance_contract_shape = "none";

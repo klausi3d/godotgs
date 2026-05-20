@@ -10,6 +10,7 @@
         "Animation Persistence"
       ],
       "gd_tests": [
+        "Streaming GPU Tier Budget Contract",
         "Streaming Residency API",
         "Monitor Lifecycle Hardening"
       ],

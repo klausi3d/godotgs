@@ -71,10 +71,10 @@ private:
     mutable Ref<ImageTexture> preview_texture_cache;
     bool has_sh_dc_coefficients = false;
     mutable Ref<::GaussianData> gaussian_data_cache;
-    // Serializes the cache check-and-store in get_gaussian_data() / populate_gaussian_data()
-    // so the O(N) SoA->AoS build can run on a WorkerThreadPool task (one task per asset).
-    // The mutex is NEVER held during the build itself — only around the cache reads/writes —
-    // to avoid serializing parallel workers materializing distinct assets.
+    // Serializes payload snapshots, hot-reload copy_from(), preview image/cache
+    // state, and get_gaussian_data() materialization. Multi-field readers should
+    // use capture_payload_snapshot() to copy a coherent asset generation under
+    // one lock and then release it before doing heavier work.
     mutable Mutex populate_mutex;
     // Once the asset has been "handed out" as runtime authority (via
     // get_gaussian_data() or populate_from_gaussian_data()), the packed
@@ -105,6 +105,36 @@ protected:
     void _get_property_list(List<PropertyInfo> *p_list) const;
 
 public:
+    struct PayloadSnapshot {
+        uint32_t splat_count = 0;
+        uint32_t sh_first_order_terms = 0;
+        uint32_t sh_high_order_terms = 0;
+        uint32_t compression_flags = COMPRESSION_NONE;
+        String import_quality_preset;
+        Dictionary import_metadata;
+        Ref<Image> preview_image;
+        PackedFloat32Array positions;
+        PackedColorArray colors;
+        PackedFloat32Array scales;
+        PackedFloat32Array rotations;
+        PackedFloat32Array sh_dc_coefficients;
+        PackedFloat32Array sh_first_order_coefficients;
+        PackedFloat32Array sh_high_order_coefficients;
+        PackedFloat32Array opacity_logits;
+        PackedInt32Array palette_ids;
+        PackedInt32Array painterly_flags;
+        PackedFloat32Array normals;
+        PackedFloat32Array brush_axes;
+        PackedFloat32Array stroke_ages;
+        PackedByteArray streaming_chunk_records;
+        PackedInt32Array streaming_primary_source_indices;
+        PackedByteArray streaming_quantization_records;
+        uint32_t streaming_chunk_size_used = 0;
+        bool has_sh_dc_coefficients = false;
+
+        bool is_loaded() const { return splat_count > 0; }
+    };
+
     GaussianSplatAsset();
     ~GaussianSplatAsset();
 
@@ -128,6 +158,11 @@ public:
     // read against set_splat_count() / copy_from(). Mutex is recursive, so it
     // is safe to call from within a setter that already holds the lock.
     uint32_t get_splat_count() const;
+
+    // Copies all payload arrays and metadata while holding populate_mutex once.
+    // Use this for node/editor/runtime code that needs more than one field from
+    // an asset; individual getters are for single-field compatibility reads.
+    PayloadSnapshot capture_payload_snapshot() const;
 
     // Getters
     PackedFloat32Array get_positions() const;
@@ -155,8 +190,8 @@ public:
     PackedVector2Array get_brush_axes_vector2() const;
     PackedFloat32Array get_stroke_ages() const;
     PackedFloat32Array get_stroke_ages_buffer() const;
-    uint32_t get_sh_first_order_terms() const { return sh_first_order_terms; }
-    uint32_t get_sh_high_order_terms() const { return sh_high_order_terms; }
+    uint32_t get_sh_first_order_terms() const;
+    uint32_t get_sh_high_order_terms() const;
 
     // Setters - needed for loaders to populate data
     void set_positions(const PackedFloat32Array &p_positions);
@@ -178,16 +213,16 @@ public:
     static uint32_t get_instance_count() { return instance_count.load(); }
 
     void set_import_metadata(const Dictionary &p_metadata);
-    Dictionary get_import_metadata() const { return import_metadata; }
+    Dictionary get_import_metadata() const;
 
     void set_import_quality_preset(const String &p_preset);
-    String get_import_quality_preset() const { return import_quality_preset; }
+    String get_import_quality_preset() const;
 
     void set_compression_flags(uint32_t p_flags);
-    uint32_t get_compression_flags() const { return compression_flags; }
+    uint32_t get_compression_flags() const;
 
     void set_preview_image(const Ref<Image> &p_image);
-    Ref<Image> get_preview_image() const { return preview_image; }
+    Ref<Image> get_preview_image() const;
     Ref<Texture2D> get_preview_texture() const;
 
     void set_thumbnail(const Ref<Texture2D> &p_thumbnail);
@@ -217,15 +252,16 @@ public:
 
     // Streaming-chunk bake accessors (Phase B.1).
     void set_streaming_chunk_records(const PackedByteArray &p_records);
-    PackedByteArray get_streaming_chunk_records() const { return streaming_chunk_records; }
+    PackedByteArray get_streaming_chunk_records() const;
     void set_streaming_primary_source_indices(const PackedInt32Array &p_indices);
-    PackedInt32Array get_streaming_primary_source_indices() const { return streaming_primary_source_indices; }
+    PackedInt32Array get_streaming_primary_source_indices() const;
     void set_streaming_quantization_records(const PackedByteArray &p_records);
-    PackedByteArray get_streaming_quantization_records() const { return streaming_quantization_records; }
+    PackedByteArray get_streaming_quantization_records() const;
     void set_streaming_chunk_size_used(uint32_t p_size);
-    uint32_t get_streaming_chunk_size_used() const { return streaming_chunk_size_used; }
+    uint32_t get_streaming_chunk_size_used() const;
 
     bool has_baked_streaming_chunks() const {
+        MutexLock cache_lock(populate_mutex);
         return streaming_chunk_size_used > 0 && !streaming_chunk_records.is_empty();
     }
 };

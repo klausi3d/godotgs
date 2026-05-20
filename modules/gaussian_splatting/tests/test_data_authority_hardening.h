@@ -22,6 +22,7 @@
 #include "../core/gaussian_data.h"
 #include "../core/gaussian_splat_asset.h"
 #include "core/io/resource.h"
+#include "core/os/semaphore.h"
 #include "core/os/thread.h"
 #include "core/templates/local_vector.h"
 #include "tests/test_macros.h"
@@ -118,6 +119,210 @@ static void _animated_accessor_reader_thread(void *p_userdata) {
         }
 
         Thread::yield();
+    }
+}
+#endif
+
+static Ref<GaussianSplatAsset> _make_asset_snapshot_pattern(float p_marker, const Color &p_color) {
+    Ref<GaussianSplatAsset> asset;
+    asset.instantiate();
+
+    constexpr int splat_count = 8;
+    asset->set_splat_count(splat_count);
+
+    PackedFloat32Array positions;
+    positions.resize(splat_count * 3);
+    PackedColorArray colors;
+    colors.resize(splat_count);
+    PackedFloat32Array scales;
+    scales.resize(splat_count * 3);
+    PackedFloat32Array rotations;
+    rotations.resize(splat_count * 4);
+    PackedFloat32Array opacity_logits;
+    opacity_logits.resize(splat_count);
+    PackedInt32Array palette_ids;
+    palette_ids.resize(splat_count);
+    PackedInt32Array painterly_flags;
+    painterly_flags.resize(splat_count);
+    PackedFloat32Array normals;
+    normals.resize(splat_count * 3);
+    PackedFloat32Array brush_axes;
+    brush_axes.resize(splat_count * 2);
+    PackedFloat32Array stroke_ages;
+    stroke_ages.resize(splat_count);
+
+    for (int i = 0; i < splat_count; i++) {
+        positions.set(i * 3 + 0, p_marker);
+        positions.set(i * 3 + 1, p_marker + float(i));
+        positions.set(i * 3 + 2, -p_marker);
+        colors.set(i, p_color);
+        scales.set(i * 3 + 0, Math::abs(p_marker) + 1.0f);
+        scales.set(i * 3 + 1, Math::abs(p_marker) + 2.0f);
+        scales.set(i * 3 + 2, Math::abs(p_marker) + 3.0f);
+        rotations.set(i * 4 + 0, 1.0f);
+        rotations.set(i * 4 + 1, 0.0f);
+        rotations.set(i * 4 + 2, 0.0f);
+        rotations.set(i * 4 + 3, 0.0f);
+        opacity_logits.set(i, p_marker);
+        palette_ids.set(i, int(p_marker) & 0xffff);
+        painterly_flags.set(i, (int(p_marker) + 7) & 0xffff);
+        normals.set(i * 3 + 0, 0.0f);
+        normals.set(i * 3 + 1, p_marker > 0.0f ? 1.0f : -1.0f);
+        normals.set(i * 3 + 2, 0.0f);
+        brush_axes.set(i * 2 + 0, p_marker);
+        brush_axes.set(i * 2 + 1, p_marker + 0.5f);
+        stroke_ages.set(i, p_marker + float(i) * 0.25f);
+    }
+
+    asset->set_positions(positions);
+    asset->set_colors(colors);
+    asset->set_scales(scales);
+    asset->set_rotations(rotations);
+    asset->set_opacity_logits(opacity_logits);
+    asset->set_palette_ids(palette_ids);
+    asset->set_painterly_flags(painterly_flags);
+    asset->set_normals(normals);
+    asset->set_brush_axes(brush_axes);
+    asset->set_stroke_ages(stroke_ages);
+    asset->set_source_path(vformat("res://snapshot_pattern_%s.ply", p_marker > 0.0f ? "a" : "b"));
+    return asset;
+}
+
+static bool _snapshot_has_expected_core_sizes(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_splat_count) {
+    if (p_snapshot.splat_count != uint32_t(p_splat_count)) {
+        return false;
+    }
+    if (p_snapshot.positions.size() != p_splat_count * 3 || p_snapshot.colors.size() != p_splat_count) {
+        return false;
+    }
+    if (p_snapshot.scales.size() != p_splat_count * 3 || p_snapshot.rotations.size() != p_splat_count * 4) {
+        return false;
+    }
+    return p_snapshot.opacity_logits.size() == p_splat_count;
+}
+
+static bool _snapshot_has_expected_painterly_sizes(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_splat_count) {
+    if (p_snapshot.palette_ids.size() != p_splat_count || p_snapshot.painterly_flags.size() != p_splat_count) {
+        return false;
+    }
+    if (p_snapshot.normals.size() != p_splat_count * 3 || p_snapshot.brush_axes.size() != p_splat_count * 2) {
+        return false;
+    }
+    return p_snapshot.stroke_ages.size() == p_splat_count;
+}
+
+static bool _snapshot_entry_core_matches(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_index, float p_marker, const Color &p_color) {
+    if (!Math::is_equal_approx(p_snapshot.positions[p_index * 3 + 0], p_marker)) {
+        return false;
+    }
+    if (!Math::is_equal_approx(p_snapshot.positions[p_index * 3 + 1], p_marker + float(p_index))) {
+        return false;
+    }
+    if (!Math::is_equal_approx(p_snapshot.positions[p_index * 3 + 2], -p_marker)) {
+        return false;
+    }
+    if (p_snapshot.colors[p_index] != p_color) {
+        return false;
+    }
+    return Math::is_equal_approx(p_snapshot.scales[p_index * 3 + 0], Math::abs(p_marker) + 1.0f);
+}
+
+static bool _snapshot_entry_metadata_matches(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_index, float p_marker) {
+    if (!Math::is_equal_approx(p_snapshot.opacity_logits[p_index], p_marker)) {
+        return false;
+    }
+    if (p_snapshot.palette_ids[p_index] != (int(p_marker) & 0xffff)) {
+        return false;
+    }
+    return p_snapshot.painterly_flags[p_index] == ((int(p_marker) + 7) & 0xffff);
+}
+
+static bool _snapshot_entry_painterly_matches(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_index, float p_marker) {
+    const float expected_normal_y = p_marker > 0.0f ? 1.0f : -1.0f;
+    if (!Math::is_equal_approx(p_snapshot.normals[p_index * 3 + 1], expected_normal_y)) {
+        return false;
+    }
+    if (!Math::is_equal_approx(p_snapshot.brush_axes[p_index * 2 + 0], p_marker)) {
+        return false;
+    }
+    return Math::is_equal_approx(p_snapshot.stroke_ages[p_index], p_marker + float(p_index) * 0.25f);
+}
+
+static bool _snapshot_entry_matches_pattern(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_index, float p_marker, const Color &p_color) {
+    return _snapshot_entry_core_matches(p_snapshot, p_index, p_marker, p_color) &&
+            _snapshot_entry_metadata_matches(p_snapshot, p_index, p_marker) &&
+            _snapshot_entry_painterly_matches(p_snapshot, p_index, p_marker);
+}
+
+static bool _snapshot_matches_pattern(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, float p_marker, const Color &p_color) {
+    constexpr int splat_count = 8;
+    if (!_snapshot_has_expected_core_sizes(p_snapshot, splat_count)) {
+        return false;
+    }
+    if (!_snapshot_has_expected_painterly_sizes(p_snapshot, splat_count)) {
+        return false;
+    }
+
+    for (int i = 0; i < splat_count; i++) {
+        if (!_snapshot_entry_matches_pattern(p_snapshot, i, p_marker, p_color)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+#ifdef THREADS_ENABLED
+struct _AssetSnapshotCopyRaceContext {
+    Ref<GaussianSplatAsset> target;
+    Ref<GaussianSplatAsset> asset_a;
+    Ref<GaussianSplatAsset> asset_b;
+    std::atomic<bool> stop{ false };
+    std::atomic<int> invalid_snapshots{ 0 };
+    Semaphore writer_begin;
+    Semaphore writer_done;
+    Semaphore reader_begin;
+    Semaphore reader_done;
+};
+
+static void _asset_snapshot_writer_thread(void *p_userdata) {
+    _AssetSnapshotCopyRaceContext *ctx = static_cast<_AssetSnapshotCopyRaceContext *>(p_userdata);
+    if (!ctx || ctx->target.is_null() || ctx->asset_a.is_null() || ctx->asset_b.is_null()) {
+        return;
+    }
+
+    int iteration = 0;
+    while (true) {
+        ctx->writer_begin.wait();
+        if (ctx->stop.load(std::memory_order_acquire)) {
+            break;
+        }
+
+        Ref<Resource> source = (iteration % 2) == 0 ? ctx->asset_a : ctx->asset_b;
+        ctx->target->copy_from(source);
+        iteration++;
+        ctx->writer_done.post();
+    }
+}
+
+static void _asset_snapshot_reader_thread(void *p_userdata) {
+    _AssetSnapshotCopyRaceContext *ctx = static_cast<_AssetSnapshotCopyRaceContext *>(p_userdata);
+    if (!ctx || ctx->target.is_null()) {
+        return;
+    }
+
+    while (true) {
+        ctx->reader_begin.wait();
+        if (ctx->stop.load(std::memory_order_acquire)) {
+            break;
+        }
+
+        const GaussianSplatAsset::PayloadSnapshot snapshot = ctx->target->capture_payload_snapshot();
+        const bool matches_a = _snapshot_matches_pattern(snapshot, 11.0f, Color(1, 0, 0, 1));
+        const bool matches_b = _snapshot_matches_pattern(snapshot, -23.0f, Color(0, 1, 0, 1));
+        if (!matches_a && !matches_b) {
+            ctx->invalid_snapshots.fetch_add(1, std::memory_order_relaxed);
+        }
+        ctx->reader_done.post();
     }
 }
 #endif
@@ -396,6 +601,56 @@ TEST_CASE("[GaussianSplatting][DataAuthority] GaussianSplatAsset packed setters 
     rewrite_data.instantiate();
     rewrite_data->set_gaussians(_make_authority_test_cloud());
     REQUIRE(asset->populate_from_gaussian_data(rewrite_data) == OK);
+}
+
+TEST_CASE("[GaussianSplatting][DataAuthority] GaussianSplatAsset payload snapshots stay coherent across copy_from reloads") {
+#ifndef THREADS_ENABLED
+    MESSAGE("Skipping - THREADS_ENABLED is not enabled in this build");
+    return;
+#else
+    Ref<GaussianSplatAsset> asset_a = _make_asset_snapshot_pattern(11.0f, Color(1, 0, 0, 1));
+    Ref<GaussianSplatAsset> asset_b = _make_asset_snapshot_pattern(-23.0f, Color(0, 1, 0, 1));
+    Ref<GaussianSplatAsset> target = _make_asset_snapshot_pattern(11.0f, Color(1, 0, 0, 1));
+
+    // Seal the target first so copy_from() also proves the hot-reload unseal
+    // path is serialized against snapshot reads.
+    Ref<::GaussianData> runtime = target->get_gaussian_data();
+    REQUIRE(runtime.is_valid());
+
+    _AssetSnapshotCopyRaceContext ctx;
+    ctx.target = target;
+    ctx.asset_a = asset_a;
+    ctx.asset_b = asset_b;
+
+    Thread writer_thread;
+    Thread reader_thread;
+    writer_thread.start(_asset_snapshot_writer_thread, &ctx);
+    reader_thread.start(_asset_snapshot_reader_thread, &ctx);
+
+    constexpr uint32_t iterations = 128;
+    for (uint32_t i = 0; i < iterations; i++) {
+        if ((i % 2) == 0) {
+            ctx.writer_begin.post();
+            Thread::yield();
+            ctx.reader_begin.post();
+        } else {
+            ctx.reader_begin.post();
+            Thread::yield();
+            ctx.writer_begin.post();
+        }
+        ctx.writer_done.wait();
+        ctx.reader_done.wait();
+    }
+
+    ctx.stop.store(true, std::memory_order_release);
+    ctx.writer_begin.post();
+    ctx.reader_begin.post();
+    writer_thread.wait_to_finish();
+    reader_thread.wait_to_finish();
+
+    CHECK_MESSAGE(ctx.invalid_snapshots.load(std::memory_order_acquire) == 0,
+            "Payload snapshots must observe one complete asset generation, never mixed arrays/metadata during copy_from().");
+#endif
 }
 
 TEST_CASE("[GaussianSplatting][DataAuthority] Raw storage accessors compile-survivable and main-thread safe") {
