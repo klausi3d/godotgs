@@ -325,11 +325,39 @@ public:
     using SubsystemState = GaussianRenderFacadeState::SubsystemState;
     using ShadowBlitState = GaussianRenderFacadeState::ShadowBlitState;
 
+    enum class RenderPassKind : uint8_t {
+        MAIN_VIEW = 0,
+        SHADOW_MAP = 1,
+    };
+
+    enum class ShadowRenderFailureReason : uint8_t {
+        NONE = 0,
+        INVALID_ATLAS_RECT,
+        NO_RENDERING_DEVICE,
+        SHADOW_COMPOSITOR_UNAVAILABLE,
+        RASTERIZER_UNAVAILABLE,
+        DEPTH_TEXTURE_INVALID,
+        DEPTH_OWNER_ALIAS_INVALID,
+        BLIT_FAILED,
+    };
+
+    struct ShadowRenderResult {
+        RenderPassKind pass_kind = RenderPassKind::SHADOW_MAP;
+        bool success = false;
+        ShadowRenderFailureReason failure_reason = ShadowRenderFailureReason::NONE;
+        String route_label;
+        Rect2i atlas_rect;
+        RID depth_texture;
+        bool depth_owner_valid = false;
+        bool blit_attempted = false;
+    };
+
     // Stage types exposed for RenderPipelineStages and orchestrators
     class IFrameStateView;
     class IFrameMutationAccess;
 
     struct RenderFrameContext {
+        RenderPassKind pass_kind = RenderPassKind::MAIN_VIEW;
         uint64_t frame_id = 0;
         RenderDataRD *render_data = nullptr;
         RenderSceneBuffersRD *render_buffers = nullptr;
@@ -689,7 +717,7 @@ public:
             IndexDomain p_input_domain = IndexDomain::UNKNOWN);
     void render_sorted_splats(RenderDataRD *p_render_data, const Transform3D &p_world_to_camera_transform,
             const Projection &p_projection, const Projection &p_render_projection,
-            bool p_defer_render_buffers_commit = false);
+            bool p_defer_render_buffers_commit = false, RenderPassKind p_pass_kind = RenderPassKind::MAIN_VIEW);
     void render_instanced(RenderDataRD *p_render_data, const GaussianSplatManager::SharedDynamicAssetHandle &p_handle,
             const Transform3D &p_world_to_camera_transform, const Projection &p_projection, const Projection &p_render_projection,
             const LocalVector<Transform3D> &p_instance_transforms);
@@ -703,10 +731,24 @@ public:
     uint64_t shadow_output_device_id = 0;
     ShadowBlitState shadow_blit_state;
     bool shadow_instance_filter_enabled = false;
+    ShadowRenderResult last_shadow_render_result;
+
+    struct ShadowPassDescriptor {
+        Projection light_projection;
+        Transform3D light_transform;
+        Rect2i atlas_rect;
+        RID shadow_framebuffer;
+        bool flip_y = false;
+        RD::DataFormat viewport_format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
+    };
+
+    class ScopedShadowPassState;
 
     bool _ensure_shadow_output_compositor(RenderingDevice *p_device);
     bool _ensure_shadow_blit_resources(RenderingDevice *p_device);
     bool _blit_shadow_depth(RID p_source_depth, RID p_shadow_fb, const Rect2i &p_atlas_rect, bool p_flip_y);
+    bool _finish_shadow_render_result(const ShadowRenderResult &p_result);
+    static const char *_shadow_failure_reason_label(ShadowRenderFailureReason p_reason);
 
 
     // Interactive state system methods
@@ -1508,6 +1550,7 @@ public:
      */
     bool render_shadow_depth_map(const Projection &p_light_projection, const Transform3D &p_light_transform,
             const Rect2i &p_atlas_rect, RID p_shadow_framebuffer, bool p_flip_y);
+    const ShadowRenderResult &get_last_shadow_render_result() const { return last_shadow_render_result; }
 
     /**
      * @brief Renders splats for a specific camera view.
@@ -1686,6 +1729,7 @@ public:
     bool test_dispatch_call_on_render_thread_blocking_with_completion();
     void test_notify_render_thread_dispatch_completed(uint64_t p_request_id);
     uint64_t test_get_render_thread_dispatch_completed_request_id() const;
+    bool test_shadow_pass_guard_restores_after_scope();
 
     /**
      * @brief Returns the axis-aligned bounding box of the Gaussian data.
