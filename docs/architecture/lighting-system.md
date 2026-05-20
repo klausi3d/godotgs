@@ -83,6 +83,18 @@ Directional shadow maps are rendered and blitted through:
 
 Source: [../../modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp](../../modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp)
 
+### Transitional Shadow Pass State Contract
+
+The current production slice still routes shadow maps through the normal sorted-splat raster path, but the mutable renderer state is now owned by one scoped shadow-pass guard. The guard is the only code allowed to temporarily override:
+
+- `ViewState` light-view fields (`manual_viewport_override`, `manual_viewport_format_override`, camera transform/projection, and `using_scene_data`)
+- `SubsystemState::output_compositor`, swapped to the dedicated shadow output compositor for the pass
+- `shadow_instance_filter_enabled`, set to shadow-caster filtering for the pass
+
+The invariant is that every return after the guard is constructed, including missing rasterizer, invalid depth texture, owner-alias failure, and blit failure, restores the main view state, main output compositor, and previous shadow-filter mode before control returns to Forward+. `ShadowRenderResult` records shadow-specific route labels such as `SHADOW_FAIL_DEPTH_INVALID` and `SHADOW_FAIL_BLIT` so these failures are distinguishable from main-view render failures.
+
+Production target: replace this scoped mutation with a fully pass-local `ShadowRenderContext` and depth-only shadow raster contract. At that point shadow passes should pass their compositor/filter/depth target through `RenderFrameContext::FrameDeps` or a shadow-specific context without swapping renderer-wide state, and shadow cull/sort/raster metrics should be namespaced away from main-view frame metrics.
+
 ## Current Constraint: Soft Shadows in Compute Path
 
 `gs_lighting_bridge.glsl` explicitly disables soft-shadow sampling in the compute compatibility path (`sc_*_shadow_samples()` return `0`). This is a current design constraint, not a documentation omission.

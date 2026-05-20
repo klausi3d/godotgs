@@ -7,11 +7,13 @@
 #include "../io/resource_importer_ply.h"
 #include "../io/resource_importer_spz.h"
 #include "../io/resource_importer_gsplatworld.h"
+#include "../io/gaussian_splat_world_io.h"
 #include "../io/ply_loader.h"
 #include "../io/spz_loader.h"
 #include "../editor/gaussian_import_dialog.h"
 #include "../editor/gaussian_editor_plugin.h"
 #include "../editor/gaussian_import_settings_dialog.h"
+#include "../editor/gaussian_resource_preview_generator.h"
 #include "../editor/gaussian_thumbnail_generator.h"
 #include "../core/gaussian_splat_asset.h"
 #include "../core/gaussian_splat_world.h"
@@ -27,6 +29,10 @@
 #include "core/config/project_settings.h"
 #include "core/templates/hash_map.h"
 #include "core/math/math_funcs.h"
+#include "core/object/message_queue.h"
+#include "core/os/os.h"
+#include "core/os/semaphore.h"
+#include "core/os/thread.h"
 #include "editor/editor_node.h"
 #include "editor/inspector/editor_inspector.h"
 #include "core/string/ustring.h"
@@ -515,6 +521,24 @@ Ref<GaussianSplatAsset> _make_thumbnail_fixture_asset(int p_splat_count = 6) {
     return asset;
 }
 
+struct _PreviewGeneratorThreadContext {
+    Ref<GaussianSplatAsset> asset;
+    Ref<Texture2D> texture;
+    Dictionary metadata;
+    Semaphore done;
+    bool ran_on_worker = false;
+};
+
+static void _preview_generator_thread(void *p_userdata) {
+    _PreviewGeneratorThreadContext *ctx = static_cast<_PreviewGeneratorThreadContext *>(p_userdata);
+    ctx->ran_on_worker = !Thread::is_main_thread();
+
+    Ref<GaussianSplatAssetPreviewGenerator> generator;
+    generator.instantiate();
+    ctx->texture = generator->generate(ctx->asset, Size2(96, 96), ctx->metadata);
+    ctx->done.post();
+}
+
 } // namespace
 
 TEST_CASE("[GaussianSplatting][Importer] PLY importer produces metadata and preview images") {
@@ -883,6 +907,40 @@ TEST_CASE("[GaussianSplatting][Thumbnail] Generator caches deterministic asset+s
 
     stats = generator->get_cache_statistics();
     CHECK(int(stats.get(StringName("entries"), 0)) == 3);
+}
+
+TEST_CASE("[GaussianSplatting][Thumbnail] Editor preview generator uses stored images on worker threads") {
+#ifndef THREADS_ENABLED
+    MESSAGE("Skipping - THREADS_ENABLED is not enabled in this build");
+    return;
+#else
+    Ref<GaussianSplatAsset> asset;
+    asset.instantiate();
+    asset->set_splat_count(1);
+    asset->set_source_path("res://preview_worker_fixture.ply");
+    asset->set_preview_image(_make_thumbnail_test_image());
+
+    _PreviewGeneratorThreadContext ctx;
+    ctx.asset = asset;
+
+    Thread worker;
+    worker.start(_preview_generator_thread, &ctx);
+    CHECK(worker.is_started());
+    if (worker.is_started()) {
+        while (!ctx.done.try_wait()) {
+            CallQueue *main_queue = MessageQueue::get_main_singleton();
+            if (main_queue) {
+                main_queue->flush();
+            }
+            OS::get_singleton()->delay_usec(1000);
+        }
+        worker.wait_to_finish();
+    }
+
+    CHECK(ctx.ran_on_worker);
+    CHECK(ctx.texture.is_valid());
+    CHECK(String(ctx.metadata.get(StringName("gaussian_preview_source"), String())) == "stored_thumbnail");
+#endif
 }
 
 TEST_CASE("[GaussianSplatting][Importer] GaussianSplatAsset serializes preview images without ImageTexture state") {
@@ -1802,8 +1860,9 @@ TEST_CASE("[GaussianSplatting][Importer] gsplatworld importer preserves payload 
     CHECK(importer->get_format_version() == 2);
 
     HashMap<StringName, Variant> options;
+    Variant import_metadata_variant;
     Error import_err = importer->import(ResourceUID::INVALID_ID, source_path, save_base_path, options,
-            nullptr, nullptr, nullptr);
+            nullptr, nullptr, &import_metadata_variant);
     CHECK_MESSAGE(import_err == OK, "ResourceImporterGSplatWorld import should succeed.");
     if (import_err != OK) {
         _remove_user_file(source_path);
@@ -1813,9 +1872,20 @@ TEST_CASE("[GaussianSplatting][Importer] gsplatworld importer preserves payload 
 
     Ref<GaussianSplatWorld> imported_world = ResourceLoader::load(imported_path, "GaussianSplatWorld");
     CHECK_MESSAGE(imported_world.is_valid(), "Imported gsplatworld should be loadable.");
+    CHECK(import_metadata_variant.get_type() == Variant::DICTIONARY);
+    if (import_metadata_variant.get_type() == Variant::DICTIONARY) {
+        Dictionary import_metadata = import_metadata_variant;
+        CHECK(String(import_metadata.get(StringName("payload_mode"), String())) == String("streamable_uncompressed"));
+        CHECK(bool(import_metadata.get(StringName("streamable"), false)));
+        CHECK_FALSE(bool(import_metadata.get(StringName("compressed"), true)));
+        CHECK(int64_t(import_metadata.get(StringName("splat_count"), int64_t(0))) == 2);
+        CHECK(int64_t(import_metadata.get(StringName("chunk_count"), int64_t(0))) == 1);
+    }
     if (imported_world.is_valid()) {
         CHECK_FALSE(imported_world->has_resident_gaussian_data());
         CHECK(imported_world->has_chunk_payload_source());
+        CHECK(imported_world->is_streamable_payload());
+        CHECK(imported_world->get_payload_mode() == String("streamable_uncompressed"));
         CHECK(imported_world->get_splat_count() == 2);
         CHECK(imported_world->materialize_resident_gaussian_data() == OK);
         Ref<GaussianData> imported_data = imported_world->get_gaussian_data();
@@ -2065,7 +2135,8 @@ TEST_CASE("[GaussianSplatting][Importer] gsplatworld importer accepts compressed
     const String save_base_path = "user://gsplatworld_importer_compressed";
     const String imported_path = save_base_path + ".gsplatworld";
 
-    Error save_err = ResourceSaver::save(source_world, source_path);
+    ResourceFormatSaverGaussianSplatWorld world_saver;
+    Error save_err = world_saver.save_resident_compressed(source_world, source_path);
     CHECK_MESSAGE(save_err == OK, "Saving compressed gsplatworld source should succeed.");
     if (save_err != OK) {
         ps->set_setting(compression_key, previous_value);
@@ -2083,16 +2154,120 @@ TEST_CASE("[GaussianSplatting][Importer] gsplatworld importer accepts compressed
     Ref<ResourceImporterGSplatWorld> importer;
     importer.instantiate();
     HashMap<StringName, Variant> options;
+    Variant import_metadata_variant;
     Error import_err = importer->import(ResourceUID::INVALID_ID, source_path, save_base_path, options,
-            nullptr, nullptr, nullptr);
+            nullptr, nullptr, &import_metadata_variant);
     CHECK_MESSAGE(import_err == OK, "Importer should accept valid compressed gsplatworld payloads.");
 
     Ref<GaussianSplatWorld> imported_world = ResourceLoader::load(imported_path, "GaussianSplatWorld");
     CHECK_MESSAGE(imported_world.is_valid(), "Imported compressed gsplatworld should be loadable.");
+    CHECK(import_metadata_variant.get_type() == Variant::DICTIONARY);
+    if (import_metadata_variant.get_type() == Variant::DICTIONARY) {
+        Dictionary import_metadata = import_metadata_variant;
+        CHECK(String(import_metadata.get(StringName("payload_mode"), String())) == String("resident_only"));
+        CHECK_FALSE(bool(import_metadata.get(StringName("streamable"), true)));
+        CHECK(bool(import_metadata.get(StringName("compressed"), false)));
+        CHECK(String(import_metadata.get(StringName("resident_only_reason"), String())) ==
+                String("compressed_world_has_no_random_access_chunks"));
+    }
+    if (imported_world.is_valid()) {
+        CHECK(imported_world->has_resident_gaussian_data());
+        CHECK_FALSE(imported_world->has_chunk_payload_source());
+        CHECK(imported_world->get_payload_mode() == String("resident_only"));
+    }
 
     _remove_user_file(source_path);
     _remove_user_file(imported_path);
     ps->set_setting(compression_key, previous_value);
+}
+
+TEST_CASE("[GaussianSplatting][Importer] gsplatworld importer reports resident-uncompressed payloads as non-streamable") {
+	Ref<GaussianData> data;
+	data.instantiate();
+	data->resize(2);
+
+	PackedVector3Array positions;
+	positions.push_back(Vector3(0.0f, 0.0f, 0.0f));
+	positions.push_back(Vector3(1.0f, 0.0f, 0.0f));
+	data->set_positions(positions);
+
+	PackedVector3Array scales;
+	scales.push_back(Vector3(1.0f, 1.0f, 1.0f));
+	scales.push_back(Vector3(1.0f, 1.0f, 1.0f));
+	data->set_scales(scales);
+
+	TypedArray<Quaternion> rotations;
+	rotations.push_back(Quaternion(0.0f, 0.0f, 0.0f, 1.0f));
+	rotations.push_back(Quaternion(0.0f, 0.0f, 0.0f, 1.0f));
+	data->set_rotations(rotations);
+
+	PackedFloat32Array opacities;
+	opacities.push_back(1.0f);
+	opacities.push_back(1.0f);
+	data->set_opacities(opacities);
+
+	PackedFloat32Array sh_dc;
+	sh_dc.push_back(1.0f);
+	sh_dc.push_back(0.0f);
+	sh_dc.push_back(0.0f);
+	sh_dc.push_back(0.0f);
+	sh_dc.push_back(1.0f);
+	sh_dc.push_back(0.0f);
+	data->set_spherical_harmonics(sh_dc);
+
+	Ref<GaussianSplatWorld> source_world;
+	source_world.instantiate();
+	source_world->set_gaussian_data(data);
+	source_world->set_bounds(AABB(Vector3(-1.0f, -1.0f, -1.0f), Vector3(4.0f, 4.0f, 4.0f)));
+
+	const String source_path = "user://gsplatworld_importer_resident_uncompressed_source.gsplatworld";
+	const String save_base_path = "user://gsplatworld_importer_resident_uncompressed";
+	const String imported_path = save_base_path + ".gsplatworld";
+
+	ResourceFormatSaverGaussianSplatWorld world_saver;
+	const Error save_err = world_saver.save_resident_uncompressed(source_world, source_path);
+	CHECK_MESSAGE(save_err == OK, "Saving resident-uncompressed gsplatworld source should succeed.");
+	if (save_err != OK) {
+		return;
+	}
+
+	Ref<FileAccess> source_file = FileAccess::open(source_path, FileAccess::READ);
+	CHECK(source_file.is_valid());
+	if (source_file.is_valid()) {
+		source_file->seek(8); // magic + version
+		const uint32_t flags = source_file->get_32();
+		CHECK_MESSAGE((flags & (1u << 4u)) == 0u, "Resident-uncompressed source must not set compression flag.");
+		CHECK_MESSAGE((flags & (1u << 5u)) != 0u, "Resident-uncompressed source must set resident payload flag.");
+	}
+
+	Ref<ResourceImporterGSplatWorld> importer;
+	importer.instantiate();
+	HashMap<StringName, Variant> options;
+	Variant import_metadata_variant;
+	const Error import_err = importer->import(ResourceUID::INVALID_ID, source_path, save_base_path, options,
+			nullptr, nullptr, &import_metadata_variant);
+	CHECK_MESSAGE(import_err == OK, "Importer should accept valid resident-uncompressed gsplatworld payloads.");
+
+	Ref<GaussianSplatWorld> imported_world = ResourceLoader::load(imported_path, "GaussianSplatWorld");
+	CHECK_MESSAGE(imported_world.is_valid(), "Imported resident-uncompressed gsplatworld should be loadable.");
+	CHECK(import_metadata_variant.get_type() == Variant::DICTIONARY);
+	if (import_metadata_variant.get_type() == Variant::DICTIONARY) {
+		Dictionary import_metadata = import_metadata_variant;
+		CHECK(String(import_metadata.get(StringName("payload_mode"), String())) == String("resident_only"));
+		CHECK_FALSE(bool(import_metadata.get(StringName("streamable"), true)));
+		CHECK_FALSE(bool(import_metadata.get(StringName("compressed"), true)));
+		CHECK(String(import_metadata.get(StringName("resident_only_reason"), String())) ==
+				String("explicit_resident_payload"));
+	}
+	if (imported_world.is_valid()) {
+		CHECK(imported_world->has_resident_gaussian_data());
+		CHECK_FALSE(imported_world->has_chunk_payload_source());
+		CHECK_FALSE(imported_world->is_streamable_payload());
+		CHECK(imported_world->get_payload_mode() == String("resident_only"));
+	}
+
+	_remove_user_file(source_path);
+	_remove_user_file(imported_path);
 }
 
 TEST_CASE("[GaussianSplatting][Importer] GaussianSplatAsset save_to_file rejects empty assets") {

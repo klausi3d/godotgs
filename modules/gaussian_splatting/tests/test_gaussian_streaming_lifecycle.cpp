@@ -92,6 +92,16 @@ void _tamper_first_payload_byte(StreamingUploadPipeline &p_uploads) {
     payload_bytes[0] ^= 0x01;
 }
 
+void _advance_frames_until_upload_retired(Ref<GaussianStreamingSystem> p_system, uint32_t p_max_frames = 8) {
+    for (uint32_t i = 0; i < p_max_frames; i++) {
+        p_system->begin_frame();
+        p_system->end_frame();
+        if (p_system->get_pending_upload_retirement_slots() == 0) {
+            return;
+        }
+    }
+}
+
 } // namespace
 
 TEST_CASE("[Streaming Pipeline] stop_pack_threads clears partial lifecycle state") {
@@ -123,6 +133,249 @@ TEST_CASE("[Streaming Pipeline] sync pack rescue does not steal worker-owned pac
     CHECK(uploads._test_promote_pack_jobs_sync(1) == 0);
     CHECK(uploads.get_pack_queue_depth_cached() == 1);
     CHECK(uploads.get_upload_queue_depth_cached() == 0);
+}
+
+TEST_CASE("[Streaming Pipeline] upload retirement gates chunk residency until frame barrier") {
+    GaussianStreamingSystem system;
+    LocalVector<GaussianStreamingTypes::StreamingChunk> &chunks = system._test_get_primary_chunks();
+    chunks.resize(1);
+    GaussianStreamingTypes::StreamingChunk &chunk = chunks[0];
+    chunk.start_idx = 0;
+    chunk.count = 128;
+    chunk.is_visible = true;
+    chunk.effective_count = chunk.count;
+    system._test_register_primary_asset_for_chunks();
+    system._test_reset_atlas_allocator(1);
+
+    const uint64_t chunk_key = system._test_make_chunk_key(0, 0);
+    uint32_t buffer_slot = UINT32_MAX;
+    const uint64_t upload_bytes = uint64_t(chunk.count) * sizeof(PackedGaussian);
+    REQUIRE(system._test_atlas_allocator().allocate_slot(chunk_key, buffer_slot));
+    REQUIRE(system._test_begin_chunk_upload(0, 0, chunk, buffer_slot));
+    REQUIRE(system._test_stage_chunk_upload_retirement(0, 0, chunk, buffer_slot,
+            upload_bytes,
+            2,
+            GaussianStreamingTypes::STREAMING_UPLOAD_COMPLETION_MAIN_RD_FRAME_DELAY_BARRIER));
+
+    CHECK(chunk.upload_pending);
+    CHECK_FALSE(chunk.is_loaded);
+    CHECK_FALSE(chunk.gpu_resident);
+    CHECK(system.get_loaded_chunks() == 0);
+    CHECK(system.get_pending_upload_retirement_slots() == 1);
+    CHECK(system.get_pending_upload_retirement_bytes() == upload_bytes);
+    CHECK(system._test_atlas_allocator().get_free_slot_count() == 0);
+
+    system._test_process_upload_retirements();
+    CHECK_FALSE(chunk.is_loaded);
+    system.begin_frame();
+    CHECK_FALSE(chunk.is_loaded);
+    CHECK(chunk.upload_pending);
+    system.begin_frame();
+
+    CHECK(chunk.is_loaded);
+    CHECK(chunk.gpu_resident);
+    CHECK_FALSE(chunk.upload_pending);
+    CHECK(system.get_loaded_chunks() == 1);
+    CHECK(system.get_chunks_loaded_this_frame() == 1);
+    CHECK(system._test_get_retired_upload_slots_this_frame() == 1);
+    CHECK(system._test_get_retired_upload_bytes_this_frame() == upload_bytes);
+    CHECK(system.get_pending_upload_retirement_slots() == 0);
+    CHECK(system.get_pending_upload_retirement_bytes() == 0);
+}
+
+TEST_CASE("[Streaming Pipeline] cancel_chunk_jobs preserves pending retirement slot until frame barrier") {
+    GaussianStreamingSystem system;
+    auto &uploads = system._internal_get_upload_pipeline();
+    LocalVector<GaussianStreamingTypes::StreamingChunk> &chunks = system._test_get_primary_chunks();
+    chunks.resize(1);
+    GaussianStreamingTypes::StreamingChunk &chunk = chunks[0];
+    chunk.start_idx = 0;
+    chunk.count = 128;
+    chunk.is_visible = true;
+    chunk.effective_count = chunk.count;
+    system._test_register_primary_asset_for_chunks();
+    system._test_reset_atlas_allocator(1);
+
+    const uint64_t chunk_key = system._test_make_chunk_key(0, 0);
+    uint32_t buffer_slot = UINT32_MAX;
+    const uint64_t upload_bytes = uint64_t(chunk.count) * sizeof(PackedGaussian);
+    REQUIRE(system._test_atlas_allocator().allocate_slot(chunk_key, buffer_slot));
+    REQUIRE(system._test_begin_chunk_upload(0, 0, chunk, buffer_slot));
+    REQUIRE(system._test_stage_chunk_upload_retirement(0, 0, chunk, buffer_slot,
+            upload_bytes,
+            2,
+            GaussianStreamingTypes::STREAMING_UPLOAD_COMPLETION_MAIN_RD_FRAME_DELAY_BARRIER));
+
+    uploads.cancel_chunk_jobs(system, 0, 0, buffer_slot);
+
+    CHECK(chunk.upload_pending);
+    CHECK_FALSE(chunk.is_loaded);
+    CHECK(chunk.buffer_slot == buffer_slot);
+    CHECK(system.get_pending_upload_retirement_slots() == 1);
+    CHECK(system.get_pending_upload_retirement_bytes() == upload_bytes);
+    CHECK(system._test_atlas_allocator().get_free_slot_count() == 0);
+
+    system._test_process_upload_retirements();
+    CHECK(chunk.upload_pending);
+    CHECK_FALSE(chunk.is_loaded);
+    CHECK(system._test_atlas_allocator().get_free_slot_count() == 0);
+
+    system.begin_frame();
+    CHECK(chunk.upload_pending);
+    CHECK_FALSE(chunk.is_loaded);
+    CHECK(system._test_atlas_allocator().get_free_slot_count() == 0);
+    system.begin_frame();
+
+    CHECK(chunk.is_loaded);
+    CHECK(chunk.gpu_resident);
+    CHECK_FALSE(chunk.upload_pending);
+    CHECK(system.get_chunks_loaded_this_frame() == 1);
+    CHECK(system._test_get_retired_upload_slots_this_frame() == 1);
+    CHECK(system._test_get_retired_upload_bytes_this_frame() == upload_bytes);
+    CHECK(system.get_pending_upload_retirement_slots() == 0);
+    CHECK(system.get_pending_upload_retirement_bytes() == 0);
+    CHECK(system._test_atlas_allocator().get_free_slot_count() == 0);
+}
+
+TEST_CASE("[Streaming Pipeline] sync fallback drain counts immediate retirement once") {
+    const TestRenderingDeviceHandle rd_handle = _get_test_rendering_device();
+    RenderingDevice *rd = rd_handle.rd;
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_empty(rd);
+    if (!system->is_runtime_ready()) {
+        MESSAGE("Skipping - Streaming runtime not ready");
+        return;
+    }
+
+    const uint32_t asset_id = 3531;
+    system->register_asset(asset_id, _create_streaming_phase_order_test_data());
+    REQUIRE(system->request_chunk_residency(asset_id, 0, 0) == OK);
+    REQUIRE(system->_test_enqueue_sync_fallback_chunk_load(asset_id, 0, true));
+
+    uint32_t evictions_left = 0;
+    bool eviction_blocked = false;
+    const uint32_t drained = system->_test_drain_sync_fallback_chunk_loads(1, evictions_left, eviction_blocked);
+
+    CHECK(drained == 1);
+    CHECK(system->get_loaded_chunks() == 1);
+    CHECK(system->get_chunks_loaded_this_frame() == 1);
+    CHECK(system->_test_get_retired_upload_slots_this_frame() == 1);
+}
+
+TEST_CASE("[Streaming Pipeline] rollback of stale slot assignment preserves other pending reservations") {
+    GaussianStreamingSystem system;
+    LocalVector<GaussianStreamingTypes::StreamingChunk> &chunks = system._test_get_primary_chunks();
+    chunks.resize(2);
+    for (uint32_t i = 0; i < 2; i++) {
+        chunks[i].start_idx = i * 128;
+        chunks[i].count = 128;
+        chunks[i].is_visible = true;
+        chunks[i].effective_count = chunks[i].count;
+    }
+    system._test_register_primary_asset_for_chunks();
+    system._test_reset_atlas_allocator(2);
+
+    uint32_t pending_slot = UINT32_MAX;
+    const uint64_t pending_key = system._test_make_chunk_key(0, 0);
+    REQUIRE(system._test_atlas_allocator().allocate_slot(pending_key, pending_slot));
+    REQUIRE(system._test_begin_chunk_upload(0, 0, chunks[0], pending_slot));
+    const uint64_t pending_bytes = chunks[0].pending_upload_bytes;
+    REQUIRE(pending_bytes > 0);
+
+    uint32_t stale_slot = UINT32_MAX;
+    const uint64_t stale_key = system._test_make_chunk_key(0, 1);
+    REQUIRE(system._test_atlas_allocator().allocate_slot(stale_key, stale_slot));
+    chunks[1].buffer_slot = stale_slot;
+    chunks[1].upload_pending = false;
+    chunks[1].pending_upload_bytes = 0;
+
+    CHECK(system.get_pending_upload_retirement_slots() == 1);
+    CHECK(system.get_pending_upload_retirement_bytes() == pending_bytes);
+
+    system._test_rollback_pending_chunk(0, 1, chunks[1], true);
+
+    CHECK_FALSE(chunks[1].upload_pending);
+    CHECK(chunks[1].buffer_slot == UINT32_MAX);
+    CHECK(system.get_pending_upload_retirement_slots() == 1);
+    CHECK(system.get_pending_upload_retirement_bytes() == pending_bytes);
+    CHECK(chunks[0].upload_pending);
+}
+
+TEST_CASE("[Streaming Pipeline] generation-stale retirement tickets keep upload slots reserved") {
+    GaussianStreamingSystem system;
+    const uint32_t asset_id = 353;
+    system.register_asset(asset_id, _create_streaming_phase_order_test_data());
+    system._test_reset_atlas_allocator(1);
+
+    GaussianStreamingTypes::AtlasAssetState *asset = system._test_get_asset_state(asset_id);
+    REQUIRE(asset != nullptr);
+    LocalVector<GaussianStreamingTypes::StreamingChunk> &asset_chunks = system._test_get_asset_chunks(*asset);
+    REQUIRE(!asset_chunks.is_empty());
+    GaussianStreamingTypes::StreamingChunk &chunk = asset_chunks[0];
+
+    const uint64_t upload_bytes = uint64_t(chunk.count) * sizeof(PackedGaussian);
+    uint32_t buffer_slot = UINT32_MAX;
+    REQUIRE(system._test_atlas_allocator().allocate_slot(system._test_make_chunk_key(asset_id, 0), buffer_slot));
+    REQUIRE(system._test_begin_chunk_upload(asset_id, 0, chunk, buffer_slot));
+    REQUIRE(system._test_stage_chunk_upload_retirement(asset_id, 0, chunk, buffer_slot,
+            upload_bytes, 2,
+            GaussianStreamingTypes::STREAMING_UPLOAD_COMPLETION_MAIN_RD_FRAME_DELAY_BARRIER));
+
+    CHECK(system.get_pending_upload_retirement_slots() == 1);
+    CHECK(system.get_pending_upload_retirement_bytes() == upload_bytes);
+    CHECK(system._test_get_reserved_chunk_count() == 1);
+    CHECK(system._test_atlas_allocator().get_free_slot_count() == 0);
+
+    system.register_asset(asset_id, _create_streaming_phase_order_test_data());
+
+    GaussianStreamingTypes::AtlasAssetState *refreshed_asset = system._test_get_asset_state(asset_id);
+    REQUIRE(refreshed_asset != nullptr);
+    LocalVector<GaussianStreamingTypes::StreamingChunk> &refreshed_chunks = system._test_get_asset_chunks(*refreshed_asset);
+    REQUIRE(!refreshed_chunks.is_empty());
+    CHECK_FALSE(refreshed_chunks[0].upload_pending);
+    CHECK(system.get_pending_upload_retirement_slots() == 1);
+    CHECK(system.get_pending_upload_retirement_bytes() == upload_bytes);
+    CHECK(system._test_get_reserved_chunk_count() == 1);
+    CHECK(system._test_atlas_allocator().get_free_slot_count() == 0);
+
+    system.begin_frame();
+    CHECK(system.get_pending_upload_retirement_slots() == 1);
+    system.begin_frame();
+
+    CHECK(system.get_pending_upload_retirement_slots() == 0);
+    CHECK(system.get_pending_upload_retirement_bytes() == 0);
+    CHECK(system._test_get_reserved_chunk_count() == 0);
+    CHECK(system._test_atlas_allocator().get_free_slot_count() == 1);
+    CHECK(system._test_get_failed_upload_retirements() == 0);
+}
+
+TEST_CASE("[Streaming Pipeline] reserved chunk count combines loaded and pending upload counters") {
+    GaussianStreamingSystem system;
+    LocalVector<GaussianStreamingTypes::StreamingChunk> &chunks = system._test_get_primary_chunks();
+    chunks.resize(2);
+    for (uint32_t i = 0; i < chunks.size(); i++) {
+        GaussianStreamingTypes::StreamingChunk &chunk = chunks[i];
+        chunk.start_idx = i * 128;
+        chunk.count = 128;
+        chunk.effective_count = chunk.count;
+    }
+    system._test_register_primary_asset_for_chunks();
+    system._test_reset_atlas_allocator(2);
+    system._test_mark_chunk_loaded_for_eviction(0, 0, false, 1, 1, 1.0f);
+
+    uint32_t buffer_slot = UINT32_MAX;
+    REQUIRE(system._test_atlas_allocator().allocate_slot(system._test_make_chunk_key(0, 1), buffer_slot));
+    REQUIRE(system._test_begin_chunk_upload(0, 1, chunks[1], buffer_slot));
+
+    CHECK(system.get_loaded_chunks() == 1);
+    CHECK(system.get_pending_upload_retirement_slots() == 1);
+    CHECK(system._test_get_reserved_chunk_count() == 2);
 }
 
 TEST_CASE("[Streaming Pipeline] upload payload checksum validation is off by default") {
@@ -166,8 +419,7 @@ TEST_CASE("[Streaming Pipeline] production upload path skips payload checksum ha
     _tamper_first_payload_byte(uploads);
 
     uploads.process_upload_queue(system_ref);
-    system->begin_frame();
-    system->end_frame();
+    _advance_frames_until_upload_retired(system);
 
     CHECK(StreamingUploadPipeline::_test_get_payload_checksum_hash_calls() == 0);
     CHECK(system->get_pending_pack_jobs() == 0);
@@ -216,8 +468,7 @@ TEST_CASE("[Streaming Pipeline] async chunk upload rejects tampered payload chec
     _tamper_first_payload_byte(uploads);
 
     uploads.process_upload_queue(system_ref);
-    system->begin_frame();
-    system->end_frame();
+    _advance_frames_until_upload_retired(system);
 
     CHECK(StreamingUploadPipeline::_test_get_payload_checksum_hash_calls() >= 2);
     CHECK(system->get_pending_pack_jobs() == 0);
@@ -286,8 +537,7 @@ TEST_CASE("[Streaming Pipeline] enabling checksum validation rejects pending job
 
     uploads._test_set_upload_payload_checksum_validation_enabled(true);
     uploads.process_upload_queue(system_ref);
-    system->begin_frame();
-    system->end_frame();
+    _advance_frames_until_upload_retired(system);
 
     CHECK(StreamingUploadPipeline::_test_get_payload_checksum_hash_calls() == 0);
     CHECK(system->get_pending_pack_jobs() == 0);

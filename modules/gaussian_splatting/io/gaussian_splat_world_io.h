@@ -19,8 +19,21 @@ public:
 
 class ResourceFormatSaverGaussianSplatWorld : public ResourceFormatSaver {
 public:
+	enum PayloadSaveMode {
+		SAVE_PAYLOAD_PRESERVE = 0,
+		SAVE_PAYLOAD_STREAMABLE_UNCOMPRESSED,
+		SAVE_PAYLOAD_RESIDENT_UNCOMPRESSED,
+		SAVE_PAYLOAD_RESIDENT_COMPRESSED,
+	};
+
 	virtual Error save(const Ref<Resource> &p_resource, const String &p_path,
 			uint32_t p_flags = 0) override;
+	Error save_with_payload_mode(const Ref<Resource> &p_resource, const String &p_path,
+			PayloadSaveMode p_mode, uint32_t p_flags = 0);
+	Error save_resident_compressed(const Ref<Resource> &p_resource, const String &p_path,
+			uint32_t p_flags = 0);
+	Error save_resident_uncompressed(const Ref<Resource> &p_resource, const String &p_path,
+			uint32_t p_flags = 0);
 	virtual void get_recognized_extensions(const Ref<Resource> &p_resource,
 			List<String> *p_extensions) const override;
 	virtual bool recognize(const Ref<Resource> &p_resource) const override;

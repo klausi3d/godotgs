@@ -13,6 +13,9 @@ void GaussianSplatWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("has_chunk_payload_source"), &GaussianSplatWorld::has_chunk_payload_source);
     ClassDB::bind_method(D_METHOD("is_payload_source_backed"), &GaussianSplatWorld::is_payload_source_backed);
     ClassDB::bind_method(D_METHOD("has_renderable_payload"), &GaussianSplatWorld::has_renderable_payload);
+    ClassDB::bind_method(D_METHOD("get_payload_mode"), &GaussianSplatWorld::get_payload_mode);
+    ClassDB::bind_method(D_METHOD("is_streamable_payload"), &GaussianSplatWorld::is_streamable_payload);
+    ClassDB::bind_method(D_METHOD("get_resident_only_reason"), &GaussianSplatWorld::get_resident_only_reason);
     ClassDB::bind_method(D_METHOD("get_splat_count"), &GaussianSplatWorld::get_splat_count);
     ClassDB::bind_method(D_METHOD("get_sh_degree"), &GaussianSplatWorld::get_sh_degree);
     ClassDB::bind_method(D_METHOD("get_sh_first_order_count"), &GaussianSplatWorld::get_sh_first_order_count);
@@ -65,6 +68,26 @@ bool GaussianSplatWorld::_get(const StringName &p_name, Variant &r_ret) const {
         r_ret = bytes / (1024.0 * 1024.0);
         return true;
     }
+    if (p_name == StringName("payload/mode")) {
+        r_ret = get_payload_mode();
+        return true;
+    }
+    if (p_name == StringName("payload/streamable")) {
+        r_ret = is_streamable_payload();
+        return true;
+    }
+    if (p_name == StringName("payload/has_resident_data")) {
+        r_ret = has_resident_gaussian_data();
+        return true;
+    }
+    if (p_name == StringName("payload/has_chunk_source")) {
+        r_ret = has_chunk_payload_source();
+        return true;
+    }
+    if (p_name == StringName("payload/resident_only_reason")) {
+        r_ret = get_resident_only_reason();
+        return true;
+    }
     return false;
 }
 
@@ -74,6 +97,11 @@ void GaussianSplatWorld::_get_property_list(List<PropertyInfo> *p_list) const {
     p_list->push_back(PropertyInfo(Variant::INT, "stats/chunk_count", PROPERTY_HINT_NONE, "", usage));
     p_list->push_back(PropertyInfo(Variant::INT, "stats/lod_levels", PROPERTY_HINT_NONE, "", usage));
     p_list->push_back(PropertyInfo(Variant::FLOAT, "stats/memory_mb", PROPERTY_HINT_NONE, "", usage));
+    p_list->push_back(PropertyInfo(Variant::STRING, "payload/mode", PROPERTY_HINT_NONE, "", usage));
+    p_list->push_back(PropertyInfo(Variant::BOOL, "payload/streamable", PROPERTY_HINT_NONE, "", usage));
+    p_list->push_back(PropertyInfo(Variant::BOOL, "payload/has_resident_data", PROPERTY_HINT_NONE, "", usage));
+    p_list->push_back(PropertyInfo(Variant::BOOL, "payload/has_chunk_source", PROPERTY_HINT_NONE, "", usage));
+    p_list->push_back(PropertyInfo(Variant::STRING, "payload/resident_only_reason", PROPERTY_HINT_NONE, "", usage));
 }
 
 void GaussianSplatWorld::set_gaussian_data(const Ref<GaussianData> &p_data) {
@@ -140,6 +168,39 @@ bool GaussianSplatWorld::is_payload_source_backed() const {
 
 bool GaussianSplatWorld::has_renderable_payload() const {
     return has_resident_gaussian_data() || has_chunk_payload_source();
+}
+
+String GaussianSplatWorld::get_payload_mode() const {
+    if (is_streamable_payload()) {
+        return "streamable_uncompressed";
+    }
+    if (has_resident_gaussian_data()) {
+        return "resident_only";
+    }
+    if (has_chunk_payload_source()) {
+        return "streamable_uncompressed";
+    }
+    return "empty";
+}
+
+bool GaussianSplatWorld::is_streamable_payload() const {
+    return has_chunk_payload_source() && !has_resident_gaussian_data();
+}
+
+String GaussianSplatWorld::get_resident_only_reason() const {
+    if (is_streamable_payload()) {
+        return String();
+    }
+    if (has_resident_gaussian_data() && has_chunk_payload_source()) {
+        return "resident_payload_materialized";
+    }
+    if (has_resident_gaussian_data()) {
+        return "resident_payload_no_file_source";
+    }
+    if (has_chunk_payload_source()) {
+        return String();
+    }
+    return "no_renderable_payload";
 }
 
 void GaussianSplatWorld::set_payload_metadata(uint32_t p_splat_count, uint32_t p_sh_degree,

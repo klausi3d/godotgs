@@ -169,6 +169,7 @@ void RenderResourceOrchestrator::create_gpu_resources_safe() {
 		if (err == OK) {
 			resource_state.buffer_manager_initialized = true;
 		} else {
+			resource_state.buffer_manager_initialized = false;
 			GS_LOG_GPU_MEMORY_WARN("[GPU Buffer] Failed to initialize GPU buffer manager: " + itos(err));
 			buffer_manager_ready = false;
 		}
@@ -179,6 +180,7 @@ void RenderResourceOrchestrator::create_gpu_resources_safe() {
 		if (!test_buffer.is_valid()) {
 			GS_LOG_WARN_DEFAULT("[GPU Buffer] GPU buffer manager initialized without a readable buffer RID");
 			buffer_manager_ready = false;
+			resource_state.buffer_manager_initialized = false;
 		}
 	}
 
@@ -272,6 +274,9 @@ void RenderResourceOrchestrator::create_gpu_resources_safe() {
 			vertex[9] = local_test_data_state.scales[i].z;
 		}
 
+		if (local_test_data_state.vertex_buffer.is_valid()) {
+			(renderer->*runtime_ports.free_owned_resource)(device_state->rd, local_test_data_state.vertex_buffer);
+		}
 		local_test_data_state.vertex_buffer = device_state->rd->vertex_buffer_create(vertex_data.size(), vertex_data);
 		if (local_test_data_state.vertex_buffer.is_valid()) {
 			device_state->rd->set_resource_name(local_test_data_state.vertex_buffer, "GS_RenderResourceOrchestrator_VertexBuffer");

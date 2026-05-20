@@ -385,10 +385,7 @@ void GaussianSplatNode3D::_notification_enter_world() {
 }
 
 void GaussianSplatNode3D::_notification_exit_tree() {
-    if (debug_hud_control) {
-        debug_hud_control->set_visible(false);
-        debug_hud_control->set_process(false);
-    }
+    _destroy_debug_hud_control();
     visible_in_viewport = false;
     _update_visibility();
     _clear_parent_visibility_tracking();
@@ -647,6 +644,16 @@ void GaussianSplatNode3D::_get_property_list(List<PropertyInfo> *p_list) const {
 void GaussianSplatNode3D::set_splat_asset(const Ref<GaussianSplatAsset> &p_asset) {
     if (splat_asset == p_asset) {
         return;
+    }
+
+    // Arm the startup trace only when this assignment will drive a render
+    // pipeline. Out-of-tree assignment (e.g. tests, programmatic builders that
+    // configure the node before adding to a scene) and the three existing arm
+    // sites (_load_asset, _set ply_file_path migration, drop handler) already
+    // fire their own begin_asset_open() before this point - the asset_loading
+    // flag guards against double-arming on the reload path.
+    if (p_asset.is_valid() && is_inside_tree() && is_inside_world() && !asset_loading) {
+        GSStartupTrace::get_singleton()->begin_asset_open();
     }
 
     if (splat_asset.is_valid() && splat_asset->is_connected("changed", callable_mp(this, &GaussianSplatNode3D::_on_asset_changed))) {
@@ -2031,16 +2038,36 @@ void GaussianSplatNode3D::_ensure_debug_hud_control() {
     debug_hud_layer->add_child(debug_hud_control);
 }
 
+void GaussianSplatNode3D::_destroy_debug_hud_control() {
+    if (debug_hud_control) {
+        debug_hud_control->set_splat_node(nullptr);
+        debug_hud_control->set_visible(false);
+        debug_hud_control->set_process(false);
+        Node *parent = debug_hud_control->get_parent();
+        if (parent) {
+            parent->remove_child(debug_hud_control);
+        }
+        memdelete(debug_hud_control);
+        debug_hud_control = nullptr;
+    }
+
+    if (debug_hud_layer) {
+        Node *parent = debug_hud_layer->get_parent();
+        if (parent) {
+            parent->remove_child(debug_hud_layer);
+        }
+        memdelete(debug_hud_layer);
+        debug_hud_layer = nullptr;
+    }
+}
+
 void GaussianSplatNode3D::_update_debug_hud_visibility() {
     bool should_show_hud = show_performance_hud || show_residency_hud;
     if (renderer.is_valid()) {
         should_show_hud = renderer->is_debug_show_performance_hud() || renderer->is_debug_show_residency_hud();
     }
     if (!should_show_hud) {
-        if (debug_hud_control) {
-            debug_hud_control->set_visible(false);
-            debug_hud_control->set_process(false);
-        }
+        _destroy_debug_hud_control();
         return;
     }
 

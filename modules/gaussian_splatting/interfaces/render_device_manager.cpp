@@ -117,6 +117,12 @@ Error RenderDeviceManager::initialize(RenderingDevice *p_primary_device) {
 }
 
 void RenderDeviceManager::shutdown() {
+	const uint32_t owned_resource_count = get_tracked_owned_resource_count();
+	if (owned_resource_count > 0) {
+		ERR_PRINT(vformat("[RenderDeviceManager] Shutting down with %d tracked owned resources; owners should release RIDs before manager shutdown",
+				owned_resource_count));
+	}
+
 	resource_owner_map.clear();
 	resource_owner_instance_id_map.clear();
 	resource_ownership_map.clear();
@@ -135,6 +141,26 @@ void RenderDeviceManager::shutdown() {
 	local_rd = nullptr;
 	submission_rd = nullptr;
 	owns_local_rd = false;
+}
+
+uint32_t RenderDeviceManager::get_tracked_owned_resource_count() const {
+	uint32_t count = 0;
+	for (const KeyValue<uint64_t, bool> &entry : resource_ownership_map) {
+		if (entry.value && resource_owner_map.has(entry.key)) {
+			count++;
+		}
+	}
+	return count;
+}
+
+uint32_t RenderDeviceManager::get_tracked_borrowed_resource_count() const {
+	uint32_t count = 0;
+	for (const KeyValue<uint64_t, bool> &entry : resource_ownership_map) {
+		if (!entry.value && resource_owner_map.has(entry.key)) {
+			count++;
+		}
+	}
+	return count;
 }
 
 DeviceContext RenderDeviceManager::get_context() const {

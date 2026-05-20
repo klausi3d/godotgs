@@ -71,4 +71,38 @@ TEST_CASE("[GaussianSplatting][SceneTree] Debug HUD preserves owner-controlled p
 	memdelete(hud);
 }
 
+TEST_CASE("[GaussianSplatting][SceneTree] GaussianSplatNode3D destroys owned debug HUD on disable and exit") {
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree must exist (provided by [SceneTree] tag)");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window must exist");
+
+	GaussianSplatNode3D *node = memnew(GaussianSplatNode3D);
+	root->add_child(node);
+	tree->process(0.0);
+
+	node->set_show_performance_hud(true);
+	tree->process(0.0);
+	CHECK(node->find_child("GaussianSplatDebugHUDLayer", true, false) != nullptr);
+	CHECK(node->find_child("GaussianSplatDebugHUD", true, false) != nullptr);
+
+	node->set_show_performance_hud(false);
+	tree->process(0.0);
+	CHECK(node->find_child("GaussianSplatDebugHUDLayer", true, false) == nullptr);
+	CHECK(node->find_child("GaussianSplatDebugHUD", true, false) == nullptr);
+
+	node->set_show_residency_hud(true);
+	tree->process(0.0);
+	CHECK(node->find_child("GaussianSplatDebugHUDLayer", true, false) != nullptr);
+	CHECK(node->find_child("GaussianSplatDebugHUD", true, false) != nullptr);
+
+	root->remove_child(node);
+	tree->process(0.0);
+	CHECK(node->find_child("GaussianSplatDebugHUDLayer", true, false) == nullptr);
+	CHECK(node->find_child("GaussianSplatDebugHUD", true, false) == nullptr);
+
+	memdelete(node);
+}
+
 #endif // TESTS_ENABLED || TOOLS_ENABLED

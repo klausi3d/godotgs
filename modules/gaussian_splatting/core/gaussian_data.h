@@ -353,6 +353,15 @@ private:
     LocalVector<OctreeNode> octree;
     mutable bool octree_dirty = true;
 
+    // Streaming-chunk bake mirror (Phase B.1). Populated by
+    // GaussianSplatAsset::populate_gaussian_data() so the runtime streaming
+    // system can read it via `Ref<GaussianData>` without re-fetching the asset.
+    // Empty when the source asset has no bake (older imports).
+    PackedByteArray streaming_chunk_records;
+    PackedInt32Array streaming_primary_source_indices;
+    PackedByteArray streaming_quantization_records;
+    uint32_t streaming_chunk_size_used = 0;
+
     // Private octree helper
     void _subdivide_octree_node(uint32_t node_idx, int max_depth, uint32_t min_gaussians = 32);
     void _on_gaussian_storage_changed();
@@ -362,6 +371,11 @@ private:
     // SH layout and runtime overlays are preserved, but octree/animation
     // caches derived from splat state must be flushed.
     void _invalidate_derived_caches_locked();
+    // Clears the streaming-chunk bake mirror. Any mutation that changes splat
+    // positions/scales/colors/count must drop the cached bake so the streaming
+    // system rebuilds chunks against the mutated data instead of reusing stale
+    // centers/bounds/quantization records. Caller must hold the write lock.
+    void _invalidate_streaming_bake_locked();
     void _bump_content_revision() { content_revision.fetch_add(1, std::memory_order_relaxed); }
     void _set_spherical_harmonics_locked(int p_index, const float *p_coeffs, int p_count);
     bool _clear_runtime_modifications_locked();
@@ -642,6 +656,33 @@ public:
             LocalVector<Vector3> &r_sh_high_order,
             uint32_t &r_sh_first_order_count,
             uint32_t &r_sh_high_order_count) const;
+
+    /// @}
+
+    /// @name Streaming Chunk Bake (Phase B.1)
+    /// @{
+
+    // Mirror of GaussianSplatAsset's baked streaming-chunk records, copied at
+    // populate time. Empty when the source asset predates the bake schema.
+    void set_streaming_chunk_bake(const PackedByteArray &p_records,
+            const PackedInt32Array &p_primary_indices,
+            const PackedByteArray &p_quantization,
+            uint32_t p_chunk_size_used);
+    bool has_baked_streaming_chunks() const {
+        return streaming_chunk_size_used > 0 && !streaming_chunk_records.is_empty();
+    }
+    // True only when the baked primary-source remap is full-length and thus
+    // safe to adopt without losing tail splats. Importers that skip Morton
+    // sort leave this empty, in which case the fast path must defer to the
+    // full rebuild so callers requesting primary spatial still get one.
+    bool has_baked_primary_source_indices() const {
+        return !streaming_primary_source_indices.is_empty() &&
+                streaming_primary_source_indices.size() == int(gaussians.size());
+    }
+    uint32_t get_baked_chunk_size() const { return streaming_chunk_size_used; }
+    const PackedByteArray &get_streaming_chunk_records_raw() const { return streaming_chunk_records; }
+    const PackedInt32Array &get_streaming_primary_source_indices_raw() const { return streaming_primary_source_indices; }
+    const PackedByteArray &get_streaming_quantization_records_raw() const { return streaming_quantization_records; }
 
     /// @}
 

@@ -160,6 +160,16 @@ void GaussianData::_bind_methods() {
     ClassDB::bind_method(D_METHOD("restore_brush_stroke", "saved_state"), &GaussianData::restore_brush_stroke);
 }
 
+void GaussianData::set_streaming_chunk_bake(const PackedByteArray &p_records,
+        const PackedInt32Array &p_primary_indices,
+        const PackedByteArray &p_quantization,
+        uint32_t p_chunk_size_used) {
+    streaming_chunk_records = p_records;
+    streaming_primary_source_indices = p_primary_indices;
+    streaming_quantization_records = p_quantization;
+    streaming_chunk_size_used = p_chunk_size_used;
+}
+
 void GaussianData::_on_gaussian_storage_changed() {
     RWLockWrite lock(data_rwlock);
     _on_gaussian_storage_changed_locked();
@@ -176,6 +186,14 @@ void GaussianData::_invalidate_derived_caches_locked() {
         MutexLock anim_lock(animation_cache_mutex);
         animation_cache_dirty = true;
     }
+    _invalidate_streaming_bake_locked();
+}
+
+void GaussianData::_invalidate_streaming_bake_locked() {
+    streaming_chunk_records = PackedByteArray();
+    streaming_primary_source_indices = PackedInt32Array();
+    streaming_quantization_records = PackedByteArray();
+    streaming_chunk_size_used = 0;
 }
 
 void GaussianData::_debug_check_raw_storage_access(const char *p_method) {
@@ -203,6 +221,7 @@ void GaussianData::_on_gaussian_storage_changed_locked() {
 
     _clear_runtime_modifications_locked();
     _clear_brush_strokes_locked();
+    _invalidate_streaming_bake_locked();
 
     {
         MutexLock anim_lock(animation_cache_mutex);
@@ -291,6 +310,7 @@ void GaussianData::set_gaussian_payload(const LocalVector<Gaussian> &p_gaussians
 
     _clear_runtime_modifications_locked();
     _clear_brush_strokes_locked();
+    _invalidate_streaming_bake_locked();
     octree.clear();
     octree_dirty = true;
 
@@ -399,6 +419,7 @@ void GaussianData::set_gaussian(int p_index, const Gaussian &p_gaussian) {
         MutexLock anim_lock(animation_cache_mutex);
         animation_cache_dirty = true;
     }
+    _invalidate_streaming_bake_locked();
     _bump_content_revision();
 }
 
@@ -630,6 +651,7 @@ void GaussianData::set_spherical_harmonics(const PackedFloat32Array &p_sh_data) 
     for (uint32_t i = 0; i < gaussian_count; i++) {
         _set_spherical_harmonics_locked(i, data_ptr + i * floats_per_gaussian, floats_per_gaussian);
     }
+    _invalidate_streaming_bake_locked();
     _bump_content_revision();
 }
 
@@ -843,6 +865,7 @@ void GaussianData::_set_spherical_harmonics_locked(int p_index, const float *p_c
 void GaussianData::set_spherical_harmonics(int p_index, const float *p_coeffs, int p_count) {
     RWLockWrite lock(data_rwlock);
     _set_spherical_harmonics_locked(p_index, p_coeffs, p_count);
+    _invalidate_streaming_bake_locked();
     _bump_content_revision();
 }
 

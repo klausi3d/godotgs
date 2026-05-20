@@ -115,6 +115,15 @@ void _remove_world_io_fixture(const String &p_path) {
     DirAccess::remove_absolute(p_path);
 }
 
+bool _world_io_file_has_compression_flag(const String &p_path) {
+    Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ);
+    if (!f.is_valid() || f->get_length() < 12) {
+        return false;
+    }
+    f->seek(8); // magic + version
+    return (f->get_32() & (1u << 4u)) != 0u;
+}
+
 Vector<Gaussian> build_staged_payload_gaussians(uint32_t p_count) {
     Vector<Gaussian> gaussians;
     gaussians.resize(p_count);
@@ -313,10 +322,24 @@ TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld direct format saver/loader")
 
     const String resave_path = _make_world_io_fixture_path("direct_resave");
     const Error resave_err = saver.save(loaded, resave_path);
-    CHECK_MESSAGE(resave_err == OK, "Saving a source-backed gsplatworld should materialize its payload.");
-    CHECK_MESSAGE(loaded->has_resident_gaussian_data(),
-            "Saving should leave the source-backed world with resident GaussianData for load-edit-save workflows.");
+    CHECK_MESSAGE(resave_err == OK, "Saving a source-backed gsplatworld should write a preserved streamable payload.");
+    CHECK_FALSE_MESSAGE(loaded->has_resident_gaussian_data(),
+            "Generic save must not mutate a source-backed world into resident GaussianData.");
+    CHECK(loaded->has_chunk_payload_source());
+    CHECK(loaded->get_payload_mode() == String("streamable_uncompressed"));
     CHECK_MESSAGE(FileAccess::exists(resave_path), "Resaved source-backed gsplatworld should exist.");
+    CHECK_FALSE_MESSAGE(_world_io_file_has_compression_flag(resave_path),
+            "Generic save of a streamable source-backed world must stay uncompressed.");
+    Error resaved_load_err = OK;
+    Ref<Resource> resaved_res = loader.load(resave_path, "", &resaved_load_err);
+    CHECK(resaved_load_err == OK);
+    Ref<GaussianSplatWorld> resaved_world = resaved_res;
+    CHECK(resaved_world.is_valid());
+    if (resaved_world.is_valid()) {
+        CHECK_FALSE(resaved_world->has_resident_gaussian_data());
+        CHECK(resaved_world->has_chunk_payload_source());
+        CHECK(resaved_world->is_streamable_payload());
+    }
     _remove_world_io_fixture(resave_path);
 
     Ref<GaussianSplatWorld> resident_loaded = loader.load_resident(path, &load_err);
@@ -468,7 +491,7 @@ TEST_CASE("[GaussianSplatting][WorldIO] compressed gsplatworld remains resident-
 
     const String path = _make_world_io_fixture_path("compressed_resident");
     ResourceFormatSaverGaussianSplatWorld saver;
-    const Error save_err = saver.save(world, path);
+    const Error save_err = saver.save_resident_compressed(world, path);
     CHECK(save_err == OK);
     if (save_err != OK) {
         return;
@@ -494,6 +517,178 @@ TEST_CASE("[GaussianSplatting][WorldIO] compressed gsplatworld remains resident-
     }
 
     _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] explicit resident-uncompressed save loads resident by default") {
+    Ref<GaussianData> gaussian_data;
+    gaussian_data.instantiate();
+    Vector<Gaussian> gaussians = build_gaussians();
+    gaussian_data->set_gaussians(gaussians);
+
+    Ref<GaussianSplatWorld> source_world;
+    source_world.instantiate();
+    source_world->set_gaussian_data(gaussian_data);
+    source_world->set_bounds(gaussian_data->get_aabb());
+    source_world->set_static_chunks(build_chunks());
+
+    const String streamable_path = _make_world_io_fixture_path("resident_uncompressed_source");
+    const String resident_path = _make_world_io_fixture_path("resident_uncompressed_export");
+    ResourceFormatSaverGaussianSplatWorld saver;
+    REQUIRE(saver.save(source_world, streamable_path) == OK);
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error load_err = OK;
+    Ref<GaussianSplatWorld> source_backed = loader.load(streamable_path, "", &load_err);
+    REQUIRE(load_err == OK);
+    REQUIRE(source_backed.is_valid());
+    CHECK(source_backed->has_chunk_payload_source());
+    CHECK_FALSE(source_backed->has_resident_gaussian_data());
+
+    REQUIRE(saver.save_resident_uncompressed(source_backed, resident_path) == OK);
+    CHECK_FALSE_MESSAGE(_world_io_file_has_compression_flag(resident_path),
+            "Explicit resident-uncompressed save must remain uncompressed.");
+
+    Ref<GaussianSplatWorld> resident_loaded = loader.load(resident_path, "", &load_err);
+    REQUIRE(load_err == OK);
+    REQUIRE(resident_loaded.is_valid());
+    CHECK(resident_loaded->has_resident_gaussian_data());
+    CHECK_FALSE(resident_loaded->has_chunk_payload_source());
+    CHECK_FALSE(resident_loaded->is_streamable_payload());
+    REQUIRE(resident_loaded->get_gaussian_data().is_valid());
+    CHECK_EQ(resident_loaded->get_gaussian_data()->get_count(), gaussians.size());
+
+    _remove_world_io_fixture(streamable_path);
+    _remove_world_io_fixture(resident_path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] explicit compressed save compresses small resident payloads") {
+    Ref<GaussianData> gaussian_data;
+    gaussian_data.instantiate();
+    Vector<Gaussian> gaussians;
+    gaussians.resize(1);
+    gaussians.write[0] = make_gaussian(Vector3(0.25f, 0.5f, 0.75f), Color(0.25f, 0.5f, 0.75f, 1.0f));
+    gaussian_data->set_gaussians(gaussians);
+
+    Ref<GaussianSplatWorld> world;
+    world.instantiate();
+    world->set_gaussian_data(gaussian_data);
+    world->set_bounds(gaussian_data->get_aabb());
+
+    const String path = _make_world_io_fixture_path("small_explicit_compressed");
+    ResourceFormatSaverGaussianSplatWorld saver;
+    const Error save_err = saver.save_resident_compressed(world, path);
+    CHECK_MESSAGE(save_err == OK, "Explicit resident-compressed save must compress even <=1024-byte payloads.");
+    if (save_err != OK) {
+        _remove_world_io_fixture(path);
+        return;
+    }
+    CHECK_MESSAGE(_world_io_file_has_compression_flag(path),
+            "Explicit resident-compressed small payload save must not silently fall back to uncompressed output.");
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error load_err = OK;
+    Ref<Resource> loaded_res = loader.load(path, "", &load_err);
+    CHECK(load_err == OK);
+    Ref<GaussianSplatWorld> loaded = loaded_res;
+    CHECK(loaded.is_valid());
+    if (loaded.is_valid()) {
+        CHECK(loaded->has_resident_gaussian_data());
+        CHECK_FALSE(loaded->has_chunk_payload_source());
+        CHECK_EQ(loaded->get_payload_mode(), String("resident_only"));
+        REQUIRE(loaded->get_gaussian_data().is_valid());
+        CHECK_EQ(loaded->get_gaussian_data()->get_count(), 1);
+    }
+
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] explicit compressed save fails when no compressed payload can be produced") {
+    Ref<GaussianData> gaussian_data;
+    gaussian_data.instantiate();
+    gaussian_data->resize(0);
+
+    Ref<GaussianSplatWorld> world;
+    world.instantiate();
+    world->set_gaussian_data(gaussian_data);
+
+    const String path = _make_world_io_fixture_path("empty_explicit_compressed");
+    ResourceFormatSaverGaussianSplatWorld saver;
+    const Error save_err = saver.save_resident_compressed(world, path);
+    CHECK_MESSAGE(save_err != OK,
+            "Explicit resident-compressed save must fail loudly when there is no gaussian payload to compress.");
+    CHECK_FALSE_MESSAGE(FileAccess::exists(path),
+            "Failed explicit resident-compressed save must not leave an uncompressed world file behind.");
+
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] ResourceSaver preserves streamable payload when compression setting is enabled") {
+    GsplatWorldSaverGuard saver_guard;
+    GsplatWorldCompressionSettingGuard compression_guard(true);
+
+    Ref<GaussianData> gaussian_data;
+    gaussian_data.instantiate();
+    Vector<Gaussian> gaussians;
+    gaussians.resize(16);
+    for (int i = 0; i < gaussians.size(); i++) {
+        gaussians.write[i] = make_gaussian(Vector3(float(i), float(i % 4), 0.0f), Color(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+    gaussian_data->set_gaussians(gaussians);
+
+    Ref<GaussianSplatWorld> world;
+    world.instantiate();
+    world->set_gaussian_data(gaussian_data);
+    world->set_bounds(gaussian_data->get_aabb());
+    world->set_static_chunks(build_chunks());
+
+    const String source_path = _make_world_io_fixture_path("resource_saver_source");
+    const String resave_path = _make_world_io_fixture_path("resource_saver_resave");
+    const Error save_err = ResourceSaver::save(world, source_path);
+    CHECK(save_err == OK);
+    CHECK_FALSE_MESSAGE(_world_io_file_has_compression_flag(source_path),
+            "Generic ResourceSaver::save() must not use ambient compression for world files.");
+    if (save_err != OK) {
+        _remove_world_io_fixture(source_path);
+        _remove_world_io_fixture(resave_path);
+        return;
+    }
+
+    Ref<GaussianSplatWorld> loaded = ResourceLoader::load(source_path, "GaussianSplatWorld",
+            ResourceFormatLoader::CACHE_MODE_IGNORE);
+    CHECK(loaded.is_valid());
+    if (!loaded.is_valid()) {
+        _remove_world_io_fixture(source_path);
+        _remove_world_io_fixture(resave_path);
+        return;
+    }
+    CHECK(loaded->is_streamable_payload());
+    CHECK_FALSE(loaded->has_resident_gaussian_data());
+
+    const Error resave_err = ResourceSaver::save(loaded, resave_path);
+    CHECK(resave_err == OK);
+    CHECK_FALSE(loaded->has_resident_gaussian_data());
+    CHECK(loaded->is_streamable_payload());
+    CHECK_FALSE_MESSAGE(_world_io_file_has_compression_flag(resave_path),
+            "Save/load/save of a streamable world must remain uncompressed even when compression is enabled globally.");
+
+    Ref<GaussianSplatWorld> reloaded = ResourceLoader::load(resave_path, "GaussianSplatWorld",
+            ResourceFormatLoader::CACHE_MODE_IGNORE);
+    CHECK(reloaded.is_valid());
+    if (reloaded.is_valid()) {
+        CHECK_FALSE(reloaded->has_resident_gaussian_data());
+        CHECK(reloaded->has_chunk_payload_source());
+        CHECK(reloaded->is_streamable_payload());
+        CHECK(reloaded->get_payload_mode() == String("streamable_uncompressed"));
+    }
+
+    ResourceFormatSaverGaussianSplatWorld explicit_saver;
+    const String compressed_path = _make_world_io_fixture_path("resource_saver_explicit_compressed");
+    CHECK(explicit_saver.save_resident_compressed(world, compressed_path) == OK);
+    CHECK_MESSAGE(_world_io_file_has_compression_flag(compressed_path),
+            "Compressed world export must be explicit resident-only output.");
+    _remove_world_io_fixture(compressed_path);
+    _remove_world_io_fixture(source_path);
+    _remove_world_io_fixture(resave_path);
 }
 
 namespace {

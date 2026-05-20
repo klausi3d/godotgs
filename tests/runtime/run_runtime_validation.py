@@ -84,6 +84,7 @@ GDS_TESTS: Dict[str, Path] = {
     "Scene Effector Runtime Controls": RUNTIME_DIR / "test_scene_effector_runtime_controls.gd",
     "World Streaming Gate": RUNTIME_DIR / "test_world_streaming_gate.gd",
     "Streaming Residency API": RUNTIME_DIR / "test_streaming_residency_api.gd",
+    "Streaming GPU Tier Budget Contract": RUNTIME_DIR / "test_streaming_gpu_tier_budget_contract.gd",
     "Data Flow Recent Window": RUNTIME_DIR / "test_data_flow_recent_window.gd",
     "Pipeline Trace Freshness": RUNTIME_DIR / "test_pipeline_trace_freshness.gd",
     "Monitor Lifecycle Hardening": RUNTIME_DIR / "test_monitor_lifecycle_hardening.gd",

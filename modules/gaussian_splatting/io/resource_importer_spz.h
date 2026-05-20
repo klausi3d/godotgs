@@ -42,7 +42,9 @@ public:
     //   v5: imported GaussianSplatAsset payloads are saved as binary .res
     //       instead of text .tres to avoid multi-hundred-MB text parsing during
     //       scene loads.
-    virtual int get_format_version() const override { return 5; }
+    //   v6: per-chunk streaming bake baked at import; see ResourceImporterPLY
+    //       v7 comment for the runtime fast path it unlocks.
+    virtual int get_format_version() const override { return 6; }
 
     ResourceImporterSPZ();
 };

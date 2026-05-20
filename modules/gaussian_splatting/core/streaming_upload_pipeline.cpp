@@ -556,6 +556,9 @@ bool StreamingUploadPipeline::queue_chunk_load(GaussianStreamingSystem &system, 
     if (chunk.is_loaded || chunk.upload_pending) {
         return false;
     }
+    if (system._has_pending_upload_retirement(asset_id, chunk_idx, UINT32_MAX)) {
+        return false;
+    }
     if (chunk.count == 0 || chunk.count > GaussianStreamingSystem::CHUNK_SIZE) {
         return false;
     }
@@ -614,11 +617,12 @@ bool StreamingUploadPipeline::queue_chunk_load(GaussianStreamingSystem &system, 
         ResidencyBudgetController::AdmissionPolicy admission_policy;
         admission_policy.can_replace_without_eviction = false;
         admission_policy.enforce_vram_regulator_gate = system.budget.vram_regulator.is_valid();
+        const uint32_t reserved_chunks = system._get_reserved_chunk_count();
         admission_policy.vram_regulator_allows_load =
                 !admission_policy.enforce_vram_regulator_gate ||
-                system.budget.vram_regulator->can_load_more_chunks(system.get_loaded_chunks());
+                system.budget.vram_regulator->can_load_more_chunks(reserved_chunks);
         system._try_grow_persistent_buffer_for_atlas_pressure(
-                system.get_loaded_chunks(),
+                reserved_chunks,
                 system.get_regulated_max_chunks(),
                 admission_policy.enforce_vram_regulator_gate,
                 admission_policy.vram_regulator_allows_load);
@@ -638,7 +642,7 @@ bool StreamingUploadPipeline::queue_chunk_load(GaussianStreamingSystem &system, 
                         false);
         const ResidencyBudgetController::AdmissionGate admission_gate =
                 ResidencyBudgetController::compute_admission_gate(
-                        system.get_loaded_chunks(),
+                        reserved_chunks,
                         admission_budget,
                         admission_policy);
         if (admission_gate.decision != ResidencyBudgetController::AdmissionDecision::EvictThenLoad) {
@@ -918,11 +922,12 @@ void StreamingUploadPipeline::process_upload_queue(GaussianStreamingSystem &syst
             return;
         }
 
-        system._complete_chunk_load_common(job->asset_id, job->chunk_idx, chunk);
-        system.budget.chunks_loaded_this_frame++;
-        system.total_sh_metrics.raw_bytes += job->metrics.raw_bytes;
-        system.total_sh_metrics.compressed_bytes += job->metrics.compressed_bytes;
-        system.total_sh_metrics.coefficient_count += job->metrics.coefficient_count;
+        const uint64_t uploaded_bytes = job->bytes_uploaded;
+        if (!system._stage_chunk_upload_retirement(job->asset_id, job->chunk_idx, chunk,
+                    job->buffer_slot, uploaded_bytes, job->metrics, submission_rd)) {
+            memdelete(job);
+            return;
+        }
 
         memdelete(job);
         budget_state.completed_chunks++;
@@ -1124,8 +1129,13 @@ void StreamingUploadPipeline::process_upload_queue(GaussianStreamingSystem &syst
     }
 
     if (submitted) {
-        gs_device_utils::safe_submit(submission_rd);
+        if (submission_rd && !submission_rd->is_main_rendering_device()) {
+            gs_device_utils::safe_submit_and_sync(submission_rd);
+        } else {
+            gs_device_utils::safe_submit(submission_rd);
+        }
     }
+    system._process_upload_retirements();
 
     uint32_t remaining_pack_queue_depth = 0;
     uint32_t remaining_upload_queue_depth = 0;
@@ -1604,16 +1614,24 @@ void StreamingUploadPipeline::cancel_chunk_jobs(
             GaussianStreamingSystem::StreamingChunk &chunk = asset_chunks[chunk_idx];
             const bool slot_match = (buffer_slot == UINT32_MAX || chunk.buffer_slot == buffer_slot);
             if (slot_match && chunk.upload_pending && !chunk.is_loaded) {
-                release_slot = true;
-                system._rollback_pending_chunk(asset_id, chunk_idx, chunk, false);
+                if (system._has_pending_upload_retirement(asset_id, chunk_idx, chunk.buffer_slot)) {
+                    release_slot = false;
+                } else {
+                    release_slot = true;
+                    system._rollback_pending_chunk(asset_id, chunk_idx, chunk, false);
+                }
             }
             if (!chunk.is_loaded && !chunk.upload_pending && chunk.buffer_slot != UINT32_MAX) {
                 system._rollback_pending_chunk(asset_id, chunk_idx, chunk, true);
                 release_slot = true;
             }
             if (!chunk.is_loaded && chunk.upload_pending) {
+                const bool pending_retirement = system._has_pending_upload_retirement(asset_id, chunk_idx, chunk.buffer_slot);
+                if (pending_retirement) {
+                    system._assert_chunk_state_invariant(asset_id, chunk_idx, chunk, "cancel_chunk_jobs.pending_retirement");
+                }
                 uint32_t mapped_slot = UINT32_MAX;
-                if (!_chunk_slot_matches_allocator(system.atlas_allocator, chunk_key, chunk.buffer_slot, &mapped_slot)) {
+                if (!pending_retirement && !_chunk_slot_matches_allocator(system.atlas_allocator, chunk_key, chunk.buffer_slot, &mapped_slot)) {
                     if (mapped_slot != UINT32_MAX) {
                         system.atlas_allocator.release_slot(chunk_key);
                     }
@@ -1630,7 +1648,7 @@ void StreamingUploadPipeline::cancel_chunk_jobs(
         }
     }
 
-    if (release_slot) {
+    if (release_slot && !system._has_pending_upload_retirement(asset_id, chunk_idx, buffer_slot)) {
         _release_chunk_slot_if_matches(system.atlas_allocator, chunk_key, buffer_slot);
     }
 }
@@ -1726,6 +1744,10 @@ void StreamingUploadPipeline::cancel_asset_jobs(GaussianStreamingSystem &system,
             }
         }
         if (chunk.upload_pending && !chunk.is_loaded) {
+            if (system._has_pending_upload_retirement(asset_id, i, chunk.buffer_slot)) {
+                system._assert_chunk_state_invariant(asset_id, i, chunk, "cancel_asset_jobs.post");
+                continue;
+            }
             system._rollback_pending_chunk(asset_id, i, chunk, true);
         }
         system._assert_chunk_state_invariant(asset_id, i, chunk, "cancel_asset_jobs.post");

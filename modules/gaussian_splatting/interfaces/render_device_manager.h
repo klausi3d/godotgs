@@ -107,6 +107,8 @@ public:
 
     // Resource statistics (Phase C addition)
     uint32_t get_tracked_resource_count() const { return resource_owner_map.size(); }
+    uint32_t get_tracked_owned_resource_count() const;
+    uint32_t get_tracked_borrowed_resource_count() const;
     uint32_t get_tracked_texture_count() const { return texture_owner_map.size(); }
 
 protected:

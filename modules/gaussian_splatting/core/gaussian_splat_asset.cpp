@@ -8,8 +8,10 @@
 #include "core/math/basis.h"
 #include "core/math/math_funcs.h"
 #include "core/math/quaternion.h"
+#include "core/object/worker_thread_pool.h"
 #include "core/os/os.h"
 #include "core/os/thread.h"
+#include "core/variant/typed_array.h"
 #include "../logger/gs_logger.h"
 #include "../logger/startup_trace.h"
 #include "scene/resources/image_texture.h"
@@ -124,7 +126,17 @@ void GaussianSplatAsset::_bind_methods() {
     ClassDB::bind_method(D_METHOD("load_from_file", "path"), &GaussianSplatAsset::load_from_file);
     ClassDB::bind_method(D_METHOD("save_to_file", "path"), &GaussianSplatAsset::save_to_file);
 
+    ClassDB::bind_method(D_METHOD("set_streaming_chunk_records", "records"), &GaussianSplatAsset::set_streaming_chunk_records);
+    ClassDB::bind_method(D_METHOD("get_streaming_chunk_records"), &GaussianSplatAsset::get_streaming_chunk_records);
+    ClassDB::bind_method(D_METHOD("set_streaming_primary_source_indices", "indices"), &GaussianSplatAsset::set_streaming_primary_source_indices);
+    ClassDB::bind_method(D_METHOD("get_streaming_primary_source_indices"), &GaussianSplatAsset::get_streaming_primary_source_indices);
+    ClassDB::bind_method(D_METHOD("set_streaming_quantization_records", "records"), &GaussianSplatAsset::set_streaming_quantization_records);
+    ClassDB::bind_method(D_METHOD("get_streaming_quantization_records"), &GaussianSplatAsset::get_streaming_quantization_records);
+    ClassDB::bind_method(D_METHOD("set_streaming_chunk_size_used", "size"), &GaussianSplatAsset::set_streaming_chunk_size_used);
+    ClassDB::bind_method(D_METHOD("get_streaming_chunk_size_used"), &GaussianSplatAsset::get_streaming_chunk_size_used);
+
     ClassDB::bind_static_method("GaussianSplatAsset", D_METHOD("get_instance_count"), &GaussianSplatAsset::get_instance_count);
+    ClassDB::bind_static_method("GaussianSplatAsset", D_METHOD("prefetch_parallel", "assets"), &GaussianSplatAsset::prefetch_parallel);
 
     ADD_PROPERTY(PropertyInfo(Variant::INT, "asset_type", PROPERTY_HINT_ENUM, "Static,Dynamic"), "set_asset_type", "get_asset_type");
     ADD_PROPERTY(PropertyInfo(Variant::INT, "splat_count"), "set_splat_count", "get_splat_count");
@@ -148,6 +160,14 @@ void GaussianSplatAsset::_bind_methods() {
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "data/normals"), "set_normals", "get_normals");
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "data/brush_axes"), "set_brush_axes", "get_brush_axes");
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "data/stroke_ages"), "set_stroke_ages", "get_stroke_ages");
+    ADD_PROPERTY(PropertyInfo(Variant::PACKED_BYTE_ARRAY, "data/streaming_chunk_records", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE),
+            "set_streaming_chunk_records", "get_streaming_chunk_records");
+    ADD_PROPERTY(PropertyInfo(Variant::PACKED_INT32_ARRAY, "data/streaming_primary_source_indices", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE),
+            "set_streaming_primary_source_indices", "get_streaming_primary_source_indices");
+    ADD_PROPERTY(PropertyInfo(Variant::PACKED_BYTE_ARRAY, "data/streaming_quantization_records", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE),
+            "set_streaming_quantization_records", "get_streaming_quantization_records");
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "data/streaming_chunk_size_used", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE),
+            "set_streaming_chunk_size_used", "get_streaming_chunk_size_used");
 
     BIND_ENUM_CONSTANT(ASSET_TYPE_STATIC);
     BIND_ENUM_CONSTANT(ASSET_TYPE_DYNAMIC);
@@ -211,7 +231,19 @@ GaussianSplatAsset::~GaussianSplatAsset() {
 }
 
 void GaussianSplatAsset::_invalidate_gaussian_data_cache() {
+    // Lock paired with get_gaussian_data() / has_gaussian_data_cached(). Setters
+    // and populate_from_gaussian_data() are expected to run on the asset's owner
+    // thread (the payload_sealed gate enforces that contract), but a worker
+    // could still observe a torn cache ref without this synchronization.
+    MutexLock cache_lock(populate_mutex);
     gaussian_data_cache.unref();
+}
+
+void GaussianSplatAsset::_invalidate_streaming_bake() {
+    streaming_chunk_records = PackedByteArray();
+    streaming_primary_source_indices = PackedInt32Array();
+    streaming_quantization_records = PackedByteArray();
+    streaming_chunk_size_used = 0;
 }
 
 bool GaussianSplatAsset::_runtime_mutation_permitted(const char *p_method) const {
@@ -237,6 +269,11 @@ Error GaussianSplatAsset::copy_from(const Ref<Resource> &p_resource) {
     // hot-reload would be a no-op. Unseal here so the engine's reload
     // semantics still work; the next get_gaussian_data() call re-seals
     // naturally on the next runtime hand-out.
+    //
+    // Hold populate_mutex across the entire unseal/copy/reseal cycle so a
+    // concurrent prefetch worker cannot read torn source arrays while the
+    // base Resource::copy_from() is rewriting them via the packed setters.
+    MutexLock cache_lock(populate_mutex);
     const bool previous_seal = payload_sealed;
     payload_sealed = false;
     const Error err = Resource::copy_from(p_resource);
@@ -260,6 +297,9 @@ void GaussianSplatAsset::set_asset_type(AssetType p_type) {
 }
 
 void GaussianSplatAsset::set_splat_count(uint32_t p_count) {
+    // Hold populate_mutex across the seal check and the array resize so a
+    // concurrent prefetch worker cannot observe torn source arrays.
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_splat_count")) {
         return;
     }
@@ -269,17 +309,64 @@ void GaussianSplatAsset::set_splat_count(uint32_t p_count) {
         import_metadata[StringName("splat_count")] = (int)p_count;
         _invalidate_bounds_metadata();
         _invalidate_gaussian_data_cache();
+        // Bake describes per-chunk geometry; any splat-layout mutation stales it.
+        // Safe to clear during deserialization because data/streaming_* properties
+        // are registered AFTER data/* arrays in _bind_methods, so the bake install
+        // setters run last and re-populate.
+        _invalidate_streaming_bake();
         emit_changed();
     }
+}
+
+uint32_t GaussianSplatAsset::get_splat_count() const {
+    // Lock pairs with set_splat_count() / copy_from() so concurrent readers
+    // (prefetch worker filter, get_gaussian_data() early-out) see either the
+    // pre- or post-update value, never a torn one.
+    MutexLock cache_lock(populate_mutex);
+    return splat_count;
+}
+
+GaussianSplatAsset::PayloadSnapshot GaussianSplatAsset::capture_payload_snapshot() const {
+    MutexLock cache_lock(populate_mutex);
+    PayloadSnapshot snapshot;
+    snapshot.splat_count = splat_count;
+    snapshot.sh_first_order_terms = sh_first_order_terms;
+    snapshot.sh_high_order_terms = sh_high_order_terms;
+    snapshot.compression_flags = compression_flags;
+    snapshot.import_quality_preset = import_quality_preset;
+    snapshot.import_metadata = import_metadata;
+    snapshot.preview_image = preview_image;
+    snapshot.positions = positions;
+    snapshot.colors = colors;
+    snapshot.scales = scales;
+    snapshot.rotations = rotations;
+    snapshot.sh_dc_coefficients = has_sh_dc_coefficients ? sh_dc_coefficients : PackedFloat32Array();
+    snapshot.sh_first_order_coefficients = sh_first_order_coefficients;
+    snapshot.sh_high_order_coefficients = sh_high_order_coefficients;
+    snapshot.opacity_logits = opacity_logits;
+    snapshot.palette_ids = palette_ids;
+    snapshot.painterly_flags = painterly_flags;
+    snapshot.normals = normals;
+    snapshot.brush_axes = brush_axes;
+    snapshot.stroke_ages = stroke_ages;
+    snapshot.streaming_chunk_records = streaming_chunk_records;
+    snapshot.streaming_primary_source_indices = streaming_primary_source_indices;
+    snapshot.streaming_quantization_records = streaming_quantization_records;
+    snapshot.streaming_chunk_size_used = streaming_chunk_size_used;
+    snapshot.has_sh_dc_coefficients = has_sh_dc_coefficients;
+    return snapshot;
 }
 
 // ---------------------------------------------------------------------------
 // Raw-array getters: warn once when the asset has no loaded data so that
 // callers can distinguish "empty because unloaded" from "legitimately empty".
-// These use WARN_PRINT_ONCE because they may be called per-frame.
+// These use WARN_PRINT_ONCE because they may be called per-frame. Multi-field
+// readers must prefer capture_payload_snapshot() so they take populate_mutex once
+// and cannot observe fields from different copy_from()/reload generations.
 // ---------------------------------------------------------------------------
 
 PackedFloat32Array GaussianSplatAsset::get_positions() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && positions.is_empty()) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_positions() called on unloaded asset; returning empty array.");
     }
@@ -287,6 +374,7 @@ PackedFloat32Array GaussianSplatAsset::get_positions() const {
 }
 
 PackedColorArray GaussianSplatAsset::get_colors() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && colors.is_empty()) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_colors() called on unloaded asset; returning empty array.");
     }
@@ -294,6 +382,7 @@ PackedColorArray GaussianSplatAsset::get_colors() const {
 }
 
 PackedFloat32Array GaussianSplatAsset::get_scales() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && scales.is_empty()) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_scales() called on unloaded asset; returning empty array.");
     }
@@ -301,6 +390,7 @@ PackedFloat32Array GaussianSplatAsset::get_scales() const {
 }
 
 PackedFloat32Array GaussianSplatAsset::get_rotations() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && rotations.is_empty()) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_rotations() called on unloaded asset; returning empty array.");
     }
@@ -308,6 +398,7 @@ PackedFloat32Array GaussianSplatAsset::get_rotations() const {
 }
 
 PackedFloat32Array GaussianSplatAsset::get_sh_dc_coefficients() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && !has_sh_dc_coefficients) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_sh_dc_coefficients() called on unloaded asset; returning empty array.");
     }
@@ -315,6 +406,7 @@ PackedFloat32Array GaussianSplatAsset::get_sh_dc_coefficients() const {
 }
 
 PackedFloat32Array GaussianSplatAsset::get_sh_first_order_coefficients() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && sh_first_order_coefficients.is_empty()) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_sh_first_order_coefficients() called on unloaded asset; returning empty array.");
     }
@@ -322,6 +414,7 @@ PackedFloat32Array GaussianSplatAsset::get_sh_first_order_coefficients() const {
 }
 
 PackedFloat32Array GaussianSplatAsset::get_sh_high_order_coefficients() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && sh_high_order_coefficients.is_empty()) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_sh_high_order_coefficients() called on unloaded asset; returning empty array.");
     }
@@ -329,6 +422,7 @@ PackedFloat32Array GaussianSplatAsset::get_sh_high_order_coefficients() const {
 }
 
 PackedFloat32Array GaussianSplatAsset::get_opacity_logits() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && opacity_logits.is_empty()) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_opacity_logits() called on unloaded asset; returning empty array.");
     }
@@ -336,6 +430,7 @@ PackedFloat32Array GaussianSplatAsset::get_opacity_logits() const {
 }
 
 PackedInt32Array GaussianSplatAsset::get_palette_ids() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && palette_ids.is_empty()) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_palette_ids() called on unloaded asset; returning empty array.");
     }
@@ -343,6 +438,7 @@ PackedInt32Array GaussianSplatAsset::get_palette_ids() const {
 }
 
 PackedInt32Array GaussianSplatAsset::get_painterly_flags() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && painterly_flags.is_empty()) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_painterly_flags() called on unloaded asset; returning empty array.");
     }
@@ -350,6 +446,7 @@ PackedInt32Array GaussianSplatAsset::get_painterly_flags() const {
 }
 
 PackedInt32Array GaussianSplatAsset::get_brush_override_ids() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && painterly_flags.is_empty()) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_brush_override_ids() called on unloaded asset; returning empty array.");
     }
@@ -357,6 +454,7 @@ PackedInt32Array GaussianSplatAsset::get_brush_override_ids() const {
 }
 
 PackedFloat32Array GaussianSplatAsset::get_normals() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && normals.is_empty()) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_normals() called on unloaded asset; returning empty array.");
     }
@@ -364,6 +462,7 @@ PackedFloat32Array GaussianSplatAsset::get_normals() const {
 }
 
 PackedFloat32Array GaussianSplatAsset::get_brush_axes() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && brush_axes.is_empty()) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_brush_axes() called on unloaded asset; returning empty array.");
     }
@@ -371,6 +470,7 @@ PackedFloat32Array GaussianSplatAsset::get_brush_axes() const {
 }
 
 PackedFloat32Array GaussianSplatAsset::get_stroke_ages() const {
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0 && stroke_ages.is_empty()) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_stroke_ages() called on unloaded asset; returning empty array.");
     }
@@ -384,6 +484,7 @@ PackedFloat32Array GaussianSplatAsset::get_stroke_ages() const {
 // ---------------------------------------------------------------------------
 
 PackedVector3Array GaussianSplatAsset::get_position_vectors() const {
+    MutexLock cache_lock(populate_mutex);
     PackedVector3Array result;
     if (splat_count == 0) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_position_vectors() called on unloaded asset (splat_count == 0); returning empty array.");
@@ -416,6 +517,7 @@ PackedVector3Array GaussianSplatAsset::get_position_vectors() const {
 }
 
 PackedVector3Array GaussianSplatAsset::get_scale_vectors() const {
+    MutexLock cache_lock(populate_mutex);
     PackedVector3Array result;
     if (splat_count == 0) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_scale_vectors() called on unloaded asset (splat_count == 0); returning empty array.");
@@ -448,6 +550,7 @@ PackedVector3Array GaussianSplatAsset::get_scale_vectors() const {
 }
 
 TypedArray<Quaternion> GaussianSplatAsset::get_rotation_quaternions() const {
+    MutexLock cache_lock(populate_mutex);
     TypedArray<Quaternion> result;
     if (splat_count == 0) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_rotation_quaternions() called on unloaded asset (splat_count == 0); returning empty array.");
@@ -478,6 +581,7 @@ TypedArray<Quaternion> GaussianSplatAsset::get_rotation_quaternions() const {
 }
 
 PackedFloat32Array GaussianSplatAsset::get_spherical_harmonics_buffer() const {
+    MutexLock cache_lock(populate_mutex);
     PackedFloat32Array result;
     if (splat_count == 0) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_spherical_harmonics_buffer() called on unloaded asset (splat_count == 0); returning empty array.");
@@ -558,6 +662,7 @@ PackedFloat32Array GaussianSplatAsset::get_spherical_harmonics_buffer() const {
 }
 
 PackedFloat32Array GaussianSplatAsset::get_opacities() const {
+    MutexLock cache_lock(populate_mutex);
     PackedFloat32Array result;
     if (splat_count == 0) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_opacities() called on unloaded asset (splat_count == 0); returning empty array.");
@@ -588,6 +693,7 @@ PackedFloat32Array GaussianSplatAsset::get_opacities() const {
 }
 
 PackedInt32Array GaussianSplatAsset::get_palette_ids_buffer() const {
+    MutexLock cache_lock(populate_mutex);
     PackedInt32Array result;
     if (splat_count == 0) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_palette_ids_buffer() called on unloaded asset (splat_count == 0); returning empty array.");
@@ -607,6 +713,7 @@ PackedInt32Array GaussianSplatAsset::get_palette_ids_buffer() const {
 }
 
 PackedInt32Array GaussianSplatAsset::get_painterly_flags_buffer() const {
+    MutexLock cache_lock(populate_mutex);
     PackedInt32Array result;
     if (splat_count == 0) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_painterly_flags_buffer() called on unloaded asset (splat_count == 0); returning empty array.");
@@ -630,6 +737,7 @@ PackedInt32Array GaussianSplatAsset::get_brush_override_ids_buffer() const {
 }
 
 PackedVector3Array GaussianSplatAsset::get_normal_vectors() const {
+    MutexLock cache_lock(populate_mutex);
     PackedVector3Array result;
     if (splat_count == 0) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_normal_vectors() called on unloaded asset (splat_count == 0); returning empty array.");
@@ -653,6 +761,7 @@ PackedVector3Array GaussianSplatAsset::get_normal_vectors() const {
 }
 
 PackedVector2Array GaussianSplatAsset::get_brush_axes_vector2() const {
+    MutexLock cache_lock(populate_mutex);
     PackedVector2Array result;
     if (splat_count == 0) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_brush_axes_vector2() called on unloaded asset (splat_count == 0); returning empty array.");
@@ -676,6 +785,7 @@ PackedVector2Array GaussianSplatAsset::get_brush_axes_vector2() const {
 }
 
 PackedFloat32Array GaussianSplatAsset::get_stroke_ages_buffer() const {
+    MutexLock cache_lock(populate_mutex);
     PackedFloat32Array result;
     if (splat_count == 0) {
         WARN_PRINT_ONCE("[GaussianSplatAsset] get_stroke_ages_buffer() called on unloaded asset (splat_count == 0); returning empty array.");
@@ -693,7 +803,18 @@ PackedFloat32Array GaussianSplatAsset::get_stroke_ages_buffer() const {
     return result;
 }
 
+uint32_t GaussianSplatAsset::get_sh_first_order_terms() const {
+    MutexLock cache_lock(populate_mutex);
+    return sh_first_order_terms;
+}
+
+uint32_t GaussianSplatAsset::get_sh_high_order_terms() const {
+    MutexLock cache_lock(populate_mutex);
+    return sh_high_order_terms;
+}
+
 void GaussianSplatAsset::set_positions(const PackedFloat32Array &p_positions) {
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_positions")) {
         return;
     }
@@ -707,10 +828,15 @@ void GaussianSplatAsset::set_positions(const PackedFloat32Array &p_positions) {
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_bounds_metadata();
     _invalidate_gaussian_data_cache();
+    // Any splat-layout mutation stales the bake; data/streaming_* properties
+    // are registered AFTER data/* arrays in _bind_methods, so deserialization
+    // re-installs the bake after the array setters clear it here.
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_colors(const PackedColorArray &p_colors) {
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_colors")) {
         return;
     }
@@ -722,10 +848,12 @@ void GaussianSplatAsset::set_colors(const PackedColorArray &p_colors) {
     _ensure_buffer_sizes();
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_scales(const PackedFloat32Array &p_scales) {
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_scales")) {
         return;
     }
@@ -738,10 +866,12 @@ void GaussianSplatAsset::set_scales(const PackedFloat32Array &p_scales) {
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_bounds_metadata();
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_rotations(const PackedFloat32Array &p_rotations) {
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_rotations")) {
         return;
     }
@@ -754,10 +884,12 @@ void GaussianSplatAsset::set_rotations(const PackedFloat32Array &p_rotations) {
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_bounds_metadata();
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_sh_dc_coefficients(const PackedFloat32Array &p_coefficients) {
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_sh_dc_coefficients")) {
         return;
     }
@@ -769,10 +901,12 @@ void GaussianSplatAsset::set_sh_dc_coefficients(const PackedFloat32Array &p_coef
     _ensure_buffer_sizes();
     import_metadata[StringName("splat_count")] = (int)splat_count;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_sh_first_order_coefficients(const PackedFloat32Array &p_coefficients) {
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_sh_first_order_coefficients")) {
         return;
     }
@@ -785,10 +919,12 @@ void GaussianSplatAsset::set_sh_first_order_coefficients(const PackedFloat32Arra
     _ensure_buffer_sizes();
     import_metadata[StringName("sh_first_order_terms")] = (int)sh_first_order_terms;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_sh_high_order_coefficients(const PackedFloat32Array &p_coefficients) {
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_sh_high_order_coefficients")) {
         return;
     }
@@ -801,10 +937,12 @@ void GaussianSplatAsset::set_sh_high_order_coefficients(const PackedFloat32Array
     _ensure_buffer_sizes();
     import_metadata[StringName("sh_high_order_terms")] = (int)sh_high_order_terms;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_opacity_logits(const PackedFloat32Array &p_opacity_logits) {
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_opacity_logits")) {
         return;
     }
@@ -815,10 +953,12 @@ void GaussianSplatAsset::set_opacity_logits(const PackedFloat32Array &p_opacity_
     _ensure_buffer_sizes();
     import_metadata[StringName("opacity_encoding")] = StringName("logit");
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_palette_ids(const PackedInt32Array &p_palette_ids) {
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_palette_ids")) {
         return;
     }
@@ -829,10 +969,12 @@ void GaussianSplatAsset::set_palette_ids(const PackedInt32Array &p_palette_ids) 
     _ensure_buffer_sizes();
     import_metadata[StringName("has_palette_ids")] = palette_ids.size() == splat_count;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_painterly_flags(const PackedInt32Array &p_flags) {
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_painterly_flags")) {
         return;
     }
@@ -845,15 +987,17 @@ void GaussianSplatAsset::set_painterly_flags(const PackedInt32Array &p_flags) {
     import_metadata[StringName("has_painterly_flags")] = has_painterly_lane;
     import_metadata[StringName("has_brush_override_ids")] = has_painterly_lane;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_brush_override_ids(const PackedInt32Array &p_override_ids) {
-    // set_painterly_flags() performs its own gate check.
+    // set_painterly_flags() performs its own gate check and bake invalidation.
     set_painterly_flags(p_override_ids);
 }
 
 void GaussianSplatAsset::set_normals(const PackedFloat32Array &p_normals) {
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_normals")) {
         return;
     }
@@ -864,10 +1008,12 @@ void GaussianSplatAsset::set_normals(const PackedFloat32Array &p_normals) {
     _ensure_buffer_sizes();
     import_metadata[StringName("has_normals")] = normals.size() >= splat_count * 3;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_brush_axes(const PackedFloat32Array &p_brush_axes) {
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_brush_axes")) {
         return;
     }
@@ -878,10 +1024,12 @@ void GaussianSplatAsset::set_brush_axes(const PackedFloat32Array &p_brush_axes) 
     _ensure_buffer_sizes();
     import_metadata[StringName("has_brush_axes")] = brush_axes.size() >= splat_count * 2;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
 void GaussianSplatAsset::set_stroke_ages(const PackedFloat32Array &p_stroke_ages) {
+    MutexLock cache_lock(populate_mutex);
     if (!_runtime_mutation_permitted("set_stroke_ages")) {
         return;
     }
@@ -892,10 +1040,56 @@ void GaussianSplatAsset::set_stroke_ages(const PackedFloat32Array &p_stroke_ages
     _ensure_buffer_sizes();
     import_metadata[StringName("has_stroke_age")] = stroke_ages.size() == splat_count;
     _invalidate_gaussian_data_cache();
+    _invalidate_streaming_bake();
     emit_changed();
 }
 
+void GaussianSplatAsset::set_streaming_chunk_records(const PackedByteArray &p_records) {
+    MutexLock cache_lock(populate_mutex);
+    streaming_chunk_records = p_records;
+    _invalidate_gaussian_data_cache();
+}
+
+PackedByteArray GaussianSplatAsset::get_streaming_chunk_records() const {
+    MutexLock cache_lock(populate_mutex);
+    return streaming_chunk_records;
+}
+
+void GaussianSplatAsset::set_streaming_primary_source_indices(const PackedInt32Array &p_indices) {
+    MutexLock cache_lock(populate_mutex);
+    streaming_primary_source_indices = p_indices;
+    _invalidate_gaussian_data_cache();
+}
+
+PackedInt32Array GaussianSplatAsset::get_streaming_primary_source_indices() const {
+    MutexLock cache_lock(populate_mutex);
+    return streaming_primary_source_indices;
+}
+
+void GaussianSplatAsset::set_streaming_quantization_records(const PackedByteArray &p_records) {
+    MutexLock cache_lock(populate_mutex);
+    streaming_quantization_records = p_records;
+    _invalidate_gaussian_data_cache();
+}
+
+PackedByteArray GaussianSplatAsset::get_streaming_quantization_records() const {
+    MutexLock cache_lock(populate_mutex);
+    return streaming_quantization_records;
+}
+
+void GaussianSplatAsset::set_streaming_chunk_size_used(uint32_t p_size) {
+    MutexLock cache_lock(populate_mutex);
+    streaming_chunk_size_used = p_size;
+    _invalidate_gaussian_data_cache();
+}
+
+uint32_t GaussianSplatAsset::get_streaming_chunk_size_used() const {
+    MutexLock cache_lock(populate_mutex);
+    return streaming_chunk_size_used;
+}
+
 void GaussianSplatAsset::set_sh_component_terms(uint32_t p_first_order_terms, uint32_t p_high_order_terms) {
+    MutexLock cache_lock(populate_mutex);
     if (sh_first_order_terms == p_first_order_terms && sh_high_order_terms == p_high_order_terms) {
         return;
     }
@@ -1005,6 +1199,12 @@ void GaussianSplatAsset::_ensure_buffer_sizes() {
 }
 
 void GaussianSplatAsset::set_import_metadata(const Dictionary &p_metadata) {
+    // Public/bound setter: take populate_mutex across the Dictionary write so a
+    // concurrent prefetch worker holding the lock in populate_gaussian_data()
+    // cannot observe a torn metadata read (dc_encoding / gaussian_2d_mode) and
+    // cache GaussianData built from inconsistent state. Recursive mutex permits
+    // the nested _invalidate_gaussian_data_cache() acquire.
+    MutexLock cache_lock(populate_mutex);
     import_metadata = p_metadata;
     import_metadata[StringName("splat_count")] = (int)splat_count;
     import_metadata[StringName("quality_preset")] = import_quality_preset;
@@ -1013,7 +1213,17 @@ void GaussianSplatAsset::set_import_metadata(const Dictionary &p_metadata) {
     emit_changed();
 }
 
+Dictionary GaussianSplatAsset::get_import_metadata() const {
+    MutexLock cache_lock(populate_mutex);
+    return import_metadata;
+}
+
+// Invariant: every bound setter below that mutates `import_metadata` acquires
+// `populate_mutex` on entry. A concurrent prefetch_parallel() worker reads
+// metadata under the same lock in populate_gaussian_data(), so writers must
+// hold the lock or snapshot before dispatch.
 void GaussianSplatAsset::set_import_quality_preset(const String &p_preset) {
+    MutexLock cache_lock(populate_mutex);
     String lower = p_preset.to_lower();
     if (import_quality_preset == lower) {
         return;
@@ -1023,7 +1233,13 @@ void GaussianSplatAsset::set_import_quality_preset(const String &p_preset) {
     emit_changed();
 }
 
+String GaussianSplatAsset::get_import_quality_preset() const {
+    MutexLock cache_lock(populate_mutex);
+    return import_quality_preset;
+}
+
 void GaussianSplatAsset::set_compression_flags(uint32_t p_flags) {
+    MutexLock cache_lock(populate_mutex);
     if (compression_flags == p_flags) {
         return;
     }
@@ -1032,7 +1248,13 @@ void GaussianSplatAsset::set_compression_flags(uint32_t p_flags) {
     emit_changed();
 }
 
+uint32_t GaussianSplatAsset::get_compression_flags() const {
+    MutexLock cache_lock(populate_mutex);
+    return compression_flags;
+}
+
 void GaussianSplatAsset::set_preview_image(const Ref<Image> &p_image) {
+    MutexLock cache_lock(populate_mutex);
     if (preview_image == p_image) {
         return;
     }
@@ -1043,23 +1265,36 @@ void GaussianSplatAsset::set_preview_image(const Ref<Image> &p_image) {
     emit_changed();
 }
 
+Ref<Image> GaussianSplatAsset::get_preview_image() const {
+    MutexLock cache_lock(populate_mutex);
+    return preview_image;
+}
+
 Ref<Texture2D> GaussianSplatAsset::get_preview_texture() const {
-    if (preview_texture_cache.is_valid()) {
-        return preview_texture_cache;
+    ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), Ref<Texture2D>(),
+            "GaussianSplatAsset::get_preview_texture() creates an ImageTexture and must run on the main thread. Use get_preview_image() or capture_payload_snapshot() from worker threads.");
+
+    Ref<Image> image;
+    {
+        MutexLock cache_lock(populate_mutex);
+        if (preview_texture_cache.is_valid()) {
+            return preview_texture_cache;
+        }
+        image = preview_image;
     }
 
-    if (preview_image.is_null() || preview_image->is_empty()) {
+    if (image.is_null() || image->is_empty()) {
         return Ref<Texture2D>();
     }
 
-    // Safe to call from `EditorResourcePreview`'s worker threads: the main
-    // thread services the RS command queue in editor mode, so the sync RS
-    // chain underneath `create_from_image` completes. The `--headless
-    // --import` deadlock motivating #251 is avoided because the import path
-    // stores `preview_image` directly via `set_preview_image()` and never
-    // invokes this lazy texture-creation accessor.
-    preview_texture_cache = ImageTexture::create_from_image(preview_image);
-    return preview_texture_cache;
+    // Texture creation crosses RenderingServer state. Keep worker/import paths
+    // CPU-only and expose the stored Image through get_preview_image() instead.
+    Ref<ImageTexture> texture = ImageTexture::create_from_image(image);
+    MutexLock cache_lock(populate_mutex);
+    if (preview_texture_cache.is_null() && preview_image == image) {
+        preview_texture_cache = texture;
+    }
+    return preview_texture_cache.is_valid() ? preview_texture_cache : texture;
 }
 
 void GaussianSplatAsset::set_thumbnail(const Ref<Texture2D> &p_thumbnail) {
@@ -1075,6 +1310,7 @@ void GaussianSplatAsset::set_thumbnail(const Ref<Texture2D> &p_thumbnail) {
 }
 
 void GaussianSplatAsset::set_source_path(const String &p_path) {
+    MutexLock cache_lock(populate_mutex);
     if (import_metadata.has(StringName("source_path")) && (String)import_metadata[StringName("source_path")] == p_path) {
         return;
     }
@@ -1083,6 +1319,7 @@ void GaussianSplatAsset::set_source_path(const String &p_path) {
 }
 
 String GaussianSplatAsset::get_source_path() const {
+    MutexLock cache_lock(populate_mutex);
     if (import_metadata.has(StringName("source_path"))) {
         return (String)import_metadata[StringName("source_path")];
     }
@@ -1183,16 +1420,21 @@ Error GaussianSplatAsset::load_from_file(const String &p_path) {
 		return populate_err;
 	}
 
-	// Preserve the authoritative GaussianData loaded from disk so later bootstrap
-	// does not reconstruct it from the asset arrays.
-	gaussian_data_cache = gaussian_data;
-
 	const double total_load_ms = _elapsed_msec(total_start_usec);
-	import_metadata[StringName("runtime_load_timing")] = _build_runtime_load_timing(
-			source_stage, cache_hit, source_stage_ms, materialize_ms, total_load_ms, source_stats);
-	import_metadata[StringName("runtime_load_source")] = source_stage;
-	import_metadata[StringName("runtime_load_cache_hit")] = cache_hit;
-	import_metadata[StringName("runtime_load_source_path")] = p_path;
+	// Preserve the authoritative GaussianData loaded from disk and stamp the
+	// runtime-load metadata under the same lock so a concurrent prefetch
+	// worker cannot observe a partial metadata write paired with the cached
+	// GaussianData. Lock pairs with get_gaussian_data() and
+	// populate_gaussian_data().
+	{
+		MutexLock cache_lock(populate_mutex);
+		gaussian_data_cache = gaussian_data;
+		import_metadata[StringName("runtime_load_timing")] = _build_runtime_load_timing(
+				source_stage, cache_hit, source_stage_ms, materialize_ms, total_load_ms, source_stats);
+		import_metadata[StringName("runtime_load_source")] = source_stage;
+		import_metadata[StringName("runtime_load_cache_hit")] = cache_hit;
+		import_metadata[StringName("runtime_load_source_path")] = p_path;
+	}
 
 	GS_LOG_STREAMING_INFO(vformat(
 			"[LoadTiming][GaussianSplatAsset] file=%s path=%s splats=%d source_stage=%s cache_hit=%s source_ms=%.2f materialize_ms=%.2f total_ms=%.2f",
@@ -1215,29 +1457,37 @@ Error GaussianSplatAsset::save_to_file(const String &p_path) const {
     return data->save_to_file(p_path);
 }
 
+// Contract: holding populate_mutex across the read of the source SoA arrays is
+// required so concurrent set_*()/copy_from()/populate_from_gaussian_data() on
+// the owner thread cannot resize or rewrite the arrays mid-build. Sealing
+// before any read also prevents new setters from being accepted while a worker
+// is still in populate_gaussian_data(). Per-asset mutex preserves cross-asset
+// parallelism in prefetch_gaussian_data_parallel.
 Ref<::GaussianData> GaussianSplatAsset::get_gaussian_data() const {
+    MutexLock cache_lock(populate_mutex);
     ERR_FAIL_COND_V_MSG(splat_count == 0, Ref<::GaussianData>(),
             "[GaussianSplatAsset] get_gaussian_data() called on unloaded asset (splat_count == 0); returning null.");
 
     if (gaussian_data_cache.is_valid()) {
-        // The cache has been handed out once already; keep the payload sealed
-        // so no external code can mutate it behind the consumer's back.
+        // Cache already handed out — keep payload sealed so external code
+        // cannot mutate it behind the consumer's back.
         payload_sealed = true;
         return gaussian_data_cache;
     }
+
+    // Seal BEFORE the read so any setter currently waiting on the mutex will
+    // observe seal=true once it acquires and reject the mutation. The build
+    // below then runs against immutable source arrays.
+    payload_sealed = true;
 
     Ref<::GaussianData> data;
     uint64_t rebuild_start_usec = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : 0;
     if (!populate_gaussian_data(data)) {
         return Ref<::GaussianData>();
     }
+    const double rebuild_ms = _elapsed_msec(rebuild_start_usec);
 
     gaussian_data_cache = data;
-    // Asset arrays have been promoted to runtime authority (GaussianData).
-    // Seal so that asset->set_positions()/... cannot silently diverge the
-    // asset payload from the runtime GaussianData that was just handed out.
-    payload_sealed = true;
-    const double rebuild_ms = _elapsed_msec(rebuild_start_usec);
     GS_LOG_STREAMING_INFO(vformat(
             "[LoadTiming][GaussianSplatAsset] rebuilt GaussianData from asset arrays: splats=%d rebuild_ms=%.2f",
             splat_count,
@@ -1245,8 +1495,83 @@ Ref<::GaussianData> GaussianSplatAsset::get_gaussian_data() const {
     return gaussian_data_cache;
 }
 
+bool GaussianSplatAsset::has_gaussian_data_cached() const {
+    MutexLock cache_lock(populate_mutex);
+    return gaussian_data_cache.is_valid();
+}
+
+// Contract: callers must not invoke any of GaussianSplatAsset's packed setters,
+// populate_from_gaussian_data(), or copy_from() concurrently with this call —
+// the per-asset populate_mutex serializes worker reads against same-thread
+// mutation, but only the seal state machine prevents intentional cross-thread
+// mutation. Each asset's source SoA arrays are read on the worker thread; the
+// payload is sealed before the read, so any subsequent setter on the owner
+// thread will be rejected with a loud diagnostic.
+void GaussianSplatAsset::prefetch_gaussian_data_parallel(const LocalVector<Ref<GaussianSplatAsset>> &p_assets) {
+    GS_STARTUP_SCOPE("asset_prefetch_parallel");
+    // Collect only assets that still need materialization. Already-cached and
+    // null/unloaded entries are filtered here so the worker callback can be a
+    // plain pointer-indexed dispatch with no per-task null/valid checks.
+    LocalVector<GaussianSplatAsset *> pending;
+    pending.reserve(p_assets.size());
+    for (uint32_t i = 0; i < p_assets.size(); ++i) {
+        const Ref<GaussianSplatAsset> &ref = p_assets[i];
+        if (ref.is_null()) {
+            continue;
+        }
+        if (ref->get_splat_count() == 0) {
+            continue;
+        }
+        if (ref->has_gaussian_data_cached()) {
+            continue;
+        }
+        pending.push_back(ref.ptr());
+    }
+
+    if (pending.is_empty()) {
+        return;
+    }
+
+    if (pending.size() == 1) {
+        // Single asset — skip pool overhead and run inline on the calling thread.
+        pending[0]->get_gaussian_data();
+        return;
+    }
+
+    // Pure CPU SoA->AoS conversion across distinct assets — no shared mutation,
+    // no RenderingDevice work. Each worker calls get_gaussian_data() on its
+    // assigned asset; the per-asset populate_mutex covers the cache store.
+    struct WorkCtx {
+        GaussianSplatAsset *const *items;
+    };
+    WorkCtx ctx{ pending.ptr() };
+    auto worker = [](void *p_userdata, uint32_t p_index) {
+        WorkCtx *c = static_cast<WorkCtx *>(p_userdata);
+        c->items[p_index]->get_gaussian_data();
+    };
+    WorkerThreadPool::GroupID gid = WorkerThreadPool::get_singleton()->add_native_group_task(
+            worker, &ctx, int(pending.size()), -1, true, String("GSAssetMaterialize"));
+    WorkerThreadPool::get_singleton()->wait_for_group_task_completion(gid);
+}
+
+void GaussianSplatAsset::prefetch_parallel(const TypedArray<GaussianSplatAsset> &p_assets) {
+    LocalVector<Ref<GaussianSplatAsset>> refs;
+    refs.reserve(p_assets.size());
+    for (int i = 0; i < p_assets.size(); i++) {
+        Ref<GaussianSplatAsset> asset = p_assets[i];
+        if (asset.is_valid()) {
+            refs.push_back(asset);
+        }
+    }
+    prefetch_gaussian_data_parallel(refs);
+}
+
 bool GaussianSplatAsset::populate_gaussian_data(Ref<::GaussianData> &r_data) const {
     GS_STARTUP_SCOPE("asset_populate_gaussian_data");
+    // Lock so external callers (scene_director DYNAMIC path, tests) also see
+    // a consistent snapshot of the SoA source arrays. Recursive: get_gaussian_data()
+    // already holds populate_mutex when it calls into here.
+    MutexLock cache_lock(populate_mutex);
     if (splat_count == 0) {
         return false;
     }
@@ -1278,6 +1603,11 @@ bool GaussianSplatAsset::populate_gaussian_data(Ref<::GaussianData> &r_data) con
         r_data->set_gaussian(i, g);
     }
 
+    r_data->set_streaming_chunk_bake(streaming_chunk_records,
+            streaming_primary_source_indices,
+            streaming_quantization_records,
+            streaming_chunk_size_used);
+
     return true;
 }
 
@@ -1295,9 +1625,19 @@ Error GaussianSplatAsset::populate_from_gaussian_data(const Ref<::GaussianData> 
     // silently re-enable packed setters and let arrays diverge from already
     // handed-out GaussianData. The success path re-asserts seal=true at the
     // end of the function.
+    //
+    // Hold populate_mutex across the entire unseal/rewrite/reseal cycle so a
+    // concurrent prefetch worker cannot read torn source arrays. Recursive
+    // mutex permits the nested _invalidate_gaussian_data_cache() acquire.
+    MutexLock cache_lock(populate_mutex);
     const bool previous_seal = payload_sealed;
     payload_sealed = false;
     _invalidate_gaussian_data_cache();
+    // The persisted bake describes the prior source-array layout; rewriting
+    // the asset arrays invalidates it. Without clearing, a same-count rewrite
+    // would let has_baked_streaming_chunks() short-circuit chunk rebuild
+    // against stale bounds/centers.
+    _invalidate_streaming_bake();
 
     int count = p_gaussian_data->get_count();
     if (count <= 0) {

@@ -19,11 +19,31 @@ Streaming behavior depends on the format of the source asset:
 
 | Source | Residency | Chunk payloads | Notes |
 | --- | --- | --- | --- |
-| Uncompressed `.gsplatworld` | Resident `GaussianData` plus file-backed `StagedFileChunkPayloadSource` | Loaded on demand from the source file | Only format that supports file-backed streaming reads. |
+| Uncompressed `.gsplatworld` | Metadata plus file-backed `StagedFileChunkPayloadSource` by default | Loaded on demand from the source file | Only format that supports file-backed streaming reads without resident `GaussianData`. Explicit resident loads/materialization are compatibility paths. |
 | Compressed `.gsplatworld` | Resident only | None — full gaussian array is decoded into memory at load | Format is resident-only and has no "out-of-core" streaming path; the streaming system still manages visibility, LOD, and VRAM residency. |
+| `.gsplatworld` loaded through `load_resident()` | Resident only | None | Compatibility path for callers that explicitly request resident CPU data. |
+| `.gsplatcache` | Resident only | None | Internal PLY importer cache, owned by the source PLY identity tuple. It is not a streamable world format. |
 | `.ply` / `.spz` via `GaussianSplatNode3D` | Resident only | None | Direct instance nodes always publish a resident submission hint. |
 
-`GaussianStreamingSystem` runs in all three cases, but "streaming" here means GPU residency and LOD management, not out-of-core source loading, except for uncompressed `.gsplatworld`.
+`GaussianStreamingSystem` can run for any of these sources, but "streaming" usually means GPU residency and LOD management. Out-of-core source loading currently exists only for normal uncompressed `.gsplatworld` loads.
+
+Generic `ResourceSaver::save()` preserves streamability for source-backed worlds: a normal save/load/save round trip writes uncompressed `.gsplatworld` data and does not leave the in-memory resource materialized as resident `GaussianData`. Compressed output is a resident-only export choice because the current gzip payload has no random-access chunk blocks.
+
+Runtime diagnostics expose the actual payload mode separately from route policy. `GaussianSplatRenderer.get_render_stats()` includes `payload_mode`, `payload_streamable`, `payload_source_active`, `resident_payload_active`, and `payload_resident_only_reason`; a streaming route policy with a compressed world still reports `payload_mode = "resident_only"`.
+
+## Upload completion contract
+
+Streaming chunks move through separate CPU and GPU states. A chunk may have a CPU-packed payload and an atlas slot reservation while `upload_pending=true`, but it is not renderable until the upload retirement ticket reaches `gpu_retired`. `is_loaded` and `gpu_resident` are the renderability signals; atlas metadata and visible buffer-space indices must ignore chunks that are still pending retirement.
+
+Completion modes are intentionally explicit:
+
+| Mode | Contract |
+| --- | --- |
+| `local_rd_submit_sync` | Local RenderingDevice uploads are submitted and synced before the ticket retires. |
+| `main_rd_frame_delay_barrier` | Main RenderingDevice uploads cannot use a true fence here, so retirement waits for `get_frame_delay()` plus a safety frame. This is a conservative frame barrier, not a GPU fence claim. |
+| `timeline_unavailable_frame_delay` | Reserved fallback name for paths where a timeline/fence API is not available and frame-delay retirement is used instead. |
+
+Pending uploads keep their atlas slots reserved until retirement or failure rollback. Diagnostics expose `pending_upload_reserved_bytes`, `pending_upload_reserved_slots`, `pending_upload_retirement_tickets`, `retired_upload_*_this_frame`, `failed_upload_retirements`, and `last_upload_completion_mode` so benchmark evidence cannot silently omit upload lifetime state.
 
 ## Enabling streaming
 
@@ -104,6 +124,8 @@ print("LOD debug: ", lod)
 | --- | --- | --- | --- |
 | `get_vram_usage()` | `int` | Total VRAM bytes consumed by loaded chunks. | `modules/gaussian_splatting/core/gaussian_streaming.h:789` |
 | `get_loaded_chunks()` | `int` | Number of chunks currently resident in VRAM. | `modules/gaussian_splatting/core/gaussian_streaming.h:790` |
+| `get_pending_upload_retirement_slots()` | `int` | Atlas slots reserved by chunks that are not yet GPU-retired/renderable. | `modules/gaussian_splatting/core/gaussian_streaming.h` |
+| `get_pending_upload_retirement_bytes()` | `int` | Pending upload payload bytes reserved against streaming admission diagnostics. | `modules/gaussian_splatting/core/gaussian_streaming.h` |
 | `get_visible_count()` | `int` | Splat count visible this frame after culling. | `modules/gaussian_splatting/core/gaussian_streaming.h:780` |
 | `get_effective_splat_count()` | `int` | Splat count after LOD reduction is applied. | `modules/gaussian_splatting/core/gaussian_streaming.h:873` |
 | `get_streaming_analytics()` | `Dictionary` | Detailed analytics including pack/upload timing. | `modules/gaussian_splatting/core/gaussian_streaming.h:795` |
