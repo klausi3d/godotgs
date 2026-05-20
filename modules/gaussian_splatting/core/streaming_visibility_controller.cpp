@@ -385,7 +385,7 @@ void StreamingVisibilityController::update_chunk_visibility(
         if (chunk.is_loaded) {
             primary_loaded_chunks++;
         }
-        if (chunk.is_loaded && !chunk.upload_pending && chunk.buffer_slot != UINT32_MAX) {
+        if (chunk.is_loaded && chunk.gpu_resident && !chunk.upload_pending && chunk.buffer_slot != UINT32_MAX) {
             primary_resident_chunks++;
         }
     }
@@ -812,7 +812,7 @@ void StreamingVisibilityController::update_chunk_lod_parameters(GaussianStreamin
             return;
         }
 
-        const bool resident = chunk.is_loaded && !chunk.upload_pending && chunk.buffer_slot != UINT32_MAX;
+        const bool resident = chunk.is_loaded && chunk.gpu_resident && !chunk.upload_pending && chunk.buffer_slot != UINT32_MAX;
         if (resident) {
             system.global_atlas_registry.mark_chunk_meta_dirty(system, chunk_idx);
         }
@@ -919,7 +919,7 @@ uint32_t StreamingVisibilityController::get_prefetch_limit(
         return 0;
     }
     if (system.budget.vram_regulator.is_valid() &&
-            !system.budget.vram_regulator->can_load_more_chunks(system.budget.loaded_chunks_count)) {
+            !system.budget.vram_regulator->can_load_more_chunks(system._get_reserved_chunk_count())) {
         return 0;
     }
     if (system.scheduler.max_prefetch_loads_per_frame == 0) {
@@ -1089,7 +1089,7 @@ uint32_t StreamingVisibilityController::schedule_prefetch_loads(
         }
 
         if (system.budget.vram_regulator.is_valid() &&
-                !system.budget.vram_regulator->can_load_more_chunks(system.budget.loaded_chunks_count)) {
+                !system.budget.vram_regulator->can_load_more_chunks(system._get_reserved_chunk_count())) {
             break;
         }
 

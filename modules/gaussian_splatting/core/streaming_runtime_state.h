@@ -22,6 +22,11 @@ struct BudgetState {
     uint64_t evicted_bytes_total = 0;
     uint32_t chunks_loaded_this_frame = 0;
     bool vram_chunk_cap_hit_this_frame = false;
+    uint64_t pending_upload_bytes = 0;
+    uint32_t pending_upload_slots = 0;
+    uint64_t retired_upload_bytes_this_frame = 0;
+    uint32_t retired_upload_slots_this_frame = 0;
+    uint64_t failed_upload_retirements = 0;
 
     Dictionary get_vram_debug_stats() const;
     bool is_vram_budget_warning_active() const;
