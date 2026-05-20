@@ -13,6 +13,8 @@ The current public dataset contains one committed result row, and the coverage t
 
 The snapshot above is the current committed public result. It is the reference row used by the charts below until more published scenarios are added.
 
+This row is benchmark evidence, not a release gate. Blocking streaming/runtime readiness is enforced by the runtime validation profile named `streaming-gpu-ci`; open-world benchmark proof surfaces are useful review evidence, but they remain non-blocking unless the workflow contract changes.
+
 ## Coverage Map
 
 | Lane | Purpose | Status |
@@ -23,6 +25,8 @@ The snapshot above is the current committed public result. It is the reference r
 | `instance_storm` | Many-instance submission pressure | Defined in the benchmark suite, not yet published |
 | `lighting_stress` | Animated light and shading stress | Defined in the benchmark suite, not yet published |
 | `unified_composite` | Integrated all-systems composite lane | Defined in the benchmark suite, not yet published |
+
+Do not cite suite-only or unpublished lanes as public performance results. They become public claims only after a real benchmark suite report is exported to `assets/data/benchmark_latest.json` and the snapshot table above is updated.
 
 ## Lane Scores Overview
 
