@@ -1675,6 +1675,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#upload-completion-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upload completion contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#enabling-streaming" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1837,10 +1848,10 @@
 </thead>
 <tbody>
 <tr>
-<td>Uncompressed <code>.gsplatworld</code> loaded normally</td>
-<td>Source-backed, no resident <code>GaussianData</code> by default</td>
+<td>Uncompressed <code>.gsplatworld</code></td>
+<td>Metadata plus file-backed <code>StagedFileChunkPayloadSource</code> by default</td>
 <td>Loaded on demand from the source file</td>
-<td>Only format that supports out-of-core file-backed streaming reads.</td>
+<td>Only format that supports file-backed streaming reads without resident <code>GaussianData</code>. Explicit resident loads/materialization are compatibility paths.</td>
 </tr>
 <tr>
 <td>Compressed <code>.gsplatworld</code></td>
@@ -1871,6 +1882,32 @@
 <p><code>GaussianStreamingSystem</code> can run for any of these sources, but "streaming" usually means GPU residency and LOD management. Out-of-core source loading currently exists only for normal uncompressed <code>.gsplatworld</code> loads.</p>
 <p>Generic <code>ResourceSaver::save()</code> preserves streamability for source-backed worlds: a normal save/load/save round trip writes uncompressed <code>.gsplatworld</code> data and does not leave the in-memory resource materialized as resident <code>GaussianData</code>. Compressed output is a resident-only export choice because the current gzip payload has no random-access chunk blocks.</p>
 <p>Runtime diagnostics expose the actual payload mode separately from route policy. <code>GaussianSplatRenderer.get_render_stats()</code> includes <code>payload_mode</code>, <code>payload_streamable</code>, <code>payload_source_active</code>, <code>resident_payload_active</code>, and <code>payload_resident_only_reason</code>; a streaming route policy with a compressed world still reports <code>payload_mode = "resident_only"</code>.</p>
+<h2 id="upload-completion-contract">Upload completion contract<a class="headerlink" href="#upload-completion-contract" title="Permanent link">¶</a></h2>
+<p>Streaming chunks move through separate CPU and GPU states. A chunk may have a CPU-packed payload and an atlas slot reservation while <code>upload_pending=true</code>, but it is not renderable until the upload retirement ticket reaches <code>gpu_retired</code>. <code>is_loaded</code> and <code>gpu_resident</code> are the renderability signals; atlas metadata and visible buffer-space indices must ignore chunks that are still pending retirement.</p>
+<p>Completion modes are intentionally explicit:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Contract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>local_rd_submit_sync</code></td>
+<td>Local RenderingDevice uploads are submitted and synced before the ticket retires.</td>
+</tr>
+<tr>
+<td><code>main_rd_frame_delay_barrier</code></td>
+<td>Main RenderingDevice uploads cannot use a true fence here, so retirement waits for <code>get_frame_delay()</code> plus a safety frame. This is a conservative frame barrier, not a GPU fence claim.</td>
+</tr>
+<tr>
+<td><code>timeline_unavailable_frame_delay</code></td>
+<td>Reserved fallback name for paths where a timeline/fence API is not available and frame-delay retirement is used instead.</td>
+</tr>
+</tbody>
+</table>
+<p>Pending uploads keep their atlas slots reserved until retirement or failure rollback. Diagnostics expose <code>pending_upload_reserved_bytes</code>, <code>pending_upload_reserved_slots</code>, <code>pending_upload_retirement_tickets</code>, <code>retired_upload_*_this_frame</code>, <code>failed_upload_retirements</code>, and <code>last_upload_completion_mode</code> so benchmark evidence cannot silently omit upload lifetime state.</p>
 <h2 id="enabling-streaming">Enabling streaming<a class="headerlink" href="#enabling-streaming" title="Permanent link">¶</a></h2>
 <p>Streaming is enabled globally through a project setting and is active by default.</p>
 <table>
@@ -1948,7 +1985,7 @@
 </tr>
 </tbody>
 </table>
-<p>Quality tier presets (<code>rendering/gaussian_splatting/quality/tier_preset</code>) override streaming budgets when <code>tier_apply_streaming_budgets</code> is enabled. See <a href="https://github.com/klausi3D/godotGS/blob/de903dfcad0831d97e1008d4bd97802d0108740f/modules/gaussian_splatting/core/quality_tier_config.h">quality_tier_config.h</a> for tier-specific values.</p>
+<p>Quality tier presets (<code>rendering/gaussian_splatting/quality/tier_preset</code>) override streaming budgets when <code>tier_apply_streaming_budgets</code> is enabled. See <a href="https://github.com/klausi3D/godotGS/blob/a1a8d861fff8fd2f60a475003c78752ff2bbacec/modules/gaussian_splatting/core/quality_tier_config.h">quality_tier_config.h</a> for tier-specific values.</p>
 <h2 id="chunk-lod-behavior">Chunk LOD behavior<a class="headerlink" href="#chunk-lod-behavior" title="Permanent link">¶</a></h2>
 <p>Chunks transition between LOD levels based on distance from the camera. The system uses an Octree-GS-inspired approach that reduces SH band level, increases splat skip factor, and modulates opacity as distance grows.</p>
 <table>
@@ -2064,6 +2101,18 @@
 <td><code>modules/gaussian_splatting/core/gaussian_streaming.h:790</code></td>
 </tr>
 <tr>
+<td><code>get_pending_upload_retirement_slots()</code></td>
+<td><code>int</code></td>
+<td>Atlas slots reserved by chunks that are not yet GPU-retired/renderable.</td>
+<td><code>modules/gaussian_splatting/core/gaussian_streaming.h</code></td>
+</tr>
+<tr>
+<td><code>get_pending_upload_retirement_bytes()</code></td>
+<td><code>int</code></td>
+<td>Pending upload payload bytes reserved against streaming admission diagnostics.</td>
+<td><code>modules/gaussian_splatting/core/gaussian_streaming.h</code></td>
+</tr>
+<tr>
 <td><code>get_visible_count()</code></td>
 <td><code>int</code></td>
 <td>Splat count visible this frame after culling.</td>
@@ -2176,7 +2225,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 20, 2026 17:48:21 UTC">May 20, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 20, 2026 17:50:55 UTC">May 20, 2026</span>
   </span>
 
     
