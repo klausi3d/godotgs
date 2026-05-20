@@ -1,0 +1,787 @@
+#!/usr/bin/env python3
+"""Unit tests for renderer release gate checker."""
+
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = ROOT / "tests" / "ci" / "check_renderer_release_gates.py"
+spec = importlib.util.spec_from_file_location("check_renderer_release_gates", SCRIPT)
+assert spec and spec.loader
+checker = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(checker)
+
+
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _artifact(root: Path, rel_path: str, content: str = "artifact\n") -> dict[str, Any]:
+    path = root / rel_path
+    _write(path, content)
+    return {
+        "path": rel_path,
+        "sha256": _sha256(path),
+        "godot_binary_commit": "abc",
+        "godot_binary_mtime_utc": "2026-05-19T10:01:00Z",
+    }
+
+
+def _base_manifest(root: Path) -> dict[str, Any]:
+    _write(
+        root / "modules/gaussian_splatting/tests/test_gpu.h",
+        'TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Smoke") {}\n',
+    )
+    tests = checker._extract_requires_gpu_tests(root)
+    count, digest = checker._requires_gpu_snapshot(tests)
+    for rel in (
+        "docs/reference/renderer-release-gates.md",
+        "docs/development/known-public-alpha-limitations.md",
+        "docs/performance/index.md",
+        "docs/assets/data/benchmark_latest.json",
+        "tests/visual_baselines/README.md",
+        "tests/runtime/runtime_scenarios.json",
+        "tests/visual_baselines/composite_hazard_256x256.png",
+        ".github/workflows/gaussian_production_gates.yml",
+        ".github/workflows/baseline_qa.yml",
+        ".github/workflows/release_builds.yml",
+    ):
+        _write(root / rel, "guards\nmodule-validation\nRun GPU harness\nbuild_linux\nbuild_windows\npublish_release\n")
+    _write(
+        root / "tests/ci/run_gpu_harness.py",
+        "from dataclasses import dataclass\n"
+        "@dataclass(frozen=True)\n"
+        "class BatchSpec:\n"
+        "    name: str\n"
+        "    filters: tuple[str, ...]\n"
+        "BATCHES = (BatchSpec('CompositorHazard', ('*HazardRepro*',)),)\n",
+    )
+    return {
+        "schema_version": 1,
+        "public_alpha_predicate": {
+            "channel": "public-alpha",
+            "accepted_tag_patterns": ["v*-alpha*"],
+            "candidate_manifest_field": "release_channel=public-alpha",
+            "disallow_path_filter_downgrade": True,
+            "disallow_manual_downgrade": True,
+            "disallow_missing_gpu_runner_downgrade": True,
+            "disallow_open_world_advisory_only": True,
+            "required_issue_query": {
+                "blocking_labels_any": ["priority:P0", "release blocker"],
+                "alpha_relevant_p1_labels_all": ["priority:P1", "alpha-relevant"],
+            },
+        },
+        "known_limitations_page": "docs/development/known-public-alpha-limitations.md",
+        "references": [
+            "docs/reference/renderer-release-gates.md",
+            "docs/development/known-public-alpha-limitations.md",
+            "docs/performance/index.md",
+            "docs/assets/data/benchmark_latest.json",
+            "tests/visual_baselines/README.md",
+            "tests/runtime/runtime_scenarios.json",
+        ],
+        "requires_gpu_test_snapshot": {
+            "test_count": count,
+            "sha256": digest,
+            "deferred_tags_any": ["SceneTree", "Importer"],
+            "deferred_count": 0,
+            "closure_policy": "deferred RequiresGPU coverage blocks closure",
+        },
+        "deferred_requires_gpu_waivers": [],
+        "gpu_harness_policy": {
+            "script": "tests/ci/run_gpu_harness.py",
+            "required_batches": [
+                {
+                    "name": "CompositorHazard",
+                    "minimum_test_cases": 1,
+                    "allow_skips": False,
+                    "allow_timeout": False,
+                    "allow_rid_leaks": False,
+                    "reference_artifacts": ["tests/visual_baselines/composite_hazard_256x256.png"],
+                }
+            ],
+        },
+        "workflow_policy": {
+            "machine_enforcement_scope": "workflow-presence-and-required-job-markers",
+            "documented_non_enforced_rules": [
+                "manual workflow inputs must not bypass public-alpha readiness",
+                "path filters must not downgrade public-alpha readiness",
+            ],
+            "required_workflows": [
+                {
+                    "file": ".github/workflows/gaussian_production_gates.yml",
+                    "required_jobs": ["guards", "module-validation"],
+                },
+                {
+                    "file": ".github/workflows/baseline_qa.yml",
+                    "required_jobs": ["Run GPU harness"],
+                },
+                {
+                    "file": ".github/workflows/release_builds.yml",
+                    "required_jobs": ["build_linux", "build_windows", "publish_release"],
+                },
+            ]
+        },
+        "visual_acceptance": {
+            "tracked_actual_png_allowed": False,
+            "blocking_references": [
+                {
+                    "id": "compositor_hazard_256",
+                    "path": "tests/visual_baselines/composite_hazard_256x256.png",
+                    "required": True,
+                }
+            ],
+            "candidate_rules": {
+                "capture_count_min": 1,
+                "capture_reference_match_count_must_equal_capture_count": True,
+                "capture_ssim_min_must_be_non_null": True,
+                "capture_psnr_min_must_be_non_null": True,
+            },
+        },
+        "benchmark_acceptance": {
+            "candidate_required_lanes": ["static_baseline"],
+            "required_fields_non_null": ["lane_id", "commit_sha", "godot_binary_commit", "godot_binary_mtime_utc"],
+        },
+        "artifact_requirements": {
+            "required_groups": ["linux_release_archive", "known_limitations_page"],
+            "each_artifact_requires": ["path", "sha256", "godot_binary_commit", "godot_binary_mtime_utc"],
+        },
+    }
+
+
+def _valid_candidate_evidence(root: Path) -> dict[str, Any]:
+    _write(
+        root / "gpu_report.json",
+        json.dumps(
+            {
+                "batches": [
+                    {
+                        "name": "CompositorHazard",
+                        "timed_out": False,
+                        "summary_parse_ok": True,
+                        "rc": 0,
+                        "test_cases": {"total": 1, "failed": 0, "skipped": 0},
+                        "assertions": {"failed": 0},
+                        "rid_leak_bytes": 0,
+                    }
+                ]
+            }
+        ),
+    )
+    _write(
+        root / "bench.json",
+        json.dumps(
+            [
+                {
+                    "lane_id": "static_baseline",
+                    "commit_sha": "abc",
+                    "godot_binary_commit": "abc",
+                    "godot_binary_mtime_utc": "2026-05-19T10:01:00Z",
+                    "capture_count": 1,
+                    "capture_reference_match_count": 1,
+                    "capture_ssim_min": 0.99,
+                    "capture_psnr_min": 40.0,
+                    "gpu_timing_available": False,
+                    "gpu_timing_source": "unavailable",
+                }
+            ]
+        ),
+    )
+    return {
+        "release_channel": "public-alpha",
+        "commit": "abc",
+        "commit_time_utc": "2026-05-19T10:00:00Z",
+        "gpu_harness_report": "gpu_report.json",
+        "benchmark_report": "bench.json",
+        "artifacts": {
+            "linux_release_archive": _artifact(root, "artifacts/linux_release_archive.tar.xz"),
+            "known_limitations_page": {
+                "path": "docs/development/known-public-alpha-limitations.md",
+                "sha256": _sha256(root / "docs/development/known-public-alpha-limitations.md"),
+                "godot_binary_commit": "abc",
+                "godot_binary_mtime_utc": "2026-05-19T10:01:00Z",
+            },
+        },
+    }
+
+
+class RendererReleaseGateTests(unittest.TestCase):
+    def test_repository_contract_passes(self) -> None:
+        manifest = checker._load_json(ROOT / "docs/reference/renderer_release_gate_manifest.json")
+        failures = checker.validate_contract(ROOT, manifest)
+        self.assertEqual([], failures)
+
+    def test_new_requires_gpu_test_fails_snapshot_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            _write(
+                root / "modules/gaussian_splatting/tests/test_new_gpu.h",
+                'TEST_CASE("[GaussianSplatting][RequiresGPU] New") {}\n',
+            )
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("RequiresGPU test snapshot drift" in item for item in failures))
+
+    def test_missing_visual_reference_fails_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            (root / "tests/visual_baselines/composite_hazard_256x256.png").unlink()
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("reference missing" in item for item in failures))
+
+    def test_tracked_actual_pngs_detect_root_visual_baseline_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            actual = root / "tests/visual_baselines/root.actual.png"
+            _write(actual, "actual\n")
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                ["git", "add", "tests/visual_baselines/root.actual.png"],
+                cwd=root,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.assertIn("tests/visual_baselines/root.actual.png", checker._tracked_actual_pngs(root))
+
+    def test_missing_known_limitations_page_fails_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            (root / "docs/development/known-public-alpha-limitations.md").unlink()
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("known limitations page is missing" in item for item in failures))
+
+    def test_required_batch_matching_zero_tests_fails_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            _write(
+                root / "tests/ci/run_gpu_harness.py",
+                "from dataclasses import dataclass\n"
+                "@dataclass(frozen=True)\n"
+                "class BatchSpec:\n"
+                "    name: str\n"
+                "    filters: tuple[str, ...]\n"
+                "BATCHES = (BatchSpec('CompositorHazard', ('*NoMatch*',)),)\n",
+            )
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("matches 0 tests" in item for item in failures))
+
+    def test_workflow_policy_rejects_unenforced_claims(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["workflow_policy"]["required_workflows"][0]["manual_input_may_disable"] = False
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("not machine-enforced" in item for item in failures))
+
+    def test_candidate_requires_issue_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            failures = checker.validate_candidate(root, manifest, evidence)
+            self.assertTrue(any("issue snapshot missing" in item for item in failures))
+
+    def test_candidate_accepts_embedded_issue_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["issue_snapshot"] = []
+            failures = checker.validate_candidate(root, manifest, evidence)
+            self.assertEqual([], failures)
+
+    def test_candidate_rejects_wrong_channel_and_tag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["release_channel"] = "nightly"
+            evidence["release_tag"] = "nightly-20260519"
+            failures = checker.validate_candidate(root, manifest, evidence, [])
+            self.assertTrue(any("selector is not public-alpha" in item for item in failures))
+
+    def test_candidate_accepts_alpha_tag_selector(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["release_channel"] = "nightly"
+            evidence["release_tag"] = "v1.0.0-alpha.1"
+            failures = checker.validate_candidate(root, manifest, evidence, [])
+            self.assertEqual([], failures)
+
+    def test_candidate_requires_commit_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence.pop("commit")
+            evidence.pop("commit_time_utc")
+            failures = checker.validate_candidate(root, manifest, evidence, [])
+            self.assertTrue(any("candidate evidence missing commit" in item for item in failures))
+            self.assertTrue(any("candidate evidence missing commit_time_utc" in item for item in failures))
+
+    def test_candidate_rejects_invalid_commit_time_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["commit_time_utc"] = "not-a-timestamp"
+            failures = checker._candidate_commit_metadata_failures(evidence)
+            self.assertTrue(any("invalid commit_time_utc" in item for item in failures))
+
+    def test_deferred_gpu_waivers_must_match_deferred_tests(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            tests = checker._extract_requires_gpu_tests(root)
+            deferred_name = tests[0]["name"]
+            manifest["requires_gpu_test_snapshot"]["deferred_tags_any"] = ["HazardRepro"]
+            manifest["requires_gpu_test_snapshot"]["deferred_count"] = 1
+            manifest["deferred_requires_gpu_waivers"] = [{"test_name": "Unrelated deferred test"}]
+
+            failures = checker._validate_candidate_deferred_waivers(manifest, tests)
+            self.assertTrue(any(f"missing waiver: {deferred_name}" in item for item in failures))
+            self.assertTrue(any("does not match a deferred test" in item for item in failures))
+
+    def test_deferred_gpu_waivers_reject_duplicates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            tests = checker._extract_requires_gpu_tests(root)
+            deferred_name = tests[0]["name"]
+            manifest["requires_gpu_test_snapshot"]["deferred_tags_any"] = ["HazardRepro"]
+            manifest["requires_gpu_test_snapshot"]["deferred_count"] = 1
+            manifest["deferred_requires_gpu_waivers"] = [
+                {"test_name": deferred_name},
+                {"test_name": deferred_name},
+            ]
+
+            failures = checker._validate_candidate_deferred_waivers(manifest, tests)
+            self.assertTrue(any("waiver duplicated" in item for item in failures))
+
+    def test_candidate_fails_timeout_and_null_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            _write(
+                root / "gpu_report.json",
+                json.dumps(
+                    {
+                        "batches": [
+                            {
+                                "name": "CompositorHazard",
+                                "timed_out": True,
+                                "summary_parse_ok": True,
+                                "rc": 0,
+                                "test_cases": {"total": 1, "failed": 0, "skipped": 0},
+                                "assertions": {"failed": 0},
+                                "rid_leak_bytes": 0,
+                            }
+                        ]
+                    }
+                ),
+            )
+            _write(
+                root / "bench.json",
+                json.dumps([{"lane_id": "static_baseline", "commit_sha": None, "capture_count": 0}]),
+            )
+            evidence = {
+                "commit": "abc",
+                "commit_time_utc": "2026-05-19T10:00:00Z",
+                "gpu_harness_report": "gpu_report.json",
+                "benchmark_report": "bench.json",
+                "artifacts": {
+                    "linux_release_archive": {
+                        "path": "x",
+                        "sha256": "y",
+                        "godot_binary_commit": "abc",
+                        "godot_binary_mtime_utc": "2026-05-19T10:01:00Z",
+                    },
+                    "known_limitations_page": {
+                        "path": "x",
+                        "sha256": "y",
+                        "godot_binary_commit": "abc",
+                        "godot_binary_mtime_utc": "2026-05-19T10:01:00Z",
+                    },
+                },
+            }
+            failures = checker.validate_candidate(root, manifest, evidence)
+            self.assertTrue(any("timed out" in item for item in failures))
+            self.assertTrue(any("null/missing commit_sha" in item for item in failures))
+            self.assertTrue(any("has no visual captures" in item for item in failures))
+
+    def test_candidate_missing_gpu_report_is_structured_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["gpu_harness_report"] = "missing_gpu_report.json"
+            failures = checker._validate_candidate_gpu_report(root, manifest, evidence)
+            self.assertTrue(any("gpu_harness_report unreadable" in item for item in failures))
+
+    def test_candidate_evidence_must_be_json_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            failures = checker.validate_candidate(root, manifest, [])
+            self.assertTrue(any("candidate evidence must be a JSON object" in item for item in failures))
+
+    def test_candidate_gpu_report_rejects_non_object_batches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            _write(root / "gpu_report.json", json.dumps({"batches": [1]}))
+            failures = checker._validate_candidate_gpu_report(root, manifest, evidence)
+            self.assertTrue(any("batch at index 0 must be a JSON object" in item for item in failures))
+            self.assertTrue(any("missing required batch" in item for item in failures))
+
+    def test_candidate_gpu_batch_counters_must_be_objects(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            _write(
+                root / "gpu_report.json",
+                json.dumps(
+                    {
+                        "batches": [
+                            {
+                                "name": "CompositorHazard",
+                                "timed_out": False,
+                                "summary_parse_ok": True,
+                                "rc": 0,
+                                "test_cases": [],
+                                "assertions": [],
+                                "rid_leak_bytes": 0,
+                            }
+                        ]
+                    }
+                ),
+            )
+            failures = checker._validate_candidate_gpu_report(root, manifest, evidence)
+            self.assertTrue(any("test_cases must be a JSON object" in item for item in failures))
+            self.assertTrue(any("assertions must be a JSON object" in item for item in failures))
+
+    def test_candidate_gpu_batch_name_must_be_string(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            _write(
+                root / "gpu_report.json",
+                json.dumps(
+                    {
+                        "batches": [
+                            {
+                                "name": ["CompositorHazard"],
+                                "timed_out": False,
+                                "summary_parse_ok": True,
+                                "rc": 0,
+                                "test_cases": {"total": 1, "failed": 0, "skipped": 0},
+                                "assertions": {"failed": 0},
+                                "rid_leak_bytes": 0,
+                            }
+                        ]
+                    }
+                ),
+            )
+            failures = checker._validate_candidate_gpu_report(root, manifest, evidence)
+            self.assertTrue(any("name must be a string" in item for item in failures))
+            self.assertTrue(any("missing required batch: CompositorHazard" in item for item in failures))
+
+    def test_candidate_gpu_batch_counters_must_be_numeric(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            _write(
+                root / "gpu_report.json",
+                json.dumps(
+                    {
+                        "batches": [
+                            {
+                                "name": "CompositorHazard",
+                                "timed_out": False,
+                                "summary_parse_ok": True,
+                                "rc": 0,
+                                "test_cases": {"total": "1", "failed": 0, "skipped": 0},
+                                "assertions": {"failed": 0},
+                                "rid_leak_bytes": 0,
+                            }
+                        ]
+                    }
+                ),
+            )
+            failures = checker._validate_candidate_gpu_report(root, manifest, evidence)
+            self.assertTrue(any("test_cases.total must be numeric" in item for item in failures))
+
+    def test_candidate_gpu_report_honors_allow_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["gpu_harness_policy"]["required_batches"][0]["allow_timeout"] = True
+            evidence = _valid_candidate_evidence(root)
+            _write(
+                root / "gpu_report.json",
+                json.dumps(
+                    {
+                        "batches": [
+                            {
+                                "name": "CompositorHazard",
+                                "timed_out": True,
+                                "summary_parse_ok": True,
+                                "rc": 0,
+                                "test_cases": {"total": 1, "failed": 0, "skipped": 0},
+                                "assertions": {"failed": 0},
+                                "rid_leak_bytes": 0,
+                            }
+                        ]
+                    }
+                ),
+            )
+            failures = checker._validate_candidate_gpu_report(root, manifest, evidence)
+            self.assertFalse(any("timed out" in item for item in failures))
+
+    def test_candidate_missing_benchmark_report_is_structured_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["benchmark_report"] = "missing_benchmark_report.json"
+            failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
+            self.assertTrue(any("benchmark_report unreadable" in item for item in failures))
+
+    def test_candidate_gpu_time_must_be_numeric(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            _write(
+                root / "bench.json",
+                json.dumps(
+                    [
+                        {
+                            "lane_id": "static_baseline",
+                            "commit_sha": "abc",
+                            "godot_binary_commit": "abc",
+                            "godot_binary_mtime_utc": "2026-05-19T10:01:00Z",
+                            "capture_count": 1,
+                            "capture_reference_match_count": 1,
+                            "capture_ssim_min": 0.99,
+                            "capture_psnr_min": 40.0,
+                            "gpu_timing_available": True,
+                            "gpu_time_frame_ms": "1.25",
+                        }
+                    ]
+                ),
+            )
+            failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
+            self.assertTrue(any("has invalid GPU time" in item for item in failures))
+
+    def test_candidate_visual_capture_count_must_be_numeric(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            _write(
+                root / "bench.json",
+                json.dumps(
+                    [
+                        {
+                            "lane_id": "static_baseline",
+                            "commit_sha": "abc",
+                            "godot_binary_commit": "abc",
+                            "godot_binary_mtime_utc": "2026-05-19T10:01:00Z",
+                            "capture_count": "1",
+                            "capture_reference_match_count": 1,
+                            "capture_ssim_min": 0.99,
+                            "capture_psnr_min": 40.0,
+                            "gpu_timing_available": False,
+                            "gpu_timing_source": "unavailable",
+                        }
+                    ]
+                ),
+            )
+            failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
+            self.assertTrue(any("capture_count must be numeric" in item for item in failures))
+
+    def test_candidate_fails_stale_and_incomplete_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            _write(
+                root / "gpu_report.json",
+                json.dumps(
+                    {
+                        "batches": [
+                            {
+                                "name": "CompositorHazard",
+                                "timed_out": False,
+                                "summary_parse_ok": True,
+                                "rc": 0,
+                                "test_cases": {"total": 1, "failed": 0, "skipped": 0},
+                                "assertions": {"failed": 0},
+                                "rid_leak_bytes": 0,
+                            }
+                        ]
+                    }
+                ),
+            )
+            _write(
+                root / "bench.json",
+                json.dumps(
+                    [
+                        {
+                            "lane_id": "static_baseline",
+                            "commit_sha": "abc",
+                            "godot_binary_commit": "abc",
+                            "godot_binary_mtime_utc": "2026-05-19T10:01:00Z",
+                            "capture_count": 1,
+                            "capture_reference_match_count": 1,
+                            "capture_ssim_min": 0.99,
+                            "capture_psnr_min": 40.0,
+                            "gpu_timing_available": False,
+                            "gpu_timing_source": "unavailable",
+                        }
+                    ]
+                ),
+            )
+            evidence = {
+                "commit": "abc",
+                "commit_time_utc": "2026-05-19T10:00:00Z",
+                "gpu_harness_report": "gpu_report.json",
+                "benchmark_report": "bench.json",
+                "artifacts": {
+                    "linux_release_archive": {
+                        "path": "x",
+                        "sha256": "y",
+                        "godot_binary_commit": "old",
+                        "godot_binary_mtime_utc": "2026-05-19T09:00:00Z",
+                    }
+                },
+            }
+            failures = checker.validate_candidate(root, manifest, evidence)
+            self.assertTrue(any("built from stale commit" in item for item in failures))
+            self.assertTrue(any("binary predates commit" in item for item in failures))
+            self.assertTrue(any("artifact group missing: known_limitations_page" in item for item in failures))
+
+    def test_candidate_artifact_mtime_normalizes_timezone_awareness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["commit_time_utc"] = "2026-05-19T10:00:00Z"
+            evidence["artifacts"]["linux_release_archive"]["godot_binary_mtime_utc"] = "2026-05-19T09:00:00"
+            failures = checker._validate_candidate_artifacts(root, manifest, evidence)
+            self.assertTrue(any("binary predates commit" in item for item in failures))
+
+    def test_candidate_artifact_paths_must_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["artifacts"]["linux_release_archive"]["path"] = "artifacts/missing.tar.xz"
+            failures = checker._validate_candidate_artifacts(root, manifest, evidence)
+            self.assertTrue(any("artifact linux_release_archive path missing" in item for item in failures))
+
+    def test_candidate_artifact_sha256_must_match_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["artifacts"]["linux_release_archive"]["sha256"] = "0" * 64
+            failures = checker._validate_candidate_artifacts(root, manifest, evidence)
+            self.assertTrue(any("artifact linux_release_archive sha256 mismatch" in item for item in failures))
+
+    def test_candidate_artifacts_must_be_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["artifacts"] = []
+            failures = checker._validate_candidate_artifacts(root, manifest, evidence)
+            self.assertTrue(any("candidate artifacts must be a JSON object" in item for item in failures))
+
+    def test_accepted_limitation_requires_canonical_limitations_page(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            _write(root / "README.md", "not the known limitations page\n")
+            evidence = {
+                "issue_classifications": {
+                    "350": {
+                        "status": "accepted_alpha_limitation",
+                        "docs_path": "README.md",
+                    }
+                }
+            }
+            issues = [{"number": 350, "state": "OPEN", "labels": [{"name": "release blocker"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("accepted limitation must use known_limitations_page" in item for item in failures))
+
+    def test_accepted_limitation_accepts_canonical_limitations_page(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {
+                "issue_classifications": {
+                    "350": {
+                        "status": "accepted_alpha_limitation",
+                        "docs_path": "docs/development/known-public-alpha-limitations.md",
+                    }
+                }
+            }
+            issues = [{"number": 350, "state": "OPEN", "labels": [{"name": "release blocker"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertEqual([], failures)
+
+    def test_candidate_issue_classification_must_be_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {"issue_classifications": {"350": "blocking"}}
+            issues = [{"number": 350, "state": "OPEN", "labels": [{"name": "release blocker"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("alpha classification must be a JSON object" in item for item in failures))
+
+    def test_candidate_issue_classifications_must_be_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {"issue_classifications": []}
+            issues = [{"number": 350, "state": "OPEN", "labels": [{"name": "release blocker"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("candidate issue_classifications must be a JSON object" in item for item in failures))
+
+    def test_candidate_issue_classification_uses_live_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {"artifacts": {}, "issue_classifications": {"350": {"status": "blocking"}}}
+            issues = [{"number": 350, "state": "OPEN", "labels": [{"name": "release blocker"}]}]
+            failures = checker.validate_candidate(root, manifest, evidence, issues)
+            self.assertTrue(any("issue #350 is still blocking" in item for item in failures))
+
+
+if __name__ == "__main__":
+    unittest.main()

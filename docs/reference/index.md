@@ -80,6 +80,7 @@ Use this section when you need exact names, settings, compatibility evidence, or
 - [Timing metrics reference](../timing_metrics_reference.md)
 - [Engine patch report](engine-patch.md)
 - [Build / Test / CI reference](build-test-ci.md)
+- [Renderer release gates](renderer-release-gates.md)
 - [Recurring issues](../troubleshooting/recurring-issues.md)
 
 </div>
