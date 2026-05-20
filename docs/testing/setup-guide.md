@@ -44,6 +44,35 @@ Run Gaussian Splatting test lanes through maintained runners in `tests/ci/` and 
 | `run_tests.bat` | Windows batch full module run | `run_tests.bat:24`, `run_tests.bat:31` |
 | `ci/scripts/run_module_tests.bat` | Windows quick guard + module run | `ci/scripts/run_module_tests.bat:23`, `ci/scripts/run_module_tests.bat:47` |
 
+## GPU Test Harness (`--gs-gpu-test`)
+
+The `--gs-gpu-test` entrypoint is a second doctest runner specifically for tests tagged `[RequiresGPU]`. It bootstraps `RenderingDevice` offscreen via `Main::test_setup()` + `RenderingContextDriverVulkan` / `RenderingContextDriverD3D12` (no `SceneTree`, no window) and is therefore distinct from the `--test` lane driven by `tests/ci/run_module_tests.py`.
+
+| Task | Command | Reference |
+| --- | --- | --- |
+| Run the canonical compositor hazard regression | `python3 tests/ci/run_gpu_harness.py --batch CompositorHazard --godot ./bin/godot.linuxbsd.editor.dev.x86_64` | `tests/ci/run_gpu_harness.py`, `modules/gaussian_splatting/tests/test_output_compositor_composite_hazard.h` |
+| Run every catalogued batch | `python3 tests/ci/run_gpu_harness.py --godot ./bin/godot.linuxbsd.editor.dev.x86_64` | `tests/ci/run_gpu_harness.py` |
+| Direct doctest invocation with a custom filter | `./bin/godot.linuxbsd.editor.dev.x86_64 --gs-gpu-test --test-case="*HazardRepro*"` | `main/main.cpp:947`, `modules/gaussian_splatting/tests/gs_gpu_test_runner.cpp` |
+| Force a specific GPU driver | `./bin/godot.linuxbsd.editor.dev.x86_64 --gs-gpu-test --gs-gpu-driver=d3d12` | `modules/gaussian_splatting/tests/gs_gpu_test_runner.cpp` |
+
+Windows examples:
+
+```powershell
+python tests\ci\run_gpu_harness.py --batch CompositorHazard --godot bin\godot.windows.editor.dev.x86_64.console.exe
+bin\godot.windows.editor.dev.x86_64.console.exe --gs-gpu-test --test-case="*HazardRepro*"
+```
+
+Key contracts:
+
+- Default filter when `--test-case` is omitted: `--test-case=*[RequiresGPU]* --test-case-exclude=*[SceneTree]*,*[Importer]*`. The `[SceneTree][RequiresGPU]` exclusion is tracked as Issue #329.
+- Batches: `CompositorHazard` (active), and the catalogued-but-empty `OutputCompositor`, `ComputeInfrastructure`, `TileRenderer`, `GpuSorting`, `MemoryStream`, `Streaming`.
+- `REQUIRED_BATCHES = {"CompositorHazard"}` — asserted at import; an empty filter on a required batch fails the gate.
+- CI strict mode (`GITHUB_ACTIONS=true` or `CI=true`): `--godot` is required and `bin/` fallback is refused.
+- The supervisor writes a JSON report atomically (`tempfile.mkstemp` + `os.replace`) and streams subprocess output with one thread per pipe (Windows-compatible).
+- The doctest listener prints `[GS-GPU][RID-LEAK?] bytes=N test=advisory` above 4 MiB residual (raised from 1 MiB in #341); the supervisor folds non-zero values into a gate failure.
+
+See `modules/gaussian_splatting/tests/README.md#gpu-test-harness` for the per-batch filter table and full listener semantics. The `.github/workflows/baseline_qa.yml` workflow's `gpu-harness` job runs after `gpu-tests` on the self-hosted Windows runner; both jobs are gated against fork-PR code via `head.repo.full_name == github.repository`.
+
 ## Examples
 
 ```bash
@@ -51,6 +80,8 @@ python3 tests/ci/run_baseline_qa.py --help
 python3 tests/ci/run_module_tests.py --help
 python3 tests/runtime/run_runtime_validation.py --help
 python3 tests/ci/run_module_tests.py --guard-only
+python3 tests/ci/run_gpu_harness.py --help
+python3 tests/ci/run_gpu_harness.py --batch CompositorHazard --godot "$GODOT_BINARY"
 ```
 
 ## Troubleshooting
@@ -62,3 +93,6 @@ python3 tests/ci/run_module_tests.py --guard-only
 | Module tests report disabled test runner | Binary was not built with `tests=yes`. | Rebuild the editor from repository root with `tests=yes` so the output in `bin/` includes the in-tree module and test runner. | `tests/ci/run_module_tests.py:459`, `modules/gaussian_splatting/SCsub:69` |
 | Need to run only `module` or `qa` checks | Those categories are exposed only through the maintained baseline runner. | Use `tests/ci/run_baseline_qa.py --category module` or `--category qa`. | `tests/ci/run_baseline_qa.py:730`, `tests/ci/run_baseline_qa.py:281` |
 | Runtime run fails on skips in non-headless mode | Default skip policy is strict outside headless mode. | Add `--allow-skips` or switch to `--gd-mode headless`. | `tests/runtime/run_runtime_validation.py:916`, `tests/runtime/run_runtime_validation.py:920` |
+| `run_gpu_harness.py` refuses to discover a binary | `GITHUB_ACTIONS=true` or `CI=true` is set; CI strict mode requires explicit `--godot`. | Pass `--godot <path>` explicitly when running under CI envs. | `tests/ci/run_gpu_harness.py` |
+| GPU harness gate fails on an apparently-empty batch | The batch is in `REQUIRED_BATCHES` and its filter matched no tests. | Either add tests for that batch or remove it from `REQUIRED_BATCHES`. | `tests/ci/run_gpu_harness.py` |
+| `[GS-GPU][RID-LEAK?] bytes=N test=advisory` fails the gate | A test left more than 4 MiB resident; the supervisor folds non-zero advisories into a failure. | Audit the offending test's RID lifetimes; ensure `REQUIRE_GPU_DEVICE()` cleanup runs. | `modules/gaussian_splatting/tests/gs_gpu_test_runner.cpp`, `modules/gaussian_splatting/tests/test_macros.h` |

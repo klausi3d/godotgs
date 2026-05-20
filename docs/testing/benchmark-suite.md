@@ -1,5 +1,8 @@
 # Benchmark Runner
 
+!!! note "Scope"
+    This page covers the **runtime benchmark lanes** driven by `tests/runtime/run_benchmark.py`. For the `--gs-gpu-test` doctest harness (`tests/ci/run_gpu_harness.py`, `CompositorHazard` regression), see the [Testing Setup Guide](setup-guide.md#gpu-test-harness-gs-gpu-test). The two lanes do not overlap.
+
 ## Canonical Command
 
 Use this as the single benchmark entrypoint:

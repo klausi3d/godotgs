@@ -1,5 +1,8 @@
 # Unified Benchmark Scene
 
+!!! note "Scope"
+    This is a **report-only runtime benchmark scene**, not a regression gate. The blocking GPU regression lane is the `--gs-gpu-test` doctest harness (`tests/ci/run_gpu_harness.py`) — see the [Testing Setup Guide](setup-guide.md#gpu-test-harness-gs-gpu-test).
+
 ## Purpose
 
 Provide a single, deterministic, one-button benchmark run that demonstrates and stresses the major Gaussian Splatting systems in one pass:

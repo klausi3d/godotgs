@@ -1,8 +1,13 @@
 # Gaussian Splatting Module Tests
 
-_Last updated: 2025-11-27._
+_Last updated: 2026-05-18._
 
 This directory contains the test suite for the Gaussian Splatting module.
+
+There are now two parallel test lanes:
+
+1. The classic `--test` lane (CPU-only and tests that lazily probe for a `RenderingDevice`).
+2. The `--gs-gpu-test` lane introduced in #333 (doctest tests tagged `[RequiresGPU]`, driven from an offscreen RD-bootstrapped harness — see [GPU Test Harness](#gpu-test-harness) below and the supervisor in `tests/ci/run_gpu_harness.py`).
 
 ## Test Structure
 
@@ -19,6 +24,9 @@ The tests are organized using Godot's built-in **doctest** framework:
 - `test_gpu_sorting.cpp` - Detailed GPU sorter correctness, performance, and stress coverage
 - `test_phase1_integration.cpp` - Additional `[GaussianSplatting][Phase1]` coverage for renderer setup and editor workflows
 - `test_integration.cpp` - Component wiring smoke test under `[Gaussian Splatting Integration]`
+- `test_output_compositor_composite_hazard.h` - 256x256 compositor write-hazard regression for incident #256; ~20 assertions, runs in <1 s under the GPU harness
+- `gs_gpu_test_runner.cpp` - Entrypoint for `--gs-gpu-test` (`gs_gpu_test_main`, dispatched from `main/main.cpp` at the `--gs-gpu-test` switch)
+- `test_macros.h` - `REQUIRE_GPU_DEVICE()` now owns its fallback RD via `ScopedFallbackRD`, so individual tests no longer need to teardown the device manually
 
 ## Building with Tests
 
@@ -80,6 +88,64 @@ python3 modules/gaussian_splatting/tests/generate_synthetic_splat_baselines.py -
 <godot-editor-binary> --test --test-case="*GaussianSplatting*" --verbose
 ```
 The repository root `run_tests.bat` already passes `--verbose` for you, so you only need to add it manually when invoking the editor yourself.
+
+## GPU Test Harness
+
+The `--gs-gpu-test` entrypoint is a separate doctest runner specifically for tests tagged `[RequiresGPU]`. It is *not* a superset of `--test`; it runs the doctest registry under an offscreen `RenderingDevice` that the harness bootstraps via `Main::test_setup()` + `RenderingContextDriverVulkan` / `RenderingContextDriverD3D12` (no `SceneTree`, no window).
+
+### Direct invocation
+
+```powershell
+bin\godot.windows.editor.dev.x86_64.console.exe --gs-gpu-test
+bin\godot.windows.editor.dev.x86_64.console.exe --gs-gpu-test --test-case="*HazardRepro*"
+bin\godot.windows.editor.dev.x86_64.console.exe --gs-gpu-test --gs-gpu-driver=d3d12
+```
+
+Default filter when `--test-case` is omitted: `--test-case=*[RequiresGPU]* --test-case-exclude=*[SceneTree]*,*[Importer]*`. The `[SceneTree][RequiresGPU]` exclusion is tracked as Issue #329 — those tests need a real `SceneTree` and are deferred until the harness grows one.
+
+`--gs-gpu-driver=` accepts `vulkan` (default) or `d3d12`.
+
+### RID leak listener
+
+`gs_gpu_test_runner.cpp` registers a doctest listener that prints
+
+```
+[GS-GPU][RID-LEAK?] bytes=<N> test=advisory
+```
+
+after each test that leaves more than 4 MiB of GPU memory behind (raised from 1 MiB in #341 to cut benign noise). The supervisor folds any non-zero advisory into a gate failure.
+
+### Supervisor: `tests/ci/run_gpu_harness.py`
+
+The Python supervisor drives `--gs-gpu-test` in **per-batch subprocesses** so a driver hang or GPU OOM in one batch can't corrupt the next. Each batch maps to a `--test-case=` filter:
+
+| Batch | Filter | Status |
+| --- | --- | --- |
+| `CompositorHazard` | `*HazardRepro*` | Active (canonical regression) |
+| `OutputCompositor` | `*OutputCompositor*][RequiresGPU]*` | Catalogued, empty |
+| `ComputeInfrastructure` | `*ComputeInfra*][RequiresGPU]*` | Catalogued, empty |
+| `TileRenderer` | `*TileRenderer*][RequiresGPU]*` | Catalogued, empty |
+| `GpuSorting` | `*Sort*][RequiresGPU]*` | Catalogued, empty |
+| `MemoryStream` | `*MemoryStream*][RequiresGPU]*` | Catalogued, empty |
+| `Streaming` | `*Streaming*][RequiresGPU]*` | Catalogued, empty |
+
+`REQUIRED_BATCHES = {"CompositorHazard"}`. The set is asserted at import time and an empty filter on a required batch fails the gate.
+
+Invocation:
+
+```powershell
+python tests\ci\run_gpu_harness.py --batch CompositorHazard --godot bin\godot.windows.editor.dev.x86_64.console.exe
+python tests\ci\run_gpu_harness.py --batch CompositorHazard --batch OutputCompositor --godot bin\godot.windows.editor.dev.x86_64.console.exe
+python tests\ci\run_gpu_harness.py --godot bin\godot.windows.editor.dev.x86_64.console.exe   # runs every catalogued batch
+```
+
+Notes:
+
+- CI strict mode: when `GITHUB_ACTIONS=true` or `CI=true`, `--godot` is required and the supervisor refuses to discover a binary under `bin/`.
+- The supervisor writes a JSON report atomically (`tempfile.mkstemp` + `os.replace`).
+- Cross-platform streaming uses one thread per pipe — *not* `selectors`, which fails on Windows pipes with a WSAStartup error.
+
+See also the contributor docs in `docs/testing/setup-guide.md` for how this lane sits next to the `--test` lane and the baseline/runtime runners.
 
 ### Understanding Test Organization:
 
@@ -228,6 +294,8 @@ The tests are designed to run in CI/CD pipelines:
 - No interactive input required
 - Deterministic results (fixed random seeds)
 - Clear pass/fail status codes
+
+The `.github/workflows/baseline_qa.yml` workflow runs a `gpu-harness` job after the `gpu-tests` job on the self-hosted Windows runner, both gated against fork-PR code via `head.repo.full_name == github.repository`. The `gpu-harness` job invokes `tests/ci/run_gpu_harness.py` and currently blocks the gate on the `CompositorHazard` batch (incident #256 regression).
 
 ## Test Coverage Goals
 

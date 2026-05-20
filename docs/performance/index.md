@@ -84,3 +84,88 @@ Do not cite suite-only or unpublished lanes as public performance results. They 
 4. Build docs: `python scripts/build_docs_site.py --strict`
 
 See [Benchmark Suite Runner](../testing/benchmark-suite.md) for full benchmark documentation.
+For benchmark invocation flags and CI lanes, see [Build / Test / CI Reference](../reference/build-test-ci.md).
+
+## Runtime Diagnostics and Caching
+
+The module ships a handful of runtime knobs that are intended for users tuning
+startup cost and warm-cache behaviour. All of them are surfaced as
+ProjectSettings under `rendering/gaussian_splatting/...` and ship with sensible
+defaults; nothing here needs to be enabled to render correctly.
+
+### Startup trace
+
+`rendering/gaussian_splatting/diagnostics/startup_trace` (bool, default `true`).
+
+When enabled, each `GaussianSplatNode3D` asset open emits one `[StartupTrace]`
+log line on the first rendered frame. The line itemises the cost of init in
+roughly fifteen named phases (module register, device request, shader compile,
+streaming buffer alloc, atlas build, first-frame raster pipeline create, payload
+parse, etc.) plus a `total=` end-to-end duration.
+
+When disabled, the macro is a static-atomic short-circuit with no measurable
+overhead, so leaving it on is the default for development builds and benchmarks.
+
+Full output format, phase reference, and consumer-script guidance:
+[Startup Trace](startup-trace.md).
+
+### SPIR-V disk cache
+
+The module persists compiled shader binaries to disk so subsequent module
+loads can skip the GLSL-to-SPIR-V compile step on a cache hit. The cache is
+keyed on shader source, sorted preprocessor defines, and a device fingerprint
+(vendor, device name, API/version, pipeline-cache UUID), so driver upgrades
+and GPU swaps invalidate automatically without manual housekeeping.
+
+Settings:
+
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `rendering/gaussian_splatting/cache/spirv_cache_enabled` | bool | `true` | Master switch. |
+| `rendering/gaussian_splatting/cache/spirv_cache_max_mb` | int | `64` | LRU cap across all device subdirs (range 4-1024). |
+
+Storage: `user://gsplat_spirv_cache/<device-hash>/<key>.spv` (one subdir per
+GPU). On module init the cache is pruned to fit `spirv_cache_max_mb` using an
+LRU policy keyed on file mtime; cache hits also touch the file so frequently
+loaded shaders are not evicted ahead of cold entries. Stores go through a
+`.tmp` write + rename with `.bak` rollback, so a crash mid-write cannot lose
+a previously cached blob.
+
+When to disable: only if you suspect a stale or corrupt blob is being served
+(e.g. after an out-of-tree shader patch that did not bump the cache version).
+Toggle the setting to `false`, restart, and the next compile will run from
+source. The cache is safe to delete by hand at any time.
+
+### Streaming persistent buffer sizing
+
+The streaming path allocates a single persistent GPU storage buffer sized
+once at asset init. It is now sized from the actual asset's chunk count plus
+a 25 percent headroom (with a floor of `STREAMING_DEFAULT_MIN_CHUNKS_IN_VRAM`
+and a ceiling at the regulated `effective_max_chunks`), rather than always
+allocating the full regulated maximum. Eviction pressure can grow the buffer
+on demand via `_grow_persistent_buffer()`, which copies the live region to a
+larger allocation in-place.
+
+Surfaced metrics (read via `RenderDiagnosticsOrchestrator`):
+
+- `streaming_initial_capacity` - chunks reserved on init
+- `streaming_current_capacity` - chunks the persistent buffer currently fits
+- `streaming_grow_count` - times the buffer has grown since init
+
+See [Memory Subsystem Guide](../../modules/gaussian_splatting/MEMORY_SUBSYSTEM.md)
+for the budget regulator and eviction policy that drive growth.
+
+### First-frame raster pipeline pre-create
+
+`rendering/gaussian_splatting/init/eager_raster_pipeline` (bool, default `true`).
+
+The graphics raster pipeline is now built at `TileRenderer` init rather than
+lazily on the first dispatch, removing a ~tens-of-ms first-frame stall. The
+savings show up in the startup trace as a missing or near-zero
+`first_frame_raster_pipeline_create` phase.
+
+If the eager pre-create binds the wrong framebuffer format (rare; only when
+the caller-provided format hint disagrees with the real framebuffer built on
+first frame), the lazy reformat path inside `dispatch_tile_rasterizer()` frees
+the eager pipeline and rebuilds it, so correctness is preserved. Disable the
+setting only if you are debugging that fallback path.

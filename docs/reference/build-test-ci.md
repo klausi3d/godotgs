@@ -29,11 +29,29 @@ scons platform=<platform> target=editor dev_build=yes tests=yes -j<jobs>
   - `python3 tests/runtime/run_runtime_validation.py --godot-binary <module-built-binary> --gd-mode headless`
 - Benchmark suite:
   - `python3 tests/runtime/run_benchmark.py --godot-binary <module-built-binary> --profile everything`
+- GPU test harness (visual gate):
+  - `python3 tests/ci/run_gpu_harness.py --batch CompositorHazard --godot <module-built-binary>`
+  - Direct doctest invocation: `<module-built-binary> --gs-gpu-test --test-case="*HazardRepro*"`
+
+For module-only build commands and SCons targets, see [Gaussian Splatting Build and Test Guide](../../modules/gaussian_splatting/docs/BUILD_AND_TEST.md). For test-runner overviews, see [Tests Overview](../../tests/README.md).
+
+## GPU Test Harness and Visual Gate
+
+The `--gs-gpu-test` entrypoint in `main/main.cpp` is a second doctest runner that boots `RenderingDevice` offscreen (no `SceneTree`, no window) for tests tagged `[RequiresGPU]`. `tests/ci/run_gpu_harness.py` is the Python supervisor that drives it in per-batch subprocesses so a driver hang or GPU OOM in one batch can't corrupt the next.
+
+- Canonical detail (per-batch table, contracts, troubleshooting): [Testing Setup Guide — GPU Test Harness](../testing/setup-guide.md#gpu-test-harness-gs-gpu-test).
+- Per-batch filter table and listener semantics: [`modules/gaussian_splatting/tests/README.md`](../../modules/gaussian_splatting/tests/README.md).
+- Seeded golden captures and recapture workflow: [`tests/visual_baselines/README.md`](../../tests/visual_baselines/README.md).
+
+Required-batch contract: `REQUIRED_BATCHES = {"CompositorHazard"}` is asserted at import in `tests/ci/run_gpu_harness.py`. A required batch whose doctest filter matches zero test cases fails the gate — this prevents a silently-green CI when a rename empties the canonical `#256` regression batch.
 
 ## CI Source of Truth
 
 - [Workflow overview](../../.github/workflows/README.md)
 - [Production gate workflow](../../.github/workflows/gaussian_production_gates.yml)
+- [Baseline QA workflow (gpu-tests + gpu-harness visual gate)](../../.github/workflows/baseline_qa.yml)
+
+Fork-PR safety gate: the `gpu-tests` and `gpu-harness` jobs in `baseline_qa.yml` both guard on `github.event.pull_request.head.repo.full_name == github.repository`, so untrusted fork-PR code never executes on the self-hosted Windows GPU runner. Same-repo branch PRs and the merge queue still exercise the visual gate.
 
 ## Common Failure Modes
 

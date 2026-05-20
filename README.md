@@ -38,10 +38,9 @@ No named stable (`v*`) release is published yet, so nightly is the only public i
 
 ## Current Public Evidence
 
-- Compatibility snapshot: Windows is `editor-tested` from the self-hosted Vulkan Forward+ runtime lane. Fresh PR evidence from #368 passed the blocking Windows `streaming-gpu-ci` gate in Actions run `26128105716` with `GPU Streaming Stress`, `World Streaming Gate`, and `Streaming Residency API` passing; older failing `master` runs should not be used as green evidence. Linux is `sample-project-tested` on `ubuntu-24.04` with `xvfb` and `mesa-vulkan-drivers 25.2.8-0ubuntu0.24.04.1`; this is headless sample-project evidence, not interactive editor or hardware-GPU proof. macOS is currently `build-supported`.
-- Release snapshot: Linux is the guaranteed public nightly asset floor. Windows zips are current public assets only for release runs where the self-hosted Windows build succeeds.
-- Benchmark snapshot: the public dashboard currently contains one committed `static_baseline` row at 74.0 average FPS and 15.62 ms P99 frame time. `streaming-gpu-ci` is the blocking streaming runtime gate; open-world benchmark lanes are non-blocking evidence surfaces until published results are committed.
-- Visual proof: real editor screenshots and short workflow clips are still pending. The current figures are technical diagrams or benchmark artifacts, not product captures.
+- Compatibility snapshot: Windows is `editor-tested` on the self-hosted Vulkan Forward+ lane with `NVIDIA GeForce RTX 3090` and now ships a nightly editor zip. Linux is `sample-project-tested` on `ubuntu-24.04` with `xvfb` and `mesa-vulkan-drivers 25.2.8-0ubuntu0.24.04.1` and ships a nightly editor tarball. macOS is currently `build-supported`.
+- Benchmark snapshot: the public dashboard currently contains one committed `static_baseline` row at 74.0 average FPS and 15.62 ms P99 frame time.
+- Visual proof: real editor screenshots and short workflow clips are still pending. The current figures are technical diagrams, not product captures. A doctest-driven visual-compare lane now runs in `baseline_qa.yml` against seeded baselines in `tests/visual_baselines/`.
 
 ## For Reviewers
 
