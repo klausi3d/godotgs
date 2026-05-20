@@ -1653,6 +1653,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#w0-ownership-refresh-for-issue-356" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        W0 Ownership Refresh For Issue #356
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reality-check-performed" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3321,6 +3332,50 @@ Branch context: <code>/mnt/c/projects/godotgs-clean-refactor</code> (<code>refac
 <h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">¶</a></h2>
 <p>This document is the implementation memory for the staged Gaussian Splatting renderer refactor. It records what we validated in code, what we generated, why the sequence is structured this way, and what must remain stable while migrating.</p>
 <p>This is not a rewrite plan. It is a migration plan that preserves shipping behavior and keeps <code>GaussianSplatRenderer</code> as the public facade.</p>
+<h2 id="w0-ownership-refresh-for-issue-356">W0 Ownership Refresh For Issue #356<a class="headerlink" href="#w0-ownership-refresh-for-issue-356" title="Permanent link">¶</a></h2>
+<p>Date: 2026-05-20
+Branch context: <code>codex/ownership-w0-356</code> from <code>origin/master</code> at <code>d89bdd5d42</code></p>
+<p>This W0 slice refreshed the ownership inventory before any route-controller
+extraction. The live tree has already completed several older inventory items:</p>
+<ul>
+<li>Render-thread synchronization state is owned by <code>RenderThreadDispatcher</code>
+  behind <code>IRenderThreadDispatcher</code>; <code>GaussianSplatRenderer</code> delegates dispatch
+  and completion calls.</li>
+<li><code>GPUSortingPipeline</code> has the <code>ISortResultSink</code> and
+  <code>ISortBufferHostContext</code> seam, and <code>ensure_sort_buffers()</code> uses the host
+  context instead of accepting a renderer pointer.</li>
+<li><code>TileRenderer</code> owns <code>subgroup_support_cache</code> and
+  <code>adaptive_overlap_budget_runtime_state</code> as members; the old process-global
+  tile cache cleanup should not be reimplemented.</li>
+</ul>
+<p>Still coupled after this W0 slice:</p>
+<ul>
+<li><code>render_scene_instance()</code> remains the frame-entry route knot. It still owns
+  camera extraction, route policy diagnostics, resident/streaming selection,
+  typed skip publication, and early-return policy.</li>
+<li><code>FrameStateProvider</code> is still broad. It exposes many read/write buckets and
+  uses fallback static state when a renderer or dependency pointer is missing.</li>
+<li><code>RenderPipelineStages</code> is the useful stage boundary, but
+  <code>prepare_frame_context()</code>, <code>execute_frame_entry()</code>, and
+  <code>render_sorted_splats_with_context()</code> still reach broadly into renderer-owned
+  buckets and reset output/raster/GPU metrics.</li>
+<li>Sorting still carries renderer lifetime through
+  <code>InstancePipelineInputs::owner_renderer</code>, and <code>RenderSortingOrchestrator</code>
+  binds the renderer as both sort result sink and host context.</li>
+<li>Shared renderer settings arbitration in
+  <code>nodes/gaussian_splat_node_helpers.cpp</code> is an intentional external contract;
+  it should not move in the same PR as renderer route decomposition.</li>
+</ul>
+<p>Characterization strengthened in this slice:</p>
+<ul>
+<li>Instance contract publish/clear semantics now assert that republishing
+  replaces the renderer-side remap/backend/shape before clearing resets the
+  contract.</li>
+<li>Streaming-requested failure now asserts the stats/debug route UID contract and
+  backend diagnostics, in addition to blocking a silent resident bounce.</li>
+<li>Cull-failure stage cascade now asserts route/stage status consistency so a
+  later route-controller extraction cannot leave stale success metrics behind.</li>
+</ul>
 <h2 id="reality-check-performed">Reality Check Performed<a class="headerlink" href="#reality-check-performed" title="Permanent link">¶</a></h2>
 <ol>
 <li>Regenerated architecture artifacts from current branch code using:</li>
@@ -5363,7 +5418,7 @@ Branch context: <code>/mnt/c/projects/godotgs-clean-refactor</code> (<code>refac
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 20, 2026 14:21:36 UTC">May 20, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 20, 2026 14:24:11 UTC">May 20, 2026</span>
   </span>
 
     

@@ -7,7 +7,7 @@
       
       
       
-        <link rel="canonical" href="https://klausi3d.github.io/godotGS/latest/architecture/refactor-phase-runner/">
+        <link rel="canonical" href="https://klausi3d.github.io/godotGS/latest/architecture/gaussian-project-settings-contract/">
       
       
       
@@ -20,7 +20,7 @@
     
     
       
-        <title>Refactor Phase Runner - Godot Gaussian Splatting Docs</title>
+        <title>Gaussian ProjectSettings Contract - Godot Gaussian Splatting Docs</title>
       
     
     
@@ -81,7 +81,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#refactor-phase-runner" class="md-skip">
+        <a href="#gaussian-projectsettings-contract" class="md-skip">
           Skip to content
         </a>
       
@@ -120,7 +120,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Refactor Phase Runner
+              Gaussian ProjectSettings Contract
             
           </span>
         </div>
@@ -1642,10 +1642,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
-  <a href="#commands" class="md-nav__link">
+  <a href="#source-of-truth" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Commands
+        Source Of Truth
       
     </span>
   </a>
@@ -1653,10 +1653,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#recommended-use" class="md-nav__link">
+  <a href="#quality-tiers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Recommended use
+        Quality Tiers
       
     </span>
   </a>
@@ -1664,10 +1664,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#sequence-discipline" class="md-nav__link">
+  <a href="#known-cleanup-candidates" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Sequence discipline
+        Known Cleanup Candidates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-registration-gaps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Registration Gaps
       
     </span>
   </a>
@@ -1700,56 +1711,109 @@
   
 
 
-<h1 id="refactor-phase-runner">Refactor Phase Runner<a class="headerlink" href="#refactor-phase-runner" title="Permanent link">¶</a></h1>
-<p>This workflow automates the repeatable parts of the Gaussian renderer refactor.</p>
-<p>What it does:
-- runs <code>git diff --check</code>
-- runs local guard-only validation
-- regenerates the architecture pack for major phases
-- writes a native Windows batch runner for build + module tests
-- creates local checkpoint commits after a phase is verified</p>
-<p>What it does not do:
-- blindly implement the remaining refactor phases
-- replace phase-by-phase review for risky mutator and seam work
-- run the native Windows editor/test lane from WSL</p>
-<h2 id="commands">Commands<a class="headerlink" href="#commands" title="Permanent link">¶</a></h2>
-<p>List the remaining large phases:</p>
-<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>scripts/refactor_phase_runner.py<span class="w"> </span>list
+<h1 id="gaussian-projectsettings-contract">Gaussian ProjectSettings Contract<a class="headerlink" href="#gaussian-projectsettings-contract" title="Permanent link">¶</a></h1>
+<p>This document defines the first-wave inventory contract for Gaussian
+<code>ProjectSettings</code> keys. It is intentionally test-only/documentation-only: it
+does not remove public settings, enable dormant renderer paths, or change
+runtime behavior.</p>
+<h2 id="source-of-truth">Source Of Truth<a class="headerlink" href="#source-of-truth" title="Permanent link">¶</a></h2>
+<p>The inventory lives in
+<code>modules/gaussian_splatting/config/project_settings_manifest.json</code>.</p>
+<p>Each exact <code>rendering/gaussian_splatting/*</code> key referenced by Gaussian
+production C++ source must be listed in the manifest. Family defaults classify
+common prefixes, and per-key entries provide the effective-state field, coverage
+status, and notes for known gaps or cleanup candidates.</p>
+<p>Required resolved fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>owner</code></td>
+<td>The subsystem that owns registration, loading, or effective behavior.</td>
+</tr>
+<tr>
+<td><code>scope</code></td>
+<td>Runtime, diagnostic, debug, editor, import, migration, internal, or compatibility surface.</td>
+</tr>
+<tr>
+<td><code>reload_semantics</code></td>
+<td>Startup, <code>settings_changed</code>, per-frame, on-demand, save-only, test-only, or unknown.</td>
+</tr>
+<tr>
+<td><code>effective_state</code></td>
+<td>The runtime field, snapshot entry, or explicit <code>none</code> state that reflects the setting.</td>
+</tr>
+<tr>
+<td><code>visibility</code></td>
+<td>Whether the key is editor-visible, hidden from the editor, runtime-only, or dynamically optional.</td>
+</tr>
+<tr>
+<td><code>publicness</code></td>
+<td>Public, internal, debug-only, deprecated alias, or cleanup candidate.</td>
+</tr>
+<tr>
+<td><code>test_coverage</code></td>
+<td>Covered, partial, inventory-only, documented gap, needs behavior test, or test-only.</td>
+</tr>
+</tbody>
+</table>
+<p>The deterministic checker is
+<code>modules/gaussian_splatting/tests/check_project_settings_manifest.py</code>.
+It scans production Gaussian C++ source for literal settings and common static
+path constants, then fails when a key is referenced without manifest metadata or
+when a manifest entry no longer appears in source.</p>
+<p>Public setting removals are guarded by
+<code>modules/gaussian_splatting/config/project_settings_public_api_baseline.json</code>.
+Any live public, cleanup-candidate, or deprecated-alias setting must be in that
+baseline. A future PR that removes a public setting from source must keep the
+baseline entry and add an explicit retired-setting record instead of simply
+deleting the manifest entry.</p>
+<p>Run it with:</p>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>modules/gaussian_splatting/tests/check_project_settings_manifest.py
 </code></pre></div>
-<p>Run local checks for a phase:</p>
-<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>scripts/refactor_phase_runner.py<span class="w"> </span>local-checks<span class="w"> </span>--phase<span class="w"> </span>1b.2a
-</code></pre></div>
-<p>Generate the Windows verification helper:</p>
-<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>scripts/refactor_phase_runner.py<span class="w"> </span>write-windows-runner<span class="w"> </span>--phase<span class="w"> </span>1b.2a
-</code></pre></div>
-<p>That writes:</p>
-<p><code>ci/scripts/run_refactor_phase_windows.bat</code></p>
-<p>Run it from native Windows <code>cmd.exe</code>:</p>
-<div class="highlight"><pre><span></span><code><span class="k">cd</span> /d C:\projects\godotgs-clean-refactor
-ci\scripts\run_refactor_phase_windows.bat
-</code></pre></div>
-<p>Create a checkpoint commit after the phase is verified:</p>
-<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>scripts/refactor_phase_runner.py<span class="w"> </span>checkpoint-commit<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--phase<span class="w"> </span>1b.2a<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--stage-all-tracked<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--path<span class="w"> </span>docs/architecture/gaussian-renderer-refactor-memory.md<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--message<span class="w"> </span><span class="s2">"refactor(renderer): complete phase 1b.2a checkpoint"</span>
-</code></pre></div>
-<h2 id="recommended-use">Recommended use<a class="headerlink" href="#recommended-use" title="Permanent link">¶</a></h2>
-<ol>
-<li>Implement one large coherent phase batch.</li>
-<li>Run <code>local-checks</code>.</li>
-<li>Run the generated Windows batch helper.</li>
-<li>Update the memory log with the verification result.</li>
-<li>Create a checkpoint commit.</li>
-</ol>
-<h2 id="sequence-discipline">Sequence discipline<a class="headerlink" href="#sequence-discipline" title="Permanent link">¶</a></h2>
-<p>Keep the original guardrails:
-- <code>GaussianSplatRenderer</code> remains the stable external facade.
-- Do not drift into debug/painterly redesign outside the planned phases.
-- Keep composition-root and sorting cleanup tightly scoped.
-- Replace test internal mutations before final accessor lockdown.
-- Regenerate the architecture pack after each major phase.</p>
+<h2 id="quality-tiers">Quality Tiers<a class="headerlink" href="#quality-tiers" title="Permanent link">¶</a></h2>
+<p>Quality tiers are policy overrides, not defaults. When
+<code>rendering/gaussian_splatting/quality/tier_apply_pipeline_toggles</code> or
+<code>rendering/gaussian_splatting/quality/tier_apply_streaming_budgets</code> is true,
+the tier value wins over matching manual project settings. Any effective config
+reported to users must name the tier as the source, not claim that the value
+came from a default.</p>
+<p>Current provenance surfaces include <code>PipelineFeatureSet</code> snapshots and SH tier
+seeding. Future cleanup waves should extend equivalent provenance to any
+streaming/LOD/quantization setting that can be tier-overwritten.</p>
+<h2 id="known-cleanup-candidates">Known Cleanup Candidates<a class="headerlink" href="#known-cleanup-candidates" title="Permanent link">¶</a></h2>
+<p>The manifest identifies public keys that need separate behavior tests and
+migration/deprecation decisions before removal or support changes. The first
+wave only inventories them.</p>
+<p>Current candidates include:</p>
+<ul>
+<li><code>rendering/gaussian_splatting/culling/opacity_aware_bounds</code></li>
+<li><code>rendering/gaussian_splatting/culling/visibility_threshold</code></li>
+<li><code>rendering/gaussian_splatting/cull/overflow_autotune_enabled</code></li>
+<li><code>rendering/gaussian_splatting/debug/enable_mainloop_probes</code></li>
+<li><code>rendering/gaussian_splatting/max_gpu_buffer_count</code></li>
+<li><code>rendering/gaussian_splatting/pipeline/enable_all_experimental</code></li>
+<li><code>rendering/gaussian_splatting/streaming/async_io_enabled</code></li>
+<li>Sorting threshold knobs loaded by <code>SortingStrategyConfig</code> but not used by the live AUTO selector policy.</li>
+<li>Quantization chunk-size knobs that currently need producer-path proof before support or removal.</li>
+</ul>
+<h2 id="known-registration-gaps">Known Registration Gaps<a class="headerlink" href="#known-registration-gaps" title="Permanent link">¶</a></h2>
+<p>The manifest also records live runtime reads that need follow-up ownership
+decisions:</p>
+<ul>
+<li><code>rendering/gaussian_splatting/streaming/max_sync_fallback_loads_per_frame</code></li>
+<li><code>rendering/gaussian_splatting/streaming/max_sync_fallback_queue_size</code></li>
+<li><code>rendering/gaussian_splatting/lod/importance_threshold</code></li>
+<li><code>rendering/gaussian_splatting/cull/frustum_plane_slack</code></li>
+</ul>
+<p>These remain unchanged in this PR. Follow-up PRs should either register them
+with explicit public semantics and behavior tests, or internalize them so they
+are not user-facing <code>ProjectSettings</code> contracts.</p>
 
 
 

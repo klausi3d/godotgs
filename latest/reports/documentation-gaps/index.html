@@ -2742,6 +2742,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingrenderergpu_buffer_managerh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/renderer/gpu_buffer_manager.h
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingteststest_scene_director_submission_scaffoldingh" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2757,17 +2768,6 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/resources/color_grading_resource.h
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrenderergpu_buffer_managerh" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/renderer/gpu_buffer_manager.h
       
     </span>
   </a>
@@ -2841,6 +2841,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#modulesgaussian_splattinginterfacesrender_device_managercpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/interfaces/render_device_manager.cpp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingeditorgaussian_import_dialogcpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2856,17 +2867,6 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/tests/synthetic_surface_generator.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#modulesgaussian_splattinginterfacesrender_device_managercpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/interfaces/render_device_manager.cpp
       
     </span>
   </a>
@@ -3270,6 +3270,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingrenderergaussian_splat_renderercpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingtestssynthetic_splat_commoncpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3285,17 +3296,6 @@
     <span class="md-ellipsis">
       
         tests/examples/godot/test_project/scenes/qa/qa_performance_budget.gd
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrenderergaussian_splat_renderercpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp
       
     </span>
   </a>
@@ -4469,6 +4469,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#modulesgaussian_splattinginterfacesrender_device_managerh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/interfaces/render_device_manager.h
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingcoregaussian_data_animationcpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4506,17 +4517,6 @@
     <span class="md-ellipsis">
       
         tests/examples/godot/test_project/fps_camera_controller.gd
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#modulesgaussian_splattinginterfacesrender_device_managerh" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/interfaces/render_device_manager.h
       
     </span>
   </a>
@@ -6148,37 +6148,39 @@
 <li>line 72: void GPUBufferManager::_reset_state(bool p_reset_handles) {...</li>
 <li>line 106: Error GPUBufferManager::initialize(RenderingDevice *p_rd, ui...</li>
 <li>line 119: Error GPUBufferManager::_create_buffer_set(BufferSet &amp;r_set,...</li>
-<li>line 161: void GPUBufferManager::_destroy_buffer_set(BufferSet &amp;p_set)...</li>
-<li>line 186: Error GPUBufferManager::create_buffers() {...</li>
-<li>line 232: void GPUBufferManager::_mark_buffer_ready(uint32_t p_index) ...</li>
-<li>line 252: void GPUBufferManager::<em>queue_submission(RenderingDevice *p</em>...</li>
-<li>line 266: void GPUBufferManager::_flush_pending_submission(bool p_bloc...</li>
-<li>line 298: void GPUBufferManager::_wait_for_buffer(uint32_t p_index, bo...</li>
-<li>line 322: void GPUBufferManager::_force_wait_for_buffer(uint32_t p_ind...</li>
-<li>line 333: bool GPUBufferManager::_acquire_write_buffer(bool p_block) {...</li>
-<li>line 356: bool GPUBufferManager::_begin_frame_internal(bool p_block) {...</li>
-<li>line 377: void GPUBufferManager::cleanup_buffers() {...</li>
-<li>line 404: Error GPUBufferManager::create_buffers_from_data(const Ref&lt;:...</li>
-<li>line 418: void GPUBufferManager::begin_frame() {...</li>
-<li>line 435: void GPUBufferManager::end_frame() {...</li>
-<li>line 481: void GPUBufferManager::swap_buffers() {...</li>
-<li>line 509: bool GPUBufferManager::is_ready_for_update() const {...</li>
-<li>line 523: RID GPUBufferManager::get_current_read_buffer() const {...</li>
-<li>line 530: RID GPUBufferManager::get_current_write_buffer() const {...</li>
-<li>line 537: Error GPUBufferManager::upload_gaussian_data(const Ref&lt;::Gau...</li>
-<li>line 620: void GPUBufferManager::clear_gaussian_data() {...</li>
-<li>line 635: RID GPUBufferManager::get_gaussian_buffer() const {...</li>
-<li>line 639: RID GPUBufferManager::get_sort_key_buffer() const {...</li>
-<li>line 646: RID GPUBufferManager::get_sorted_indices_buffer() const {...</li>
-<li>line 658: RID GPUBufferManager::get_current_write_sort_key_buffer() co...</li>
-<li>line 665: RID GPUBufferManager::get_current_write_sorted_indices_buffe...</li>
-<li>line 672: GPUBufferManager::BufferHandle GPUBufferManager::get_gaussia...</li>
-<li>line 679: GPUBufferManager::BufferHandle GPUBufferManager::get_sort_ke...</li>
-<li>line 686: GPUBufferManager::BufferHandle GPUBufferManager::get_sorted_...</li>
-<li>line 693: GPUBufferManager::BufferHandle GPUBufferManager::get_current...</li>
-<li>line 700: GPUBufferManager::BufferHandle GPUBufferManager::get_current...</li>
-<li>line 707: void GPUBufferManager::set_visible_count(uint32_t p_visible)...</li>
-<li>line 724: float GPUBufferManager::get_memory_usage_mb() const {...</li>
+<li>line 184: void GPUBufferManager::_destroy_buffer_set(BufferSet &amp;p_set)...</li>
+<li>line 209: Error GPUBufferManager::create_buffers() {...</li>
+<li>line 266: bool GPUBufferManager::_has_allocated_resources() const {...</li>
+<li>line 281: bool GPUBufferManager::test_simulate_partial_allocation_clea...</li>
+<li>line 313: void GPUBufferManager::_mark_buffer_ready(uint32_t p_index) ...</li>
+<li>line 333: void GPUBufferManager::<em>queue_submission(RenderingDevice *p</em>...</li>
+<li>line 347: void GPUBufferManager::_flush_pending_submission(bool p_bloc...</li>
+<li>line 379: void GPUBufferManager::_wait_for_buffer(uint32_t p_index, bo...</li>
+<li>line 403: void GPUBufferManager::_force_wait_for_buffer(uint32_t p_ind...</li>
+<li>line 414: bool GPUBufferManager::_acquire_write_buffer(bool p_block) {...</li>
+<li>line 437: bool GPUBufferManager::_begin_frame_internal(bool p_block) {...</li>
+<li>line 458: void GPUBufferManager::cleanup_buffers() {...</li>
+<li>line 492: Error GPUBufferManager::create_buffers_from_data(const Ref&lt;:...</li>
+<li>line 506: void GPUBufferManager::begin_frame() {...</li>
+<li>line 523: void GPUBufferManager::end_frame() {...</li>
+<li>line 569: void GPUBufferManager::swap_buffers() {...</li>
+<li>line 597: bool GPUBufferManager::is_ready_for_update() const {...</li>
+<li>line 611: RID GPUBufferManager::get_current_read_buffer() const {...</li>
+<li>line 618: RID GPUBufferManager::get_current_write_buffer() const {...</li>
+<li>line 625: Error GPUBufferManager::upload_gaussian_data(const Ref&lt;::Gau...</li>
+<li>line 708: void GPUBufferManager::clear_gaussian_data() {...</li>
+<li>line 723: RID GPUBufferManager::get_gaussian_buffer() const {...</li>
+<li>line 727: RID GPUBufferManager::get_sort_key_buffer() const {...</li>
+<li>line 734: RID GPUBufferManager::get_sorted_indices_buffer() const {...</li>
+<li>line 746: RID GPUBufferManager::get_current_write_sort_key_buffer() co...</li>
+<li>line 753: RID GPUBufferManager::get_current_write_sorted_indices_buffe...</li>
+<li>line 760: GPUBufferManager::BufferHandle GPUBufferManager::get_gaussia...</li>
+<li>line 767: GPUBufferManager::BufferHandle GPUBufferManager::get_sort_ke...</li>
+<li>line 774: GPUBufferManager::BufferHandle GPUBufferManager::get_sorted_...</li>
+<li>line 781: GPUBufferManager::BufferHandle GPUBufferManager::get_current...</li>
+<li>line 788: GPUBufferManager::BufferHandle GPUBufferManager::get_current...</li>
+<li>line 795: void GPUBufferManager::set_visible_count(uint32_t p_visible)...</li>
+<li>line 812: float GPUBufferManager::get_memory_usage_mb() const {...</li>
 </ul>
 <h2 id="modulesgaussian_splattingrendererrendering_errorcpp">modules/gaussian_splatting/renderer/rendering_error.cpp<a class="headerlink" href="#modulesgaussian_splattingrendererrendering_errorcpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -6636,7 +6638,7 @@
 <li>line 307: static Vector<uint32_t> read_renderer_sort_indices(const Ref...</uint32_t></li>
 <li>line 464: static GaussianRenderPipeline::InstancePipelineBuffers make_...</li>
 <li>line 498: static bool hud_lines_contain(const Array &amp;p_lines, const St...</li>
-<li>line 3099: static RID create_test_texture(RenderingDevice *p_rd, const ...</li>
+<li>line 3139: static RID create_test_texture(RenderingDevice *p_rd, const ...</li>
 </ul>
 <h2 id="modulesgaussian_splattingnodesgaussian_splat_containercpp">modules/gaussian_splatting/nodes/gaussian_splat_container.cpp<a class="headerlink" href="#modulesgaussian_splattingnodesgaussian_splat_containercpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -7024,6 +7026,22 @@
 <li>line 747: Error GaussianSplatRenderer::apply_world_submission_contract...</li>
 <li>line 821: void GaussianSplatRenderer::clear_world_submission_contract(...</li>
 </ul>
+<h2 id="modulesgaussian_splattingrenderergpu_buffer_managerh">modules/gaussian_splatting/renderer/gpu_buffer_manager.h<a class="headerlink" href="#modulesgaussian_splattingrenderergpu_buffer_managerh" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 18: bool is_valid() const {...</li>
+<li>line 40: static bool _auto_free_is_valid(RenderingDevice *p_device, c...</li>
+<li>line 47: static void _free_pending_delete(const PendingDelete &amp;p_pend...</li>
+<li>line 63: void queue_free(RenderingDevice *p_device, const RID &amp;p_rid,...</li>
+<li>line 71: void process_frame() {...</li>
+<li>line 89: void flush_all() {...</li>
+<li>line 115: void reset() {...</li>
+<li>line 167: uint32_t _get_next_index(uint32_t p_index) const { return (p...</li>
+<li>line 185: bool is_initialized() const { return buffers_created &amp;&amp; rd !...</li>
+<li>line 186: uint32_t get_buffer_capacity() const { return max_gaussians;...</li>
+<li>line 210: RID get_uniform_buffer() const { return uniform_buffer; }...</li>
+<li>line 212: uint32_t get_gaussian_count() const { return current_count; ...</li>
+<li>line 213: uint32_t get_visible_count() const { return current_visible_...</li>
+</ul>
 <h2 id="modulesgaussian_splattingteststest_scene_director_submission_scaffoldingh">modules/gaussian_splatting/tests/test_scene_director_submission_scaffolding.h<a class="headerlink" href="#modulesgaussian_splattingteststest_scene_director_submission_scaffoldingh" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 22: Ref<gaussiandata> stage1a_make_submission_test_data(int p_co...</gaussiandata></li>
@@ -7047,22 +7065,6 @@
 <li>line 82: void set_hue_shift(float p_hue) {...</li>
 <li>line 90: float get_hue_shift() const { return hue_shift; }...</li>
 <li>line 92: void reset_to_defaults() {...</li>
-</ul>
-<h2 id="modulesgaussian_splattingrenderergpu_buffer_managerh">modules/gaussian_splatting/renderer/gpu_buffer_manager.h<a class="headerlink" href="#modulesgaussian_splattingrenderergpu_buffer_managerh" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 18: bool is_valid() const {...</li>
-<li>line 40: static bool _auto_free_is_valid(RenderingDevice *p_device, c...</li>
-<li>line 47: static void _free_pending_delete(const PendingDelete &amp;p_pend...</li>
-<li>line 63: void queue_free(RenderingDevice *p_device, const RID &amp;p_rid,...</li>
-<li>line 71: void process_frame() {...</li>
-<li>line 89: void flush_all() {...</li>
-<li>line 115: void reset() {...</li>
-<li>line 166: uint32_t _get_next_index(uint32_t p_index) const { return (p...</li>
-<li>line 184: bool is_initialized() const { return buffers_created &amp;&amp; rd !...</li>
-<li>line 185: uint32_t get_buffer_capacity() const { return max_gaussians;...</li>
-<li>line 205: RID get_uniform_buffer() const { return uniform_buffer; }...</li>
-<li>line 207: uint32_t get_gaussian_count() const { return current_count; ...</li>
-<li>line 208: uint32_t get_visible_count() const { return current_visible_...</li>
 </ul>
 <h2 id="modulesgaussian_splattingnodesgaussian_splat_debug_hudcpp">modules/gaussian_splatting/nodes/gaussian_splat_debug_hud.cpp<a class="headerlink" href="#modulesgaussian_splattingnodesgaussian_splat_debug_hudcpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -7195,6 +7197,29 @@
 <li>line 1372: bool TileRendererRegressionTest::generate_reference_captures...</li>
 <li>line 1377: bool TileRendererRegressionTest::validate_against_reference(...</li>
 </ul>
+<h2 id="modulesgaussian_splattinginterfacesrender_device_managercpp">modules/gaussian_splatting/interfaces/render_device_manager.cpp<a class="headerlink" href="#modulesgaussian_splattinginterfacesrender_device_managercpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 10: static bool _is_main_rendering_device(RenderingDevice *p_dev...</li>
+<li>line 41: static bool <em>matches_known_resource_type(RenderingDevice *p</em>...</li>
+<li>line 80: void RenderDeviceManager::_bind_methods() {...</li>
+<li>line 91: Error RenderDeviceManager::initialize(RenderingDevice *p_pri...</li>
+<li>line 119: void RenderDeviceManager::shutdown() {...</li>
+<li>line 146: uint32_t RenderDeviceManager::get_tracked_owned_resource_cou...</li>
+<li>line 156: uint32_t RenderDeviceManager::get_tracked_borrowed_resource_...</li>
+<li>line 166: DeviceContext RenderDeviceManager::get_context() const {...</li>
+<li>line 243: bool RenderDeviceManager::ensure_rendering_device(const char...</li>
+<li>line 262: bool RenderDeviceManager::ensure_submission_device(const cha...</li>
+<li>line 283: void RenderDeviceManager::track_resource(const RID &amp;p_rid, R...</li>
+<li>line 392: void RenderDeviceManager::forget_resource(const RID &amp;p_rid) ...</li>
+<li>line 411: void RenderDeviceManager::free_owned_resource(RenderingDevic...</li>
+<li>line 560: void RenderDeviceManager::track_texture(const RID &amp;p_texture...</li>
+<li>line 586: void RenderDeviceManager::submit_and_sync(RenderingDevice *p...</li>
+<li>line 594: void RenderDeviceManager::push_texture_trace(const String &amp;p...</li>
+<li>line 615: void RenderDeviceManager::push_cross_device_operation(const ...</li>
+<li>line 636: void RenderDeviceManager::clear_diagnostics() {...</li>
+<li>line 653: bool RenderDeviceManager::_is_main_rendering_device(Renderin...</li>
+<li>line 685: void RenderDeviceManager::synchronize_tile_submission(Render...</li>
+</ul>
 <h2 id="modulesgaussian_splattingeditorgaussian_import_dialogcpp">modules/gaussian_splatting/editor/gaussian_import_dialog.cpp<a class="headerlink" href="#modulesgaussian_splattingeditorgaussian_import_dialogcpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 27: static Dictionary _dictionary_from_options(const Vector&lt;Pair...</li>
@@ -7230,27 +7255,6 @@
 <li>line 33: void SurfaceSplatGenerator::Config::from_dict(const Dictiona...</li>
 <li>line 53: uint64_t SurfaceSplatGenerator::hash_config(const Config &amp;p_...</li>
 <li>line 75: LocalVector<gaussian> SurfaceSplatGenerator::generate(const ...</gaussian></li>
-</ul>
-<h2 id="modulesgaussian_splattinginterfacesrender_device_managercpp">modules/gaussian_splatting/interfaces/render_device_manager.cpp<a class="headerlink" href="#modulesgaussian_splattinginterfacesrender_device_managercpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 10: static bool _is_main_rendering_device(RenderingDevice *p_dev...</li>
-<li>line 41: static bool <em>matches_known_resource_type(RenderingDevice *p</em>...</li>
-<li>line 80: void RenderDeviceManager::_bind_methods() {...</li>
-<li>line 91: Error RenderDeviceManager::initialize(RenderingDevice *p_pri...</li>
-<li>line 119: void RenderDeviceManager::shutdown() {...</li>
-<li>line 140: DeviceContext RenderDeviceManager::get_context() const {...</li>
-<li>line 217: bool RenderDeviceManager::ensure_rendering_device(const char...</li>
-<li>line 236: bool RenderDeviceManager::ensure_submission_device(const cha...</li>
-<li>line 257: void RenderDeviceManager::track_resource(const RID &amp;p_rid, R...</li>
-<li>line 366: void RenderDeviceManager::forget_resource(const RID &amp;p_rid) ...</li>
-<li>line 385: void RenderDeviceManager::free_owned_resource(RenderingDevic...</li>
-<li>line 534: void RenderDeviceManager::track_texture(const RID &amp;p_texture...</li>
-<li>line 560: void RenderDeviceManager::submit_and_sync(RenderingDevice *p...</li>
-<li>line 568: void RenderDeviceManager::push_texture_trace(const String &amp;p...</li>
-<li>line 589: void RenderDeviceManager::push_cross_device_operation(const ...</li>
-<li>line 610: void RenderDeviceManager::clear_diagnostics() {...</li>
-<li>line 627: bool RenderDeviceManager::_is_main_rendering_device(Renderin...</li>
-<li>line 659: void RenderDeviceManager::synchronize_tile_submission(Render...</li>
 </ul>
 <h2 id="modulesgaussian_splattingnodesgaussian_splat_world_3dcpp">modules/gaussian_splatting/nodes/gaussian_splat_world_3d.cpp<a class="headerlink" href="#modulesgaussian_splattingnodesgaussian_splat_world_3dcpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -7993,21 +7997,6 @@
 <li>line 3108: float GPUSortingPipeline::get_last_sort_time_ms() const {...</li>
 <li>line 3115: SortingMetrics GPUSortingPipeline::get_metrics() const {...</li>
 </ul>
-<h2 id="modulesgaussian_splattingtestssynthetic_splat_commoncpp">modules/gaussian_splatting/tests/synthetic_splat_common.cpp<a class="headerlink" href="#modulesgaussian_splattingtestssynthetic_splat_commoncpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 10: Dictionary SyntheticSceneSummary::to_dict() const {...</li>
-<li>line 65: String hash_hex(uint64_t p_value) {...</li>
-<li>line 71: uint32_t read_non_negative_u32(const Variant &amp;p_value, uint3...</li>
-<li>line 85: uint64_t read_non_negative_u64(const Variant &amp;p_value, uint6...</li>
-</ul>
-<h2 id="testsexamplesgodottest_projectscenesqaqa_performance_budgetgd">tests/examples/godot/test_project/scenes/qa/qa_performance_budget.gd<a class="headerlink" href="#testsexamplesgodottest_projectscenesqaqa_performance_budgetgd" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 12: func _ready():...</li>
-<li>line 20: func _on_test_start():...</li>
-<li>line 31: func _on_test_frame(delta: float):...</li>
-<li>line 38: func _on_test_complete():...</li>
-<li>line 77: func _calculate_avg(samples: Array[float]) -&gt; float:...</li>
-</ul>
 <h2 id="modulesgaussian_splattingrenderergaussian_splat_renderercpp">modules/gaussian_splatting/renderer/gaussian_splat_renderer.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderergaussian_splat_renderercpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 96: static bool _get_bool_setting(ProjectSettings *ps, const Str...</li>
@@ -8032,72 +8021,89 @@
 <li>line 352: static String _streaming_not_ready_reason_code(const String ...</li>
 <li>line 364: static bool _has_primary_resident_render_data(const Gaussian...</li>
 <li>line 377: static bool _projection_nearly_equal(const Projection &amp;p_a, ...</li>
-<li>line 513: Projection GaussianSplatRenderer::build_cull_projection(Rend...</li>
-<li>line 536: void GaussianSplatRenderer::_forget_tile_renderer_outputs() ...</li>
-<li>line 545: void GaussianSplatRenderer::_warn_tile_depth_copy_incompatib...</li>
-<li>line 792: void GaussianSplatRenderer::_notify_render_thread_dispatch_c...</li>
-<li>line 1027: bool GaussianSplatRenderer::ensure_sort_rendering_device(con...</li>
-<li>line 1035: SortExternalBufferState GaussianSplatRenderer::get_sort_exte...</li>
-<li>line 1056: bool GaussianSplatRenderer::resize_sort_state_byte_vectors(u...</li>
-<li>line 1092: void GaussianSplatRenderer::clear_sort_buffer_binding_state(...</li>
-<li>line 1105: void GaussianSplatRenderer::publish_sorted_indices(const Sor...</li>
-<li>line 1169: void GaussianSplatRenderer::_teardown_resources() {...</li>
-<li>line 1306: void GaussianSplatRenderer::_teardown_on_render_thread(uint6...</li>
-<li>line 1311: void GaussianSplatRenderer::_release_resident_contract_buffe...</li>
-<li>line 1341: void GaussianSplatRenderer::_release_shared_dynamic_asset() ...</li>
-<li>line 1357: void GaussianSplatRenderer::_notification(int p_what) {...</li>
-<li>line 1362: void GaussianSplatRenderer::_mark_streaming_route_policy_dir...</li>
-<li>line 1366: void GaussianSplatRenderer::<em>refresh_streaming_route_policy</em>...</li>
-<li>line 1376: int GaussianSplatRenderer::get_cached_streaming_route_policy...</li>
-<li>line 1414: GaussianSplatRenderer::FrameBackendPlan GaussianSplatRendere...</li>
-<li>line 1473: void GaussianSplatRenderer::initialize() {...</li>
-<li>line 1530: void GaussianSplatRenderer::_initialize_on_render_thread(uin...</li>
-<li>line 1535: void GaussianSplatRenderer::set_painterly_material(const Ref...</li>
-<li>line 1554: Ref<painterlymaterial> GaussianSplatRenderer::get_painterly_...</painterlymaterial></li>
-<li>line 1561: void GaussianSplatRenderer::update_depth_range(float p_near,...</li>
-<li>line 1568: void GaussianRenderFacadeState::ShadowBlitState::clear(Rende...</li>
-<li>line 1589: bool GaussianSplatRenderer::_ensure_shadow_output_compositor...</li>
-<li>line 1611: bool GaussianSplatRenderer::_ensure_shadow_blit_resources(Re...</li>
-<li>line 1686: bool GaussianSplatRenderer::<em>blit_shadow_depth(RID p_source</em>...</li>
-<li>line 1851: void GaussianSplatRenderer::_on_painterly_material_changed()...</li>
-<li>line 1868: RID GaussianSplatRenderer::_get_painterly_depth_texture() co...</li>
-<li>line 1913: RID GaussianSplatRenderer::_get_viewport_color_target(Render...</li>
-<li>line 1948: void GaussianSplatRenderer::_check_dual_state_sync(const cha...</li>
-<li>line 1962: void GaussianSplatRenderer::_set_manual_viewport_format(RD::...</li>
-<li>line 1967: void GaussianSplatRenderer::_set_active_viewport_format(RD::...</li>
-<li>line 2010: void GaussianSplatRenderer::_reset_legacy_streaming_data_pat...</li>
-<li>line 2105: void GaussianSplatRenderer::render_scene_instance(RenderData...</li>
-<li>line 2346: void GaussianSplatRenderer::tick_streaming_only(const Transf...</li>
-<li>line 2365: void GaussianSplatRenderer::render_gaussians(RenderDataRD *p...</li>
-<li>line 2409: RID GaussianSplatRenderer::get_final_texture() const {...</li>
-<li>line 2416: bool GaussianSplatRenderer::has_rendered_content() const {...</li>
-<li>line 2424: AABB GaussianSplatRenderer::get_aabb() const {...</li>
-<li>line 2563: bool GaussianSplatRenderer::get_submission_residency_hint(in...</li>
-<li>line 2585: bool GaussianSplatRenderer::should_prefer_resident_backend(i...</li>
-<li>line 2620: void GaussianSplatRenderer::_set_route_policy_diagnostics(in...</li>
-<li>line 2641: bool GaussianSplatRenderer::_publish_resident_direct_data_co...</li>
-<li>line 2673: void GaussianSplatRenderer::set_instance_pipeline_buffers(co...</li>
-<li>line 2678: void GaussianSplatRenderer::clear_instance_pipeline_buffers(...</li>
-<li>line 2688: bool GaussianSplatRenderer::update_instance_buffer(LocalVect...</li>
-<li>line 2754: bool GaussianSplatRenderer::update_instance_grading_buffer(c...</li>
-<li>line 2821: void GaussianSplatRenderer::_test_dispatch_noop_callback(uin...</li>
-<li>line 2825: void GaussianSplatRenderer::test_force_disable_streaming() {...</li>
-<li>line 2849: void GaussianSplatRenderer::test_release_current_streaming_s...</li>
-<li>line 2857: bool GaussianSplatRenderer::test_has_current_streaming_syste...</li>
-<li>line 2861: bool GaussianSplatRenderer::test_has_output_compositor() con...</li>
-<li>line 2865: RID GaussianSplatRenderer::test_get_cached_render_depth() co...</li>
-<li>line 2870: uint32_t GaussianSplatRenderer::test_get_output_blit_variant...</li>
-<li>line 2875: void GaussianSplatRenderer::test_clear_output_viewport_blit_...</li>
-<li>line 2882: void GaussianSplatRenderer::test_reset_output_viewport_copy_...</li>
-<li>line 2899: void GaussianSplatRenderer::test_set_test_splats(const Vecto...</li>
-<li>line 2933: void GaussianSplatRenderer::test_disable_gpu_culler() {...</li>
-<li>line 2937: void GaussianSplatRenderer::test_disable_rasterizer() {...</li>
-<li>line 2946: void GaussianSplatRenderer::test_set_render_thread_dispatch_...</li>
-<li>line 2952: uint64_t GaussianSplatRenderer::test_get_render_thread_dispa...</li>
-<li>line 2956: bool GaussianSplatRenderer::test_dispatch_call_on_render_thr...</li>
-<li>line 2960: bool GaussianSplatRenderer::test_dispatch_call_on_render_thr...</li>
-<li>line 2964: void GaussianSplatRenderer::test_notify_render_thread_dispat...</li>
-<li>line 2968: uint64_t GaussianSplatRenderer::test_get_render_thread_dispa...</li>
+<li>line 456: bool GaussianSplatRenderer::_finish_shadow_render_result(con...</li>
+<li>line 586: Projection GaussianSplatRenderer::build_cull_projection(Rend...</li>
+<li>line 609: void GaussianSplatRenderer::_forget_tile_renderer_outputs() ...</li>
+<li>line 618: void GaussianSplatRenderer::_warn_tile_depth_copy_incompatib...</li>
+<li>line 865: void GaussianSplatRenderer::_notify_render_thread_dispatch_c...</li>
+<li>line 1100: bool GaussianSplatRenderer::ensure_sort_rendering_device(con...</li>
+<li>line 1108: SortExternalBufferState GaussianSplatRenderer::get_sort_exte...</li>
+<li>line 1129: bool GaussianSplatRenderer::resize_sort_state_byte_vectors(u...</li>
+<li>line 1165: void GaussianSplatRenderer::clear_sort_buffer_binding_state(...</li>
+<li>line 1178: void GaussianSplatRenderer::publish_sorted_indices(const Sor...</li>
+<li>line 1242: void GaussianSplatRenderer::_teardown_resources() {...</li>
+<li>line 1382: void GaussianSplatRenderer::_teardown_on_render_thread(uint6...</li>
+<li>line 1387: void GaussianSplatRenderer::_release_resident_contract_buffe...</li>
+<li>line 1417: void GaussianSplatRenderer::_release_shared_dynamic_asset() ...</li>
+<li>line 1433: void GaussianSplatRenderer::_notification(int p_what) {...</li>
+<li>line 1438: void GaussianSplatRenderer::_mark_streaming_route_policy_dir...</li>
+<li>line 1442: void GaussianSplatRenderer::<em>refresh_streaming_route_policy</em>...</li>
+<li>line 1452: int GaussianSplatRenderer::get_cached_streaming_route_policy...</li>
+<li>line 1490: GaussianSplatRenderer::FrameBackendPlan GaussianSplatRendere...</li>
+<li>line 1549: void GaussianSplatRenderer::initialize() {...</li>
+<li>line 1606: void GaussianSplatRenderer::_initialize_on_render_thread(uin...</li>
+<li>line 1611: void GaussianSplatRenderer::set_painterly_material(const Ref...</li>
+<li>line 1630: Ref<painterlymaterial> GaussianSplatRenderer::get_painterly_...</painterlymaterial></li>
+<li>line 1637: void GaussianSplatRenderer::update_depth_range(float p_near,...</li>
+<li>line 1644: void GaussianRenderFacadeState::ShadowBlitState::clear(Rende...</li>
+<li>line 1665: bool GaussianSplatRenderer::_ensure_shadow_output_compositor...</li>
+<li>line 1687: bool GaussianSplatRenderer::_ensure_shadow_blit_resources(Re...</li>
+<li>line 1762: bool GaussianSplatRenderer::<em>blit_shadow_depth(RID p_source</em>...</li>
+<li>line 1913: void GaussianSplatRenderer::_on_painterly_material_changed()...</li>
+<li>line 1930: RID GaussianSplatRenderer::_get_painterly_depth_texture() co...</li>
+<li>line 1975: RID GaussianSplatRenderer::_get_viewport_color_target(Render...</li>
+<li>line 2010: void GaussianSplatRenderer::_check_dual_state_sync(const cha...</li>
+<li>line 2024: void GaussianSplatRenderer::_set_manual_viewport_format(RD::...</li>
+<li>line 2029: void GaussianSplatRenderer::_set_active_viewport_format(RD::...</li>
+<li>line 2072: void GaussianSplatRenderer::_reset_legacy_streaming_data_pat...</li>
+<li>line 2167: void GaussianSplatRenderer::render_scene_instance(RenderData...</li>
+<li>line 2408: void GaussianSplatRenderer::tick_streaming_only(const Transf...</li>
+<li>line 2427: void GaussianSplatRenderer::render_gaussians(RenderDataRD *p...</li>
+<li>line 2472: RID GaussianSplatRenderer::get_final_texture() const {...</li>
+<li>line 2479: bool GaussianSplatRenderer::has_rendered_content() const {...</li>
+<li>line 2487: AABB GaussianSplatRenderer::get_aabb() const {...</li>
+<li>line 2626: bool GaussianSplatRenderer::get_submission_residency_hint(in...</li>
+<li>line 2648: bool GaussianSplatRenderer::should_prefer_resident_backend(i...</li>
+<li>line 2683: void GaussianSplatRenderer::_set_route_policy_diagnostics(in...</li>
+<li>line 2704: bool GaussianSplatRenderer::_publish_resident_direct_data_co...</li>
+<li>line 2736: void GaussianSplatRenderer::set_instance_pipeline_buffers(co...</li>
+<li>line 2741: void GaussianSplatRenderer::clear_instance_pipeline_buffers(...</li>
+<li>line 2751: bool GaussianSplatRenderer::update_instance_buffer(LocalVect...</li>
+<li>line 2817: bool GaussianSplatRenderer::update_instance_grading_buffer(c...</li>
+<li>line 2884: void GaussianSplatRenderer::_test_dispatch_noop_callback(uin...</li>
+<li>line 2888: void GaussianSplatRenderer::test_force_disable_streaming() {...</li>
+<li>line 2912: void GaussianSplatRenderer::test_release_current_streaming_s...</li>
+<li>line 2920: bool GaussianSplatRenderer::test_has_current_streaming_syste...</li>
+<li>line 2924: bool GaussianSplatRenderer::test_has_output_compositor() con...</li>
+<li>line 2928: bool GaussianSplatRenderer::test_shadow_pass_guard_restores_...</li>
+<li>line 2996: RID GaussianSplatRenderer::test_get_cached_render_depth() co...</li>
+<li>line 3001: uint32_t GaussianSplatRenderer::test_get_output_blit_variant...</li>
+<li>line 3006: void GaussianSplatRenderer::test_clear_output_viewport_blit_...</li>
+<li>line 3013: void GaussianSplatRenderer::test_reset_output_viewport_copy_...</li>
+<li>line 3030: void GaussianSplatRenderer::test_set_test_splats(const Vecto...</li>
+<li>line 3064: void GaussianSplatRenderer::test_disable_gpu_culler() {...</li>
+<li>line 3068: void GaussianSplatRenderer::test_disable_rasterizer() {...</li>
+<li>line 3077: void GaussianSplatRenderer::test_set_render_thread_dispatch_...</li>
+<li>line 3083: uint64_t GaussianSplatRenderer::test_get_render_thread_dispa...</li>
+<li>line 3087: bool GaussianSplatRenderer::test_dispatch_call_on_render_thr...</li>
+<li>line 3091: bool GaussianSplatRenderer::test_dispatch_call_on_render_thr...</li>
+<li>line 3095: void GaussianSplatRenderer::test_notify_render_thread_dispat...</li>
+<li>line 3099: uint64_t GaussianSplatRenderer::test_get_render_thread_dispa...</li>
+</ul>
+<h2 id="modulesgaussian_splattingtestssynthetic_splat_commoncpp">modules/gaussian_splatting/tests/synthetic_splat_common.cpp<a class="headerlink" href="#modulesgaussian_splattingtestssynthetic_splat_commoncpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 10: Dictionary SyntheticSceneSummary::to_dict() const {...</li>
+<li>line 65: String hash_hex(uint64_t p_value) {...</li>
+<li>line 71: uint32_t read_non_negative_u32(const Variant &amp;p_value, uint3...</li>
+<li>line 85: uint64_t read_non_negative_u64(const Variant &amp;p_value, uint6...</li>
+</ul>
+<h2 id="testsexamplesgodottest_projectscenesqaqa_performance_budgetgd">tests/examples/godot/test_project/scenes/qa/qa_performance_budget.gd<a class="headerlink" href="#testsexamplesgodottest_projectscenesqaqa_performance_budgetgd" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 12: func _ready():...</li>
+<li>line 20: func _on_test_start():...</li>
+<li>line 31: func _on_test_frame(delta: float):...</li>
+<li>line 38: func _on_test_complete():...</li>
+<li>line 77: func _calculate_avg(samples: Array[float]) -&gt; float:...</li>
 </ul>
 <h2 id="modulesgaussian_splattingioresource_importer_gsplatworldcpp">modules/gaussian_splatting/io/resource_importer_gsplatworld.cpp<a class="headerlink" href="#modulesgaussian_splattingioresource_importer_gsplatworldcpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -8604,12 +8610,12 @@
 <ul>
 <li>line 49: void RenderResourceOrchestrator::initialize_shaders() {...</li>
 <li>line 121: void RenderResourceOrchestrator::create_gpu_resources_safe()...</li>
-<li>line 493: void RenderResourceOrchestrator::update_pipeline_features(Re...</li>
-<li>line 519: void RenderResourceOrchestrator::update_gpu_pass_metrics_fro...</li>
-<li>line 685: void GaussianSplatRenderer::_initialize_shaders() {...</li>
-<li>line 689: void GaussianSplatRenderer::_create_gpu_resources_safe() {...</li>
-<li>line 693: void GaussianSplatRenderer::_update_gpu_pass_metrics_from_ti...</li>
-<li>line 697: void GaussianSplatRenderer::update_pipeline_features(Renderi...</li>
+<li>line 498: void RenderResourceOrchestrator::update_pipeline_features(Re...</li>
+<li>line 524: void RenderResourceOrchestrator::update_gpu_pass_metrics_fro...</li>
+<li>line 690: void GaussianSplatRenderer::_initialize_shaders() {...</li>
+<li>line 694: void GaussianSplatRenderer::_create_gpu_resources_safe() {...</li>
+<li>line 698: void GaussianSplatRenderer::_update_gpu_pass_metrics_from_ti...</li>
+<li>line 702: void GaussianSplatRenderer::update_pipeline_features(Renderi...</li>
 </ul>
 <h2 id="modulesgaussian_splattingiostreaming_chunk_bakecpp">modules/gaussian_splatting/io/streaming_chunk_bake.cpp<a class="headerlink" href="#modulesgaussian_splattingiostreaming_chunk_bakecpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -10220,6 +10226,11 @@
 <ul>
 <li>line 23: void test() {...</li>
 </ul>
+<h2 id="modulesgaussian_splattinginterfacesrender_device_managerh">modules/gaussian_splatting/interfaces/render_device_manager.h<a class="headerlink" href="#modulesgaussian_splattinginterfacesrender_device_managerh" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 109: uint32_t get_tracked_resource_count() const { return resourc...</li>
+<li>line 112: uint32_t get_tracked_texture_count() const { return texture_...</li>
+</ul>
 <h2 id="modulesgaussian_splattingcoregaussian_data_animationcpp">modules/gaussian_splatting/core/gaussian_data_animation.cpp<a class="headerlink" href="#modulesgaussian_splattingcoregaussian_data_animationcpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 17: void GaussianData::set_animation_state_machine(const Ref&lt;Gau...</li>
@@ -10260,11 +10271,6 @@
 <li>line 120: func _gs_debug_flag() -&gt; String:...</li>
 <li>line 131: func _gs_allow_log(key: String) -&gt; bool:...</li>
 <li>line 145: func _gs_log_info(message: String, key: String) -&gt; void:...</li>
-</ul>
-<h2 id="modulesgaussian_splattinginterfacesrender_device_managerh">modules/gaussian_splatting/interfaces/render_device_manager.h<a class="headerlink" href="#modulesgaussian_splattinginterfacesrender_device_managerh" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 109: uint32_t get_tracked_resource_count() const { return resourc...</li>
-<li>line 110: uint32_t get_tracked_texture_count() const { return texture_...</li>
 </ul>
 <h2 id="modulesgaussian_splattingrendererresident_instance_contract_publishercpp">modules/gaussian_splatting/renderer/resident_instance_contract_publisher.cpp<a class="headerlink" href="#modulesgaussian_splattingrendererresident_instance_contract_publishercpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -10824,39 +10830,39 @@
 </ul>
 <h2 id="modulesgaussian_splattingrenderergaussian_splat_rendererh">modules/gaussian_splatting/renderer/gaussian_splat_renderer.h<a class="headerlink" href="#modulesgaussian_splattingrenderergaussian_splat_rendererh" title="Permanent link">¶</a></h2>
 <ul>
-<li>line 752: uint64_t get_instance_pipeline_content_generation() const { ...</li>
-<li>line 778: bool has_instance_pipeline_buffers() const { return instance...</li>
-<li>line 780: bool has_instance_asset_remap() const { return instance_asse...</li>
-<li>line 782: InstanceBackendPolicy get_instance_backend_policy() const { ...</li>
-<li>line 784: bool is_instance_contract_ready() const { return instance_pi...</li>
-<li>line 801: bool ensure_rendering_device(const char *p_context) { return...</li>
-<li>line 802: bool ensure_submission_device(const char *p_context) { retur...</li>
-<li>line 806: void track_resource_owner(const RID &amp;p_rid, RenderingDevice ...</li>
-<li>line 810: void free_owned_resource(RenderingDevice *p_fallback_device,...</li>
-<li>line 812: void update_gpu_pass_metrics_from_tile_renderer() { <em>update</em>...</li>
-<li>line 817: RID get_painterly_depth_texture() const { return _get_painte...</li>
-<li>line 818: RID load_graphics_shader(const Vector<string> &amp;p_vertex_path...</string></li>
-<li>line 821: void synchronize_tile_submission(RenderingDevice *p_device, ...</li>
-<li>line 830: void forget_tile_renderer_outputs() { <em>forget_tile_renderer</em>...</li>
-<li>line 831: void warn_tile_depth_copy_incompatible() { <em>warn_tile_depth</em>...</li>
-<li>line 850: RD::TextureFormat get_texture_format(RenderingDevice *p_devi...</li>
-<li>line 851: void set_manual_viewport_format(RD::DataFormat p_format, con...</li>
-<li>line 852: void set_active_viewport_format(RD::DataFormat p_format, con...</li>
-<li>line 854: void set_shadow_instance_filter_enabled(bool p_enabled) { sh...</li>
-<li>line 855: bool is_shadow_instance_filter_enabled() const { return shad...</li>
-<li>line 856: CullStageOutput cull_for_view(const Transform3D &amp;p_world_to_...</li>
-<li>line 859: void reset_legacy_streaming_data_path_state() { _reset_legac...</li>
-<li>line 947: Ref<class colorgradingresource=""> get_color_grading() const { ...</class></li>
-<li>line 1004: float get_lod_min_screen_size() const { return subsystem_sta...</li>
-<li>line 1059: float get_cull_far_tolerance() const { return subsystem_stat...</li>
-<li>line 1333: bool is_solid_coverage_enabled() const { return get_culling_...</li>
-<li>line 1335: float get_solid_coverage_alpha_floor() const { return get_cu...</li>
-<li>line 1345: bool get_jacobian_bypass_radius_depth_floor() const { return...</li>
-<li>line 1347: bool get_jacobian_bypass_j_col2_clamp() const { return jacob...</li>
-<li>line 1349: bool get_jacobian_invert_j_col2_sign() const { return jacobi...</li>
-<li>line 1351: float get_max_conic_aspect() const { return jacobian_debug.m...</li>
-<li>line 1605: bool is_debug_show_device_boundaries() const { return get_de...</li>
-<li>line 1607: bool is_debug_show_texture_states() const { return get_debug...</li>
+<li>line 794: uint64_t get_instance_pipeline_content_generation() const { ...</li>
+<li>line 820: bool has_instance_pipeline_buffers() const { return instance...</li>
+<li>line 822: bool has_instance_asset_remap() const { return instance_asse...</li>
+<li>line 824: InstanceBackendPolicy get_instance_backend_policy() const { ...</li>
+<li>line 826: bool is_instance_contract_ready() const { return instance_pi...</li>
+<li>line 843: bool ensure_rendering_device(const char *p_context) { return...</li>
+<li>line 844: bool ensure_submission_device(const char *p_context) { retur...</li>
+<li>line 848: void track_resource_owner(const RID &amp;p_rid, RenderingDevice ...</li>
+<li>line 852: void free_owned_resource(RenderingDevice *p_fallback_device,...</li>
+<li>line 854: void update_gpu_pass_metrics_from_tile_renderer() { <em>update</em>...</li>
+<li>line 859: RID get_painterly_depth_texture() const { return _get_painte...</li>
+<li>line 860: RID load_graphics_shader(const Vector<string> &amp;p_vertex_path...</string></li>
+<li>line 863: void synchronize_tile_submission(RenderingDevice *p_device, ...</li>
+<li>line 872: void forget_tile_renderer_outputs() { <em>forget_tile_renderer</em>...</li>
+<li>line 873: void warn_tile_depth_copy_incompatible() { <em>warn_tile_depth</em>...</li>
+<li>line 892: RD::TextureFormat get_texture_format(RenderingDevice *p_devi...</li>
+<li>line 893: void set_manual_viewport_format(RD::DataFormat p_format, con...</li>
+<li>line 894: void set_active_viewport_format(RD::DataFormat p_format, con...</li>
+<li>line 896: void set_shadow_instance_filter_enabled(bool p_enabled) { sh...</li>
+<li>line 897: bool is_shadow_instance_filter_enabled() const { return shad...</li>
+<li>line 898: CullStageOutput cull_for_view(const Transform3D &amp;p_world_to_...</li>
+<li>line 901: void reset_legacy_streaming_data_path_state() { _reset_legac...</li>
+<li>line 989: Ref<class colorgradingresource=""> get_color_grading() const { ...</class></li>
+<li>line 1046: float get_lod_min_screen_size() const { return subsystem_sta...</li>
+<li>line 1101: float get_cull_far_tolerance() const { return subsystem_stat...</li>
+<li>line 1375: bool is_solid_coverage_enabled() const { return get_culling_...</li>
+<li>line 1377: float get_solid_coverage_alpha_floor() const { return get_cu...</li>
+<li>line 1387: bool get_jacobian_bypass_radius_depth_floor() const { return...</li>
+<li>line 1389: bool get_jacobian_bypass_j_col2_clamp() const { return jacob...</li>
+<li>line 1391: bool get_jacobian_invert_j_col2_sign() const { return jacobi...</li>
+<li>line 1393: float get_max_conic_aspect() const { return jacobian_debug.m...</li>
+<li>line 1648: bool is_debug_show_device_boundaries() const { return get_de...</li>
+<li>line 1650: bool is_debug_show_texture_states() const { return get_debug...</li>
 </ul>
 <h2 id="modulesgaussian_splattingshadersincludesgs_lighting_bridgeglsl">modules/gaussian_splatting/shaders/includes/gs_lighting_bridge.glsl<a class="headerlink" href="#modulesgaussian_splattingshadersincludesgs_lighting_bridgeglsl" title="Permanent link">¶</a></h2>
 <ul>
@@ -10985,7 +10991,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 20, 2026 14:21:39 UTC">May 20, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 20, 2026 14:24:14 UTC">May 20, 2026</span>
   </span>
 
     

@@ -1784,7 +1784,8 @@
 
 
 <h1 id="stage-first-ownership-inventory">Stage-First Ownership Inventory<a class="headerlink" href="#stage-first-ownership-inventory" title="Permanent link">¶</a></h1>
-<p>W0.1 artifact for the stage-first decomposition plan.</p>
+<p>W0.2 artifact for issue #356, refreshed against <code>origin/master</code> at
+<code>d89bdd5d42</code> on 2026-05-20.</p>
 <p>This document records the current ownership boundary, single-writer rules, and hidden mutable state for the four highest-value decomposition targets:</p>
 <ul>
 <li><code>GaussianStreamingSystem</code></li>
@@ -1792,13 +1793,20 @@
 <li><code>GPUSortingPipeline</code></li>
 <li><code>GaussianSplatRenderer</code></li>
 </ul>
-<p>The goal is to make the current implementation readable as an ownership map before code is moved. This is not the target end-state; it is the contract the refactor has to preserve while W1 and W2 land.</p>
+<p>The goal is to make the current implementation readable as an ownership map
+before code is moved. This is not the target end-state; it is the contract the
+refactor has to preserve before route-controller extraction. Items previously
+listed as pending but already moved in the live tree are called out as done, so
+future PRs do not re-implement stale work.</p>
 <h2 id="ownership-rules">Ownership Rules<a class="headerlink" href="#ownership-rules" title="Permanent link">¶</a></h2>
 <ul>
 <li>One subsystem owns each mutable state bucket.</li>
 <li>Worker threads may produce payloads, but they do not mutate renderer-owned state directly.</li>
 <li>Render-thread dispatch, async readback, and resource tracking must have a single authoritative owner.</li>
 <li>Hidden process-global caches are temporary debt unless they are explicitly assigned to an owner.</li>
+<li>Existing seams are treated as contracts: do not replace <code>IRenderThreadDispatcher</code>,
+  <code>ISortResultSink</code>, <code>ISortBufferHostContext</code>, or member-owned tile caches with
+  duplicate cleanup work.</li>
 </ul>
 <h2 id="current-ownership-matrix">Current Ownership Matrix<a class="headerlink" href="#current-ownership-matrix" title="Permanent link">¶</a></h2>
 <table>
@@ -1822,23 +1830,23 @@
 <tr>
 <td><code>TileRenderer</code></td>
 <td><code>renderer/tile_renderer.*</code> plus its stage helpers</td>
-<td><code>render_settings</code>, <code>shader_resources</code>, <code>diagnostics</code>, <code>async_readback</code>, <code>tracked_device_manager</code>, tracked output RIDs, <code>adaptive_overlap_budget</code> runtime state, subgroup-support cache</td>
+<td><code>render_settings</code>, <code>shader_resources</code>, <code>diagnostics</code>, <code>async_readback</code>, <code>tracked_device_manager</code>, tracked output RIDs, <code>adaptive_overlap_budget_runtime_state</code>, <code>subgroup_support_cache</code>, <code>TileResourceController</code></td>
 <td>The renderer owns tile frame execution. Readback callbacks may update the readback state machine, but they must not take ownership of resource lifetime or output tracking.</td>
-<td>High. There are still process-global mutable caches keyed by renderer/device identity.</td>
+<td>Medium. The old process-global adaptive-overlap and subgroup caches are now members, but execution, diagnostics, and resource lifetime are still tightly packed in the tile renderer.</td>
 </tr>
 <tr>
 <td><code>GPUSortingPipeline</code></td>
 <td><code>interfaces/gpu_sorting_pipeline.*</code></td>
-<td>Sort buffer RIDs and capacities, depth compute RIDs, CPU byte buffers, <code>SortReadbackState</code>, <code>InstanceCountReadbackState</code>, <code>InstancePipelineInputs</code>, cached camera transforms, <code>last_compute_error</code></td>
-<td>The pipeline owns its sort buffers, depth resources, and readback generations. Renderer state must be reached through an explicit seam, not a raw pointer handoff.</td>
-<td>High. The current implementation still mutates renderer-owned state directly in <code>_apply_sorted_results()</code>.</td>
+<td>Sort buffer RIDs and capacities, depth compute RIDs, CPU byte buffers, <code>SortReadbackState</code>, <code>InstanceCountReadbackState</code>, <code>InstancePipelineInputs</code>, cached camera transforms, <code>last_compute_error</code>, sink/context pointers</td>
+<td>The pipeline owns its sort buffers, depth resources, and readback generations. Renderer interaction must stay behind <code>ISortResultSink</code> and <code>ISortBufferHostContext</code> except for the still-open instance input seam.</td>
+<td>High. <code>InstancePipelineInputs::owner_renderer</code> and orchestrator-bound renderer sink/context wiring still couple sorting to renderer lifetime.</td>
 </tr>
 <tr>
 <td><code>GaussianSplatRenderer</code></td>
 <td><code>renderer/gaussian_splat_renderer.*</code></td>
-<td><code>DeviceState</code>, <code>ResourceState</code>, <code>PerformanceState</code>, <code>PipelineState</code>, <code>FrameState</code>, <code>ViewState</code>, <code>SortingState</code>, <code>StreamingState</code>, <code>SceneState</code>, <code>SubsystemState</code>, <code>RenderFrameContextManager</code>, render-thread dispatch primitives, orchestrator pointers</td>
+<td><code>DeviceState</code>, <code>ResourceState</code>, <code>PerformanceState</code>, <code>PipelineState</code>, <code>FrameState</code>, <code>ViewState</code>, <code>SortingState</code>, <code>StreamingState</code>, <code>SceneState</code>, <code>SubsystemState</code>, <code>RenderFrameContextManager</code>, <code>IRenderThreadDispatcher</code>, orchestrator pointers</td>
 <td>The renderer owns frame entry, orchestration, and Godot-facing API. Concrete subsystem mutation should happen through orchestrators or service objects, not through direct cross-subsystem writes.</td>
-<td>Medium. The facade is already partly decomposed, but it still owns render-thread dispatch and several mutable caches.</td>
+<td>High. The dispatch state is now a service, but <code>render_scene_instance()</code>, <code>FrameStateProvider</code>, and <code>RenderPipelineStages</code> still expose broad ownership surfaces.</td>
 </tr>
 </tbody>
 </table>
@@ -1871,17 +1879,17 @@
 <li>W1 and W2 should not split <code>VisibilityState</code>, <code>EvictionState</code>, or <code>SchedulerState</code> until the ownership matrix is stable and the frame-order tests are pinned.</li>
 </ul>
 <h3 id="tilerenderer">TileRenderer<a class="headerlink" href="#tilerenderer" title="Permanent link">¶</a></h3>
-<p>Current state is a mix of member-owned state and process-global caches:</p>
+<p>Current state is member-owned:</p>
 <ul>
-<li>Adaptive overlap runtime state is currently kept in a static pointer-keyed map in <code>tile_renderer.cpp:139</code> through <code>tile_renderer.cpp:157</code></li>
-<li>Subgroup support is cached in a static device-id keyed cache in <code>tile_renderer.cpp:1927</code> through <code>tile_renderer.cpp:1947</code></li>
-<li>Resource ownership and tracking are handled by <code>_resolve_texture_owner()</code>, <code>track_output_resources()</code>, and <code>clear_output_resource_tracking()</code></li>
+<li>Adaptive overlap runtime state lives in <code>TileRenderer::adaptive_overlap_budget_runtime_state</code> (<code>tile_renderer.h:430</code>) plus its initialized flag.</li>
+<li>Subgroup support cache lives in <code>TileRenderer::subgroup_support_cache</code> (<code>tile_renderer.h:423</code>).</li>
+<li>Resource ownership and tracking are handled by <code>TileResourceController</code>, <code>_resolve_texture_owner()</code>, <code>track_output_resources()</code>, and <code>clear_output_resource_tracking()</code>.</li>
 </ul>
 <p>Current write ownership:</p>
 <ul>
 <li>The tile renderer owns the frame execution path and the tile stage helpers.</li>
-<li><code>adaptive_overlap_budget_runtime_states</code> is a temporary process-global cache keyed by <code>TileRenderer *</code>.</li>
-<li><code>subgroup_support_cache</code> is a temporary process-global cache keyed by rendering device ID.</li>
+<li>Adaptive-overlap state is instance-owned by <code>TileRenderer</code>.</li>
+<li>Subgroup-support cache is instance-owned by <code>TileRenderer</code>; it is a device capability cache, not a process-global mutable map.</li>
 <li>Output RID tracking belongs to the renderer instance and the <code>RenderDeviceManager</code>, not to the caller.</li>
 </ul>
 <p>Implementation anchors:</p>
@@ -1891,8 +1899,8 @@
 </ul>
 <p>Refactor note:</p>
 <ul>
-<li>W1 should extract the tile resource controller before W2 expands the execution-path split.</li>
-<li>The current static caches are temporary debt and should not survive the W1/W2 migration.</li>
+<li>Do not implement the old "move static tile caches" task; that is already done.</li>
+<li>Remaining tile work should be leaf cleanup: narrow resource-controller calls and split execution/diagnostics only after route and frame-state contracts are pinned.</li>
 </ul>
 <h3 id="gpusortingpipeline">GPUSortingPipeline<a class="headerlink" href="#gpusortingpipeline" title="Permanent link">¶</a></h3>
 <p>Current state in <code>interfaces/gpu_sorting_pipeline.h</code> is concentrated but still too coupled:</p>
@@ -1901,25 +1909,30 @@
 <li>Depth compute resources live at <code>gpu_sorting_pipeline.h:150</code> through <code>gpu_sorting_pipeline.h:176</code></li>
 <li>CPU-side sort and depth buffers live at <code>gpu_sorting_pipeline.h:178</code> through <code>gpu_sorting_pipeline.h:183</code></li>
 <li><code>SortReadbackState</code> and <code>InstanceCountReadbackState</code> live at <code>gpu_sorting_pipeline.h:197</code> through <code>gpu_sorting_pipeline.h:212</code></li>
-<li><code>pending_renderer</code> lives at <code>gpu_sorting_pipeline.h:213</code></li>
+<li><code>ISortResultSink *sort_result_sink</code> and <code>ISortBufferHostContext *sort_buffer_host_context</code> live at <code>gpu_sorting_pipeline.h:247</code> through <code>gpu_sorting_pipeline.h:248</code></li>
+<li><code>InstancePipelineInputs::owner_renderer</code> still lives at <code>gpu_sorting_pipeline.h:40</code></li>
 </ul>
 <p>Current write ownership:</p>
 <ul>
 <li>The pipeline owns its RIDs, capacities, and readback generation counters.</li>
 <li><code>sort_readback_state</code> controls publication of sorted results.</li>
 <li><code>instance_count_readback_state</code> controls publication of instance count readbacks.</li>
-<li>Renderer-owned state is currently mutated inside <code>_apply_sorted_results()</code> and reached via <code>pending_renderer</code>.</li>
+<li>Sort result publication is routed through <code>ISortResultSink</code>; sort buffer sizing and host state are routed through <code>ISortBufferHostContext</code>.</li>
+<li>Instance sorting still receives renderer lifetime through <code>InstancePipelineInputs::owner_renderer</code>.</li>
 </ul>
 <p>Implementation anchors:</p>
 <ul>
-<li><code>_apply_sorted_results()</code> writes through <code>GaussianSplatRenderer</code> state accessors and updates culler, sorting, frame, and performance state in one step.</li>
-<li><code>ensure_sort_buffers()</code> still takes a renderer pointer and reaches into renderer state to validate/size resources.</li>
+<li><code>_apply_sorted_results()</code> now writes through <code>ISortResultSink</code>, not <code>pending_renderer</code>.</li>
+<li><code>ensure_sort_buffers()</code> now uses <code>ISortBufferHostContext</code> rather than taking a renderer pointer.</li>
+<li><code>RenderSortingOrchestrator::_sync_instance_sort_inputs()</code> still copies <code>owner_renderer</code> into <code>InstancePipelineInputs</code>.</li>
+<li><code>RenderSortingOrchestrator::_bind_sort_pipeline_host_context()</code> still binds both sink and host context to the renderer object.</li>
 <li><code>clear_instance_pipeline_inputs()</code> and the readback reset path are the current state reset boundary for instance-pipeline work.</li>
 </ul>
 <p>Refactor note:</p>
 <ul>
-<li>W1 should replace the renderer pointer seam with <code>ISortResultSink</code> plus a minimal host context.</li>
-<li>W2 should extract the sort buffer, depth compute, execution, and validation stages only after the W1 seam exists.</li>
+<li>The <code>ISortResultSink</code> and <code>ISortBufferHostContext</code> seam is already live; do not duplicate it.</li>
+<li>The next sorting ownership step is replacing <code>InstancePipelineInputs::owner_renderer</code> with an instance-state view/snapshot that preserves async readback and generation semantics.</li>
+<li>W2 should extract sort buffer, depth compute, execution, and validation stages only after that instance seam is pinned by tests.</li>
 </ul>
 <h3 id="gaussiansplatrenderer">GaussianSplatRenderer<a class="headerlink" href="#gaussiansplatrenderer" title="Permanent link">¶</a></h3>
 <p>Current state is spread across explicit sub-buckets and orchestrators:</p>
@@ -1928,20 +1941,26 @@
 <li><code>DeviceState</code> is the owner of the current render-device and scene-render handles</li>
 <li><code>ResourceState</code> owns buffer lifecycle and per-frame GPU resource state</li>
 <li><code>SubsystemState</code> owns orchestrator and interface handles</li>
-<li><code>render_thread_dispatch_mutex</code>, <code>render_thread_dispatch_semaphore</code>, and related dispatch counters own the render-thread synchronization path</li>
+<li><code>RenderThreadDispatcher</code> owns mutex/semaphore/request state behind <code>IRenderThreadDispatcher</code></li>
+<li><code>FrameStateProvider</code> exposes broad read and mutable access across scene, streaming, debug, sorting, config, resource, frame, performance, subsystem, and pipeline feature state</li>
 </ul>
 <p>Implementation anchors:</p>
 <ul>
-<li><code>gaussian_splat_renderer.h:531</code> through <code>gaussian_splat_renderer.h:538</code> hold the render-thread dispatch state.</li>
-<li><code>gaussian_splat_renderer.h:518</code> through <code>gaussian_splat_renderer.h:529</code> hold the orchestrator graph.</li>
-<li><code>_dispatch_call_on_render_thread_blocking()</code> and <code>_safe_submit_sync()</code> are the current synchronization chokepoints.</li>
+<li><code>interfaces/render_thread_dispatcher.h:10</code> through <code>:25</code> define the dispatch interface and <code>:44</code> through <code>:51</code> hold the owned mutex/semaphore/request state.</li>
+<li><code>_dispatch_call_on_render_thread_blocking()</code> and <code>_notify_render_thread_dispatch_completed()</code> delegate to the dispatcher.</li>
+<li><code>render_scene_instance()</code> still owns per-frame cleanup, camera extraction, route policy diagnostics, resident/streaming selection, and typed skip publication.</li>
+<li><code>RenderPipelineStages::prepare_frame_context()</code> still builds <code>FrameDeps</code> by reaching broadly into renderer state buckets.</li>
+<li><code>RenderPipelineStages::execute_frame_entry()</code> still owns the cull -&gt; sort cascade and zero-safe snapshot updates.</li>
+<li><code>RenderPipelineStages::render_sorted_splats_with_context()</code> still resets raster/GPU/output-cache metrics before raster/composite.</li>
 <li><code>gaussian_splat_renderer.cpp:156</code> through <code>gaussian_splat_renderer.cpp:163</code> hold the frame-log settings cache.</li>
 </ul>
 <p>Current write ownership:</p>
 <ul>
 <li>The renderer owns Godot-facing API entry points, frame setup, orchestration, and cross-subsystem lifecycle.</li>
 <li>Orchestrators own the finer-grained subsystem work that has already been peeled out.</li>
-<li>Render-thread dispatch remains renderer-owned for now, but it should move behind a dedicated seam in W1.</li>
+<li>Render-thread dispatch state is dispatcher-owned; remaining work is call-site policy and teardown/data-submit ownership.</li>
+<li><code>render_scene_instance()</code> remains the route/frame-entry knot and should be the first extraction target after this W0 characterization PR.</li>
+<li><code>FrameStateProvider</code> should become a temporary adapter over smaller snapshots/sinks, not a renamed god object.</li>
 </ul>
 <p>Refactor note:</p>
 <ul>
@@ -1966,28 +1985,34 @@
 <td>Temporary global cache, should become explicit renderer or process service state.</td>
 </tr>
 <tr>
-<td><code>renderer/tile_renderer.cpp:139</code></td>
-<td><code>adaptive_overlap_budget_runtime_states</code></td>
-<td>Process-global cache keyed by <code>TileRenderer *</code>. This is hidden instance state stored outside the instance.</td>
-<td>Temporary debt, should move into <code>TileRenderer</code> ownership or a dedicated controller.</td>
+<td><code>interfaces/render_thread_dispatcher.h:44</code> through <code>:51</code></td>
+<td>dispatcher mutex, semaphore, request/completion counters, timeout, latest data result</td>
+<td>Synchronization state is now service-owned instead of embedded in the renderer facade.</td>
+<td>Done as an ownership move. Remaining coupling is renderer call-site policy, not field ownership.</td>
 </tr>
 <tr>
-<td><code>renderer/tile_renderer.cpp:1927</code></td>
-<td><code>subgroup_support_cache</code></td>
-<td>Process-global cache keyed by device ID. It affects shader path selection and must not be reinterpreted as per-instance state.</td>
-<td>Temporary cache, should be explicitly owned or documented as device capability cache.</td>
+<td><code>interfaces/gpu_sorting_pipeline.h:40</code></td>
+<td><code>InstancePipelineInputs::owner_renderer</code></td>
+<td>Cross-object lifetime handoff remains for instance sorting, even after sink/host extraction.</td>
+<td>Open coupling; replace with an instance-state snapshot/view after characterization tests.</td>
 </tr>
 <tr>
-<td><code>renderer/gaussian_splat_renderer.h:531</code> through <code>:538</code></td>
-<td>render-thread dispatch mutex, semaphore, request/completion counters, timeout</td>
-<td>Synchronization state is embedded in the renderer facade.</td>
-<td>Renderer-owned for now, but the W1 dispatcher seam should take it over.</td>
+<td><code>interfaces/gpu_sorting_pipeline.h:247</code> through <code>:248</code></td>
+<td><code>sort_result_sink</code>, <code>sort_buffer_host_context</code></td>
+<td>Explicit sort result and buffer-host seams.</td>
+<td>Done seam, but currently bound to the renderer by <code>RenderSortingOrchestrator</code>; future work should narrow the concrete host object.</td>
 </tr>
 <tr>
-<td><code>interfaces/gpu_sorting_pipeline.h:213</code></td>
-<td><code>pending_renderer</code></td>
-<td>Cross-object mutable handoff state. It makes the pipeline depend on renderer lifetime and shape.</td>
-<td>Temporary coupling, should be removed by W1.</td>
+<td><code>renderer/gaussian_splat_renderer.cpp:603</code> through <code>:770</code></td>
+<td><code>FrameStateProvider</code> fallback statics and broad mutable accessors</td>
+<td>Provider methods can expose fallback mutable objects and broad write surfaces.</td>
+<td>Open coupling; split into read-only snapshots plus small mutation sinks per stage.</td>
+</tr>
+<tr>
+<td><code>nodes/gaussian_splat_node_helpers.cpp:33</code> through <code>:78</code></td>
+<td>shared renderer settings owner map</td>
+<td>Node-side renderer settings ownership is process-global arbitration and protects shared renderer peers.</td>
+<td>Intentional external contract for now; moving it belongs in a later node/director boundary issue.</td>
 </tr>
 <tr>
 <td><code>core/gaussian_streaming.cpp:2400</code></td>
@@ -2000,16 +2025,17 @@
 <h2 id="what-this-means-for-decomposition">What This Means For Decomposition<a class="headerlink" href="#what-this-means-for-decomposition" title="Permanent link">¶</a></h2>
 <ul>
 <li><code>W0</code> must stay stable: the ownership matrix and the characterization tests are the hard gate.</li>
-<li><code>W1</code> should cut concrete seams first: sort result sink, render-thread dispatcher, tile resource controller, and hidden-static cleanup.</li>
-<li><code>W2</code> should extract execution stages only after ownership is explicit.</li>
+<li><code>W1</code> must not redo completed seam work. The live done list is: render-thread dispatcher state, sort result sink, sort buffer host context, member-owned tile subgroup cache, and member-owned tile adaptive-overlap runtime state.</li>
+<li><code>W1</code> should cut the still-open seams first: route/frame-entry controller contract, smaller frame-state snapshots/sinks, sorting instance-state snapshot, and resident publisher product boundaries.</li>
+<li><code>W2</code> should extract execution stages only after ownership is explicit and characterization tests protect route/stage stats, fallback semantics, instance generations, shared renderer settings, dispatch recovery, and resource-owner rejection.</li>
 <li><code>W3</code> should be cleanup only: remove the shims, slim the facades, and enforce the dependency rules.</li>
 </ul>
 <h2 id="related-docs">Related Docs<a class="headerlink" href="#related-docs" title="Permanent link">¶</a></h2>
 <ul>
 <li><a href="../overview/">Architecture overview</a></li>
 <li><a href="../render-pipeline/">Render pipeline details</a></li>
-<li><a href="https://github.com/klausi3D/godotGS/blob/914b23bf5a1e21a90ec1c0dc28c9f6f0cc23278f/modules/gaussian_splatting/ARCHITECTURE.md">Module architecture map</a></li>
-<li><a href="https://github.com/klausi3D/godotGS/blob/914b23bf5a1e21a90ec1c0dc28c9f6f0cc23278f/modules/gaussian_splatting/MEMORY_SUBSYSTEM.md">Memory and residency invariants</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/6fdf02541b24d25dbed12da23efdbb4979c81916/modules/gaussian_splatting/ARCHITECTURE.md">Module architecture map</a></li>
+<li><a href="https://github.com/klausi3D/godotGS/blob/6fdf02541b24d25dbed12da23efdbb4979c81916/modules/gaussian_splatting/MEMORY_SUBSYSTEM.md">Memory and residency invariants</a></li>
 </ul>
 
 
@@ -2031,7 +2057,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 20, 2026 14:21:36 UTC">May 20, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 20, 2026 14:24:11 UTC">May 20, 2026</span>
   </span>
 
     
