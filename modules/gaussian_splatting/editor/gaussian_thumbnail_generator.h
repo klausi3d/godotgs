@@ -36,8 +36,10 @@ private:
     mutable uint64_t disk_cache_hit_count = 0;
     mutable uint64_t disk_cache_miss_count = 0;
 
-    String _build_cache_key(const Ref<GaussianSplatAsset> &p_asset, int p_size, ThumbnailStyle p_style) const;
-    uint64_t _compute_asset_fingerprint(const Ref<GaussianSplatAsset> &p_asset) const;
+    String _build_cache_key(const Ref<GaussianSplatAsset> &p_asset, const GaussianSplatAsset::PayloadSnapshot &p_snapshot,
+            int p_size, ThumbnailStyle p_style) const;
+    uint64_t _compute_asset_fingerprint(const Ref<GaussianSplatAsset> &p_asset,
+            const GaussianSplatAsset::PayloadSnapshot &p_snapshot) const;
     void _touch_cache_key(const String &p_key) const;
     void _prune_cache_if_needed() const;
 
@@ -47,12 +49,12 @@ private:
     void _save_to_disk_cache(uint64_t p_fingerprint, int p_size, ThumbnailStyle p_style, const Ref<Image> &p_image) const;
     bool _ensure_disk_cache_dir() const;
 
-    Ref<Image> _generate_color_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const;
-    Ref<Image> _generate_density_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const;
-    Ref<Image> _generate_normals_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const;
-    Ref<Image> _generate_heatmap_thumbnail(const Ref<GaussianSplatAsset> &p_asset, int p_size) const;
+    Ref<Image> _generate_color_thumbnail(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_size) const;
+    Ref<Image> _generate_density_thumbnail(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_size) const;
+    Ref<Image> _generate_normals_thumbnail(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_size) const;
+    Ref<Image> _generate_heatmap_thumbnail(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_size) const;
 
-    Dictionary _project_to_canvas(const Ref<GaussianSplatAsset> &p_asset, int p_size, Vector<int> &r_hits,
+    Dictionary _project_to_canvas(const GaussianSplatAsset::PayloadSnapshot &p_snapshot, int p_size, Vector<int> &r_hits,
             Vector<Color> &r_accum) const;
 
 public:

@@ -136,10 +136,11 @@ void GaussianSplatNodeAssetHelper::update_asset() {
         return;
     }
 
-    owner.total_splat_count = owner.splat_asset->get_splat_count();
+    const GaussianSplatAsset::PayloadSnapshot asset_snapshot = owner.splat_asset->capture_payload_snapshot();
+    owner.total_splat_count = asset_snapshot.splat_count;
 
     // Read import settings from asset metadata
-    Dictionary import_metadata = owner.splat_asset->get_import_metadata();
+    Dictionary import_metadata = asset_snapshot.import_metadata;
     if (import_metadata.has(StringName("enable_lod"))) {
         owner.asset_lod_enabled = (bool)import_metadata[StringName("enable_lod")];
     } else {
@@ -171,8 +172,8 @@ void GaussianSplatNodeAssetHelper::update_asset() {
         }
     }
 
-    PackedFloat32Array positions = owner.splat_asset->get_positions();
-    PackedFloat32Array scales = owner.splat_asset->get_scales();
+    const PackedFloat32Array &positions = asset_snapshot.positions;
+    const PackedFloat32Array &scales = asset_snapshot.scales;
     bool recomputed_bounds = false;
     if (!used_cached_bounds && positions.size() >= 3) {
         Vector3 min_pos = Vector3(INFINITY, INFINITY, INFINITY);
@@ -220,18 +221,18 @@ void GaussianSplatNodeAssetHelper::update_asset() {
 
     double total_bytes = 0.0;
     total_bytes += double(positions.size()) * sizeof(float);
-    total_bytes += double(owner.splat_asset->get_colors().size()) * sizeof(Color);
-    total_bytes += double(owner.splat_asset->get_scales().size()) * sizeof(float);
-    total_bytes += double(owner.splat_asset->get_rotations().size()) * sizeof(float);
-    total_bytes += double(owner.splat_asset->get_sh_dc_coefficients().size()) * sizeof(float);
-    total_bytes += double(owner.splat_asset->get_sh_first_order_coefficients().size()) * sizeof(float);
-    total_bytes += double(owner.splat_asset->get_sh_high_order_coefficients().size()) * sizeof(float);
-    total_bytes += double(owner.splat_asset->get_opacity_logits().size()) * sizeof(float);
-    total_bytes += double(owner.splat_asset->get_palette_ids().size()) * sizeof(int32_t);
-    total_bytes += double(owner.splat_asset->get_painterly_flags().size()) * sizeof(int32_t);
-    total_bytes += double(owner.splat_asset->get_normals().size()) * sizeof(float);
-    total_bytes += double(owner.splat_asset->get_brush_axes().size()) * sizeof(float);
-    total_bytes += double(owner.splat_asset->get_stroke_ages().size()) * sizeof(float);
+    total_bytes += double(asset_snapshot.colors.size()) * sizeof(Color);
+    total_bytes += double(asset_snapshot.scales.size()) * sizeof(float);
+    total_bytes += double(asset_snapshot.rotations.size()) * sizeof(float);
+    total_bytes += double(asset_snapshot.sh_dc_coefficients.size()) * sizeof(float);
+    total_bytes += double(asset_snapshot.sh_first_order_coefficients.size()) * sizeof(float);
+    total_bytes += double(asset_snapshot.sh_high_order_coefficients.size()) * sizeof(float);
+    total_bytes += double(asset_snapshot.opacity_logits.size()) * sizeof(float);
+    total_bytes += double(asset_snapshot.palette_ids.size()) * sizeof(int32_t);
+    total_bytes += double(asset_snapshot.painterly_flags.size()) * sizeof(int32_t);
+    total_bytes += double(asset_snapshot.normals.size()) * sizeof(float);
+    total_bytes += double(asset_snapshot.brush_axes.size()) * sizeof(float);
+    total_bytes += double(asset_snapshot.stroke_ages.size()) * sizeof(float);
     owner.gpu_memory_mb = total_bytes / (1024.0 * 1024.0);
 
     owner._update_bounds();

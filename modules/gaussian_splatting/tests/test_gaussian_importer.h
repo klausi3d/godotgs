@@ -12,6 +12,7 @@
 #include "../editor/gaussian_import_dialog.h"
 #include "../editor/gaussian_editor_plugin.h"
 #include "../editor/gaussian_import_settings_dialog.h"
+#include "../editor/gaussian_resource_preview_generator.h"
 #include "../editor/gaussian_thumbnail_generator.h"
 #include "../core/gaussian_splat_asset.h"
 #include "../core/gaussian_splat_world.h"
@@ -27,6 +28,10 @@
 #include "core/config/project_settings.h"
 #include "core/templates/hash_map.h"
 #include "core/math/math_funcs.h"
+#include "core/object/message_queue.h"
+#include "core/os/os.h"
+#include "core/os/semaphore.h"
+#include "core/os/thread.h"
 #include "editor/editor_node.h"
 #include "editor/inspector/editor_inspector.h"
 #include "core/string/ustring.h"
@@ -515,6 +520,24 @@ Ref<GaussianSplatAsset> _make_thumbnail_fixture_asset(int p_splat_count = 6) {
     return asset;
 }
 
+struct _PreviewGeneratorThreadContext {
+    Ref<GaussianSplatAsset> asset;
+    Ref<Texture2D> texture;
+    Dictionary metadata;
+    Semaphore done;
+    bool ran_on_worker = false;
+};
+
+static void _preview_generator_thread(void *p_userdata) {
+    _PreviewGeneratorThreadContext *ctx = static_cast<_PreviewGeneratorThreadContext *>(p_userdata);
+    ctx->ran_on_worker = !Thread::is_main_thread();
+
+    Ref<GaussianSplatAssetPreviewGenerator> generator;
+    generator.instantiate();
+    ctx->texture = generator->generate(ctx->asset, Size2(96, 96), ctx->metadata);
+    ctx->done.post();
+}
+
 } // namespace
 
 TEST_CASE("[GaussianSplatting][Importer] PLY importer produces metadata and preview images") {
@@ -883,6 +906,40 @@ TEST_CASE("[GaussianSplatting][Thumbnail] Generator caches deterministic asset+s
 
     stats = generator->get_cache_statistics();
     CHECK(int(stats.get(StringName("entries"), 0)) == 3);
+}
+
+TEST_CASE("[GaussianSplatting][Thumbnail] Editor preview generator uses stored images on worker threads") {
+#ifndef THREADS_ENABLED
+    MESSAGE("Skipping - THREADS_ENABLED is not enabled in this build");
+    return;
+#else
+    Ref<GaussianSplatAsset> asset;
+    asset.instantiate();
+    asset->set_splat_count(1);
+    asset->set_source_path("res://preview_worker_fixture.ply");
+    asset->set_preview_image(_make_thumbnail_test_image());
+
+    _PreviewGeneratorThreadContext ctx;
+    ctx.asset = asset;
+
+    Thread worker;
+    worker.start(_preview_generator_thread, &ctx);
+    CHECK(worker.is_started());
+    if (worker.is_started()) {
+        while (!ctx.done.try_wait()) {
+            CallQueue *main_queue = MessageQueue::get_main_singleton();
+            if (main_queue) {
+                main_queue->flush();
+            }
+            OS::get_singleton()->delay_usec(1000);
+        }
+        worker.wait_to_finish();
+    }
+
+    CHECK(ctx.ran_on_worker);
+    CHECK(ctx.texture.is_valid());
+    CHECK(String(ctx.metadata.get(StringName("gaussian_preview_source"), String())) == "stored_thumbnail");
+#endif
 }
 
 TEST_CASE("[GaussianSplatting][Importer] GaussianSplatAsset serializes preview images without ImageTexture state") {
