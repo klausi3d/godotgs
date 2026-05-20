@@ -224,6 +224,133 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] RenderDeviceManager keeps owned RID 
     }
 }
 
+TEST_CASE("[GaussianSplatting][RequiresGPU] RenderDeviceManager exposes owned and borrowed resource counts") {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (!rs) {
+		return; // Skip in headless test mode (tag: [RequiresGPU])
+	}
+
+	RenderingDevice *rd = _create_local_test_device();
+	bool owns_rd = true;
+	if (!rd) {
+		rd = rs->get_rendering_device();
+		owns_rd = false;
+	}
+	if (!rd) {
+		return; // Skip in headless test mode (tag: [RequiresGPU])
+	}
+
+	Ref<RenderDeviceManager> manager;
+	manager.instantiate();
+	Error init_err = manager->initialize(rd);
+	CHECK(init_err == OK);
+	if (init_err != OK) {
+		if (owns_rd) {
+			memdelete(rd);
+		}
+		return;
+	}
+
+	RID owned_buffer = rd->storage_buffer_create(64);
+	RID borrowed_buffer = rd->storage_buffer_create(64);
+	CHECK(owned_buffer.is_valid());
+	CHECK(borrowed_buffer.is_valid());
+	if (!owned_buffer.is_valid() || !borrowed_buffer.is_valid()) {
+		if (owned_buffer.is_valid()) {
+			rd->free(owned_buffer);
+		}
+		if (borrowed_buffer.is_valid()) {
+			rd->free(borrowed_buffer);
+		}
+		manager->shutdown();
+		if (owns_rd) {
+			memdelete(rd);
+		}
+		return;
+	}
+
+	manager->track_resource(owned_buffer, rd, true, "owned_count_test");
+	manager->track_resource(borrowed_buffer, rd, false, "borrowed_count_test");
+
+	CHECK(manager->get_tracked_resource_count() == 2);
+	CHECK(manager->get_tracked_owned_resource_count() == 1);
+	CHECK(manager->get_tracked_borrowed_resource_count() == 1);
+
+	RID managed_owned = owned_buffer;
+	manager->free_owned_resource(rd, managed_owned);
+	CHECK_FALSE(managed_owned.is_valid());
+	CHECK(manager->get_tracked_resource_count() == 1);
+	CHECK(manager->get_tracked_owned_resource_count() == 0);
+	CHECK(manager->get_tracked_borrowed_resource_count() == 1);
+
+	manager->forget_resource(borrowed_buffer);
+	rd->free(borrowed_buffer);
+
+	CHECK(manager->get_tracked_resource_count() == 0);
+	CHECK(manager->get_tracked_owned_resource_count() == 0);
+	CHECK(manager->get_tracked_borrowed_resource_count() == 0);
+
+	manager->shutdown();
+	if (owns_rd) {
+		memdelete(rd);
+	}
+}
+
+TEST_CASE("[GaussianSplatting][RequiresGPU] RenderDeviceManager shutdown clears stale ownership state") {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (!rs) {
+		return; // Skip in headless test mode (tag: [RequiresGPU])
+	}
+
+	RenderingDevice *rd = _create_local_test_device();
+	bool owns_rd = true;
+	if (!rd) {
+		rd = rs->get_rendering_device();
+		owns_rd = false;
+	}
+	if (!rd) {
+		return; // Skip in headless test mode (tag: [RequiresGPU])
+	}
+
+	Ref<RenderDeviceManager> manager;
+	manager.instantiate();
+	Error init_err = manager->initialize(rd);
+	CHECK(init_err == OK);
+	if (init_err != OK) {
+		if (owns_rd) {
+			memdelete(rd);
+		}
+		return;
+	}
+
+	RID owned_buffer = rd->storage_buffer_create(64);
+	CHECK(owned_buffer.is_valid());
+	if (!owned_buffer.is_valid()) {
+		manager->shutdown();
+		if (owns_rd) {
+			memdelete(rd);
+		}
+		return;
+	}
+
+	manager->track_resource(owned_buffer, rd, true, "shutdown_stale_owned_test");
+	CHECK(manager->get_tracked_resource_count() == 1);
+	CHECK(manager->get_tracked_owned_resource_count() == 1);
+
+	manager->shutdown();
+
+	CHECK(manager->get_tracked_resource_count() == 0);
+	CHECK(manager->get_tracked_owned_resource_count() == 0);
+	CHECK(manager->get_context().main_device == nullptr);
+	CHECK(manager->get_context().resource_device == nullptr);
+	CHECK(manager->get_context().submission_device == nullptr);
+
+	rd->free(owned_buffer);
+	if (owns_rd) {
+		memdelete(rd);
+	}
+}
+
 TEST_CASE("[GaussianSplatting][RequiresGPU] RenderDeviceManager diagnostics use stable device instance IDs") {
     RenderingDevice *source_rd = _create_local_test_device();
     RenderingDevice *target_rd = _create_local_test_device();

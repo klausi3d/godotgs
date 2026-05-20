@@ -155,6 +155,7 @@ private:
     void cleanup_buffers();
     Error _create_buffer_set(BufferSet &r_set, uint32_t p_gaussian_size, uint32_t p_sort_key_size, uint32_t p_index_size);
     void _destroy_buffer_set(BufferSet &p_set);
+    bool _has_allocated_resources() const;
     void _reset_state(bool p_reset_handles = true);
     BufferSet &_get_buffer_set(uint32_t p_index);
     const BufferSet &_get_buffer_set(uint32_t p_index) const;
@@ -183,6 +184,10 @@ public:
     Error create_buffers_from_data(const Ref<::GaussianData> &p_data);
     bool is_initialized() const { return buffers_created && rd != nullptr; }
     uint32_t get_buffer_capacity() const { return max_gaussians; }
+
+#ifdef TESTS_ENABLED
+    bool test_simulate_partial_allocation_cleanup(RenderingDevice *p_rd);
+#endif
 
     void begin_frame();
     void end_frame();

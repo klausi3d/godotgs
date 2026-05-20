@@ -1253,6 +1253,8 @@ void GaussianSplatRenderer::_teardown_resources() {
     if (subsystem_state.output_compositor.is_valid()) {
         subsystem_state.output_compositor->clear_cached_framebuffers();
         subsystem_state.output_compositor->clear_viewport_blit_resources();
+        subsystem_state.output_compositor->shutdown();
+        subsystem_state.output_compositor.unref();
     }
     if (shadow_output_compositor.is_valid()) {
         shadow_output_compositor->clear_cached_framebuffers();
@@ -1326,6 +1328,7 @@ void GaussianSplatRenderer::_teardown_resources() {
     if (get_resource_state().buffer_manager.is_valid()) {
         get_resource_state().buffer_manager.unref();
     }
+    get_resource_state().buffer_manager_initialized = false;
 
     if (get_sorting_state().gpu_sorter.is_valid()) {
         get_sorting_state().gpu_sorter->shutdown();
