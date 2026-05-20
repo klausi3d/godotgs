@@ -316,6 +316,7 @@ private:
             bool adaptive_quality, int effective_stream_budget_ms, bool async_loading, bool compression);
     void _fill_preset_config(QualityPreset p_preset, Dictionary &config) const;
     void _ensure_debug_hud_control();
+    void _destroy_debug_hud_control();
     void _update_debug_hud_visibility();
 
     void _ensure_renderer();
