@@ -161,6 +161,10 @@
          <lastmod>2026-05-20</lastmod>
     </url>
     <url>
+         <loc>https://klausi3d.github.io/godotGS/latest/development/known-public-alpha-limitations/</loc>
+         <lastmod>2026-05-20</lastmod>
+    </url>
+    <url>
          <loc>https://klausi3d.github.io/godotGS/latest/development/release-channels/</loc>
          <lastmod>2026-05-20</lastmod>
     </url>
@@ -258,6 +262,10 @@
     </url>
     <url>
          <loc>https://klausi3d.github.io/godotGS/latest/reference/project-settings/</loc>
+         <lastmod>2026-05-20</lastmod>
+    </url>
+    <url>
+         <loc>https://klausi3d.github.io/godotGS/latest/reference/renderer-release-gates/</loc>
          <lastmod>2026-05-20</lastmod>
     </url>
     <url>
