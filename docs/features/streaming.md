@@ -19,11 +19,17 @@ Streaming behavior depends on the format of the source asset:
 
 | Source | Residency | Chunk payloads | Notes |
 | --- | --- | --- | --- |
-| Uncompressed `.gsplatworld` | Resident `GaussianData` plus file-backed `StagedFileChunkPayloadSource` | Loaded on demand from the source file | Only format that supports file-backed streaming reads. |
+| Uncompressed `.gsplatworld` loaded normally | Source-backed, no resident `GaussianData` by default | Loaded on demand from the source file | Only format that supports out-of-core file-backed streaming reads. |
 | Compressed `.gsplatworld` | Resident only | None — full gaussian array is decoded into memory at load | Format is resident-only and has no "out-of-core" streaming path; the streaming system still manages visibility, LOD, and VRAM residency. |
+| `.gsplatworld` loaded through `load_resident()` | Resident only | None | Compatibility path for callers that explicitly request resident CPU data. |
+| `.gsplatcache` | Resident only | None | Internal PLY importer cache, owned by the source PLY identity tuple. It is not a streamable world format. |
 | `.ply` / `.spz` via `GaussianSplatNode3D` | Resident only | None | Direct instance nodes always publish a resident submission hint. |
 
-`GaussianStreamingSystem` runs in all three cases, but "streaming" here means GPU residency and LOD management, not out-of-core source loading, except for uncompressed `.gsplatworld`.
+`GaussianStreamingSystem` can run for any of these sources, but "streaming" usually means GPU residency and LOD management. Out-of-core source loading currently exists only for normal uncompressed `.gsplatworld` loads.
+
+Generic `ResourceSaver::save()` preserves streamability for source-backed worlds: a normal save/load/save round trip writes uncompressed `.gsplatworld` data and does not leave the in-memory resource materialized as resident `GaussianData`. Compressed output is a resident-only export choice because the current gzip payload has no random-access chunk blocks.
+
+Runtime diagnostics expose the actual payload mode separately from route policy. `GaussianSplatRenderer.get_render_stats()` includes `payload_mode`, `payload_streamable`, `payload_source_active`, `resident_payload_active`, and `payload_resident_only_reason`; a streaming route policy with a compressed world still reports `payload_mode = "resident_only"`.
 
 ## Enabling streaming
 

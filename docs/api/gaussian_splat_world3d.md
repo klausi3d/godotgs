@@ -3,6 +3,12 @@
 ## Purpose
 Use `GaussianSplatWorld3D` to render merged multi-asset Gaussian splat worlds from a `GaussianSplatWorld` resource in a `Node3D` scene (`modules/gaussian_splatting/nodes/gaussian_splat_world_3d.h:10`).
 
+## Payload Semantics
+
+`GaussianSplatWorld3D` submits the actual payload carried by its `GaussianSplatWorld` resource. A normal uncompressed `.gsplatworld` load is `streamable_uncompressed`: it has a valid chunk payload source and no resident `GaussianData`, so chunks can be read from the file on demand. Compressed `.gsplatworld`, `.gsplatcache`, explicit `load_resident()`, and direct PLY/SPZ instance imports are `resident_only`.
+
+The route policy controls backend selection, not source residency. Check `GaussianSplatRenderer.get_render_stats()` for `payload_mode`, `payload_streamable`, `payload_source_active`, `resident_payload_active`, and `payload_resident_only_reason` when debugging whether a world is actually out-of-core streamable.
+
 ## Usage
 <table>
   <thead>

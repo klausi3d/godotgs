@@ -50,6 +50,9 @@ public:
     bool has_chunk_payload_source() const;
     bool is_payload_source_backed() const;
     bool has_renderable_payload() const;
+    String get_payload_mode() const;
+    bool is_streamable_payload() const;
+    String get_resident_only_reason() const;
 
     void set_payload_metadata(uint32_t p_splat_count, uint32_t p_sh_degree,
             uint32_t p_sh_first_order_count, uint32_t p_sh_high_order_count, bool p_is_2d);

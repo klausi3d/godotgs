@@ -1112,6 +1112,10 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Direct gaussian data publishes a res
     CHECK(stats.get("instance_backend_policy", String()) == String("resident"));
     CHECK(stats.get("backend_selection_reason", String()) == String("requested_resident_policy"));
     CHECK(stats.get("backend_selection_reason_label", String()) == String("Resident was requested by the route policy"));
+    CHECK(stats.get("payload_mode", String()) == String("resident_only"));
+    CHECK_FALSE(bool(stats.get("payload_streamable", true)));
+    CHECK_FALSE(bool(stats.get("payload_source_active", true)));
+    CHECK(bool(stats.get("resident_payload_active", false)));
     CHECK(stats.get("instance_contract_shape", String()) == String("atlas_emulation"));
     CHECK(bool(stats.get("instance_contract_ready", false)));
     CHECK(stats.get("data_source", String()) == String(GaussianRenderPipeline::SplatDataSource::kSourceResidentInstance));
@@ -4306,6 +4310,12 @@ TEST_CASE("[GaussianSplatting] file-backed payload forces streaming backend even
 	CHECK_FALSE(backend_plan.prefer_resident_backend);
 	CHECK(backend_plan.should_attempt_streaming_bootstrap);
 	CHECK(backend_plan.streaming_backend_reason == String("file_backed_payload_requires_streaming"));
+
+	Dictionary stats = renderer->get_render_stats();
+	CHECK(String(stats.get(StringName("payload_mode"), String())) == String("streamable_uncompressed"));
+	CHECK(bool(stats.get(StringName("payload_streamable"), false)));
+	CHECK(bool(stats.get(StringName("payload_source_active"), false)));
+	CHECK_FALSE(bool(stats.get(StringName("resident_payload_active"), true)));
 }
 
 TEST_CASE("[GaussianSplatting] get_streaming_route_policy defaults to STREAMING when unset") {

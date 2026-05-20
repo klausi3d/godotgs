@@ -54,6 +54,53 @@ static bool _is_ply_cache_enabled() {
     return true;
 }
 
+static String _get_ply_cache_path(const String &p_source_path) {
+    return p_source_path.get_basename() + ".gsplatcache";
+}
+
+static Ref<GaussianSplatWorld> _load_ply_cache_world(const String &p_cache_path) {
+    ResourceFormatLoaderGaussianSplatWorld format_loader;
+    Error load_err = OK;
+    return format_loader.load_resident(p_cache_path, &load_err);
+}
+
+static bool _cache_source_path_matches(const Dictionary &p_metadata, const String &p_source_path) {
+    const Variant source_path_var = p_metadata.get(StringName("cache_source_path"), Variant());
+    return source_path_var.get_type() == Variant::STRING && String(source_path_var) == p_source_path;
+}
+
+static bool _cache_source_stamp_matches(const Dictionary &p_metadata, uint64_t p_source_size, uint64_t p_source_mtime) {
+    uint64_t cached_size = 0;
+    uint64_t cached_mtime = 0;
+    return _variant_to_uint64(p_metadata.get(StringName("cache_source_size"), Variant()), cached_size) &&
+            _variant_to_uint64(p_metadata.get(StringName("cache_source_mtime"), Variant()), cached_mtime) &&
+            cached_size == p_source_size &&
+            cached_mtime == p_source_mtime;
+}
+
+static bool _cache_version_matches(const Dictionary &p_metadata) {
+    const Variant version_var = p_metadata.get(StringName("cache_version"), Variant());
+    const Variant::Type version_type = version_var.get_type();
+    return (version_type == Variant::INT || version_type == Variant::FLOAT) &&
+            int(version_var) == PLY_CACHE_VERSION;
+}
+
+static bool _cache_metadata_matches(const Dictionary &p_metadata,
+        const String &p_source_path,
+        uint64_t p_source_size,
+        uint64_t p_source_mtime) {
+    return _cache_source_path_matches(p_metadata, p_source_path) &&
+            _cache_source_stamp_matches(p_metadata, p_source_size, p_source_mtime) &&
+            _cache_version_matches(p_metadata);
+}
+
+static bool _cached_gaussian_data_matches(const Ref<::GaussianData> &p_cached_data, int p_expected_vertex_count) {
+    if (p_cached_data.is_null() || p_cached_data->get_count() <= 0) {
+        return false;
+    }
+    return p_expected_vertex_count <= 0 || p_cached_data->get_count() == p_expected_vertex_count;
+}
+
 } // namespace
 
 PLYLoader::PLYLoader() {
@@ -271,7 +318,7 @@ bool PLYLoader::try_load_cache(const String &p_source_path, uint64_t p_source_si
 
     // Use .gsplatcache (not .gsplatworld) so Godot's filesystem scanner does
     // not treat PLY caches as standalone importable resources.
-    const String cache_path = p_source_path.get_basename() + ".gsplatcache";
+    const String cache_path = _get_ply_cache_path(p_source_path);
     if (!FileAccess::exists(cache_path)) {
         return false;
     }
@@ -280,39 +327,18 @@ bool PLYLoader::try_load_cache(const String &p_source_path, uint64_t p_source_si
     // read from disk.  Going through ResourceLoader::load() with the default
     // CACHE_MODE_REUSE would return stale in-memory data when the cache file
     // has been rewritten during the same editor session.
-    ResourceFormatLoaderGaussianSplatWorld format_loader;
-    Error load_err = OK;
-    Ref<GaussianSplatWorld> world = format_loader.load_resident(cache_path, &load_err);
+    Ref<GaussianSplatWorld> world = _load_ply_cache_world(cache_path);
     if (world.is_null()) {
         return false;
     }
 
     Dictionary cache_metadata = world->get_metadata();
-    uint64_t cached_size = 0;
-    uint64_t cached_mtime = 0;
-    if (!_variant_to_uint64(cache_metadata.get(StringName("cache_source_size"), Variant()), cached_size)) {
-        return false;
-    }
-    if (!_variant_to_uint64(cache_metadata.get(StringName("cache_source_mtime"), Variant()), cached_mtime)) {
-        return false;
-    }
-    if (cached_size != p_source_size || cached_mtime != p_source_mtime) {
-        return false;
-    }
-
-    const Variant version_var = cache_metadata.get(StringName("cache_version"), Variant());
-    if (version_var.get_type() != Variant::INT && version_var.get_type() != Variant::FLOAT) {
-        return false;
-    }
-    if (int(version_var) != PLY_CACHE_VERSION) {
+    if (!_cache_metadata_matches(cache_metadata, p_source_path, p_source_size, p_source_mtime)) {
         return false;
     }
 
     Ref<::GaussianData> cached_data = world->get_gaussian_data();
-    if (cached_data.is_null() || cached_data->get_count() <= 0) {
-        return false;
-    }
-    if (header.vertex_count > 0 && cached_data->get_count() != header.vertex_count) {
+    if (!_cached_gaussian_data_matches(cached_data, header.vertex_count)) {
         return false;
     }
 

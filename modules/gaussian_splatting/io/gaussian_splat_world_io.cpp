@@ -5,7 +5,6 @@
 #include "core/io/json.h"
 #include "core/io/compression.h"
 #include "core/string/ustring.h"
-#include "core/config/project_settings.h"
 #include "core/math/math_funcs.h"
 #include "io_settings_utils.h"
 #include "../core/gaussian_data.h"
@@ -33,6 +32,7 @@ static constexpr uint32_t kFlagIs2D = 1u << 1u;
 static constexpr uint32_t kFlagHasChunks = 1u << 2u;
 static constexpr uint32_t kFlagHasHighSh = 1u << 3u;
 static constexpr uint32_t kFlagCompressed = 1u << 4u;
+static constexpr uint32_t kFlagResidentPayload = 1u << 5u;
 static constexpr uint64_t kHeaderSizeBytes = 104u;
 
 static bool fits_within(uint64_t p_offset, uint64_t p_size, uint64_t p_file_len) {
@@ -134,15 +134,6 @@ static bool _decompress_data(const uint8_t *p_compressed, uint64_t p_compressed_
 	return result == static_cast<int64_t>(p_original_size);
 }
 
-static bool _is_world_compression_enabled() {
-	if (ProjectSettings *ps = ProjectSettings::get_singleton()) {
-		return GaussianSplattingIO::get_bool_setting(ps,
-				"rendering/gaussian_splatting/import/gsplatworld_compression_enabled",
-				false);
-	}
-	return false;
-}
-
 static Error _ensure_file_write_ok(const Ref<FileAccess> &p_file, const char *p_context) {
 	ERR_FAIL_COND_V_MSG(p_file.is_null(), ERR_INVALID_PARAMETER, "FileAccess is null while checking write status.");
 	const Error io_error = p_file->get_error();
@@ -153,6 +144,319 @@ static Error _ensure_file_write_ok(const Ref<FileAccess> &p_file, const char *p_
 		return io_error;
 	}
 	return OK;
+}
+
+static Error _materialize_payload_source_for_save(const GaussianSplatWorld *p_world, Ref<GaussianData> &r_gaussian_data) {
+	ERR_FAIL_COND_V(p_world == nullptr, ERR_INVALID_PARAMETER);
+	Ref<ChunkPayloadSource> payload_source = p_world->get_chunk_payload_source();
+	ERR_FAIL_COND_V_MSG(payload_source.is_null() || !payload_source->is_valid(), ERR_UNCONFIGURED,
+			"GaussianSplatWorld has no valid source-backed payload to save.");
+
+	LocalVector<Gaussian> gaussians;
+	LocalVector<Vector3> sh_high_order;
+	uint32_t sh_first_order = 0;
+	uint32_t sh_high_order_count = 0;
+	if (!payload_source->capture_chunk_snapshot(0, payload_source->get_count(),
+				gaussians, sh_high_order, sh_first_order, sh_high_order_count)) {
+		return ERR_FILE_CANT_READ;
+	}
+
+	r_gaussian_data.instantiate();
+	r_gaussian_data->set_gaussian_payload(gaussians, sh_high_order,
+			sh_first_order, sh_high_order_count, p_world->get_2d_mode());
+	return OK;
+}
+
+struct WorldSaveLayout {
+	uint32_t splat_count = 0;
+	uint32_t sh_degree = 0;
+	uint32_t sh_first_order = 0;
+	uint32_t sh_high_order = 0;
+	uint32_t chunk_count = 0;
+	uint32_t flags = 0;
+	uint64_t gaussian_bytes = 0;
+	uint64_t sh_bytes = 0;
+	uint64_t chunk_table_bytes = 0;
+	uint64_t indices_bytes = 0;
+	uint64_t gaussian_stored_bytes = 0;
+	uint64_t gaussian_offset = kHeaderSizeBytes;
+	uint64_t sh_offset = 0;
+	uint64_t chunk_table_offset = 0;
+	uint64_t indices_offset = 0;
+	uint64_t metadata_offset = 0;
+	uint64_t metadata_size = 0;
+	bool use_compression = false;
+	PackedByteArray compressed_gaussians;
+	PackedByteArray metadata_bytes;
+};
+
+static uint64_t _count_chunk_indices(const Vector<StaticChunk> &p_chunks) {
+	uint64_t total_indices = 0;
+	for (int i = 0; i < p_chunks.size(); i++) {
+		total_indices += p_chunks[i].indices.size();
+	}
+	return total_indices;
+}
+
+static uint32_t _build_world_save_flags(const GaussianSplatWorld *p_world,
+		const Ref<GaussianData> &p_gaussian_data,
+		const Vector<StaticChunk> &p_chunks) {
+	uint32_t flags = 0;
+	if (!p_world->get_metadata().is_empty()) {
+		flags |= kFlagHasMetadata;
+	}
+	if (p_gaussian_data->get_2d_mode()) {
+		flags |= kFlagIs2D;
+	}
+	if (!p_chunks.is_empty()) {
+		flags |= kFlagHasChunks;
+	}
+	if (p_gaussian_data->get_sh_high_order_count() > 0) {
+		flags |= kFlagHasHighSh;
+	}
+	return flags;
+}
+
+static PackedByteArray _build_world_metadata_bytes(const GaussianSplatWorld *p_world, uint32_t p_flags) {
+	String metadata_json;
+	if ((p_flags & kFlagHasMetadata) != 0) {
+		metadata_json = JSON::stringify(p_world->get_metadata());
+	}
+	return metadata_json.to_utf8_buffer();
+}
+
+static bool _compress_world_gaussians(const Ref<GaussianData> &p_gaussian_data,
+		uint64_t p_gaussian_bytes,
+		PackedByteArray &r_compressed_gaussians) {
+	if (p_gaussian_bytes == 0) {
+		return false;
+	}
+
+	r_compressed_gaussians = _compress_data(
+			reinterpret_cast<const uint8_t *>(p_gaussian_data->get_gaussian_storage().ptr()),
+			p_gaussian_bytes);
+	if (r_compressed_gaussians.is_empty()) {
+		return false;
+	}
+
+	GS_LOG_STREAMING_INFO(vformat("Compressed gaussian data: %d KB -> %d KB (%.1fx)",
+			int(p_gaussian_bytes / 1024), int(r_compressed_gaussians.size() / 1024),
+			float(p_gaussian_bytes) / float(r_compressed_gaussians.size())));
+	return true;
+}
+
+static Error _build_world_save_layout(const GaussianSplatWorld *p_world,
+		const Ref<GaussianData> &p_gaussian_data,
+		const Vector<StaticChunk> &p_chunks,
+		ResourceFormatSaverGaussianSplatWorld::PayloadSaveMode p_mode,
+		WorldSaveLayout &r_layout) {
+	WorldSaveLayout layout;
+	layout.splat_count = p_gaussian_data->get_count();
+	layout.sh_degree = p_gaussian_data->get_sh_degree();
+	layout.sh_first_order = p_gaussian_data->get_sh_first_order_count();
+	layout.sh_high_order = p_gaussian_data->get_sh_high_order_count();
+	layout.chunk_count = p_chunks.size();
+	layout.flags = _build_world_save_flags(p_world, p_gaussian_data, p_chunks);
+	layout.metadata_bytes = _build_world_metadata_bytes(p_world, layout.flags);
+
+	const uint64_t total_indices = _count_chunk_indices(p_chunks);
+	layout.gaussian_bytes = uint64_t(layout.splat_count) * sizeof(Gaussian);
+	layout.sh_bytes = uint64_t(layout.splat_count) * uint64_t(layout.sh_high_order) * sizeof(Vector3);
+	layout.chunk_table_bytes = uint64_t(layout.chunk_count) * 56u;
+	layout.indices_bytes = total_indices * sizeof(uint32_t);
+
+	// Generic ResourceSaver::save() must preserve streamability. Compression is
+	// only for the explicit resident export path because this gzip layout cannot
+	// serve random-access chunk reads.
+	const bool resident_only = p_mode == ResourceFormatSaverGaussianSplatWorld::SAVE_PAYLOAD_RESIDENT_COMPRESSED ||
+			p_mode == ResourceFormatSaverGaussianSplatWorld::SAVE_PAYLOAD_RESIDENT_UNCOMPRESSED;
+	if (resident_only) {
+		layout.flags |= kFlagResidentPayload;
+	}
+	if (p_mode == ResourceFormatSaverGaussianSplatWorld::SAVE_PAYLOAD_RESIDENT_COMPRESSED) {
+		layout.use_compression = _compress_world_gaussians(p_gaussian_data, layout.gaussian_bytes, layout.compressed_gaussians);
+		if (!layout.use_compression || layout.compressed_gaussians.is_empty()) {
+			ERR_PRINT("[GaussianSplatWorldIO] Explicit resident-compressed save requested, but gaussian payload compression failed.");
+			return ERR_CANT_CREATE;
+		}
+	}
+	if (layout.use_compression) {
+		layout.flags |= kFlagCompressed;
+	}
+
+	layout.gaussian_stored_bytes = layout.use_compression
+			? (8 + layout.compressed_gaussians.size())
+			: layout.gaussian_bytes;
+	layout.sh_offset = layout.gaussian_offset + layout.gaussian_stored_bytes;
+	layout.chunk_table_offset = layout.sh_offset + layout.sh_bytes;
+	layout.indices_offset = layout.chunk_table_offset + layout.chunk_table_bytes;
+	layout.metadata_offset = layout.metadata_bytes.is_empty() ? 0u
+			: (kHeaderSizeBytes + layout.gaussian_stored_bytes + layout.sh_bytes + layout.chunk_table_bytes + layout.indices_bytes);
+	layout.metadata_size = layout.metadata_bytes.size();
+	r_layout = layout;
+	return OK;
+}
+
+static Error _write_buffer_sliced(const Ref<FileAccess> &p_file,
+		const uint8_t *p_src,
+		uint64_t p_size,
+		const char *p_context) {
+	// Write in <=256 MB slices to avoid MSVC CRT fwrite issues with >2 GB writes.
+	constexpr uint64_t kSliceBytes = 256u * 1024u * 1024u;
+	uint64_t written = 0;
+	while (written < p_size) {
+		const uint64_t slice = MIN(kSliceBytes, p_size - written);
+		p_file->store_buffer(p_src + written, slice);
+		const Error err = _ensure_file_write_ok(p_file, p_context);
+		if (err != OK) {
+			return err;
+		}
+		written += slice;
+	}
+	return OK;
+}
+
+static Error _write_world_save_header(const Ref<FileAccess> &p_file,
+		const GaussianSplatWorld *p_world,
+		const WorldSaveLayout &p_layout) {
+	p_file->store_32(kWorldMagic);
+	p_file->store_32(kWorldVersion);
+	p_file->store_32(p_layout.flags);
+	p_file->store_32(p_layout.splat_count);
+	p_file->store_32(p_layout.sh_degree);
+	p_file->store_32(p_layout.sh_first_order);
+	p_file->store_32(p_layout.sh_high_order);
+	_write_vec3(p_file, p_world->get_bounds().position);
+	_write_vec3(p_file, p_world->get_bounds().size);
+	p_file->store_32(p_layout.chunk_count);
+	p_file->store_64(p_layout.gaussian_offset);
+	p_file->store_64(p_layout.sh_offset);
+	p_file->store_64(p_layout.chunk_table_offset);
+	p_file->store_64(p_layout.indices_offset);
+	p_file->store_64(p_layout.metadata_offset);
+	p_file->store_64(p_layout.metadata_size);
+	return _ensure_file_write_ok(p_file, "save(header)");
+}
+
+static Error _write_world_gaussian_payload(const Ref<FileAccess> &p_file,
+		const Ref<GaussianData> &p_gaussian_data,
+		const WorldSaveLayout &p_layout) {
+	if (p_layout.gaussian_bytes == 0) {
+		return OK;
+	}
+
+	const uint8_t *write_src = nullptr;
+	uint64_t write_total = 0;
+	if (p_layout.use_compression && !p_layout.compressed_gaussians.is_empty()) {
+		// Write compressed format: [8 bytes size][compressed data].
+		p_file->store_64(p_layout.compressed_gaussians.size());
+		write_src = p_layout.compressed_gaussians.ptr();
+		write_total = p_layout.compressed_gaussians.size();
+	} else {
+		// Write uncompressed format: raw gaussian data.
+		write_src = reinterpret_cast<const uint8_t *>(p_gaussian_data->get_gaussian_storage().ptr());
+		write_total = p_layout.gaussian_bytes;
+	}
+
+	return _write_buffer_sliced(p_file, write_src, write_total, "save(gaussian_data)");
+}
+
+static Error _write_world_sh_payload(const Ref<FileAccess> &p_file,
+		const Ref<GaussianData> &p_gaussian_data,
+		const WorldSaveLayout &p_layout) {
+	if (p_layout.sh_bytes == 0) {
+		return OK;
+	}
+
+	const Vector3 *sh_ptr = p_gaussian_data->get_sh_high_order_coefficients_ptr();
+	ERR_FAIL_COND_V_MSG(sh_ptr == nullptr, ERR_INVALID_DATA,
+			"GaussianSplatWorld missing high-order SH coefficients while sh_high_order_count > 0.");
+	p_file->store_buffer(reinterpret_cast<const uint8_t *>(sh_ptr), p_layout.sh_bytes);
+	return _ensure_file_write_ok(p_file, "save(sh_data)");
+}
+
+static Error _write_world_chunk_table(const Ref<FileAccess> &p_file, const Vector<StaticChunk> &p_chunks) {
+	uint64_t indices_cursor = 0;
+	for (int i = 0; i < p_chunks.size(); i++) {
+		const StaticChunk &chunk = p_chunks[i];
+		ChunkRecord record;
+		record.bounds_pos = chunk.bounds.position;
+		record.bounds_size = chunk.bounds.size;
+		record.center = chunk.center;
+		record.radius = chunk.radius;
+		record.indices_offset = indices_cursor;
+		record.index_count = chunk.indices.size();
+		_write_chunk_record(p_file, record);
+		indices_cursor += record.index_count;
+	}
+	return _ensure_file_write_ok(p_file, "save(chunk_table)");
+}
+
+static Error _write_world_chunk_indices(const Ref<FileAccess> &p_file, const Vector<StaticChunk> &p_chunks) {
+	for (int i = 0; i < p_chunks.size(); i++) {
+		const StaticChunk &chunk = p_chunks[i];
+		if (chunk.indices.is_empty()) {
+			continue;
+		}
+		p_file->store_buffer(reinterpret_cast<const uint8_t *>(chunk.indices.ptr()),
+				uint64_t(chunk.indices.size()) * sizeof(uint32_t));
+		const Error err = _ensure_file_write_ok(p_file, "save(chunk_indices)");
+		if (err != OK) {
+			return err;
+		}
+	}
+	return OK;
+}
+
+static Error _write_world_chunks(const Ref<FileAccess> &p_file,
+		const Vector<StaticChunk> &p_chunks,
+		const WorldSaveLayout &p_layout) {
+	if (p_layout.chunk_count == 0) {
+		return OK;
+	}
+
+	const Error chunk_table_err = _write_world_chunk_table(p_file, p_chunks);
+	if (chunk_table_err != OK) {
+		return chunk_table_err;
+	}
+	return _write_world_chunk_indices(p_file, p_chunks);
+}
+
+static Error _write_world_metadata(const Ref<FileAccess> &p_file, const WorldSaveLayout &p_layout) {
+	if (p_layout.metadata_size == 0) {
+		return OK;
+	}
+
+	p_file->store_buffer(p_layout.metadata_bytes.ptr(), p_layout.metadata_size);
+	return _ensure_file_write_ok(p_file, "save(metadata)");
+}
+
+static Error _write_world_save_sections(const Ref<FileAccess> &p_file,
+		const GaussianSplatWorld *p_world,
+		const Ref<GaussianData> &p_gaussian_data,
+		const Vector<StaticChunk> &p_chunks,
+		const WorldSaveLayout &p_layout) {
+	Error err = _write_world_save_header(p_file, p_world, p_layout);
+	if (err != OK) {
+		return err;
+	}
+	err = _write_world_gaussian_payload(p_file, p_gaussian_data, p_layout);
+	if (err != OK) {
+		return err;
+	}
+	err = _write_world_sh_payload(p_file, p_gaussian_data, p_layout);
+	if (err != OK) {
+		return err;
+	}
+	err = _write_world_chunks(p_file, p_chunks, p_layout);
+	if (err != OK) {
+		return err;
+	}
+	err = _write_world_metadata(p_file, p_layout);
+	if (err != OK) {
+		return err;
+	}
+	return _ensure_file_write_ok(p_file, "save(final)");
 }
 
 } // namespace
@@ -316,7 +620,8 @@ static Ref<Resource> _load_gsplatworld_resource(const String &p_path, Error *r_e
 		}
 	}
 
-	const bool should_materialize_resident_payload = gaussian_data_compressed || p_force_resident;
+	const bool resident_payload_file = (flags & kFlagResidentPayload) != 0;
+	const bool should_materialize_resident_payload = gaussian_data_compressed || resident_payload_file || p_force_resident;
 	LocalVector<Gaussian> gaussians;
 
 	if (should_materialize_resident_payload) {
@@ -495,7 +800,7 @@ static Ref<Resource> _load_gsplatworld_resource(const String &p_path, Error *r_e
 	// Only uncompressed files support file-backed chunk payload reads. Compressed
 	// .gsplatworld files are resident-only: the decoded payload lives in memory on
 	// the GaussianData above and no staged-file payload source is attached.
-	if (!gaussian_data_compressed && !p_force_resident) {
+	if (!gaussian_data_compressed && !resident_payload_file && !p_force_resident) {
 		Ref<StagedFileChunkPayloadSource> file_source;
 		file_source.instantiate();
 		const uint64_t staged_sh_offset = ((flags & kFlagHasHighSh) != 0 && sh_high_order > 0) ? sh_offset : 0u;
@@ -550,193 +855,44 @@ String ResourceFormatLoaderGaussianSplatWorld::get_resource_type(const String &p
 }
 
 Error ResourceFormatSaverGaussianSplatWorld::save(const Ref<Resource> &p_resource, const String &p_path, uint32_t p_flags) {
+	return save_with_payload_mode(p_resource, p_path, SAVE_PAYLOAD_PRESERVE, p_flags);
+}
+
+Error ResourceFormatSaverGaussianSplatWorld::save_resident_compressed(const Ref<Resource> &p_resource,
+		const String &p_path, uint32_t p_flags) {
+	return save_with_payload_mode(p_resource, p_path, SAVE_PAYLOAD_RESIDENT_COMPRESSED, p_flags);
+}
+
+Error ResourceFormatSaverGaussianSplatWorld::save_resident_uncompressed(const Ref<Resource> &p_resource,
+		const String &p_path, uint32_t p_flags) {
+	return save_with_payload_mode(p_resource, p_path, SAVE_PAYLOAD_RESIDENT_UNCOMPRESSED, p_flags);
+}
+
+Error ResourceFormatSaverGaussianSplatWorld::save_with_payload_mode(const Ref<Resource> &p_resource,
+		const String &p_path, PayloadSaveMode p_mode, uint32_t p_flags) {
 	(void)p_flags;
 	GaussianSplatWorld *world = Object::cast_to<GaussianSplatWorld>(*p_resource);
 	ERR_FAIL_COND_V_MSG(world == nullptr, ERR_INVALID_PARAMETER, "Resource is not a GaussianSplatWorld.");
 
 	Ref<GaussianData> gaussian_data = world->get_gaussian_data();
-	if (gaussian_data.is_null() && world->has_chunk_payload_source()) {
-		const Error materialize_err = world->materialize_resident_gaussian_data();
+	const bool source_backed_without_resident = gaussian_data.is_null() && world->has_chunk_payload_source();
+	if (source_backed_without_resident) {
+		const Error materialize_err = _materialize_payload_source_for_save(world, gaussian_data);
 		ERR_FAIL_COND_V_MSG(materialize_err != OK, materialize_err,
-				vformat("Failed to materialize source-backed GaussianSplatWorld before save: %s", p_path));
-		gaussian_data = world->get_gaussian_data();
+				vformat("Failed to read source-backed GaussianSplatWorld payload before save: %s", p_path));
 	}
 	ERR_FAIL_COND_V_MSG(gaussian_data.is_null(), ERR_INVALID_DATA, "GaussianSplatWorld has no GaussianData.");
-	Error err = OK;
+
+	const Vector<StaticChunk> &chunks = world->get_static_chunks();
+	WorldSaveLayout layout;
+	const Error layout_err = _build_world_save_layout(world, gaussian_data, chunks, p_mode, layout);
+	ERR_FAIL_COND_V_MSG(layout_err != OK, layout_err,
+			vformat("Cannot build gsplatworld save layout for %s.", p_path));
 
 	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::WRITE);
 	ERR_FAIL_COND_V_MSG(file.is_null(), ERR_FILE_CANT_WRITE, vformat("Cannot write gsplatworld file: %s", p_path));
 
-	const uint32_t splat_count = gaussian_data->get_count();
-	const uint32_t sh_degree = gaussian_data->get_sh_degree();
-	const uint32_t sh_first_order = gaussian_data->get_sh_first_order_count();
-	const uint32_t sh_high_order = gaussian_data->get_sh_high_order_count();
-	const bool is_2d = gaussian_data->get_2d_mode();
-	const Vector<StaticChunk> &chunks = world->get_static_chunks();
-	const uint32_t chunk_count = chunks.size();
-
-	uint64_t total_indices = 0;
-	for (uint32_t i = 0; i < chunk_count; i++) {
-		total_indices += chunks[i].indices.size();
-	}
-
-	uint32_t flags = 0;
-	if (!world->get_metadata().is_empty()) {
-		flags |= kFlagHasMetadata;
-	}
-	if (is_2d) {
-		flags |= kFlagIs2D;
-	}
-	if (chunk_count > 0) {
-		flags |= kFlagHasChunks;
-	}
-	if (sh_high_order > 0) {
-		flags |= kFlagHasHighSh;
-	}
-
-	String metadata_json;
-	if ((flags & kFlagHasMetadata) != 0) {
-		metadata_json = JSON::stringify(world->get_metadata());
-	}
-	PackedByteArray metadata_bytes = metadata_json.to_utf8_buffer();
-
-	const uint64_t gaussian_bytes = uint64_t(splat_count) * sizeof(Gaussian);
-	const uint64_t sh_bytes = uint64_t(splat_count) * uint64_t(sh_high_order) * sizeof(Vector3);
-	const uint64_t chunk_table_bytes = uint64_t(chunk_count) * 56u;
-	const uint64_t indices_bytes = total_indices * sizeof(uint32_t);
-
-	// Compression is configurable; cache-heavy workflows can disable it to minimize CPU load times.
-	PackedByteArray compressed_gaussians;
-	bool use_compression = _is_world_compression_enabled() && gaussian_bytes > 1024; // Only compress if >1KB
-	if (use_compression && gaussian_bytes > 0) {
-		compressed_gaussians = _compress_data(
-				reinterpret_cast<const uint8_t *>(gaussian_data->get_gaussian_storage().ptr()),
-				gaussian_bytes);
-		if (compressed_gaussians.is_empty()) {
-			use_compression = false; // Compression failed, fall back to uncompressed
-		} else {
-			flags |= kFlagCompressed;
-			GS_LOG_STREAMING_INFO(vformat("Compressed gaussian data: %d KB -> %d KB (%.1fx)",
-					int(gaussian_bytes / 1024), int(compressed_gaussians.size() / 1024),
-					float(gaussian_bytes) / float(compressed_gaussians.size())));
-		}
-	}
-
-	// Calculate stored size (compressed + 8 byte header, or uncompressed)
-	const uint64_t gaussian_stored_bytes = use_compression
-			? (8 + compressed_gaussians.size())
-			: gaussian_bytes;
-
-	const uint64_t metadata_offset = (metadata_bytes.is_empty()) ? 0u
-			: (kHeaderSizeBytes + gaussian_stored_bytes + sh_bytes + chunk_table_bytes + indices_bytes);
-
-	const uint64_t gaussian_offset = kHeaderSizeBytes;
-	const uint64_t sh_offset = gaussian_offset + gaussian_stored_bytes;
-	const uint64_t chunk_table_offset = sh_offset + sh_bytes;
-	const uint64_t indices_offset = chunk_table_offset + chunk_table_bytes;
-	const uint64_t metadata_size = metadata_bytes.size();
-
-	file->store_32(kWorldMagic);
-	file->store_32(kWorldVersion);
-	file->store_32(flags);
-	file->store_32(splat_count);
-	file->store_32(sh_degree);
-	file->store_32(sh_first_order);
-	file->store_32(sh_high_order);
-	_write_vec3(file, world->get_bounds().position);
-	_write_vec3(file, world->get_bounds().size);
-	file->store_32(chunk_count);
-	file->store_64(gaussian_offset);
-	file->store_64(sh_offset);
-	file->store_64(chunk_table_offset);
-	file->store_64(indices_offset);
-	file->store_64(metadata_offset);
-	file->store_64(metadata_size);
-	err = _ensure_file_write_ok(file, "save(header)");
-	if (err != OK) {
-		return err;
-	}
-
-	if (gaussian_bytes > 0) {
-		const uint8_t *write_src = nullptr;
-		uint64_t write_total = 0;
-		if (use_compression && !compressed_gaussians.is_empty()) {
-			// Write compressed format: [8 bytes size][compressed data]
-			file->store_64(compressed_gaussians.size());
-			write_src = compressed_gaussians.ptr();
-			write_total = compressed_gaussians.size();
-		} else {
-			// Write uncompressed format: raw gaussian data
-			write_src = reinterpret_cast<const uint8_t *>(gaussian_data->get_gaussian_storage().ptr());
-			write_total = gaussian_bytes;
-		}
-		// Write in <=256 MB slices to avoid MSVC CRT fwrite issues with >2 GB writes.
-		constexpr uint64_t kSliceBytes = 256u * 1024u * 1024u;
-		uint64_t written = 0;
-		while (written < write_total) {
-			uint64_t slice = MIN(kSliceBytes, write_total - written);
-			file->store_buffer(write_src + written, slice);
-			err = _ensure_file_write_ok(file, "save(gaussian_data)");
-			if (err != OK) {
-				return err;
-			}
-			written += slice;
-		}
-	}
-
-	if (sh_bytes > 0) {
-		const Vector3 *sh_ptr = gaussian_data->get_sh_high_order_coefficients_ptr();
-		ERR_FAIL_COND_V_MSG(sh_ptr == nullptr, ERR_INVALID_DATA,
-				"GaussianSplatWorld missing high-order SH coefficients while sh_high_order_count > 0.");
-		file->store_buffer(reinterpret_cast<const uint8_t *>(sh_ptr), sh_bytes);
-		err = _ensure_file_write_ok(file, "save(sh_data)");
-		if (err != OK) {
-			return err;
-		}
-	}
-
-	if (chunk_count > 0) {
-		uint64_t indices_cursor = 0;
-		for (uint32_t i = 0; i < chunk_count; i++) {
-			const StaticChunk &chunk = chunks[i];
-			ChunkRecord record;
-			record.bounds_pos = chunk.bounds.position;
-			record.bounds_size = chunk.bounds.size;
-			record.center = chunk.center;
-			record.radius = chunk.radius;
-			record.indices_offset = indices_cursor;
-			record.index_count = chunk.indices.size();
-			_write_chunk_record(file, record);
-			indices_cursor += record.index_count;
-		}
-		err = _ensure_file_write_ok(file, "save(chunk_table)");
-		if (err != OK) {
-			return err;
-		}
-
-		for (uint32_t i = 0; i < chunk_count; i++) {
-			const StaticChunk &chunk = chunks[i];
-			if (chunk.indices.is_empty()) {
-				continue;
-			}
-			file->store_buffer(reinterpret_cast<const uint8_t *>(chunk.indices.ptr()),
-					uint64_t(chunk.indices.size()) * sizeof(uint32_t));
-			err = _ensure_file_write_ok(file, "save(chunk_indices)");
-			if (err != OK) {
-				return err;
-			}
-		}
-	}
-
-	if (metadata_size > 0) {
-		file->store_buffer(metadata_bytes.ptr(), metadata_size);
-		err = _ensure_file_write_ok(file, "save(metadata)");
-		if (err != OK) {
-			return err;
-		}
-	}
-
-	return _ensure_file_write_ok(file, "save(final)");
+	return _write_world_save_sections(file, world, gaussian_data, chunks, layout);
 }
 
 void ResourceFormatSaverGaussianSplatWorld::get_recognized_extensions(const Ref<Resource> &p_resource,
