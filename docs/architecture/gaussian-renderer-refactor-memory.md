@@ -8,6 +8,52 @@ This document is the implementation memory for the staged Gaussian Splatting ren
 
 This is not a rewrite plan. It is a migration plan that preserves shipping behavior and keeps `GaussianSplatRenderer` as the public facade.
 
+## W0 Ownership Refresh For Issue #356
+
+Date: 2026-05-20
+Branch context: `codex/ownership-w0-356` from `origin/master` at `d89bdd5d42`
+
+This W0 slice refreshed the ownership inventory before any route-controller
+extraction. The live tree has already completed several older inventory items:
+
+- Render-thread synchronization state is owned by `RenderThreadDispatcher`
+  behind `IRenderThreadDispatcher`; `GaussianSplatRenderer` delegates dispatch
+  and completion calls.
+- `GPUSortingPipeline` has the `ISortResultSink` and
+  `ISortBufferHostContext` seam, and `ensure_sort_buffers()` uses the host
+  context instead of accepting a renderer pointer.
+- `TileRenderer` owns `subgroup_support_cache` and
+  `adaptive_overlap_budget_runtime_state` as members; the old process-global
+  tile cache cleanup should not be reimplemented.
+
+Still coupled after this W0 slice:
+
+- `render_scene_instance()` remains the frame-entry route knot. It still owns
+  camera extraction, route policy diagnostics, resident/streaming selection,
+  typed skip publication, and early-return policy.
+- `FrameStateProvider` is still broad. It exposes many read/write buckets and
+  uses fallback static state when a renderer or dependency pointer is missing.
+- `RenderPipelineStages` is the useful stage boundary, but
+  `prepare_frame_context()`, `execute_frame_entry()`, and
+  `render_sorted_splats_with_context()` still reach broadly into renderer-owned
+  buckets and reset output/raster/GPU metrics.
+- Sorting still carries renderer lifetime through
+  `InstancePipelineInputs::owner_renderer`, and `RenderSortingOrchestrator`
+  binds the renderer as both sort result sink and host context.
+- Shared renderer settings arbitration in
+  `nodes/gaussian_splat_node_helpers.cpp` is an intentional external contract;
+  it should not move in the same PR as renderer route decomposition.
+
+Characterization strengthened in this slice:
+
+- Instance contract publish/clear semantics now assert that republishing
+  replaces the renderer-side remap/backend/shape before clearing resets the
+  contract.
+- Streaming-requested failure now asserts the stats/debug route UID contract and
+  backend diagnostics, in addition to blocking a silent resident bounce.
+- Cull-failure stage cascade now asserts route/stage status consistency so a
+  later route-controller extraction cannot leave stale success metrics behind.
+
 ## Reality Check Performed
 1. Regenerated architecture artifacts from current branch code using:
    - `python3 scripts/generate_architecture_diagrams.py`

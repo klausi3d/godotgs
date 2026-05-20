@@ -764,6 +764,32 @@ TEST_CASE("[GaussianSplatting] Clearing the published instance contract also cle
     CHECK(renderer->get_instance_contract_shape() == String("atlas_emulation"));
     CHECK(renderer->get_instance_asset_remap().generation == 11u);
 
+    GaussianRenderPipeline::InstancePipelineBuffers replacement_buffers;
+    replacement_buffers.instance_count = 5;
+    replacement_buffers.max_visible_splats = 12;
+
+    GaussianRenderPipeline::PublishedInstanceAssetRemap replacement_remap;
+    replacement_remap.asset_to_dense_id.insert(8u, 4u);
+    replacement_remap.generation = 22u;
+    replacement_remap.valid = true;
+
+    renderer->publish_instance_pipeline_contract(
+            replacement_buffers,
+            replacement_remap,
+            GaussianRenderPipeline::InstanceBackendPolicy::STREAMING,
+            replacement_remap.generation,
+            "streaming_atlas");
+
+    CHECK(renderer->has_instance_pipeline_buffers());
+    CHECK(renderer->has_instance_asset_remap());
+    CHECK(renderer->get_instance_backend_policy() == GaussianRenderPipeline::InstanceBackendPolicy::STREAMING);
+    CHECK(renderer->get_instance_contract_shape() == String("streaming_atlas"));
+    CHECK(renderer->get_instance_pipeline_buffers().instance_count == 5u);
+    CHECK(renderer->get_instance_pipeline_buffers().max_visible_splats == 12u);
+    CHECK_FALSE(renderer->get_instance_asset_remap().asset_to_dense_id.has(5u));
+    CHECK(renderer->get_instance_asset_remap().asset_to_dense_id.has(8u));
+    CHECK(renderer->get_instance_asset_remap().generation == 22u);
+
     renderer->clear_instance_pipeline_buffers();
 
     CHECK_FALSE(renderer->has_instance_pipeline_buffers());
@@ -1729,6 +1755,14 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Streaming-requested failure hard-fai
             "Streaming-requested failure must not bounce to INSTANCE.RESIDENT");
 
     const Dictionary stats = renderer->get_render_stats();
+    CHECK_MESSAGE(stats.get("route_uid", String()) == route_uid,
+            "Streaming-requested failure must publish the same route UID through render stats");
+    CHECK_MESSAGE(stats.get("requested_route_policy", String()) == String("streaming"),
+            "Streaming-requested failure must preserve requested route policy diagnostics");
+    CHECK_MESSAGE(stats.get("instance_backend_policy", String()) == String("streaming"),
+            "Streaming-requested failure must keep streaming backend diagnostics");
+    CHECK_MESSAGE(String(stats.get("backend_selection_reason", String())).find("streaming") != -1,
+            "Streaming-requested failure must publish a streaming backend reason");
     const String cull_route_uid = stats.get("cull_route_uid", String());
     CHECK_MESSAGE(cull_route_uid != String(RenderRouteUID::INSTANCE_RESIDENT),
             "Streaming-requested failure must not produce a resident cull route");
@@ -2930,6 +2964,12 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Stage results report cull/sort skipp
             "Expected cull route UID to report the GPU-culler-disabled bypass");
     CHECK_MESSAGE(stats.get("cull_route_reason", String()) == String("gpu_culler_unavailable"),
             "Expected cull route reason to report the missing GPU culler");
+    CHECK_MESSAGE(stats.get("route_uid", String()) == stats.get("cull_route_uid", String()),
+            "Cull-stage failure should publish the same top-level and cull route UID");
+    CHECK_MESSAGE(!bool(stats.get("route_uid_missing", true)),
+            "Expected route UID to be present for GPU-culler-unavailable cascade");
+    CHECK_MESSAGE(!bool(stats.get("cull_route_uid_missing", true)),
+            "Expected cull route UID to be present for GPU-culler-unavailable cascade");
     const String cull_status = stats.get("stage_cull_status", String());
     CHECK_MESSAGE(cull_status == String("skipped"),
             vformat("Expected cull stage skipped, got '%s'", cull_status));
