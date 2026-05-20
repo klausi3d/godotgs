@@ -388,6 +388,79 @@ static bool _projection_nearly_equal(const Projection &p_a, const Projection &p_
 
 } // namespace
 
+class GaussianSplatRenderer::ScopedShadowPassState {
+	GaussianSplatRenderer &renderer;
+	ViewState &view_state;
+	Size2i saved_manual_viewport;
+	RD::DataFormat saved_manual_format = RD::DATA_FORMAT_MAX;
+	Transform3D saved_camera_transform;
+	Projection saved_camera_projection;
+	bool saved_using_scene_data = false;
+	Ref<OutputCompositor> saved_output_compositor;
+	bool saved_shadow_instance_filter = false;
+
+public:
+	ScopedShadowPassState(GaussianSplatRenderer &p_renderer, const ShadowPassDescriptor &p_descriptor,
+			const Ref<OutputCompositor> &p_shadow_output_compositor) :
+			renderer(p_renderer),
+			view_state(p_renderer.get_view_state()),
+			saved_manual_viewport(p_renderer.get_view_state().manual_viewport_override),
+			saved_manual_format(p_renderer.get_view_state().manual_viewport_format_override),
+			saved_camera_transform(p_renderer.get_view_state().last_camera_to_world_transform),
+			saved_camera_projection(p_renderer.get_view_state().last_camera_projection),
+			saved_using_scene_data(p_renderer.get_view_state().using_scene_data),
+			saved_output_compositor(p_renderer.subsystem_state.output_compositor),
+			saved_shadow_instance_filter(p_renderer.shadow_instance_filter_enabled) {
+		view_state.manual_viewport_override = p_descriptor.atlas_rect.size;
+		view_state.manual_viewport_format_override = p_descriptor.viewport_format;
+		view_state.last_camera_to_world_transform = p_descriptor.light_transform;
+		view_state.last_camera_projection = p_descriptor.light_projection;
+		view_state.using_scene_data = false;
+		renderer.subsystem_state.output_compositor = p_shadow_output_compositor;
+		renderer.shadow_instance_filter_enabled = true;
+	}
+
+	~ScopedShadowPassState() {
+		view_state.manual_viewport_override = saved_manual_viewport;
+		view_state.manual_viewport_format_override = saved_manual_format;
+		view_state.last_camera_to_world_transform = saved_camera_transform;
+		view_state.last_camera_projection = saved_camera_projection;
+		view_state.using_scene_data = saved_using_scene_data;
+		renderer.subsystem_state.output_compositor = saved_output_compositor;
+		renderer.shadow_instance_filter_enabled = saved_shadow_instance_filter;
+	}
+};
+
+const char *GaussianSplatRenderer::_shadow_failure_reason_label(ShadowRenderFailureReason p_reason) {
+	switch (p_reason) {
+		case ShadowRenderFailureReason::NONE:
+			return "SHADOW_RENDERED";
+		case ShadowRenderFailureReason::INVALID_ATLAS_RECT:
+			return "SHADOW_FAIL_INVALID_ATLAS_RECT";
+		case ShadowRenderFailureReason::NO_RENDERING_DEVICE:
+			return "SHADOW_FAIL_NO_DEVICE";
+		case ShadowRenderFailureReason::SHADOW_COMPOSITOR_UNAVAILABLE:
+			return "SHADOW_FAIL_COMPOSITOR_UNAVAILABLE";
+		case ShadowRenderFailureReason::RASTERIZER_UNAVAILABLE:
+			return "SHADOW_FAIL_RASTERIZER_UNAVAILABLE";
+		case ShadowRenderFailureReason::DEPTH_TEXTURE_INVALID:
+			return "SHADOW_FAIL_DEPTH_INVALID";
+		case ShadowRenderFailureReason::DEPTH_OWNER_ALIAS_INVALID:
+			return "SHADOW_FAIL_DEPTH_OWNER_ALIAS_INVALID";
+		case ShadowRenderFailureReason::BLIT_FAILED:
+			return "SHADOW_FAIL_BLIT";
+	}
+	return "SHADOW_FAIL_UNKNOWN";
+}
+
+bool GaussianSplatRenderer::_finish_shadow_render_result(const ShadowRenderResult &p_result) {
+	last_shadow_render_result = p_result;
+	if (last_shadow_render_result.route_label.is_empty()) {
+		last_shadow_render_result.route_label = _shadow_failure_reason_label(last_shadow_render_result.failure_reason);
+	}
+	return last_shadow_render_result.success;
+}
+
 Error GaussianSplatRenderer::get_active_data_source(const SceneState &p_scene_state,
         const StreamingState &p_streaming_state,
         const SortingState &p_sorting_state,
@@ -1747,6 +1820,8 @@ bool GaussianSplatRenderer::_blit_shadow_depth(RID p_source_depth, RID p_shadow_
 
 bool GaussianSplatRenderer::render_shadow_depth_map(const Projection &p_light_projection, const Transform3D &p_light_transform,
         const Rect2i &p_atlas_rect, RID p_shadow_framebuffer, bool p_flip_y) {
+    ShadowRenderResult result;
+    result.atlas_rect = p_atlas_rect;
     static bool logged_once = false;
     if (!logged_once) {
         logged_once = true;
@@ -1757,49 +1832,30 @@ bool GaussianSplatRenderer::render_shadow_depth_map(const Projection &p_light_pr
                 z_near, z_far, p_flip_y ? "true" : "false", p_shadow_framebuffer.is_valid() ? "true" : "false"));
     }
     if (p_atlas_rect.size.x <= 0 || p_atlas_rect.size.y <= 0) {
-        return false;
+        result.failure_reason = ShadowRenderFailureReason::INVALID_ATLAS_RECT;
+        return _finish_shadow_render_result(result);
     }
     if (!ensure_rendering_device("render_shadow_depth_map")) {
-        return false;
+        result.failure_reason = ShadowRenderFailureReason::NO_RENDERING_DEVICE;
+        return _finish_shadow_render_result(result);
     }
     RenderingDevice *rd = get_device_state().rd;
     if (!rd) {
-        return false;
+        result.failure_reason = ShadowRenderFailureReason::NO_RENDERING_DEVICE;
+        return _finish_shadow_render_result(result);
     }
 
     if (!_ensure_shadow_output_compositor(rd)) {
-        return false;
+        result.failure_reason = ShadowRenderFailureReason::SHADOW_COMPOSITOR_UNAVAILABLE;
+        return _finish_shadow_render_result(result);
     }
 
-    struct ViewStateRestore {
-        ViewState &state;
-        Size2i manual_viewport;
-        RD::DataFormat manual_format;
-        Transform3D cam_transform;
-        Projection cam_projection;
-        bool using_scene_data;
-        ViewStateRestore(ViewState &p_state) :
-                state(p_state),
-                manual_viewport(p_state.manual_viewport_override),
-                manual_format(p_state.manual_viewport_format_override),
-                cam_transform(p_state.last_camera_to_world_transform),
-                cam_projection(p_state.last_camera_projection),
-                using_scene_data(p_state.using_scene_data) {}
-        ~ViewStateRestore() {
-            state.manual_viewport_override = manual_viewport;
-            state.manual_viewport_format_override = manual_format;
-            state.last_camera_to_world_transform = cam_transform;
-            state.last_camera_projection = cam_projection;
-            state.using_scene_data = using_scene_data;
-        }
-    } view_state_restore(get_view_state());
-
-    ViewState &view_state = get_view_state();
-    view_state.manual_viewport_override = p_atlas_rect.size;
-    view_state.manual_viewport_format_override = RD::DATA_FORMAT_R8G8B8A8_UNORM;
-    view_state.last_camera_to_world_transform = p_light_transform;
-    view_state.last_camera_projection = p_light_projection;
-    view_state.using_scene_data = false;
+    ShadowPassDescriptor shadow_pass;
+    shadow_pass.light_projection = p_light_projection;
+    shadow_pass.light_transform = p_light_transform;
+    shadow_pass.atlas_rect = p_atlas_rect;
+    shadow_pass.shadow_framebuffer = p_shadow_framebuffer;
+    shadow_pass.flip_y = p_flip_y;
 
     Projection projection = p_light_projection;
     Projection render_projection = p_light_projection;
@@ -1809,43 +1865,46 @@ bool GaussianSplatRenderer::render_shadow_depth_map(const Projection &p_light_pr
         render_projection.columns[1][1] = -render_projection.columns[1][1];
     }
 
-    Ref<OutputCompositor> saved_output_compositor = subsystem_state.output_compositor;
-    const bool saved_shadow_instance_filter = shadow_instance_filter_enabled;
-    subsystem_state.output_compositor = shadow_output_compositor;
-    shadow_instance_filter_enabled = true;
+    ScopedShadowPassState shadow_state_guard(*this, shadow_pass, shadow_output_compositor);
 
-    render_sorted_splats(nullptr, p_light_transform.affine_inverse(), projection, render_projection, false);
-
-    shadow_instance_filter_enabled = saved_shadow_instance_filter;
-    subsystem_state.output_compositor = saved_output_compositor;
+    render_sorted_splats(nullptr, p_light_transform.affine_inverse(), projection, render_projection, false,
+            RenderPassKind::SHADOW_MAP);
 
     if (!subsystem_state.rasterizer.is_valid()) {
         WARN_PRINT_ONCE("[GS Shadow] render_shadow_depth_map: rasterizer not valid after render_sorted_splats");
-        return false;
+        result.failure_reason = ShadowRenderFailureReason::RASTERIZER_UNAVAILABLE;
+        return _finish_shadow_render_result(result);
     }
     RID depth_texture = subsystem_state.rasterizer->get_depth_texture();
     RenderingDevice *depth_owner = subsystem_state.rasterizer->get_depth_texture_owner();
+    result.depth_texture = depth_texture;
+    result.depth_owner_valid = depth_owner != nullptr;
     if (!depth_texture.is_valid() || !depth_owner) {
         WARN_PRINT_ONCE(vformat("[GS Shadow] render_shadow_depth_map: depth invalid: tex=%s owner=%s",
                 depth_texture.is_valid() ? "valid" : "null", depth_owner ? "valid" : "null"));
-        return false;
+        result.failure_reason = ShadowRenderFailureReason::DEPTH_TEXTURE_INVALID;
+        return _finish_shadow_render_result(result);
     }
     RenderingDevice *main_device = RenderingDevice::get_singleton();
     if (main_device && depth_owner && depth_owner != main_device) {
         if (!main_device->texture_is_valid(depth_texture)) {
             GS_LOG_WARN_DEFAULT("[GS Shadow] Depth texture is not visible on the main RenderingDevice; skipping shadow blit.");
-            return false;
+            result.failure_reason = ShadowRenderFailureReason::DEPTH_OWNER_ALIAS_INVALID;
+            return _finish_shadow_render_result(result);
         }
         GS_LOG_WARN_DEFAULT("[GS Shadow] Depth texture owner mismatch; using main RenderingDevice alias for shadow blit");
     }
 
     bool blit_ok = _blit_shadow_depth(depth_texture, p_shadow_framebuffer, p_atlas_rect, p_flip_y);
+    result.blit_attempted = true;
     static bool blit_logged = false;
     if (!blit_logged) {
         blit_logged = true;
         WARN_PRINT(vformat("[GS Shadow] Shadow blit result: %s", blit_ok ? "SUCCESS" : "FAILED"));
     }
-    return blit_ok;
+    result.success = blit_ok;
+    result.failure_reason = blit_ok ? ShadowRenderFailureReason::NONE : ShadowRenderFailureReason::BLIT_FAILED;
+    return _finish_shadow_render_result(result);
 }
 
 void GaussianSplatRenderer::_on_painterly_material_changed() {
@@ -2370,7 +2429,7 @@ void GaussianSplatRenderer::render_gaussians(RenderDataRD *p_render_data, const 
 
 void GaussianSplatRenderer::render_sorted_splats(RenderDataRD *p_render_data,
 		const Transform3D &p_world_to_camera_transform, const Projection &p_projection, const Projection &p_render_projection,
-	bool p_defer_render_buffers_commit) {
+	bool p_defer_render_buffers_commit, RenderPassKind p_pass_kind) {
 	if (debug_state_orchestrator) {
 		DebugState &debug_state = get_debug_state();
 		debug_state.sort_route_uid = RenderRouteUID::COMMON_UNSET_SORT_ROUTE;
@@ -2379,6 +2438,7 @@ void GaussianSplatRenderer::render_sorted_splats(RenderDataRD *p_render_data,
 	RenderFrameContext frame_context;
 	_prepare_render_frame_context(p_render_data, p_world_to_camera_transform, p_projection, p_render_projection,
 			p_defer_render_buffers_commit, frame_context);
+	frame_context.pass_kind = p_pass_kind;
 	frame_context.metrics = &stage_metrics;
 	FrameStateProvider frame_provider(this, &frame_context.deps);
 	const IFrameStateView &state_view = frame_provider;
@@ -2860,6 +2920,74 @@ bool GaussianSplatRenderer::test_has_current_streaming_system() const {
 
 bool GaussianSplatRenderer::test_has_output_compositor() const {
     return get_subsystem_state().output_compositor.is_valid();
+}
+
+bool GaussianSplatRenderer::test_shadow_pass_guard_restores_after_scope() {
+    ViewState &view_state = get_view_state();
+    const Size2i original_manual_viewport = view_state.manual_viewport_override;
+    const RD::DataFormat original_manual_format = view_state.manual_viewport_format_override;
+    const Transform3D original_camera_transform = view_state.last_camera_to_world_transform;
+    const Projection original_camera_projection = view_state.last_camera_projection;
+    const bool original_using_scene_data = view_state.using_scene_data;
+    const Ref<OutputCompositor> original_output_compositor = subsystem_state.output_compositor;
+    const bool original_shadow_filter = shadow_instance_filter_enabled;
+
+    Ref<OutputCompositor> main_output_compositor;
+    main_output_compositor.instantiate();
+    Ref<OutputCompositor> shadow_compositor;
+    shadow_compositor.instantiate();
+    ERR_FAIL_COND_V(!main_output_compositor.is_valid() || !shadow_compositor.is_valid(), false);
+
+    const Size2i saved_manual_viewport(321, 123);
+    const RD::DataFormat saved_manual_format = RD::DATA_FORMAT_R16G16B16A16_SFLOAT;
+    const Transform3D saved_camera_transform(Basis(), Vector3(3.0, 4.0, 5.0));
+    Projection saved_camera_projection;
+    saved_camera_projection.set_perspective(60.0, 1.5, 0.25, 250.0);
+
+    ShadowPassDescriptor descriptor;
+    descriptor.light_transform = Transform3D(Basis(), Vector3(-4.0, 2.0, 9.0));
+    descriptor.light_projection.set_perspective(45.0, 1.0, 0.1, 100.0);
+    descriptor.atlas_rect = Rect2i(8, 16, 64, 32);
+
+    view_state.manual_viewport_override = saved_manual_viewport;
+    view_state.manual_viewport_format_override = saved_manual_format;
+    view_state.last_camera_to_world_transform = saved_camera_transform;
+    view_state.last_camera_projection = saved_camera_projection;
+    view_state.using_scene_data = true;
+    subsystem_state.output_compositor = main_output_compositor;
+    shadow_instance_filter_enabled = false;
+
+    bool guard_applied_expected_state = false;
+    {
+        ScopedShadowPassState guard(*this, descriptor, shadow_compositor);
+        guard_applied_expected_state =
+                view_state.manual_viewport_override == descriptor.atlas_rect.size &&
+                view_state.manual_viewport_format_override == descriptor.viewport_format &&
+                view_state.last_camera_to_world_transform == descriptor.light_transform &&
+                _projection_nearly_equal(view_state.last_camera_projection, descriptor.light_projection) &&
+                !view_state.using_scene_data &&
+                subsystem_state.output_compositor == shadow_compositor &&
+                shadow_instance_filter_enabled;
+    }
+
+    const bool restored_expected_state =
+            view_state.manual_viewport_override == saved_manual_viewport &&
+            view_state.manual_viewport_format_override == saved_manual_format &&
+            view_state.last_camera_to_world_transform == saved_camera_transform &&
+            _projection_nearly_equal(view_state.last_camera_projection, saved_camera_projection) &&
+            view_state.using_scene_data &&
+            subsystem_state.output_compositor == main_output_compositor &&
+            !shadow_instance_filter_enabled;
+
+    view_state.manual_viewport_override = original_manual_viewport;
+    view_state.manual_viewport_format_override = original_manual_format;
+    view_state.last_camera_to_world_transform = original_camera_transform;
+    view_state.last_camera_projection = original_camera_projection;
+    view_state.using_scene_data = original_using_scene_data;
+    subsystem_state.output_compositor = original_output_compositor;
+    shadow_instance_filter_enabled = original_shadow_filter;
+
+    return guard_applied_expected_state && restored_expected_state;
 }
 
 RID GaussianSplatRenderer::test_get_cached_render_depth() const {
