@@ -1170,6 +1170,67 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#runtime-diagnostics-and-caching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime Diagnostics and Caching
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Runtime Diagnostics and Caching">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#startup-trace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Startup trace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#spir-v-disk-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SPIR-V disk cache
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#streaming-persistent-buffer-sizing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Streaming persistent buffer sizing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#first-frame-raster-pipeline-pre-create" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        First-frame raster pipeline pre-create
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1809,6 +1870,67 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#runtime-diagnostics-and-caching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime Diagnostics and Caching
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Runtime Diagnostics and Caching">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#startup-trace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Startup trace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#spir-v-disk-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SPIR-V disk cache
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#streaming-persistent-buffer-sizing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Streaming persistent buffer sizing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#first-frame-raster-pipeline-pre-create" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        First-frame raster pipeline pre-create
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1954,7 +2076,92 @@ The current public dataset contains one committed result row, and the coverage t
 <li>Update the current snapshot table above when the published lane set changes.</li>
 <li>Build docs: <code>python scripts/build_docs_site.py --strict</code></li>
 </ol>
-<p>See <a href="../testing/benchmark-suite/">Benchmark Suite Runner</a> for full benchmark documentation.</p>
+<p>See <a href="../testing/benchmark-suite/">Benchmark Suite Runner</a> for full benchmark documentation.
+For benchmark invocation flags and CI lanes, see <a href="../reference/build-test-ci/">Build / Test / CI Reference</a>.</p>
+<h2 id="runtime-diagnostics-and-caching">Runtime Diagnostics and Caching<a class="headerlink" href="#runtime-diagnostics-and-caching" title="Permanent link">¶</a></h2>
+<p>The module ships a handful of runtime knobs that are intended for users tuning
+startup cost and warm-cache behaviour. All of them are surfaced as
+ProjectSettings under <code>rendering/gaussian_splatting/...</code> and ship with sensible
+defaults; nothing here needs to be enabled to render correctly.</p>
+<h3 id="startup-trace">Startup trace<a class="headerlink" href="#startup-trace" title="Permanent link">¶</a></h3>
+<p><code>rendering/gaussian_splatting/diagnostics/startup_trace</code> (bool, default <code>true</code>).</p>
+<p>When enabled, each <code>GaussianSplatNode3D</code> asset open emits one <code>[StartupTrace]</code>
+log line on the first rendered frame. The line itemises the cost of init in
+roughly fifteen named phases (module register, device request, shader compile,
+streaming buffer alloc, atlas build, first-frame raster pipeline create, payload
+parse, etc.) plus a <code>total=</code> end-to-end duration.</p>
+<p>When disabled, the macro is a static-atomic short-circuit with no measurable
+overhead, so leaving it on is the default for development builds and benchmarks.</p>
+<p>Full output format, phase reference, and consumer-script guidance:
+<a href="startup-trace/">Startup Trace</a>.</p>
+<h3 id="spir-v-disk-cache">SPIR-V disk cache<a class="headerlink" href="#spir-v-disk-cache" title="Permanent link">¶</a></h3>
+<p>The module persists compiled shader binaries to disk so subsequent module
+loads can skip the GLSL-to-SPIR-V compile step on a cache hit. The cache is
+keyed on shader source, sorted preprocessor defines, and a device fingerprint
+(vendor, device name, API/version, pipeline-cache UUID), so driver upgrades
+and GPU swaps invalidate automatically without manual housekeeping.</p>
+<p>Settings:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rendering/gaussian_splatting/cache/spirv_cache_enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Master switch.</td>
+</tr>
+<tr>
+<td><code>rendering/gaussian_splatting/cache/spirv_cache_max_mb</code></td>
+<td>int</td>
+<td><code>64</code></td>
+<td>LRU cap across all device subdirs (range 4-1024).</td>
+</tr>
+</tbody>
+</table>
+<p>Storage: <code>user://gsplat_spirv_cache/&lt;device-hash&gt;/&lt;key&gt;.spv</code> (one subdir per
+GPU). On module init the cache is pruned to fit <code>spirv_cache_max_mb</code> using an
+LRU policy keyed on file mtime; cache hits also touch the file so frequently
+loaded shaders are not evicted ahead of cold entries. Stores go through a
+<code>.tmp</code> write + rename with <code>.bak</code> rollback, so a crash mid-write cannot lose
+a previously cached blob.</p>
+<p>When to disable: only if you suspect a stale or corrupt blob is being served
+(e.g. after an out-of-tree shader patch that did not bump the cache version).
+Toggle the setting to <code>false</code>, restart, and the next compile will run from
+source. The cache is safe to delete by hand at any time.</p>
+<h3 id="streaming-persistent-buffer-sizing">Streaming persistent buffer sizing<a class="headerlink" href="#streaming-persistent-buffer-sizing" title="Permanent link">¶</a></h3>
+<p>The streaming path allocates a single persistent GPU storage buffer sized
+once at asset init. It is now sized from the actual asset's chunk count plus
+a 25 percent headroom (with a floor of <code>STREAMING_DEFAULT_MIN_CHUNKS_IN_VRAM</code>
+and a ceiling at the regulated <code>effective_max_chunks</code>), rather than always
+allocating the full regulated maximum. Eviction pressure can grow the buffer
+on demand via <code>_grow_persistent_buffer()</code>, which copies the live region to a
+larger allocation in-place.</p>
+<p>Surfaced metrics (read via <code>RenderDiagnosticsOrchestrator</code>):</p>
+<ul>
+<li><code>streaming_initial_capacity</code> - chunks reserved on init</li>
+<li><code>streaming_current_capacity</code> - chunks the persistent buffer currently fits</li>
+<li><code>streaming_grow_count</code> - times the buffer has grown since init</li>
+</ul>
+<p>See <a href="https://github.com/klausi3D/godotGS/blob/ac546a26837d59b9a7c789fe7577cfcc1848413e/modules/gaussian_splatting/MEMORY_SUBSYSTEM.md">Memory Subsystem Guide</a>
+for the budget regulator and eviction policy that drive growth.</p>
+<h3 id="first-frame-raster-pipeline-pre-create">First-frame raster pipeline pre-create<a class="headerlink" href="#first-frame-raster-pipeline-pre-create" title="Permanent link">¶</a></h3>
+<p><code>rendering/gaussian_splatting/init/eager_raster_pipeline</code> (bool, default <code>true</code>).</p>
+<p>The graphics raster pipeline is now built at <code>TileRenderer</code> init rather than
+lazily on the first dispatch, removing a ~tens-of-ms first-frame stall. The
+savings show up in the startup trace as a missing or near-zero
+<code>first_frame_raster_pipeline_create</code> phase.</p>
+<p>If the eager pre-create binds the wrong framebuffer format (rare; only when
+the caller-provided format hint disagrees with the real framebuffer built on
+first frame), the lazy reformat path inside <code>dispatch_tile_rasterizer()</code> frees
+the eager pipeline and rebuilds it, so correctness is preserved. Disable the
+setting only if you are debugging that fallback path.</p>
 
 
 
@@ -1975,7 +2182,7 @@ The current public dataset contains one committed result row, and the coverage t
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 20, 2026 17:50:55 UTC">May 20, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 20, 2026 17:53:26 UTC">May 20, 2026</span>
   </span>
 
     
