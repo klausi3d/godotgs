@@ -109,8 +109,18 @@ Guard-only validation (fast, no editor required):
 ```bash
 python3 modules/gaussian_splatting/tests/check_build_metadata_consistency.py
 python3 modules/gaussian_splatting/tests/check_shader_dependency_contract.py
+python3 modules/gaussian_splatting/tests/check_project_settings_manifest.py
+python3 modules/gaussian_splatting/tests/check_project_settings_manifest.py --self-test
 python3 tests/ci/run_module_tests.py --guard-only
 ```
+
+The ProjectSettings manifest guard checks
+`modules/gaussian_splatting/config/project_settings_manifest.json` against
+production Gaussian C++ settings references and keeps
+`modules/gaussian_splatting/config/project_settings_public_api_baseline.json`
+as the removal/deprecation baseline. Add manifest ownership metadata and a
+baseline entry whenever adding a new public `rendering/gaussian_splatting/*`
+key; add a retired-settings record instead of deleting a baseline entry.
 
 Windows convenience wrapper (run from a Windows command prompt with SCons and the Visual Studio build tools available in `PATH`):
 ```bash

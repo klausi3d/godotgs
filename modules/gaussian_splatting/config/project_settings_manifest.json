@@ -1,0 +1,1332 @@
+{
+  "description": "Inventory contract for Gaussian ProjectSettings keys. Family defaults plus each exact key resolve owner, scope, reload semantics, effective-state field, visibility/publicness, and test coverage status.",
+  "families": [
+    {
+      "owner": "Gaussian module",
+      "prefix": "rendering/gaussian_splatting/",
+      "publicness": "public",
+      "reload_semantics": "unknown",
+      "scope": "runtime",
+      "test_coverage": "inventory_only",
+      "visibility": "runtime_only"
+    },
+    {
+      "owner": "GPUSortingPipeline wind fallback",
+      "prefix": "rendering/gaussian_splatting/animation/",
+      "publicness": "public",
+      "reload_semantics": "per_frame",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "SPIRVDiskCache",
+      "prefix": "rendering/gaussian_splatting/cache/",
+      "publicness": "public",
+      "reload_semantics": "startup",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "OutputCompositor",
+      "prefix": "rendering/gaussian_splatting/composite/",
+      "publicness": "public",
+      "reload_semantics": "per_frame",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "QuantizationConfig",
+      "prefix": "rendering/gaussian_splatting/compression/",
+      "publicness": "public",
+      "reload_semantics": "settings_changed",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "GPUCuller/overflow autotune",
+      "prefix": "rendering/gaussian_splatting/cull/",
+      "publicness": "public",
+      "reload_semantics": "settings_changed",
+      "scope": "runtime",
+      "visibility": "runtime_only"
+    },
+    {
+      "owner": "GPUCuller/Tile renderer culling",
+      "prefix": "rendering/gaussian_splatting/culling/",
+      "publicness": "public",
+      "reload_semantics": "settings_changed",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "Float16Config",
+      "prefix": "rendering/gaussian_splatting/data/",
+      "publicness": "internal",
+      "reload_semantics": "startup",
+      "scope": "internal",
+      "test_coverage": "documented_gap",
+      "visibility": "runtime_only"
+    },
+    {
+      "owner": "Debug/diagnostic helpers",
+      "prefix": "rendering/gaussian_splatting/debug/",
+      "publicness": "debug_only",
+      "reload_semantics": "per_frame",
+      "scope": "debug",
+      "test_coverage": "inventory_only",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "RenderDiagnosticsOrchestrator/StartupTrace",
+      "prefix": "rendering/gaussian_splatting/diagnostics/",
+      "publicness": "public",
+      "reload_semantics": "per_frame",
+      "scope": "diagnostic",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "Gaussian editor plugin",
+      "prefix": "rendering/gaussian_splatting/editor/",
+      "publicness": "public",
+      "reload_semantics": "on_demand",
+      "scope": "editor",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "SphereEffector ProjectSettings fallback",
+      "prefix": "rendering/gaussian_splatting/effects/",
+      "publicness": "public",
+      "reload_semantics": "per_frame",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "GPUSortingConfig",
+      "prefix": "rendering/gaussian_splatting/gpu_sorting/",
+      "publicness": "public",
+      "reload_semantics": "settings_changed",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "Gaussian import/cache IO",
+      "prefix": "rendering/gaussian_splatting/import/",
+      "publicness": "public",
+      "reload_semantics": "on_demand",
+      "scope": "import",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "GaussianSplatRenderer lighting fallback",
+      "prefix": "rendering/gaussian_splatting/lighting/",
+      "publicness": "internal",
+      "reload_semantics": "per_frame",
+      "scope": "runtime",
+      "test_coverage": "documented_gap",
+      "visibility": "runtime_only"
+    },
+    {
+      "owner": "LODConfig/GPUCuller",
+      "prefix": "rendering/gaussian_splatting/lod/",
+      "publicness": "public",
+      "reload_semantics": "settings_changed",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "gs_logger",
+      "prefix": "rendering/gaussian_splatting/logging/",
+      "publicness": "public",
+      "reload_semantics": "startup",
+      "scope": "diagnostic",
+      "visibility": "runtime_only"
+    },
+    {
+      "owner": "PipelineFeatureSet",
+      "prefix": "rendering/gaussian_splatting/pipeline/",
+      "publicness": "public",
+      "reload_semantics": "settings_changed",
+      "scope": "runtime",
+      "visibility": "hidden_no_editor"
+    },
+    {
+      "owner": "QualityTierConfig policy layer",
+      "prefix": "rendering/gaussian_splatting/quality/",
+      "publicness": "public",
+      "reload_semantics": "settings_changed",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "PainterlyRenderer/TileRenderStages",
+      "prefix": "rendering/gaussian_splatting/rasterization/",
+      "publicness": "public",
+      "reload_semantics": "per_frame",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "SHConfig",
+      "prefix": "rendering/gaussian_splatting/rendering/",
+      "publicness": "public",
+      "reload_semantics": "settings_changed",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "SortingStrategyConfig",
+      "prefix": "rendering/gaussian_splatting/sorting/",
+      "publicness": "public",
+      "reload_semantics": "settings_changed",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "Streaming pipeline/visibility/VRAM regulators",
+      "prefix": "rendering/gaussian_splatting/streaming/",
+      "publicness": "public",
+      "reload_semantics": "settings_changed",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    },
+    {
+      "owner": "GaussianSplatWorld3D",
+      "prefix": "rendering/gaussian_splatting/world/",
+      "publicness": "public",
+      "reload_semantics": "per_frame",
+      "scope": "runtime",
+      "visibility": "editor_visible"
+    }
+  ],
+  "root_prefix": "rendering/gaussian_splatting/",
+  "schema_version": 1,
+  "settings": [
+    {
+      "effective_state": "GPUSortingPipeline wind parameters.wind_direction_x",
+      "key": "rendering/gaussian_splatting/animation/wind_direction_x",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GPUSortingPipeline wind parameters.wind_direction_y",
+      "key": "rendering/gaussian_splatting/animation/wind_direction_y",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GPUSortingPipeline wind parameters.wind_direction_z",
+      "key": "rendering/gaussian_splatting/animation/wind_direction_z",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GPUSortingPipeline wind parameters.wind_enabled",
+      "key": "rendering/gaussian_splatting/animation/wind_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GPUSortingPipeline wind parameters.wind_frequency",
+      "key": "rendering/gaussian_splatting/animation/wind_frequency",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GPUSortingPipeline wind parameters.wind_spatial_frequency",
+      "key": "rendering/gaussian_splatting/animation/wind_spatial_frequency",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GPUSortingPipeline wind parameters.wind_strength",
+      "key": "rendering/gaussian_splatting/animation/wind_strength",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GPUSortingPipeline wind parameters.wind_time_scale",
+      "key": "rendering/gaussian_splatting/animation/wind_time_scale",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "SPIRVDiskCache.spirv_cache_enabled",
+      "key": "rendering/gaussian_splatting/cache/spirv_cache_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "SPIRVDiskCache.spirv_cache_max_mb",
+      "key": "rendering/gaussian_splatting/cache/spirv_cache_max_mb",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "OutputCompositor.depth_test",
+      "key": "rendering/gaussian_splatting/composite/depth_test",
+      "test_coverage": "partial"
+    },
+    {
+      "effective_state": "OutputCompositor.scene_depth_policy",
+      "key": "rendering/gaussian_splatting/composite/scene_depth_policy",
+      "test_coverage": "partial"
+    },
+    {
+      "effective_state": "g_quantization_config.adaptive_chunk_size",
+      "key": "rendering/gaussian_splatting/compression/adaptive_chunk_size",
+      "notes": "Cleanup candidate from #357: loaded by QuantizationConfig for validation/estimates; producer-path behavior needs proof before removal or support.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "g_quantization_config.max_chunk_size",
+      "key": "rendering/gaussian_splatting/compression/max_chunk_size",
+      "notes": "Cleanup candidate from #357: loaded by QuantizationConfig for validation/estimates; producer-path behavior needs proof before removal or support.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "g_quantization_config.min_chunk_size",
+      "key": "rendering/gaussian_splatting/compression/min_chunk_size",
+      "notes": "Cleanup candidate from #357: loaded by QuantizationConfig for validation/estimates; producer-path behavior needs proof before removal or support.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "g_quantization_config.per_chunk_quantization",
+      "key": "rendering/gaussian_splatting/compression/per_chunk_quantization",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_quantization_config.position_bits",
+      "key": "rendering/gaussian_splatting/compression/position_bits",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_quantization_config.quantize_scales",
+      "key": "rendering/gaussian_splatting/compression/quantize_scales",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_quantization_config.scale_bits",
+      "key": "rendering/gaussian_splatting/compression/scale_bits",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GPUCuller/Tile renderer culling state.frustum_plane_slack",
+      "key": "rendering/gaussian_splatting/cull/frustum_plane_slack",
+      "notes": "Known #357 gap: GPUCuller reads this key without a registered public default; PR B should assign ownership and tests.",
+      "publicness": "internal",
+      "test_coverage": "documented_gap"
+    },
+    {
+      "effective_state": "GPUCuller/Tile renderer culling state.overflow_autotune_enabled",
+      "key": "rendering/gaussian_splatting/cull/overflow_autotune_enabled",
+      "notes": "Cleanup candidate from #357: registered experimental switch is disabled by default and needs separate runtime evidence before public support.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "GPUCuller/Tile renderer culling state.alpha_clip",
+      "key": "rendering/gaussian_splatting/culling/alpha_clip",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GPUCuller/Tile renderer culling state.min_gaussians_per_leaf",
+      "key": "rendering/gaussian_splatting/culling/min_gaussians_per_leaf",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GPUCuller/Tile renderer culling state.octree_max_depth",
+      "key": "rendering/gaussian_splatting/culling/octree_max_depth",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GPUCuller/Tile renderer culling state.opacity_aware_bounds",
+      "key": "rendering/gaussian_splatting/culling/opacity_aware_bounds",
+      "notes": "Cleanup candidate from #357: registered public key, but current live opacity-aware behavior is renderer/node-owned; keep for now until migration/deprecation is tested.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "GPUCuller/Tile renderer culling state.visibility_threshold",
+      "key": "rendering/gaussian_splatting/culling/visibility_threshold",
+      "notes": "Cleanup candidate from #357: registered public key appears misowned against renderer/culler state; keep for now until migration/deprecation is tested.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "g_float16_config.enable_position_quantization",
+      "key": "rendering/gaussian_splatting/data/enable_position_quantization",
+      "publicness": "internal",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_float16_config.float16_positions",
+      "key": "rendering/gaussian_splatting/data/float16_positions",
+      "publicness": "internal",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_float16_config.float16_rotations",
+      "key": "rendering/gaussian_splatting/data/float16_rotations",
+      "publicness": "internal",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_float16_config.float16_sh_coefficients",
+      "key": "rendering/gaussian_splatting/data/float16_sh_coefficients",
+      "publicness": "internal",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_float16_config.quantization_chunk_size",
+      "key": "rendering/gaussian_splatting/data/quantization_chunk_size",
+      "publicness": "internal",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_float16_config.use_float16_storage",
+      "key": "rendering/gaussian_splatting/data/use_float16_storage",
+      "publicness": "internal",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/cull_guardrail_drop_ratio",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/cull_guardrail_min_visible",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/cull_guardrail_position_epsilon",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/cull_guardrail_rotation_epsilon",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_all_debug",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_autotune_logs",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_binning_counters",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_cull_counters",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_cull_guardrails",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_data_logging",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_frame_logging",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_frame_logging_verbose",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_gpu_counter_logs",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_mainloop_probes",
+      "notes": "Cleanup candidate from #357: registered public debug switch has no confirmed production reader in the current audit.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_pipeline_trace",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_sort_path_logs",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_splat_audit",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_state_guardrails",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_tile_dispatch_logs",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_tile_logs",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/enable_tile_pipeline_logs",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/force_unclustered_lights",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/frame_log_frequency",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/layout_hint_validation_strict",
+      "notes": "Legacy debug fallback for layout validation; keep documented until streaming/layout_hint_validation_strict migration is settled.",
+      "publicness": "debug_only",
+      "test_coverage": "documented_gap"
+    },
+    {
+      "effective_state": "GaussianSplatSettingsManager::DebugOverlaySettings.show_density_heatmap",
+      "key": "rendering/gaussian_splatting/debug/show_density_heatmap",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GaussianSplatSettingsManager::DebugOverlaySettings.show_performance_hud",
+      "key": "rendering/gaussian_splatting/debug/show_performance_hud",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GaussianSplatSettingsManager::DebugOverlaySettings.show_residency_hud",
+      "key": "rendering/gaussian_splatting/debug/show_residency_hud",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GaussianSplatSettingsManager::DebugOverlaySettings.show_tile_grid",
+      "key": "rendering/gaussian_splatting/debug/show_tile_grid",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/debug/splat_audit_sample_count",
+      "publicness": "debug_only",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "RenderDiagnosticsOrchestrator.perf_gate_budget_ms",
+      "key": "rendering/gaussian_splatting/diagnostics/perf_gate_budget_ms",
+      "test_coverage": "partial"
+    },
+    {
+      "effective_state": "RenderDiagnosticsOrchestrator.perf_gate_enabled",
+      "key": "rendering/gaussian_splatting/diagnostics/perf_gate_enabled",
+      "test_coverage": "partial"
+    },
+    {
+      "effective_state": "RenderDiagnosticsOrchestrator.perf_gate_splat_threshold",
+      "key": "rendering/gaussian_splatting/diagnostics/perf_gate_splat_threshold",
+      "test_coverage": "partial"
+    },
+    {
+      "effective_state": "RenderDiagnosticsOrchestrator.startup_trace",
+      "key": "rendering/gaussian_splatting/diagnostics/startup_trace",
+      "test_coverage": "partial"
+    },
+    {
+      "effective_state": "RenderDiagnosticsOrchestrator.summary_history_size",
+      "key": "rendering/gaussian_splatting/diagnostics/summary_history_size",
+      "test_coverage": "partial"
+    },
+    {
+      "effective_state": "RenderDiagnosticsOrchestrator.summary_interval_frames",
+      "key": "rendering/gaussian_splatting/diagnostics/summary_interval_frames",
+      "test_coverage": "partial"
+    },
+    {
+      "effective_state": "RenderDiagnosticsOrchestrator.validate_production_metrics",
+      "key": "rendering/gaussian_splatting/diagnostics/validate_production_metrics",
+      "test_coverage": "partial"
+    },
+    {
+      "effective_state": "Gaussian editor plugin.hot_reload_enabled",
+      "key": "rendering/gaussian_splatting/editor/hot_reload_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "Gaussian editor plugin.hot_reload_poll_interval_sec",
+      "key": "rendering/gaussian_splatting/editor/hot_reload_poll_interval_sec",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GSSphereEffectorSettings.max_effectors",
+      "key": "rendering/gaussian_splatting/effects/max_effectors",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "GSSphereEffectorSettings.sphere_effector_affect_opacity",
+      "key": "rendering/gaussian_splatting/effects/sphere_effector_affect_opacity",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "GSSphereEffectorSettings.sphere_effector_affect_position",
+      "key": "rendering/gaussian_splatting/effects/sphere_effector_affect_position",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "GSSphereEffectorSettings.sphere_effector_center_x",
+      "key": "rendering/gaussian_splatting/effects/sphere_effector_center_x",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "GSSphereEffectorSettings.sphere_effector_center_y",
+      "key": "rendering/gaussian_splatting/effects/sphere_effector_center_y",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "GSSphereEffectorSettings.sphere_effector_center_z",
+      "key": "rendering/gaussian_splatting/effects/sphere_effector_center_z",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "GSSphereEffectorSettings.sphere_effector_enabled",
+      "key": "rendering/gaussian_splatting/effects/sphere_effector_enabled",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "GSSphereEffectorSettings.sphere_effector_falloff",
+      "key": "rendering/gaussian_splatting/effects/sphere_effector_falloff",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "GSSphereEffectorSettings.sphere_effector_frequency",
+      "key": "rendering/gaussian_splatting/effects/sphere_effector_frequency",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "GSSphereEffectorSettings.sphere_effector_opacity_strength",
+      "key": "rendering/gaussian_splatting/effects/sphere_effector_opacity_strength",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "GSSphereEffectorSettings.sphere_effector_radius",
+      "key": "rendering/gaussian_splatting/effects/sphere_effector_radius",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "GSSphereEffectorSettings.sphere_effector_strength",
+      "key": "rendering/gaussian_splatting/effects/sphere_effector_strength",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "GSSphereEffectorSettings.sphere_effector_target_opacity",
+      "key": "rendering/gaussian_splatting/effects/sphere_effector_target_opacity",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.debug_validate_prefix",
+      "key": "rendering/gaussian_splatting/gpu_sorting/debug_validate_prefix",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.depth_bits",
+      "key": "rendering/gaussian_splatting/gpu_sorting/depth_bits",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.enable_bandwidth_monitoring",
+      "key": "rendering/gaussian_splatting/gpu_sorting/enable_bandwidth_monitoring",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.enable_compute_raster",
+      "key": "rendering/gaussian_splatting/gpu_sorting/enable_compute_raster",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.enable_performance_logging",
+      "key": "rendering/gaussian_splatting/gpu_sorting/enable_performance_logging",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.enable_prefix_readback",
+      "key": "rendering/gaussian_splatting/gpu_sorting/enable_prefix_readback",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.enable_stage_timestamps",
+      "key": "rendering/gaussian_splatting/gpu_sorting/enable_stage_timestamps",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.enable_tie_breaker",
+      "key": "rendering/gaussian_splatting/gpu_sorting/enable_tie_breaker",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.gpu_preset",
+      "key": "rendering/gaussian_splatting/gpu_sorting/gpu_preset",
+      "notes": "GPU preset policy override: non-custom presets own sort layout keys; manual layout keys are honored only in custom mode.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.key_bits",
+      "key": "rendering/gaussian_splatting/gpu_sorting/key_bits",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.max_overlap_records",
+      "key": "rendering/gaussian_splatting/gpu_sorting/max_overlap_records",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.max_raster_splats_per_tile",
+      "key": "rendering/gaussian_splatting/gpu_sorting/max_raster_splats_per_tile",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.max_sort_elements",
+      "key": "rendering/gaussian_splatting/gpu_sorting/max_sort_elements",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.performance_log_interval",
+      "key": "rendering/gaussian_splatting/gpu_sorting/performance_log_interval",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.profiling_preserve_gpu_timestamps",
+      "key": "rendering/gaussian_splatting/gpu_sorting/profiling_preserve_gpu_timestamps",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.radix_bits",
+      "key": "rendering/gaussian_splatting/gpu_sorting/radix_bits",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.subgroup_prefix_mode",
+      "key": "rendering/gaussian_splatting/gpu_sorting/subgroup_prefix_mode",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.target_sort_time_ms",
+      "key": "rendering/gaussian_splatting/gpu_sorting/target_sort_time_ms",
+      "publicness": "deprecated_alias",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.tile_bits",
+      "key": "rendering/gaussian_splatting/gpu_sorting/tile_bits",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.workgroup_size",
+      "key": "rendering/gaussian_splatting/gpu_sorting/workgroup_size",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GaussianSplatManager global stats/config.gpu_sorting_enabled",
+      "key": "rendering/gaussian_splatting/gpu_sorting_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "Gaussian importer/cache path.gsplatworld_compression_enabled",
+      "key": "rendering/gaussian_splatting/import/gsplatworld_compression_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "Gaussian importer/cache path.use_gsplatworld_cache",
+      "key": "rendering/gaussian_splatting/import/use_gsplatworld_cache",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/init/eager_raster_pipeline",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "TileRenderFrameParams/GaussianSplatRenderer lighting fallback.direct_light_scale",
+      "key": "rendering/gaussian_splatting/lighting/direct_light_scale",
+      "publicness": "internal",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "TileRenderFrameParams/GaussianSplatRenderer lighting fallback.indirect_sh_scale",
+      "key": "rendering/gaussian_splatting/lighting/indirect_sh_scale",
+      "publicness": "internal",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "TileRenderFrameParams/GaussianSplatRenderer lighting fallback.shadow_receiver_bias_max",
+      "key": "rendering/gaussian_splatting/lighting/shadow_receiver_bias_max",
+      "publicness": "internal",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "TileRenderFrameParams/GaussianSplatRenderer lighting fallback.shadow_receiver_bias_min",
+      "key": "rendering/gaussian_splatting/lighting/shadow_receiver_bias_min",
+      "publicness": "internal",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "TileRenderFrameParams/GaussianSplatRenderer lighting fallback.shadow_receiver_bias_scale",
+      "key": "rendering/gaussian_splatting/lighting/shadow_receiver_bias_scale",
+      "publicness": "internal",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "TileRenderFrameParams/GaussianSplatRenderer lighting fallback.shadow_strength",
+      "key": "rendering/gaussian_splatting/lighting/shadow_strength",
+      "publicness": "internal",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.base_threshold",
+      "key": "rendering/gaussian_splatting/lod/base_threshold",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.bias",
+      "key": "rendering/gaussian_splatting/lod/bias",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.blend_distance",
+      "key": "rendering/gaussian_splatting/lod/blend_distance",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.blend_enabled",
+      "key": "rendering/gaussian_splatting/lod/blend_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.debug_visualization",
+      "key": "rendering/gaussian_splatting/lod/debug_visualization",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.enabled",
+      "key": "rendering/gaussian_splatting/lod/enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.hysteresis_zone",
+      "key": "rendering/gaussian_splatting/lod/hysteresis_zone",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.importance_threshold",
+      "key": "rendering/gaussian_splatting/lod/importance_threshold",
+      "notes": "Known #357 gap: GPUCuller reads this key but LOD registration omits it; PR B should assign ownership and tests.",
+      "publicness": "internal",
+      "test_coverage": "documented_gap"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.max_distance",
+      "key": "rendering/gaussian_splatting/lod/max_distance",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.min_screen_size_pixels",
+      "key": "rendering/gaussian_splatting/lod/min_screen_size_pixels",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.num_levels",
+      "key": "rendering/gaussian_splatting/lod/num_levels",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.opacity_fade_enabled",
+      "key": "rendering/gaussian_splatting/lod/opacity_fade_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.sh_reduction_enabled",
+      "key": "rendering/gaussian_splatting/lod/sh_reduction_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "LODConfig/GPUCuller.splat_skip_enabled",
+      "key": "rendering/gaussian_splatting/lod/splat_skip_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "gs_logger cached startup state.command_buffer",
+      "key": "rendering/gaussian_splatting/logging/command_buffer",
+      "notes": "Logging settings are cached through gs_logger startup initialization; category overrides are startup-only until a refresh path exists.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "gs_logger cached startup state.compositor",
+      "key": "rendering/gaussian_splatting/logging/compositor",
+      "notes": "Logging settings are cached through gs_logger startup initialization; category overrides are startup-only until a refresh path exists.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "gs_logger cached startup state.general",
+      "key": "rendering/gaussian_splatting/logging/general",
+      "notes": "Logging settings are cached through gs_logger startup initialization; category overrides are startup-only until a refresh path exists.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "gs_logger cached startup state.gpu_memory",
+      "key": "rendering/gaussian_splatting/logging/gpu_memory",
+      "notes": "Logging settings are cached through gs_logger startup initialization; category overrides are startup-only until a refresh path exists.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "gs_logger cached startup state.gpu_sort",
+      "key": "rendering/gaussian_splatting/logging/gpu_sort",
+      "notes": "Logging settings are cached through gs_logger startup initialization; category overrides are startup-only until a refresh path exists.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "gs_logger cached startup state.rate_limit_ms",
+      "key": "rendering/gaussian_splatting/logging/rate_limit_ms",
+      "notes": "Logging settings are cached through gs_logger startup initialization; category overrides are startup-only until a refresh path exists.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "gs_logger cached startup state.renderer",
+      "key": "rendering/gaussian_splatting/logging/renderer",
+      "notes": "Logging settings are cached through gs_logger startup initialization; category overrides are startup-only until a refresh path exists.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "gs_logger cached startup state.streaming",
+      "key": "rendering/gaussian_splatting/logging/streaming",
+      "notes": "Logging settings are cached through gs_logger startup initialization; category overrides are startup-only until a refresh path exists.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "gs_logger cached startup state.tests",
+      "key": "rendering/gaussian_splatting/logging/tests",
+      "notes": "Logging settings are cached through gs_logger startup initialization; category overrides are startup-only until a refresh path exists.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "gs_logger cached startup state.verbosity",
+      "key": "rendering/gaussian_splatting/logging/verbosity",
+      "notes": "Logging settings are cached through gs_logger startup initialization; category overrides are startup-only until a refresh path exists.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none; cleanup candidate until a production reader is proven",
+      "key": "rendering/gaussian_splatting/max_gpu_buffer_count",
+      "notes": "Cleanup candidate from #357: registered public capacity key has no confirmed production reader in the current audit.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "PipelineFeatureSet::loaded_provenance_snapshot/effective_provenance_snapshot.enable_all_experimental",
+      "key": "rendering/gaussian_splatting/pipeline/enable_all_experimental",
+      "notes": "Cleanup candidate from #357: hidden debug override expands into multiple experimental renderer features at once and needs behavior tests plus an explicit support/deprecation decision before it can be treated as ordinary public API.",
+      "publicness": "cleanup_candidate",
+      "scope": "debug",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "PipelineFeatureSet::loaded_provenance_snapshot/effective_provenance_snapshot.enable_fast_raster",
+      "key": "rendering/gaussian_splatting/pipeline/enable_fast_raster",
+      "notes": "Experimental renderer feature switches stay disabled unless explicitly requested and runtime prerequisites validate; no GPU support is implied by inventory presence.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "PipelineFeatureSet::loaded_provenance_snapshot/effective_provenance_snapshot.enable_packed_stage_data",
+      "key": "rendering/gaussian_splatting/pipeline/enable_packed_stage_data",
+      "notes": "Experimental renderer feature switches stay disabled unless explicitly requested and runtime prerequisites validate; no GPU support is implied by inventory presence.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "PipelineFeatureSet::loaded_provenance_snapshot/effective_provenance_snapshot.enable_sh_amortization",
+      "key": "rendering/gaussian_splatting/pipeline/enable_sh_amortization",
+      "notes": "Experimental renderer feature switches stay disabled unless explicitly requested and runtime prerequisites validate; no GPU support is implied by inventory presence.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "PipelineFeatureSet::loaded_provenance_snapshot/effective_provenance_snapshot.enable_tighter_bounds",
+      "key": "rendering/gaussian_splatting/pipeline/enable_tighter_bounds",
+      "notes": "Experimental renderer feature switches stay disabled unless explicitly requested and runtime prerequisites validate; no GPU support is implied by inventory presence.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "PipelineFeatureSet::loaded_provenance_snapshot/effective_provenance_snapshot.enable_two_stage_sort",
+      "key": "rendering/gaussian_splatting/pipeline/enable_two_stage_sort",
+      "notes": "Experimental renderer feature switches stay disabled unless explicitly requested and runtime prerequisites validate; no GPU support is implied by inventory presence.",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "PipelineFeatureSet::loaded_provenance_snapshot/effective_provenance_snapshot.sh_amortization_disable_on_visibility_change",
+      "key": "rendering/gaussian_splatting/pipeline/sh_amortization_disable_on_visibility_change",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "PipelineFeatureSet::loaded_provenance_snapshot/effective_provenance_snapshot.sh_amortization_divisor",
+      "key": "rendering/gaussian_splatting/pipeline/sh_amortization_divisor",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "PipelineFeatureSet::loaded_provenance_snapshot/effective_provenance_snapshot.sh_amortization_visibility_threshold",
+      "key": "rendering/gaussian_splatting/pipeline/sh_amortization_visibility_threshold",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "QualityTierConfig policy inputs; downstream effective snapshots must report tier_preset source when overrides apply",
+      "key": "rendering/gaussian_splatting/quality/tier_apply_pipeline_toggles",
+      "notes": "Quality tier policy override: when tier_apply_* is true, tier values win over matching manual ProjectSettings and effective config provenance must name the tier source.",
+      "test_coverage": "partial"
+    },
+    {
+      "effective_state": "QualityTierConfig policy inputs; downstream effective snapshots must report tier_preset source when overrides apply",
+      "key": "rendering/gaussian_splatting/quality/tier_apply_streaming_budgets",
+      "notes": "Quality tier policy override: when tier_apply_* is true, tier values win over matching manual ProjectSettings and effective config provenance must name the tier source.",
+      "test_coverage": "partial"
+    },
+    {
+      "effective_state": "QualityTierConfig policy inputs; downstream effective snapshots must report tier_preset source when overrides apply",
+      "key": "rendering/gaussian_splatting/quality/tier_preset",
+      "notes": "Quality tier policy override: when tier_apply_* is true, tier values win over matching manual ProjectSettings and effective config provenance must name the tier source.",
+      "test_coverage": "partial"
+    },
+    {
+      "effective_state": "PainterlyRenderer/TileRenderStages.low_pass_filter",
+      "key": "rendering/gaussian_splatting/rasterization/low_pass_filter",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GaussianSplatManager device initialization flag.",
+      "key": "rendering/gaussian_splatting/renderdoc_compatibility",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "none",
+      "key": "rendering/gaussian_splatting/rendering/sh_bands",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GaussianSplatManager global stats/config.shared_submission_device_enabled",
+      "key": "rendering/gaussian_splatting/shared_submission_device_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "SortingStrategyConfig::bitonic_max_elements",
+      "key": "rendering/gaussian_splatting/sorting/bitonic_max_elements",
+      "notes": "Cleanup candidate from #357: loaded by SortingStrategyConfig, but current AUTO selection uses hard-coded thresholds/device probes.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "SortingStrategyConfig::force_algorithm",
+      "key": "rendering/gaussian_splatting/sorting/force_algorithm",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "SortingStrategyConfig::force_cpu_sort",
+      "key": "rendering/gaussian_splatting/sorting/force_cpu_sort",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "SortingStrategyConfig::history_size",
+      "key": "rendering/gaussian_splatting/sorting/history_size",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "SortingStrategyConfig::hybrid_batch_size",
+      "key": "rendering/gaussian_splatting/sorting/hybrid_batch_size",
+      "notes": "Cleanup candidate from #357: loaded by SortingStrategyConfig, but current AUTO selection uses hard-coded thresholds/device probes.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "SortingStrategyConfig::hybrid_trigger_elements",
+      "key": "rendering/gaussian_splatting/sorting/hybrid_trigger_elements",
+      "notes": "Cleanup candidate from #357: loaded by SortingStrategyConfig, but current AUTO selection uses hard-coded thresholds/device probes.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "SortingStrategyConfig::log_interval_frames",
+      "key": "rendering/gaussian_splatting/sorting/log_interval_frames",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "SortingStrategyConfig::log_metrics",
+      "key": "rendering/gaussian_splatting/sorting/log_metrics",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "SortingStrategyConfig::onesweep_max_elements",
+      "key": "rendering/gaussian_splatting/sorting/onesweep_max_elements",
+      "notes": "Cleanup candidate from #357: loaded by SortingStrategyConfig, but current AUTO selection uses hard-coded thresholds/device probes.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "SortingStrategyConfig::radix_max_elements",
+      "key": "rendering/gaussian_splatting/sorting/radix_max_elements",
+      "notes": "Cleanup candidate from #357: loaded by SortingStrategyConfig, but current AUTO selection uses hard-coded thresholds/device probes.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "SortingStrategyConfig::strict_global_sort",
+      "key": "rendering/gaussian_splatting/sorting/strict_global_sort",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "SortingStrategyConfig::target_sort_time_ms",
+      "key": "rendering/gaussian_splatting/sorting/target_sort_time_ms",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "SortingStrategyConfig::validate_sorted_output",
+      "key": "rendering/gaussian_splatting/sorting/validate_sorted_output",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.async_io_enabled",
+      "key": "rendering/gaussian_splatting/streaming/async_io_enabled",
+      "notes": "Cleanup candidate from #357: registered streaming switch has no confirmed production behavior in the current audit.",
+      "publicness": "cleanup_candidate",
+      "test_coverage": "needs_behavior_test"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.async_pack_enabled",
+      "key": "rendering/gaussian_splatting/streaming/async_pack_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.auto_regulate_enabled",
+      "key": "rendering/gaussian_splatting/streaming/auto_regulate_enabled",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.chunk_frustum_culling_enabled",
+      "key": "rendering/gaussian_splatting/streaming/chunk_frustum_culling_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.chunk_frustum_padding",
+      "key": "rendering/gaussian_splatting/streaming/chunk_frustum_padding",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.eviction_hysteresis_frames",
+      "key": "rendering/gaussian_splatting/streaming/eviction_hysteresis_frames",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.layout_hint_validation_strict",
+      "key": "rendering/gaussian_splatting/streaming/layout_hint_validation_strict",
+      "notes": "Runtime-only guardrail key retained as internal until ownership and reload semantics are formalized.",
+      "publicness": "internal",
+      "test_coverage": "documented_gap"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.max_chunk_loads_per_frame",
+      "key": "rendering/gaussian_splatting/streaming/max_chunk_loads_per_frame",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.max_chunks_in_vram",
+      "key": "rendering/gaussian_splatting/streaming/max_chunks_in_vram",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.max_evictions_per_frame",
+      "key": "rendering/gaussian_splatting/streaming/max_evictions_per_frame",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.max_pack_jobs_in_flight",
+      "key": "rendering/gaussian_splatting/streaming/max_pack_jobs_in_flight",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.max_prefetch_chunk_scan_per_frame",
+      "key": "rendering/gaussian_splatting/streaming/max_prefetch_chunk_scan_per_frame",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.max_prefetch_loads_per_frame",
+      "key": "rendering/gaussian_splatting/streaming/max_prefetch_loads_per_frame",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.max_sync_fallback_loads_per_frame",
+      "key": "rendering/gaussian_splatting/streaming/max_sync_fallback_loads_per_frame",
+      "notes": "Known #357 gap: live StreamingUploadPipeline read is not registered in the manager streaming block; PR B should register or internalize it with behavior tests.",
+      "publicness": "internal",
+      "test_coverage": "documented_gap"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.max_sync_fallback_queue_size",
+      "key": "rendering/gaussian_splatting/streaming/max_sync_fallback_queue_size",
+      "notes": "Known #357 gap: live StreamingUploadPipeline read is not registered in the manager streaming block; PR B should register or internalize it with behavior tests.",
+      "publicness": "internal",
+      "test_coverage": "documented_gap"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.max_upload_mb_per_frame",
+      "key": "rendering/gaussian_splatting/streaming/max_upload_mb_per_frame",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.max_upload_mb_per_second",
+      "key": "rendering/gaussian_splatting/streaming/max_upload_mb_per_second",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.max_upload_mb_per_slice",
+      "key": "rendering/gaussian_splatting/streaming/max_upload_mb_per_slice",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.max_visible_chunk_scan_per_frame",
+      "key": "rendering/gaussian_splatting/streaming/max_visible_chunk_scan_per_frame",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.min_chunks_in_vram",
+      "key": "rendering/gaussian_splatting/streaming/min_chunks_in_vram",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.pack_worker_threads",
+      "key": "rendering/gaussian_splatting/streaming/pack_worker_threads",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.predictive_prefetch_enabled",
+      "key": "rendering/gaussian_splatting/streaming/predictive_prefetch_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.prefetch_lookahead_distance",
+      "key": "rendering/gaussian_splatting/streaming/prefetch_lookahead_distance",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.queue_pressure_candidate_scan_throttle_enabled",
+      "key": "rendering/gaussian_splatting/streaming/queue_pressure_candidate_scan_throttle_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.queue_pressure_candidate_scan_throttle_min_queue_depth",
+      "key": "rendering/gaussian_splatting/streaming/queue_pressure_candidate_scan_throttle_min_queue_depth",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.queue_pressure_prefetch_scan_cap",
+      "key": "rendering/gaussian_splatting/streaming/queue_pressure_prefetch_scan_cap",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.queue_pressure_visible_scan_cap",
+      "key": "rendering/gaussian_splatting/streaming/queue_pressure_visible_scan_cap",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.regulation_step_percent",
+      "key": "rendering/gaussian_splatting/streaming/regulation_step_percent",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.route_policy",
+      "key": "rendering/gaussian_splatting/streaming/route_policy",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.sh_progressive_load",
+      "key": "rendering/gaussian_splatting/streaming/sh_progressive_load",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.validate_upload_payload_checksums",
+      "key": "rendering/gaussian_splatting/streaming/validate_upload_payload_checksums",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.vram_budget_mb",
+      "key": "rendering/gaussian_splatting/streaming/vram_budget_mb",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.vram_warning_threshold_percent",
+      "key": "rendering/gaussian_splatting/streaming/vram_warning_threshold_percent",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.zero_visible_recovery_cooldown_frames",
+      "key": "rendering/gaussian_splatting/streaming/zero_visible_recovery_cooldown_frames",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.zero_visible_recovery_log_interval_frames",
+      "key": "rendering/gaussian_splatting/streaming/zero_visible_recovery_log_interval_frames",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.zero_visible_recovery_mode",
+      "key": "rendering/gaussian_splatting/streaming/zero_visible_recovery_mode",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "StreamingUploadPipeline/StreamingVisibilityController/VRAMBudgetRegulator.zero_visible_recovery_trigger_frames",
+      "key": "rendering/gaussian_splatting/streaming/zero_visible_recovery_trigger_frames",
+      "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "GaussianSplatWorld3D.strict_identity_transform",
+      "key": "rendering/gaussian_splatting/world/strict_identity_transform",
+      "test_coverage": "covered"
+    }
+  ]
+}
