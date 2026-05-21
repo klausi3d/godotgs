@@ -134,6 +134,35 @@ TEST_CASE("[GaussianSplatting] Downstream skip contract does not invent first fa
 	CHECK(metrics.skip_cause_stage == String("sort"));
 }
 
+TEST_CASE("[GaussianSplatting] Route-not-ready sort skip blocks raster before no-visible fallback") {
+	GaussianSplatRenderer::StageResult cull_skip;
+	cull_skip.status = GaussianSplatRenderer::StageResult::StageStatus::SKIPPED;
+	cull_skip.reason = "Cull skipped: streaming data unavailable";
+	cull_skip.fallback_reason = GaussianSplatRenderer::RenderFallbackReason::STREAMING_DATA_UNAVAILABLE;
+	RenderPipelineStages::stamp_stage_result_contract(cull_skip, "cull",
+			RenderRouteUID::COMMON_SKIP_STREAMING_NOT_READY,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
+
+	GaussianSplatRenderer::StageResult sort_skip =
+			RenderPipelineStages::make_downstream_skip_result("sort", cull_skip,
+					"Sort skipped: streaming data unavailable",
+					GaussianSplatRenderer::RenderFallbackReason::STREAMING_DATA_UNAVAILABLE);
+	RenderPipelineStages::stamp_stage_result_contract(sort_skip, "sort", cull_skip.route_uid,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN,
+			GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
+
+	CHECK(sort_skip.status == GaussianSplatRenderer::StageResult::StageStatus::SKIPPED);
+	CHECK(sort_skip.first_failure_stage.is_empty());
+	CHECK(sort_skip.skip_cause_stage == String("cull"));
+	CHECK(sort_skip.route_uid == String(RenderRouteUID::COMMON_SKIP_STREAMING_NOT_READY));
+
+	const bool upstream_blocks_raster =
+			sort_skip.status == GaussianSplatRenderer::StageResult::StageStatus::SKIPPED &&
+			!sort_skip.skip_cause_stage.is_empty();
+	CHECK(upstream_blocks_raster);
+}
+
 TEST_CASE("[GaussianSplatting] Composite copy failure becomes a failed stage result") {
 	GaussianSplatRenderer::StageResult result = RenderPipelineStages::make_composite_copy_result(
 			true, false, "framebuffer copy failed", false, String(), true, false, false);

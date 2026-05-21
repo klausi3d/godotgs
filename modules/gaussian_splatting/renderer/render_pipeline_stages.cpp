@@ -1158,10 +1158,11 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 					frame_plan.cull_skip_reason_code);
 			stamp_stage_result_contract(frame_context.metrics->cull_result, "cull", frame_plan.route_decision.route_uid,
 					GaussianSplatRenderer::IndexDomain::UNKNOWN, GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
-			frame_context.metrics->sort_result = _make_stage_result(
-					StageResult::StageStatus::SKIPPED,
-					frame_plan.sort_skip_reason,
-					false,
+			const String sort_reason = frame_plan.sort_skip_reason.is_empty()
+					? String("Sort skipped: cull skipped")
+					: frame_plan.sort_skip_reason;
+			frame_context.metrics->sort_result = make_downstream_skip_result(
+					"sort", frame_context.metrics->cull_result, sort_reason,
 					frame_plan.sort_skip_reason_code);
 			stamp_stage_result_contract(frame_context.metrics->sort_result, "sort", frame_plan.route_decision.route_uid,
 					GaussianSplatRenderer::IndexDomain::UNKNOWN, GaussianSplatRenderer::IndexDomain::UNKNOWN, 0, 0);
