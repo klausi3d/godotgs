@@ -3382,9 +3382,209 @@ static bool create_test_render_buffers(const Vector2i &p_internal_resolution, RI
     return r_render_buffers->has_internal_texture();
 }
 
+TEST_CASE("[GaussianSplatting][RequiresGPU] Renderer teardown reaches zero owned GPU resources before device manager shutdown") {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (rs == nullptr) {
+		MESSAGE("Skipping test - Rendering server unavailable");
+		return;
+	}
+
+	ScopedGaussianManagerPipeline manager_scope;
+	GaussianSplatManager *manager = manager_scope.get();
+	if (manager == nullptr) {
+		MESSAGE("Skipping test - GaussianSplatManager unavailable");
+		return;
+	}
+
+	ScopedRenderingDeviceLease device_lease;
+	RenderingDevice *primary_rd = device_lease.acquire(rs, manager);
+	if (primary_rd == nullptr) {
+		MESSAGE("Skipping test - Rendering device unavailable");
+		return;
+	}
+
+	Ref<GaussianSplatRenderer> renderer;
+	renderer.instantiate(primary_rd);
+	REQUIRE(renderer.is_valid());
+	renderer->initialize();
+
+	Ref<RenderDeviceManager> device_manager = renderer->get_subsystem_state().device_manager;
+	REQUIRE(device_manager.is_valid());
+
+	GaussianSplatRenderer::ResourceState &resource_state = renderer->get_resource_state();
+	REQUIRE(resource_state.buffer_manager.is_valid());
+	const Error buffer_manager_err = resource_state.buffer_manager->initialize(primary_rd, 16);
+	CHECK(buffer_manager_err == OK);
+	if (buffer_manager_err != OK) {
+		renderer.unref();
+		return;
+	}
+	resource_state.buffer_manager_initialized = true;
+	GPUBufferManager::BufferHandle buffer_manager_handle = resource_state.buffer_manager->get_current_read_handle();
+	REQUIRE(buffer_manager_handle.is_valid());
+
+	const RID atlas_buffer = primary_rd->storage_buffer_create(128);
+	const RID asset_meta_buffer = primary_rd->storage_buffer_create(64);
+	const RID chunk_meta_buffer = primary_rd->storage_buffer_create(96);
+	const RID asset_chunk_index_buffer = primary_rd->storage_buffer_create(32);
+	if (!atlas_buffer.is_valid() || !asset_meta_buffer.is_valid() ||
+			!chunk_meta_buffer.is_valid() || !asset_chunk_index_buffer.is_valid()) {
+		if (atlas_buffer.is_valid()) {
+			primary_rd->free(atlas_buffer);
+		}
+		if (asset_meta_buffer.is_valid()) {
+			primary_rd->free(asset_meta_buffer);
+		}
+		if (chunk_meta_buffer.is_valid()) {
+			primary_rd->free(chunk_meta_buffer);
+		}
+		if (asset_chunk_index_buffer.is_valid()) {
+			primary_rd->free(asset_chunk_index_buffer);
+		}
+		renderer.unref();
+		return;
+	}
+	renderer->track_resource_owner(atlas_buffer, primary_rd, true, "test_teardown_resident_atlas_gaussian_buffer");
+	renderer->track_resource_owner(asset_meta_buffer, primary_rd, true, "test_teardown_resident_asset_meta_buffer");
+	renderer->track_resource_owner(chunk_meta_buffer, primary_rd, true, "test_teardown_resident_chunk_meta_buffer");
+	renderer->track_resource_owner(asset_chunk_index_buffer, primary_rd, true, "test_teardown_resident_asset_chunk_index_buffer");
+	resource_state.resident_atlas_gaussian_buffer = atlas_buffer;
+	resource_state.resident_asset_meta_buffer = asset_meta_buffer;
+	resource_state.resident_chunk_meta_buffer = chunk_meta_buffer;
+	resource_state.resident_asset_chunk_index_buffer = asset_chunk_index_buffer;
+	resource_state.resident_atlas_gaussian_buffer_size = 128;
+	resource_state.resident_asset_meta_buffer_size = 64;
+	resource_state.resident_chunk_meta_buffer_size = 96;
+	resource_state.resident_asset_chunk_index_buffer_size = 32;
+	resource_state.instance_pipeline_atlas_generation = 352;
+	resource_state.resident_atlas_gaussian_count = 4;
+	resource_state.resident_dispatch_chunk_count = 1;
+	resource_state.resident_max_chunk_splats = 4;
+
+	Ref<OutputCompositor> compositor = renderer->get_subsystem_state().output_compositor;
+	REQUIRE(compositor.is_valid());
+	REQUIRE(compositor->initialize(primary_rd) == OK);
+
+	const Vector2i copy_size(16, 16);
+	const RD::TextureUsageBits source_usage = static_cast<RD::TextureUsageBits>(
+			RD::TEXTURE_USAGE_SAMPLING_BIT |
+			RD::TEXTURE_USAGE_CAN_UPDATE_BIT |
+			RD::TEXTURE_USAGE_CAN_COPY_TO_BIT |
+			RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT);
+	const RD::TextureUsageBits destination_usage = static_cast<RD::TextureUsageBits>(
+			RD::TEXTURE_USAGE_STORAGE_BIT |
+			RD::TEXTURE_USAGE_SAMPLING_BIT |
+			RD::TEXTURE_USAGE_CAN_UPDATE_BIT |
+			RD::TEXTURE_USAGE_CAN_COPY_TO_BIT |
+			RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT);
+	const RD::TextureUsageBits depth_usage = static_cast<RD::TextureUsageBits>(
+			RD::TEXTURE_USAGE_SAMPLING_BIT |
+			RD::TEXTURE_USAGE_CAN_UPDATE_BIT |
+			RD::TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+
+	RID source_texture = create_test_texture(primary_rd, copy_size, RD::DATA_FORMAT_R8G8B8A8_UNORM, source_usage);
+	RID destination_texture = create_test_texture(primary_rd, copy_size, RD::DATA_FORMAT_R8G8B8A8_UNORM, destination_usage);
+	RID source_depth = create_test_texture(primary_rd, copy_size, RD::DATA_FORMAT_D32_SFLOAT, depth_usage);
+	RID destination_depth = create_test_texture(primary_rd, copy_size, RD::DATA_FORMAT_D32_SFLOAT, depth_usage);
+	auto free_external_textures = [&]() {
+		if (source_texture.is_valid() && primary_rd->texture_is_valid(source_texture)) {
+			primary_rd->free(source_texture);
+		}
+		if (destination_texture.is_valid() && primary_rd->texture_is_valid(destination_texture)) {
+			primary_rd->free(destination_texture);
+		}
+		if (source_depth.is_valid() && primary_rd->texture_is_valid(source_depth)) {
+			primary_rd->free(source_depth);
+		}
+		if (destination_depth.is_valid() && primary_rd->texture_is_valid(destination_depth)) {
+			primary_rd->free(destination_depth);
+		}
+	};
+	if (!source_texture.is_valid() || !destination_texture.is_valid() ||
+			!source_depth.is_valid() || !destination_depth.is_valid()) {
+		free_external_textures();
+		renderer.unref();
+		return;
+	}
+
+	Vector<uint8_t> color_bytes;
+	color_bytes.resize(copy_size.x * copy_size.y * 4);
+	for (int i = 0; i < color_bytes.size(); i += 4) {
+		color_bytes.write[i + 0] = 96;
+		color_bytes.write[i + 1] = 128;
+		color_bytes.write[i + 2] = 160;
+		color_bytes.write[i + 3] = 192;
+	}
+	const Error source_update_err = primary_rd->texture_update(source_texture, 0, color_bytes);
+	const Error destination_update_err = primary_rd->texture_update(destination_texture, 0, color_bytes);
+	CHECK(source_update_err == OK);
+	CHECK(destination_update_err == OK);
+	if (source_update_err != OK || destination_update_err != OK) {
+		free_external_textures();
+		renderer.unref();
+		return;
+	}
+
+	Vector<uint8_t> depth_far_bytes;
+	depth_far_bytes.resize(copy_size.x * copy_size.y * sizeof(float));
+	const float far_depth = 1.0f;
+	for (int i = 0; i < copy_size.x * copy_size.y; i++) {
+		memcpy(depth_far_bytes.ptrw() + i * sizeof(float), &far_depth, sizeof(float));
+	}
+	const Error source_depth_update_err = primary_rd->texture_update(source_depth, 0, depth_far_bytes);
+	const Error destination_depth_update_err = primary_rd->texture_update(destination_depth, 0, depth_far_bytes);
+	CHECK(source_depth_update_err == OK);
+	CHECK(destination_depth_update_err == OK);
+	if (source_depth_update_err != OK || destination_depth_update_err != OK) {
+		free_external_textures();
+		renderer.unref();
+		return;
+	}
+
+	OutputCopyParams params;
+	params.source_texture = source_texture;
+	params.source_depth = source_depth;
+	params.destination_texture = destination_texture;
+	params.destination_depth = destination_depth;
+	params.viewport_size = Size2i(copy_size.x, copy_size.y);
+	params.composite_with_destination = true;
+	params.source_is_premultiplied = true;
+	params.depth_test_enabled = true;
+	params.z_near = 0.05f;
+	params.z_far = 4000.0f;
+	params.depth_linearize_mul = 1.0f;
+	params.depth_linearize_add = 1.0f;
+	params.depth_epsilon = 0.01f;
+
+	OutputCopyResult copy_result = compositor->copy_to_render_target(params);
+	if (!copy_result.success) {
+		print_line(vformat("[RendererTeardownLifetime] copy_to_render_target failed: %s", copy_result.error));
+	}
+	CHECK(copy_result.success);
+	if (!copy_result.success) {
+		free_external_textures();
+		renderer.unref();
+		return;
+	}
+	CHECK(compositor->get_viewport_blit_scratch_count() == 1u);
+	CHECK(device_manager->get_tracked_owned_resource_count() > 0u);
+
+	renderer.unref();
+
+	CHECK(device_manager->get_last_shutdown_owned_resource_count() == 0u);
+	CHECK(device_manager->get_tracked_owned_resource_count() == 0u);
+	CHECK_FALSE(buffer_manager_handle.device->buffer_is_valid(buffer_manager_handle.buffer));
+	CHECK_FALSE(primary_rd->buffer_is_valid(atlas_buffer));
+	CHECK_FALSE(primary_rd->buffer_is_valid(asset_meta_buffer));
+	CHECK_FALSE(primary_rd->buffer_is_valid(chunk_meta_buffer));
+	CHECK_FALSE(primary_rd->buffer_is_valid(asset_chunk_index_buffer));
+
+	free_external_textures();
+}
+
 TEST_CASE("[GaussianSplatting][RequiresGPU] Raster path eligibility follows viewport output format") {
-    RenderingServer *rs = RenderingServer::get_singleton();
-    if (rs == nullptr) {
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (rs == nullptr) {
         MESSAGE("Skipping test - Rendering server unavailable");
         return;
     }

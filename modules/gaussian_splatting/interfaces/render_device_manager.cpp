@@ -117,10 +117,12 @@ Error RenderDeviceManager::initialize(RenderingDevice *p_primary_device) {
 }
 
 void RenderDeviceManager::shutdown() {
-	const uint32_t owned_resource_count = get_tracked_owned_resource_count();
-	if (owned_resource_count > 0) {
+	last_shutdown_tracked_resource_count = get_tracked_resource_count();
+	last_shutdown_owned_resource_count = get_tracked_owned_resource_count();
+	last_shutdown_borrowed_resource_count = get_tracked_borrowed_resource_count();
+	if (last_shutdown_owned_resource_count > 0) {
 		ERR_PRINT(vformat("[RenderDeviceManager] Shutting down with %d tracked owned resources; owners should release RIDs before manager shutdown",
-				owned_resource_count));
+				last_shutdown_owned_resource_count));
 	}
 
 	resource_owner_map.clear();
@@ -364,6 +366,10 @@ void RenderDeviceManager::track_resource(const RID &p_rid, RenderingDevice *p_de
 	} else {
 		texture_owner_map.erase(rid_id);
 	}
+}
+
+bool RenderDeviceManager::has_tracked_resource(const RID &p_rid) const {
+	return p_rid.is_valid() && resource_owner_map.has(p_rid.get_id());
 }
 
 RenderingDevice *RenderDeviceManager::get_resource_owner(const RID &p_rid, RenderingDevice *p_fallback) const {
