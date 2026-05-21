@@ -2104,6 +2104,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#testsruntimetest_canonical_node_asset_rendergd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        tests/runtime/test_canonical_node_asset_render.gd
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#testsruntimetest_scene_effector_runtime_controlsgd" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2181,6 +2192,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingteststest_diagnosticsh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/tests/test_diagnostics.h
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#testsruntimetest_world_streaming_gategd" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2196,17 +2218,6 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/painterly/painterly_material.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingteststest_diagnosticsh" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/tests/test_diagnostics.h
       
     </span>
   </a>
@@ -2874,10 +2885,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingtestssynthetic_surface_generatorcpp" class="md-nav__link">
+  <a href="#modulesgaussian_splattingrendererrender_diagnostics_orchestratorcpp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        modules/gaussian_splatting/tests/synthetic_surface_generator.cpp
+        modules/gaussian_splatting/renderer/render_diagnostics_orchestrator.cpp
       
     </span>
   </a>
@@ -2885,10 +2896,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrendererrender_diagnostics_orchestratorcpp" class="md-nav__link">
+  <a href="#modulesgaussian_splattingtestssynthetic_surface_generatorcpp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        modules/gaussian_splatting/renderer/render_diagnostics_orchestrator.cpp
+        modules/gaussian_splatting/tests/synthetic_surface_generator.cpp
       
     </span>
   </a>
@@ -5774,6 +5785,28 @@
 <li>line 76: func _sum_delta_field(deltas: Array, field_name: String) -&gt; ...</li>
 <li>line 83: func _run() -&gt; void:...</li>
 </ul>
+<h2 id="testsruntimetest_canonical_node_asset_rendergd">tests/runtime/test_canonical_node_asset_render.gd<a class="headerlink" href="#testsruntimetest_canonical_node_asset_rendergd" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 53: func _init() -&gt; void:...</li>
+<li>line 57: func _is_headless_runtime() -&gt; bool:...</li>
+<li>line 61: func _record_failure(reason: String) -&gt; void:...</li>
+<li>line 65: func _emit_metrics(status: String, reason: String) -&gt; void:...</li>
+<li>line 71: func _skip_unavailable(reason: String) -&gt; void:...</li>
+<li>line 79: func _fail(reason: String) -&gt; void:...</li>
+<li>line 87: func _pass(reason: String) -&gt; void:...</li>
+<li>line 94: func _cleanup() -&gt; void:...</li>
+<li>line 103: func _setup_scene() -&gt; bool:...</li>
+<li>line 139: func _run() -&gt; void:...</li>
+<li>line 230: func _read_renderer_stats() -&gt; Dictionary:...</li>
+<li>line 239: func _read_visible_splats(stats: Dictionary) -&gt; int:...</li>
+<li>line 249: func _update_stage_metrics(stats: Dictionary) -&gt; void:...</li>
+<li>line 259: func _stage_failed(stats: Dictionary) -&gt; bool:...</li>
+<li>line 267: func _capture_viewport() -&gt; Image:...</li>
+<li>line 277: func _compute_visual_metrics(image: Image) -&gt; Dictionary:...</li>
+<li>line 322: func _empty_visual_metrics(width: int, height: int) -&gt; Dicti...</li>
+<li>line 334: func _visual_metrics_pass() -&gt; bool:...</li>
+<li>line 343: func _rendered_content_ok() -&gt; bool:...</li>
+</ul>
 <h2 id="testsruntimetest_scene_effector_runtime_controlsgd">tests/runtime/test_scene_effector_runtime_controls.gd<a class="headerlink" href="#testsruntimetest_scene_effector_runtime_controlsgd" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 42: func _init() -&gt; void:...</li>
@@ -5863,6 +5896,11 @@
 <li>line 170: void StreamingQueuePressureController::reset_latched_state(b...</li>
 <li>line 210: bool StreamingQueuePressureController::is_known_source(const...</li>
 <li>line 219: bool StreamingQueuePressureController::is_known_reason(const...</li>
+</ul>
+<h2 id="modulesgaussian_splattingteststest_diagnosticsh">modules/gaussian_splatting/tests/test_diagnostics.h<a class="headerlink" href="#modulesgaussian_splattingteststest_diagnosticsh" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 13: bool diagnostics_contract_has_key(const Array &amp;p_contract, c...</li>
+<li>line 22: void diagnostics_require_key(const Dictionary &amp;p_dict, const...</li>
 </ul>
 <h2 id="testsruntimetest_world_streaming_gategd">tests/runtime/test_world_streaming_gate.gd<a class="headerlink" href="#testsruntimetest_world_streaming_gategd" title="Permanent link">¶</a></h2>
 <ul>
@@ -5983,11 +6021,6 @@
 <li>line 1016: Vector<string> PainterlyMaterial::get_missing_resources() co...</string></li>
 <li>line 1030: Dictionary PainterlyMaterial::serialize() const {...</li>
 <li>line 1080: void PainterlyMaterial::deserialize(const Dictionary &amp;p_data...</li>
-</ul>
-<h2 id="modulesgaussian_splattingteststest_diagnosticsh">modules/gaussian_splatting/tests/test_diagnostics.h<a class="headerlink" href="#modulesgaussian_splattingteststest_diagnosticsh" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 13: bool diagnostics_contract_has_key(const Array &amp;p_contract, c...</li>
-<li>line 22: void diagnostics_require_key(const Dictionary &amp;p_dict, const...</li>
 </ul>
 <h2 id="testsruntimetest_gpu_streaming_eviction_churn_probegd">tests/runtime/test_gpu_streaming_eviction_churn_probe.gd<a class="headerlink" href="#testsruntimetest_gpu_streaming_eviction_churn_probegd" title="Permanent link">¶</a></h2>
 <ul>
@@ -6587,13 +6620,13 @@
 </ul>
 <h2 id="modulesgaussian_splattingteststest_renderer_pipelineh">modules/gaussian_splatting/tests/test_renderer_pipeline.h<a class="headerlink" href="#modulesgaussian_splattingteststest_renderer_pipelineh" title="Permanent link">¶</a></h2>
 <ul>
-<li>line 399: static void fill_gaussians(LocalVector<gaussian> &amp;p_gaussian...</gaussian></li>
-<li>line 417: static Vector<gaussiansplatrenderer::staticchunk> make_singl...</gaussiansplatrenderer::staticchunk></li>
-<li>line 483: static Vector<gaussiansplatrenderer::staticchunk> make_overl...</gaussiansplatrenderer::staticchunk></li>
-<li>line 507: static Vector<uint32_t> read_renderer_sort_indices(const Ref...</uint32_t></li>
-<li>line 664: static GaussianRenderPipeline::InstancePipelineBuffers make_...</li>
-<li>line 698: static bool hud_lines_contain(const Array &amp;p_lines, const St...</li>
-<li>line 3343: static RID create_test_texture(RenderingDevice *p_rd, const ...</li>
+<li>line 428: static void fill_gaussians(LocalVector<gaussian> &amp;p_gaussian...</gaussian></li>
+<li>line 446: static Vector<gaussiansplatrenderer::staticchunk> make_singl...</gaussiansplatrenderer::staticchunk></li>
+<li>line 512: static Vector<gaussiansplatrenderer::staticchunk> make_overl...</gaussiansplatrenderer::staticchunk></li>
+<li>line 536: static Vector<uint32_t> read_renderer_sort_indices(const Ref...</uint32_t></li>
+<li>line 693: static GaussianRenderPipeline::InstancePipelineBuffers make_...</li>
+<li>line 727: static bool hud_lines_contain(const Array &amp;p_lines, const St...</li>
+<li>line 3372: static RID create_test_texture(RenderingDevice *p_rd, const ...</li>
 </ul>
 <h2 id="modulesgaussian_splattingrendererrender_output_orchestratorcpp">modules/gaussian_splatting/renderer/render_output_orchestrator.cpp<a class="headerlink" href="#modulesgaussian_splattingrendererrender_output_orchestratorcpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -7276,13 +7309,6 @@
 <li>line 922: void GaussianImportDialog::ok_pressed() {...</li>
 <li>line 983: Dictionary GaussianImportDialog::get_selected_options() cons...</li>
 </ul>
-<h2 id="modulesgaussian_splattingtestssynthetic_surface_generatorcpp">modules/gaussian_splatting/tests/synthetic_surface_generator.cpp<a class="headerlink" href="#modulesgaussian_splattingtestssynthetic_surface_generatorcpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 11: Dictionary SurfaceSplatGenerator::Config::to_dict() const {...</li>
-<li>line 33: void SurfaceSplatGenerator::Config::from_dict(const Dictiona...</li>
-<li>line 53: uint64_t SurfaceSplatGenerator::hash_config(const Config &amp;p_...</li>
-<li>line 75: LocalVector<gaussian> SurfaceSplatGenerator::generate(const ...</gaussian></li>
-</ul>
 <h2 id="modulesgaussian_splattingrendererrender_diagnostics_orchestratorcpp">modules/gaussian_splatting/renderer/render_diagnostics_orchestrator.cpp<a class="headerlink" href="#modulesgaussian_splattingrendererrender_diagnostics_orchestratorcpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 27: static String _stage_status_to_string(GaussianSplatRenderer:...</li>
@@ -7294,36 +7320,43 @@
 <li>line 80: static bool _get_bool_setting(ProjectSettings *p_settings, c...</li>
 <li>line 84: static ProductionMetricsConfig _load_production_metrics_conf...</li>
 <li>line 120: static Array _production_metrics_contract() {...</li>
-<li>line 200: static void _merge_dictionary(Dictionary &amp;p_target, const Di...</li>
-<li>line 208: static bool _is_finite(float p_value) {...</li>
-<li>line 242: static uint32_t _resolve_production_total_splats(const Gauss...</li>
-<li>line 266: static bool _has_gpu_pass_breakdown(const GaussianSplatRende...</li>
-<li>line 715: static Dictionary _validate_production_metrics(const Diction...</li>
-<li>line 922: static Dictionary _evaluate_perf_gate(const ProductionMetric...</li>
-<li>line 1068: void RenderDiagnosticsOrchestrator::record_rendering_error(c...</li>
-<li>line 1119: void RenderDiagnosticsOrchestrator::capture_frame_timing_sam...</li>
-<li>line 1138: void RenderDiagnosticsOrchestrator::increment_frame_counter(...</li>
-<li>line 1149: void RenderDiagnosticsOrchestrator::emit_runtime_diagnostics...</li>
-<li>line 1160: Array RenderDiagnosticsOrchestrator::serialize_texture_trace...</li>
-<li>line 1176: Array RenderDiagnosticsOrchestrator::serialize_cross_device_...</li>
-<li>line 1189: Array RenderDiagnosticsOrchestrator::serialize_frame_timing(...</li>
-<li>line 1205: Dictionary RenderDiagnosticsOrchestrator::serialize_error_st...</li>
-<li>line 1239: Dictionary RenderDiagnosticsOrchestrator::build_render_stats...</li>
-<li>line 1559: float RenderDiagnosticsOrchestrator::get_sort_time_ms_intern...</li>
-<li>line 1564: float RenderDiagnosticsOrchestrator::get_render_time_ms_inte...</li>
-<li>line 1569: Dictionary RenderDiagnosticsOrchestrator::get_last_sort_metr...</li>
-<li>line 1619: Array RenderDiagnosticsOrchestrator::get_sort_metrics_histor...</li>
-<li>line 1639: void RenderDiagnosticsOrchestrator::record_sort_sample(const...</li>
-<li>line 1662: void RenderDiagnosticsOrchestrator::finalize_frame_metrics(u...</li>
-<li>line 1752: Dictionary RenderDiagnosticsOrchestrator::get_runtime_diagno...</li>
-<li>line 1841: Dictionary GaussianSplatRenderer::get_render_stats() const {...</li>
-<li>line 1846: float GaussianSplatRenderer::get_sort_time_ms() const {...</li>
-<li>line 1851: float GaussianSplatRenderer::get_render_time_ms() const {...</li>
-<li>line 1856: Dictionary GaussianSplatRenderer::get_last_sort_metrics() co...</li>
-<li>line 1861: Array GaussianSplatRenderer::get_sort_metrics_history() cons...</li>
-<li>line 1866: void GaussianSplatRenderer::record_sort_sample(const SortFra...</li>
-<li>line 1871: Dictionary GaussianSplatRenderer::get_runtime_diagnostic_sna...</li>
-<li>line 1875: GaussianSplatRenderer::MonitorStreamingSnapshot GaussianSpla...</li>
+<li>line 202: static void _merge_dictionary(Dictionary &amp;p_target, const Di...</li>
+<li>line 210: static bool _is_finite(float p_value) {...</li>
+<li>line 244: static uint32_t _resolve_production_total_splats(const Gauss...</li>
+<li>line 268: static bool _has_gpu_pass_breakdown(const GaussianSplatRende...</li>
+<li>line 721: static Dictionary _validate_production_metrics(const Diction...</li>
+<li>line 939: static Dictionary _evaluate_perf_gate(const ProductionMetric...</li>
+<li>line 1085: void RenderDiagnosticsOrchestrator::record_rendering_error(c...</li>
+<li>line 1136: void RenderDiagnosticsOrchestrator::capture_frame_timing_sam...</li>
+<li>line 1155: void RenderDiagnosticsOrchestrator::increment_frame_counter(...</li>
+<li>line 1166: void RenderDiagnosticsOrchestrator::emit_runtime_diagnostics...</li>
+<li>line 1177: Array RenderDiagnosticsOrchestrator::serialize_texture_trace...</li>
+<li>line 1193: Array RenderDiagnosticsOrchestrator::serialize_cross_device_...</li>
+<li>line 1206: Array RenderDiagnosticsOrchestrator::serialize_frame_timing(...</li>
+<li>line 1222: Dictionary RenderDiagnosticsOrchestrator::serialize_error_st...</li>
+<li>line 1256: Dictionary RenderDiagnosticsOrchestrator::build_render_stats...</li>
+<li>line 1578: float RenderDiagnosticsOrchestrator::get_sort_time_ms_intern...</li>
+<li>line 1583: float RenderDiagnosticsOrchestrator::get_render_time_ms_inte...</li>
+<li>line 1588: Dictionary RenderDiagnosticsOrchestrator::get_last_sort_metr...</li>
+<li>line 1638: Array RenderDiagnosticsOrchestrator::get_sort_metrics_histor...</li>
+<li>line 1658: void RenderDiagnosticsOrchestrator::record_sort_sample(const...</li>
+<li>line 1681: void RenderDiagnosticsOrchestrator::finalize_frame_metrics(u...</li>
+<li>line 1771: Dictionary RenderDiagnosticsOrchestrator::get_runtime_diagno...</li>
+<li>line 1860: Dictionary GaussianSplatRenderer::get_render_stats() const {...</li>
+<li>line 1865: float GaussianSplatRenderer::get_sort_time_ms() const {...</li>
+<li>line 1870: float GaussianSplatRenderer::get_render_time_ms() const {...</li>
+<li>line 1875: Dictionary GaussianSplatRenderer::get_last_sort_metrics() co...</li>
+<li>line 1880: Array GaussianSplatRenderer::get_sort_metrics_history() cons...</li>
+<li>line 1885: void GaussianSplatRenderer::record_sort_sample(const SortFra...</li>
+<li>line 1890: Dictionary GaussianSplatRenderer::get_runtime_diagnostic_sna...</li>
+<li>line 1894: GaussianSplatRenderer::MonitorStreamingSnapshot GaussianSpla...</li>
+</ul>
+<h2 id="modulesgaussian_splattingtestssynthetic_surface_generatorcpp">modules/gaussian_splatting/tests/synthetic_surface_generator.cpp<a class="headerlink" href="#modulesgaussian_splattingtestssynthetic_surface_generatorcpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 11: Dictionary SurfaceSplatGenerator::Config::to_dict() const {...</li>
+<li>line 33: void SurfaceSplatGenerator::Config::from_dict(const Dictiona...</li>
+<li>line 53: uint64_t SurfaceSplatGenerator::hash_config(const Config &amp;p_...</li>
+<li>line 75: LocalVector<gaussian> SurfaceSplatGenerator::generate(const ...</gaussian></li>
 </ul>
 <h2 id="modulesgaussian_splattingnodesgaussian_splat_world_3dcpp">modules/gaussian_splatting/nodes/gaussian_splat_world_3d.cpp<a class="headerlink" href="#modulesgaussian_splattingnodesgaussian_splat_world_3dcpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -8179,15 +8212,15 @@
 <li>line 445: static uint64_t _hash_transform3d(const Transform3D &amp;p_trans...</li>
 <li>line 453: static uint64_t _hash_color(const Color &amp;p_color, uint64_t p...</li>
 <li>line 912: void RenderPipelineStages::finalize_stage_contracts(StageMet...</li>
-<li>line 1901: void RenderPipelineStages::set_debug_state_orchestrator(Rend...</li>
-<li>line 1905: void RenderPipelineStages::set_diagnostics_orchestrator(Rend...</li>
-<li>line 1933: void RenderPipelineStages::reset_debug_overlay_metrics(float...</li>
-<li>line 1938: void RenderPipelineStages::store_stage_metrics(const Gaussia...</li>
-<li>line 1943: void RenderPipelineStages::clear_stage_metrics() {...</li>
-<li>line 1948: void RenderPipelineStages::increment_frame_counter() {...</li>
-<li>line 1953: void RenderPipelineStages::finalize_frame_metrics(uint64_t p...</li>
-<li>line 2822: void RenderPipelineStages::render_sorted_splats_with_context...</li>
-<li>line 3108: void RenderPipelineStages::log_stage_result(const char *p_st...</li>
+<li>line 1902: void RenderPipelineStages::set_debug_state_orchestrator(Rend...</li>
+<li>line 1906: void RenderPipelineStages::set_diagnostics_orchestrator(Rend...</li>
+<li>line 1934: void RenderPipelineStages::reset_debug_overlay_metrics(float...</li>
+<li>line 1939: void RenderPipelineStages::store_stage_metrics(const Gaussia...</li>
+<li>line 1944: void RenderPipelineStages::clear_stage_metrics() {...</li>
+<li>line 1949: void RenderPipelineStages::increment_frame_counter() {...</li>
+<li>line 1954: void RenderPipelineStages::finalize_frame_metrics(uint64_t p...</li>
+<li>line 2823: void RenderPipelineStages::render_sorted_splats_with_context...</li>
+<li>line 3109: void RenderPipelineStages::log_stage_result(const char *p_st...</li>
 </ul>
 <h2 id="modulesgaussian_splattingtestssynthetic_splat_commoncpp">modules/gaussian_splatting/tests/synthetic_splat_common.cpp<a class="headerlink" href="#modulesgaussian_splattingtestssynthetic_splat_commoncpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -11059,7 +11092,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 21, 2026 21:19:36 UTC">May 21, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 21, 2026 21:22:14 UTC">May 21, 2026</span>
   </span>
 
     
