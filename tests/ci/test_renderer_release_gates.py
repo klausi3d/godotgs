@@ -348,7 +348,16 @@ class RendererReleaseGateTests(unittest.TestCase):
             manifest = _base_manifest(root)
             manifest["external_status_check_policy"]["non_blocking_checks"] = []
             failures = checker.validate_contract(root, manifest)
-            self.assertTrue(any("must classify qlty check" in item for item in failures))
+            self.assertTrue(any("must classify qlty check as required or non-blocking" in item for item in failures))
+
+    def test_external_status_policy_allows_qlty_to_be_required(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["external_status_check_policy"]["required_for_public_alpha"] = ["qlty check"]
+            manifest["external_status_check_policy"]["non_blocking_checks"] = []
+            failures = checker.validate_contract(root, manifest)
+            self.assertEqual([], [failure for failure in failures if "qlty check" in failure])
 
     def test_candidate_requires_issue_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -849,6 +858,32 @@ class RendererReleaseGateTests(unittest.TestCase):
             )
             evidence = {"issue_classifications": {}}
             issues = [{"number": 360, "state": "OPEN", "labels": [{"name": "priority:P3"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("issue #360 is still blocking" in item for item in failures))
+
+    def test_candidate_cannot_downgrade_manifest_blocker_with_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
+            )
+            evidence = {
+                "issue_classifications": {
+                    "360": {
+                        "status": "deferred",
+                        "rationale": "claimed downstream follow-up",
+                        "evidence_required": ["release owner approval"],
+                    }
+                }
+            }
+            issues = [{"number": 360, "state": "OPEN", "labels": [{"name": "priority:P0"}]}]
             failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
             self.assertTrue(any("issue #360 is still blocking" in item for item in failures))
 

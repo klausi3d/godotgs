@@ -230,13 +230,20 @@ def _validate_external_status_check_policy(manifest: dict[str, Any]) -> list[str
         return ["external_status_check_policy must be a JSON object"]
 
     failures: list[str] = []
-    required_contexts = set(policy.get("branch_protection_required_status_checks", []))
-    public_alpha_required = set(policy.get("required_for_public_alpha", []))
+    required_status_checks = policy.get("branch_protection_required_status_checks", [])
+    public_alpha_status_checks = policy.get("required_for_public_alpha", [])
+    if not isinstance(required_status_checks, list):
+        return ["external_status_check_policy.branch_protection_required_status_checks must be a list"]
+    if not isinstance(public_alpha_status_checks, list):
+        return ["external_status_check_policy.required_for_public_alpha must be a list"]
+    required_contexts = set(required_status_checks)
+    public_alpha_required = set(public_alpha_status_checks)
     non_blocking = policy.get("non_blocking_checks", [])
     if not isinstance(non_blocking, list):
         return ["external_status_check_policy.non_blocking_checks must be a list"]
 
-    qlty_found = False
+    qlty_non_blocking = False
+    qlty_required = "qlty check" in required_contexts or "qlty check" in public_alpha_required
     for check in non_blocking:
         if not isinstance(check, dict):
             failures.append(f"external non-blocking check must be a JSON object: {check!r}")
@@ -246,7 +253,7 @@ def _validate_external_status_check_policy(manifest: dict[str, Any]) -> list[str
             failures.append(f"external non-blocking check missing context: {check!r}")
             continue
         if context == "qlty check":
-            qlty_found = True
+            qlty_non_blocking = True
         if context in required_contexts or context in public_alpha_required or check.get("required_for_public_alpha") is True:
             failures.append(f"external check {context!r} cannot be both non-blocking and public-alpha required")
         if check.get("classification") != "deferred":
@@ -254,8 +261,8 @@ def _validate_external_status_check_policy(manifest: dict[str, Any]) -> list[str
         for field in ("issue", "reason", "decision_evidence", "local_gate_behavior"):
             if not check.get(field):
                 failures.append(f"external non-blocking check {context!r} missing {field}")
-    if not qlty_found:
-        failures.append("external_status_check_policy must classify qlty check")
+    if not qlty_non_blocking and not qlty_required:
+        failures.append("external_status_check_policy must classify qlty check as required or non-blocking")
     return failures
 
 
@@ -1012,7 +1019,7 @@ def _validate_candidate_issues(
         labels = _candidate_issue_label_names(issue)
         if not _candidate_issue_is_relevant(policy, labels) and number not in manifest_classifications:
             continue
-        classification = classifications.get(number, manifest_classifications.get(number))
+        classification = manifest_classifications.get(number, classifications.get(number))
         failures.extend(_validate_candidate_issue_classification(root, manifest, number, classification))
     return failures
 
