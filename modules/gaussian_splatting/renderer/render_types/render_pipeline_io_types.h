@@ -31,6 +31,36 @@ struct RenderFrameSnapshot {
 	IndexDomain sorted_index_domain = IndexDomain::UNKNOWN;
 };
 
+enum class RenderRouteBackend : uint8_t {
+	NONE = 0,
+	RESIDENT,
+	STREAMING,
+};
+
+inline const char *render_route_backend_to_string(RenderRouteBackend p_backend) {
+	switch (p_backend) {
+		case RenderRouteBackend::NONE:
+			return "none";
+		case RenderRouteBackend::RESIDENT:
+			return "resident";
+		case RenderRouteBackend::STREAMING:
+			return "streaming";
+	}
+	return "none";
+}
+
+struct RenderRouteDecision {
+	bool valid = false;
+	RenderRouteBackend selected_backend = RenderRouteBackend::NONE;
+	String selected_backend_name = "none";
+	String route_uid;
+	String reason;
+	String data_source;
+	bool has_render_data = false;
+	bool single_route_per_frame = true;
+	bool alternate_backend_fallback_forbidden = true;
+};
+
 enum class RenderFallbackReason {
 	NONE = 0,
 	DATA_UNAVAILABLE,
@@ -60,6 +90,22 @@ struct StageResult {
 	bool is_error = false;
 	RenderFallbackReason fallback_reason = RenderFallbackReason::NONE;
 	String reason;
+	String stage_name;
+	String route_uid;
+	IndexDomain input_domain = IndexDomain::UNKNOWN;
+	IndexDomain output_domain = IndexDomain::UNKNOWN;
+	uint32_t input_count = 0;
+	uint32_t output_count = 0;
+	String first_failure_stage;
+	String skip_cause_stage;
+	bool depth_test_honored = true;
+	bool degraded = false;
+	String degradation_reason;
+	bool used_cached_output = false;
+	bool used_cpu_fallback = false;
+	bool used_graphics_fallback = false;
+	bool overflow_clamped = false;
+	bool strict_contract_violation = false;
 
 	bool is_success() const { return status == StageStatus::SUCCESS || status == StageStatus::FALLBACK; }
 	bool is_failure() const { return status == StageStatus::FAILED; }
@@ -192,6 +238,15 @@ struct StageMetrics {
 	StageIO sort_io;
 	StageIO raster_io;
 	StageIO composite_io;
+	String route_uid;
+	String selected_route_backend;
+	String first_failure_stage;
+	String skip_cause_stage;
+	int32_t first_failure_instance_index = -1;
+	int32_t first_skipped_instance_index = -1;
+	bool has_degradation = false;
+	bool composite_depth_test_honored = true;
+	String degradation_reason;
 };
 
 struct PipelineEvent {
@@ -224,6 +279,7 @@ struct PainterlyCompositePushConstant {
  * @brief Planning data that determines the render path for a frame.
  */
 struct RenderFramePlan {
+	RenderRouteDecision route_decision;
 	DataSourcePlan data_source;
 	bool has_render_data = false;
 	bool set_skip_metrics = false;

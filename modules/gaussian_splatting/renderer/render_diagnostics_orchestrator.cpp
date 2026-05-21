@@ -186,6 +186,10 @@ static Array _production_metrics_contract() {
 	keys.push_back("stage_sort_status");
 	keys.push_back("stage_raster_status");
 	keys.push_back("stage_composite_status");
+	keys.push_back("stage_first_failure");
+	keys.push_back("stage_skip_cause");
+	keys.push_back("stage_has_degradation");
+	keys.push_back("stage_composite_depth_test_honored");
 	keys.push_back("route_uid");
 	keys.push_back("sort_route_uid");
 	keys.push_back("cull_route_uid");
@@ -235,6 +239,136 @@ static void _append_raster_specialization_metrics(const GaussianSplatRenderer::P
 	r_metrics["raster_pipeline_reformats"] = static_cast<int64_t>(p_perf.raster_pipeline_reformats);
 }
 
+static uint32_t _resolve_production_total_splats(const GaussianSplatRenderer::SceneState &p_scene_state) {
+	if (p_scene_state.gaussian_data.is_valid()) {
+		return p_scene_state.gaussian_data->get_count();
+	}
+	return p_scene_state.payload_source_splat_count;
+}
+
+static void _resolve_production_stage_times(const GaussianSplatRenderer::StageMetrics &p_stage_metrics,
+		bool p_stage_valid, const GaussianSplatRenderer::PerformanceMetrics &p_perf,
+		const GaussianSplatRenderer::FrameState &p_frame_state, float &r_cull_ms, float &r_sort_ms,
+		float &r_raster_ms, float &r_composite_ms) {
+	if (p_stage_valid) {
+		r_cull_ms = p_stage_metrics.cull.cull_time_ms;
+		r_sort_ms = p_stage_metrics.sort.sort_time_ms;
+		r_raster_ms = p_stage_metrics.raster.render_time_ms;
+		r_composite_ms = p_stage_metrics.composite_time_ms;
+		return;
+	}
+	r_cull_ms = p_perf.culling_time_ms;
+	r_sort_ms = p_frame_state.sort_time_ms;
+	r_raster_ms = p_frame_state.render_time_ms;
+	r_composite_ms = 0.0f;
+}
+
+static bool _has_gpu_pass_breakdown(const GaussianSplatRenderer::PerformanceMetrics &p_perf) {
+	const bool valid_flags[] = {
+		p_perf.gpu_tile_overlap_count_time_valid,
+		p_perf.gpu_tile_overlap_emit_time_valid,
+		p_perf.gpu_tile_overlap_sort_time_valid,
+		p_perf.tile_overlap_sort_cpu_dispatch_valid,
+		p_perf.gpu_tile_prefix_time_valid,
+		p_perf.tile_prefix_cpu_sync_fallback_valid,
+		p_perf.gpu_tile_raster_time_valid,
+		p_perf.gpu_tile_resolve_time_valid,
+	};
+	for (int i = 0; i < 8; i++) {
+		if (valid_flags[i]) {
+			return true;
+		}
+	}
+
+	const float timing_values[] = {
+		p_perf.gpu_tile_binning_time_ms,
+		p_perf.gpu_tile_prefix_time_ms,
+		p_perf.gpu_tile_raster_time_ms,
+		p_perf.gpu_tile_resolve_time_ms,
+	};
+	for (int i = 0; i < 4; i++) {
+		if (timing_values[i] > 0.0f) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static void _append_production_frame_metrics(Dictionary &r_metrics,
+		const GaussianSplatRenderer::FrameState &p_frame_state, uint32_t p_visible_splats,
+		uint32_t p_total_splats, float p_frame_time_ms, float p_cull_ms, float p_sort_ms,
+		float p_raster_ms, float p_composite_ms) {
+	r_metrics["frame"] = static_cast<int64_t>(p_frame_state.frame_counter);
+	r_metrics["visible_splats"] = static_cast<int64_t>(p_visible_splats);
+	r_metrics["total_splats"] = static_cast<int64_t>(p_total_splats);
+	r_metrics["cull_ms"] = p_cull_ms;
+	r_metrics["sort_ms"] = p_sort_ms;
+	r_metrics["raster_ms"] = p_raster_ms;
+	r_metrics["composite_ms"] = p_composite_ms;
+	r_metrics["stage_total_ms"] = p_cull_ms + p_sort_ms + p_raster_ms;
+	r_metrics["render_ms"] = p_frame_state.render_time_ms;
+	r_metrics["frame_time_ms"] = p_frame_time_ms;
+}
+
+static void _append_production_gpu_metrics(Dictionary &r_metrics,
+		const GaussianSplatRenderer::PerformanceMetrics &p_perf) {
+	r_metrics["gpu_frame_ms"] = p_perf.gpu_frame_time_ms;
+	r_metrics["gpu_frame_valid"] = p_perf.gpu_frame_time_valid;
+	r_metrics["gpu_overlap_count_ms"] = p_perf.gpu_tile_overlap_count_time_ms;
+	r_metrics["gpu_overlap_count_valid"] = p_perf.gpu_tile_overlap_count_time_valid;
+	r_metrics["gpu_overlap_emit_ms"] = p_perf.gpu_tile_overlap_emit_time_ms;
+	r_metrics["gpu_overlap_emit_valid"] = p_perf.gpu_tile_overlap_emit_time_valid;
+	r_metrics["gpu_overlap_sort_ms"] = p_perf.gpu_tile_overlap_sort_time_ms;
+	r_metrics["gpu_overlap_sort_valid"] = p_perf.gpu_tile_overlap_sort_time_valid;
+	r_metrics["overlap_sort_cpu_dispatch_ms"] = p_perf.tile_overlap_sort_cpu_dispatch_ms;
+	r_metrics["overlap_sort_cpu_dispatch_valid"] = p_perf.tile_overlap_sort_cpu_dispatch_valid;
+	r_metrics["gpu_binning_ms"] = p_perf.gpu_tile_binning_time_ms;
+	r_metrics["gpu_prefix_ms"] = p_perf.gpu_tile_prefix_time_ms;
+	r_metrics["gpu_prefix_valid"] = p_perf.gpu_tile_prefix_time_valid;
+	r_metrics["prefix_cpu_sync_fallback_ms"] = p_perf.tile_prefix_cpu_sync_fallback_ms;
+	r_metrics["prefix_cpu_sync_fallback_valid"] = p_perf.tile_prefix_cpu_sync_fallback_valid;
+	r_metrics["gpu_raster_ms"] = p_perf.gpu_tile_raster_time_ms;
+	r_metrics["gpu_raster_valid"] = p_perf.gpu_tile_raster_time_valid;
+	r_metrics["gpu_resolve_ms"] = p_perf.gpu_tile_resolve_time_ms;
+	r_metrics["gpu_resolve_valid"] = p_perf.gpu_tile_resolve_time_valid;
+	r_metrics["gpu_timing_frame_serial"] = static_cast<int64_t>(p_perf.gpu_timing_frame_serial);
+	r_metrics["gpu_timing_frames_behind"] = static_cast<int64_t>(p_perf.gpu_timing_frames_behind);
+	r_metrics["gpu_pass_breakdown_available"] = _has_gpu_pass_breakdown(p_perf);
+}
+
+static String _resolve_production_raster_path(const GaussianSplatRenderer::PerformanceMetrics &p_perf,
+		const GaussianSplatRenderer::StageMetrics &p_stage_metrics, bool p_stage_valid) {
+	String raster_path = p_perf.raster_path;
+	if (p_stage_valid && !p_stage_metrics.raster.raster_path.is_empty()) {
+		raster_path = p_stage_metrics.raster.raster_path;
+	}
+	if (raster_path.is_empty()) {
+		raster_path = "unknown";
+	}
+	return raster_path;
+}
+
+static String _stage_status_snapshot(bool p_stage_valid,
+		GaussianSplatRenderer::StageResult::StageStatus p_status) {
+	if (!p_stage_valid) {
+		return "unknown";
+	}
+	return _stage_status_to_string(p_status);
+}
+
+static void _append_production_stage_contract_metrics(Dictionary &r_metrics,
+		const GaussianSplatRenderer::StageMetrics &p_stage_metrics, bool p_stage_valid) {
+	r_metrics["stage_metrics_valid"] = p_stage_valid;
+	r_metrics["stage_cull_status"] = _stage_status_snapshot(p_stage_valid, p_stage_metrics.cull_result.status);
+	r_metrics["stage_sort_status"] = _stage_status_snapshot(p_stage_valid, p_stage_metrics.sort_result.status);
+	r_metrics["stage_raster_status"] = _stage_status_snapshot(p_stage_valid, p_stage_metrics.raster_result.status);
+	r_metrics["stage_composite_status"] = _stage_status_snapshot(p_stage_valid, p_stage_metrics.composite_result.status);
+	r_metrics["stage_first_failure"] = p_stage_valid ? p_stage_metrics.first_failure_stage : String();
+	r_metrics["stage_skip_cause"] = p_stage_valid ? p_stage_metrics.skip_cause_stage : String();
+	r_metrics["stage_has_degradation"] = p_stage_valid ? p_stage_metrics.has_degradation : false;
+	r_metrics["stage_composite_depth_test_honored"] = p_stage_valid ? p_stage_metrics.composite_depth_test_honored : true;
+}
+
 static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_renderer,
 		const GaussianSplatRenderer::StageMetrics &p_stage_metrics, bool p_stage_valid, float p_frame_time_ms) {
 	Dictionary metrics;
@@ -245,76 +379,24 @@ static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_re
 	const auto &debug_state = state_view.get_debug_state_view();
 	uint32_t visible_splats = frame_state.visible_splat_count.load(std::memory_order_acquire);
 	const auto &scene_state = state_view.get_scene_state();
-	uint32_t total_splats = scene_state.gaussian_data.is_valid()
-			? scene_state.gaussian_data->get_count()
-			: scene_state.payload_source_splat_count;
-	float cull_ms = p_stage_valid ? p_stage_metrics.cull.cull_time_ms : perf.culling_time_ms;
-	float sort_ms = p_stage_valid ? p_stage_metrics.sort.sort_time_ms : frame_state.sort_time_ms;
-	float raster_ms = p_stage_valid ? p_stage_metrics.raster.render_time_ms : frame_state.render_time_ms;
-	float composite_ms = p_stage_valid ? p_stage_metrics.composite_time_ms : 0.0f;
-	float stage_total_ms = cull_ms + sort_ms + raster_ms;
+	uint32_t total_splats = _resolve_production_total_splats(scene_state);
+	float cull_ms = 0.0f;
+	float sort_ms = 0.0f;
+	float raster_ms = 0.0f;
+	float composite_ms = 0.0f;
+	_resolve_production_stage_times(p_stage_metrics, p_stage_valid, perf, frame_state,
+			cull_ms, sort_ms, raster_ms, composite_ms);
 
-	metrics["frame"] = static_cast<int64_t>(frame_state.frame_counter);
-	metrics["visible_splats"] = static_cast<int64_t>(visible_splats);
-	metrics["total_splats"] = static_cast<int64_t>(total_splats);
-	metrics["cull_ms"] = cull_ms;
-	metrics["sort_ms"] = sort_ms;
-	metrics["raster_ms"] = raster_ms;
-	metrics["composite_ms"] = composite_ms;
-	metrics["stage_total_ms"] = stage_total_ms;
-	metrics["render_ms"] = frame_state.render_time_ms;
-	metrics["frame_time_ms"] = p_frame_time_ms;
-	metrics["gpu_frame_ms"] = perf.gpu_frame_time_ms;
-	metrics["gpu_frame_valid"] = perf.gpu_frame_time_valid;
-	metrics["gpu_overlap_count_ms"] = perf.gpu_tile_overlap_count_time_ms;
-	metrics["gpu_overlap_count_valid"] = perf.gpu_tile_overlap_count_time_valid;
-	metrics["gpu_overlap_emit_ms"] = perf.gpu_tile_overlap_emit_time_ms;
-	metrics["gpu_overlap_emit_valid"] = perf.gpu_tile_overlap_emit_time_valid;
-	metrics["gpu_overlap_sort_ms"] = perf.gpu_tile_overlap_sort_time_ms;
-	metrics["gpu_overlap_sort_valid"] = perf.gpu_tile_overlap_sort_time_valid;
-	metrics["overlap_sort_cpu_dispatch_ms"] = perf.tile_overlap_sort_cpu_dispatch_ms;
-	metrics["overlap_sort_cpu_dispatch_valid"] = perf.tile_overlap_sort_cpu_dispatch_valid;
-	metrics["gpu_binning_ms"] = perf.gpu_tile_binning_time_ms;
-	metrics["gpu_prefix_ms"] = perf.gpu_tile_prefix_time_ms;
-	metrics["gpu_prefix_valid"] = perf.gpu_tile_prefix_time_valid;
-	metrics["prefix_cpu_sync_fallback_ms"] = perf.tile_prefix_cpu_sync_fallback_ms;
-	metrics["prefix_cpu_sync_fallback_valid"] = perf.tile_prefix_cpu_sync_fallback_valid;
-	metrics["gpu_raster_ms"] = perf.gpu_tile_raster_time_ms;
-	metrics["gpu_raster_valid"] = perf.gpu_tile_raster_time_valid;
-	metrics["gpu_resolve_ms"] = perf.gpu_tile_resolve_time_ms;
-	metrics["gpu_resolve_valid"] = perf.gpu_tile_resolve_time_valid;
-	metrics["gpu_timing_frame_serial"] = static_cast<int64_t>(perf.gpu_timing_frame_serial);
-	metrics["gpu_timing_frames_behind"] = static_cast<int64_t>(perf.gpu_timing_frames_behind);
-	metrics["gpu_pass_breakdown_available"] = perf.gpu_tile_overlap_count_time_valid ||
-			perf.gpu_tile_overlap_emit_time_valid ||
-			perf.gpu_tile_overlap_sort_time_valid ||
-			perf.tile_overlap_sort_cpu_dispatch_valid ||
-			perf.gpu_tile_prefix_time_valid ||
-			perf.tile_prefix_cpu_sync_fallback_valid ||
-			perf.gpu_tile_raster_time_valid ||
-			perf.gpu_tile_resolve_time_valid ||
-			perf.gpu_tile_binning_time_ms > 0.0f ||
-			perf.gpu_tile_prefix_time_ms > 0.0f ||
-			perf.gpu_tile_raster_time_ms > 0.0f ||
-			perf.gpu_tile_resolve_time_ms > 0.0f;
+	_append_production_frame_metrics(metrics, frame_state, visible_splats, total_splats, p_frame_time_ms,
+			cull_ms, sort_ms, raster_ms, composite_ms);
+	_append_production_gpu_metrics(metrics, perf);
 	metrics["data_source"] = perf.data_source;
 	metrics["data_source_error"] = perf.data_source_error;
-	String raster_path = perf.raster_path;
-	if (p_stage_valid && !p_stage_metrics.raster.raster_path.is_empty()) {
-		raster_path = p_stage_metrics.raster.raster_path;
-	}
-	if (raster_path.is_empty()) {
-		raster_path = "unknown";
-	}
-	metrics["raster_path"] = raster_path;
+	metrics["raster_path"] = _resolve_production_raster_path(perf, p_stage_metrics, p_stage_valid);
 	_append_raster_specialization_metrics(perf, metrics);
 	const auto &render_config = state_view.get_render_config_view();
 	metrics["render_mode"] = static_cast<int64_t>(render_config.render_mode);
-	metrics["stage_metrics_valid"] = p_stage_valid;
-	metrics["stage_cull_status"] = p_stage_valid ? _stage_status_to_string(p_stage_metrics.cull_result.status) : String("unknown");
-	metrics["stage_sort_status"] = p_stage_valid ? _stage_status_to_string(p_stage_metrics.sort_result.status) : String("unknown");
-	metrics["stage_raster_status"] = p_stage_valid ? _stage_status_to_string(p_stage_metrics.raster_result.status) : String("unknown");
-	metrics["stage_composite_status"] = p_stage_valid ? _stage_status_to_string(p_stage_metrics.composite_result.status) : String("unknown");
+	_append_production_stage_contract_metrics(metrics, p_stage_metrics, p_stage_valid);
 	metrics["route_uid"] = debug_state.route_uid;
 	metrics["sort_route_uid"] = debug_state.sort_route_uid;
 	metrics["cull_route_uid"] = _normalize_cull_route_uid_for_stats(perf.cull_route_uid);
@@ -442,6 +524,15 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 	r_metrics["stage_composite_status"] = p_stage_valid ? _stage_status_to_string(p_stage_metrics.composite_result.status) : String("unknown");
 	r_metrics["stage_composite_reason"] = p_stage_metrics.composite_result.reason;
 	r_metrics["stage_composite_is_error"] = p_stage_metrics.composite_result.is_error;
+	r_metrics["stage_first_failure"] = p_stage_metrics.first_failure_stage;
+	r_metrics["stage_skip_cause"] = p_stage_metrics.skip_cause_stage;
+	r_metrics["stage_first_failure_instance_index"] = static_cast<int64_t>(p_stage_metrics.first_failure_instance_index);
+	r_metrics["stage_first_skipped_instance_index"] = static_cast<int64_t>(p_stage_metrics.first_skipped_instance_index);
+	r_metrics["stage_has_degradation"] = p_stage_metrics.has_degradation;
+	r_metrics["stage_degradation_reason"] = p_stage_metrics.degradation_reason;
+	r_metrics["stage_composite_depth_test_honored"] = p_stage_metrics.composite_depth_test_honored;
+	r_metrics["stage_composite_degraded"] = p_stage_metrics.composite_result.degraded;
+	r_metrics["stage_composite_strict_contract_violation"] = p_stage_metrics.composite_result.strict_contract_violation;
 	r_metrics["route_uid"] = debug_state.route_uid;
 	r_metrics["sort_route_uid"] = debug_state.sort_route_uid;
 	_append_raster_specialization_metrics(perf, r_metrics);
@@ -1382,6 +1473,16 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 	stats["cull_route_reason"] = perf.cull_route_reason;
 	stats["cull_route_reason_label"] =
 			GaussianRenderRouteLabels::describe_cull_route_reason(perf.cull_route_reason);
+	if (debug_state.last_stage_metrics_valid) {
+		const GaussianSplatRenderer::StageMetrics &stage_metrics = debug_state.last_stage_metrics;
+		stats["stage_first_failure"] = stage_metrics.first_failure_stage;
+		stats["stage_skip_cause"] = stage_metrics.skip_cause_stage;
+		stats["stage_first_failure_instance_index"] = static_cast<int64_t>(stage_metrics.first_failure_instance_index);
+		stats["stage_first_skipped_instance_index"] = static_cast<int64_t>(stage_metrics.first_skipped_instance_index);
+		stats["stage_has_degradation"] = stage_metrics.has_degradation;
+		stats["stage_degradation_reason"] = stage_metrics.degradation_reason;
+		stats["stage_composite_depth_test_honored"] = stage_metrics.composite_depth_test_honored;
+	}
 	Dictionary effective_config_snapshot = g_sh_config.get_effective_config_snapshot();
 	GaussianEffectiveConfig::merge_into(effective_config_snapshot, g_pipeline_feature_set.get_effective_config_snapshot());
 	GaussianEffectiveConfig::set_entry(effective_config_snapshot,

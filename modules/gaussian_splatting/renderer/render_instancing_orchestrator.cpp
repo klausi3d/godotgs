@@ -16,6 +16,10 @@ static void _reset_output_cache_after_readiness_failure(OutputCompositor::Output
 	r_output_cache.last_viewport_copy_success = false;
 	r_output_cache.last_viewport_copy_source_size = Size2i();
 	r_output_cache.last_viewport_copy_dest_size = Size2i();
+	r_output_cache.last_depth_test_honored = true;
+	r_output_cache.last_copy_degraded = false;
+	r_output_cache.last_copy_degradation_reason = String();
+	r_output_cache.last_strict_depth_contract_required = false;
 	r_output_cache.render_buffers_commit_pending = false;
 	r_output_cache.pending_render_buffers_size = Size2i();
 	r_output_cache.pending_painterly_commit = false;
@@ -134,6 +138,8 @@ void RenderInstancingOrchestrator::render_instanced(RenderDataRD *p_render_data,
 	uint64_t aggregated_visible_splats = 0;
 	bool any_render_performed = false;
 	bool any_viewport_copy = false;
+	int32_t first_failed_instance_index = -1;
+	int32_t first_skipped_instance_index = -1;
 	Size2i last_copy_source_size;
 	Size2i last_copy_dest_size;
 
@@ -183,9 +189,20 @@ void RenderInstancingOrchestrator::render_instanced(RenderDataRD *p_render_data,
 			&frame_provider
 		};
 		GaussianSplatRenderer::CullStageOutput cull_output;
-		pipeline_stages->execute_cull_stage(cull_input, cull_output);
+		const GaussianSplatRenderer::StageResult cull_result =
+				pipeline_stages->execute_cull_stage(cull_input, cull_output);
 		GaussianSplatRenderer::SortStageOutput sort_output;
-		if (cull_output.has_visible) {
+		if (cull_result.is_error || !cull_result.is_success()) {
+			stage_metrics.sort = GaussianSplatRenderer::SortStageOutput();
+			const String sort_reason = cull_result.reason.is_empty()
+					? String("Sort skipped: cull failed")
+					: vformat("Sort skipped: cull %s", cull_result.reason);
+			stage_metrics.sort_result = RenderPipelineStages::make_downstream_skip_result(
+					"sort", cull_result, sort_reason, cull_result.fallback_reason);
+			RenderPipelineStages::stamp_stage_result_contract(stage_metrics.sort_result, "sort",
+					cull_result.route_uid, cull_result.output_domain,
+					GaussianSplatRenderer::IndexDomain::UNKNOWN, cull_result.output_count, 0);
+		} else if (cull_output.has_visible) {
 			GaussianSplatRenderer::SortStageInput sort_input{
 				frame_context.frame_id,
 				frame_context.world_to_camera_transform,
@@ -195,6 +212,15 @@ void RenderInstancingOrchestrator::render_instanced(RenderDataRD *p_render_data,
 				cull_output.visible_domain
 			};
 			pipeline_stages->execute_sort_stage(sort_input, sort_output);
+		} else {
+			stage_metrics.sort = GaussianSplatRenderer::SortStageOutput();
+			stage_metrics.sort_result = GaussianSplatRenderer::StageResult();
+			stage_metrics.sort_result.status = GaussianSplatRenderer::StageResult::StageStatus::SKIPPED;
+			stage_metrics.sort_result.reason = "Sort skipped: no visible splats";
+			stage_metrics.sort_result.fallback_reason = GaussianSplatRenderer::RenderFallbackReason::NO_VISIBLE_SPLATS;
+			RenderPipelineStages::stamp_stage_result_contract(stage_metrics.sort_result, "sort",
+					cull_result.route_uid, cull_output.visible_domain,
+					GaussianSplatRenderer::IndexDomain::UNKNOWN, cull_output.visible_count, 0);
 		}
 		frame_context.snapshot.valid = true;
 		frame_context.snapshot.cull_visible_domain = cull_output.visible_domain;
@@ -217,6 +243,12 @@ void RenderInstancingOrchestrator::render_instanced(RenderDataRD *p_render_data,
 		uint64_t before_frame_counter = frame_state_view.get_frame_state_view().frame_counter;
 
 		pipeline_stages->render_sorted_splats_with_context(frame_context);
+		if (first_failed_instance_index < 0 && !stage_metrics.first_failure_stage.is_empty()) {
+			first_failed_instance_index = instance_index;
+		}
+		if (first_skipped_instance_index < 0 && !stage_metrics.skip_cause_stage.is_empty()) {
+			first_skipped_instance_index = instance_index;
+		}
 
 		const GaussianSplatRenderer::FrameState &render_frame_state = frame_state_view.get_frame_state_view();
 		accumulated_render_time_ms += render_frame_state.render_time_ms;
@@ -243,6 +275,10 @@ void RenderInstancingOrchestrator::render_instanced(RenderDataRD *p_render_data,
 			static_cast<uint32_t>(MIN<uint64_t>(aggregated_visible_splats, UINT32_MAX)),
 			std::memory_order_release);
 	output_cache.has_valid_render = any_render_performed;
+	if (renderer->get_debug_state().last_stage_metrics_valid) {
+		renderer->get_debug_state().last_stage_metrics.first_failure_instance_index = first_failed_instance_index;
+		renderer->get_debug_state().last_stage_metrics.first_skipped_instance_index = first_skipped_instance_index;
+	}
 
 	if (any_viewport_copy) {
 		output_cache.last_viewport_copy_success = true;
