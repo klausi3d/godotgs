@@ -31,11 +31,6 @@ PREFERRED_ISSUE_CLASSIFICATIONS = (
     "accepted_alpha_limitation",
     "deferred",
 )
-LEGACY_ISSUE_CLASSIFICATIONS = (
-    "blocker",
-    "post_alpha",
-)
-ISSUE_CLASSIFICATIONS = PREFERRED_ISSUE_CLASSIFICATIONS + LEGACY_ISSUE_CLASSIFICATIONS
 UNSUPPORTED_WORKFLOW_CLAIMS = (
     "must_enforce_readiness",
     "manual_input_may_disable",
@@ -933,7 +928,6 @@ def _validate_candidate_issue_classification(
         "blocking": _candidate_issue_blocking_failures,
         "accepted_alpha_limitation": _candidate_issue_accepted_limitation_failures,
         "deferred": _candidate_issue_deferred_failures,
-        "post_alpha": _candidate_issue_post_alpha_failures,
     }
     handler = handlers.get(status)
     if handler:
@@ -983,17 +977,6 @@ def _candidate_issue_deferred_failures(
     if not classification.get("rationale"):
         failures.append(f"candidate issue #{number} deferred classification missing rationale")
     return failures
-
-
-def _candidate_issue_post_alpha_failures(
-    _root: Path,
-    _manifest: dict[str, Any],
-    number: str,
-    classification: dict[str, Any],
-) -> list[str]:
-    if not classification.get("rationale"):
-        return [f"candidate issue #{number} post_alpha classification missing rationale"]
-    return []
 
 
 def _validate_candidate_issues(

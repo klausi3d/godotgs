@@ -896,6 +896,22 @@ class RendererReleaseGateTests(unittest.TestCase):
             failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
             self.assertTrue(any("classification missing evidence_required" in item for item in failures))
 
+    def test_candidate_rejects_legacy_post_alpha_classification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {
+                "issue_classifications": {
+                    "222": {
+                        "status": "post_alpha",
+                        "rationale": "legacy release evidence should not bypass current public-alpha policy",
+                    }
+                }
+            }
+            issues = [{"number": 222, "state": "OPEN", "labels": [{"name": "priority:P1"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("invalid classification 'post_alpha'" in item for item in failures))
+
     def test_candidate_issue_classification_must_be_object(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
