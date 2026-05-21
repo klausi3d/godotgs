@@ -85,6 +85,7 @@ GDS_TESTS: Dict[str, Path] = {
     "World Streaming Gate": RUNTIME_DIR / "test_world_streaming_gate.gd",
     "Streaming Residency API": RUNTIME_DIR / "test_streaming_residency_api.gd",
     "Streaming GPU Tier Budget Contract": RUNTIME_DIR / "test_streaming_gpu_tier_budget_contract.gd",
+    "Canonical Node Asset Render": RUNTIME_DIR / "test_canonical_node_asset_render.gd",
     "Data Flow Recent Window": RUNTIME_DIR / "test_data_flow_recent_window.gd",
     "Pipeline Trace Freshness": RUNTIME_DIR / "test_pipeline_trace_freshness.gd",
     "Monitor Lifecycle Hardening": RUNTIME_DIR / "test_monitor_lifecycle_hardening.gd",
@@ -669,6 +670,10 @@ def _load_scenario_config(path: Path) -> Dict[str, object]:
             raise ValueError(f"Profile '{profile_name}' field 'gd_timeout' must be an integer.")
         if "fail_on_skip" in profile_config and not isinstance(profile_config["fail_on_skip"], bool):
             raise ValueError(f"Profile '{profile_name}' field 'fail_on_skip' must be a boolean.")
+        if "requires_renderer_proof" in profile_config and not isinstance(
+            profile_config["requires_renderer_proof"], bool
+        ):
+            raise ValueError(f"Profile '{profile_name}' field 'requires_renderer_proof' must be a boolean.")
         if "gd_mode" in profile_config:
             gd_mode = profile_config["gd_mode"]
             valid_modes = {"headless", "non-headless", "windows-vulkan"}
@@ -684,6 +689,73 @@ def _load_scenario_config(path: Path) -> Dict[str, object]:
         )
 
     return raw
+
+
+def _build_renderer_proof_summary(
+    results: List[TestResult],
+    *,
+    required: bool,
+) -> Dict[str, object]:
+    proof_tests: List[Dict[str, object]] = []
+    for result in results:
+        metrics = result.metrics if isinstance(result.metrics, dict) else {}
+        proof_kind = metrics.get("renderer_proof_kind")
+        proof_status = metrics.get("renderer_proof_status")
+        if proof_kind is None and proof_status is None:
+            continue
+        status_text = str(proof_status or "unknown").strip() or "unknown"
+        proof_tests.append(
+            {
+                "name": result.name,
+                "result_status": result.status,
+                "proof_kind": str(proof_kind or "unknown"),
+                "proof_status": status_text,
+                "reason": str(metrics.get("reason", "")),
+                "asset_path": str(metrics.get("asset_path", "")),
+                "visible_splats_max": metrics.get("visible_splats_max"),
+                "visual_luma_variance_max": metrics.get("visual_luma_variance_max"),
+                "visual_luma_range_max": metrics.get("visual_luma_range_max"),
+                "visual_non_background_samples_max": metrics.get("visual_non_background_samples_max"),
+                "visual_non_background_ratio_max": metrics.get("visual_non_background_ratio_max"),
+            }
+        )
+
+    passed = [entry for entry in proof_tests if entry["proof_status"] == "passed"]
+    unavailable = [
+        entry
+        for entry in proof_tests
+        if str(entry["proof_status"]).startswith("skipped")
+        or str(entry["proof_status"]).startswith("unavailable")
+    ]
+    failed = [
+        entry
+        for entry in proof_tests
+        if str(entry["proof_status"]) in {"failed", "failure", "error"}
+    ]
+
+    failure_reasons: List[str] = []
+    if required and not proof_tests:
+        failure_reasons.append("No renderer proof metrics were emitted by the selected runtime tests.")
+    if required and not passed:
+        failure_reasons.append("No renderer proof test reported renderer_proof_status=passed.")
+    if required and unavailable:
+        names = ", ".join(str(entry["name"]) for entry in unavailable)
+        failure_reasons.append(f"Required renderer proof was unavailable or skipped: {names}.")
+    if required and failed:
+        names = ", ".join(str(entry["name"]) for entry in failed)
+        failure_reasons.append(f"Required renderer proof failed: {names}.")
+
+    status = "failed" if failure_reasons else ("passed" if required else "not_required")
+    return {
+        "required": required,
+        "status": status,
+        "passed": len(passed),
+        "unavailable": len(unavailable),
+        "failed": len(failed),
+        "total": len(proof_tests),
+        "failure_reasons": failure_reasons,
+        "proof_tests": proof_tests,
+    }
 
 
 def _print_profiles(config: Dict[str, object], *, source: Path) -> None:
@@ -765,6 +837,26 @@ def _validate_summary_schema(summary: Dict[str, object]) -> List[str]:
             errors.append(
                 f"Field 'total' ({expected_total}) does not match number of test entries ({len(tests)})."
             )
+
+    renderer_proof = summary.get("renderer_proof")
+    if renderer_proof is not None:
+        if not isinstance(renderer_proof, dict):
+            errors.append("Field 'renderer_proof' must be an object when present.")
+        else:
+            status = renderer_proof.get("status")
+            if status not in {"not_required", "passed", "failed"}:
+                errors.append("renderer_proof.status must be one of ['failed', 'not_required', 'passed'].")
+            required = renderer_proof.get("required")
+            if not isinstance(required, bool):
+                errors.append("renderer_proof.required must be a boolean.")
+            proof_tests = renderer_proof.get("proof_tests")
+            if not isinstance(proof_tests, list):
+                errors.append("renderer_proof.proof_tests must be a list.")
+            failure_reasons = renderer_proof.get("failure_reasons")
+            if not isinstance(failure_reasons, list) or not all(
+                isinstance(reason, str) for reason in failure_reasons
+            ):
+                errors.append("renderer_proof.failure_reasons must be a string list.")
 
     return errors
 
@@ -949,6 +1041,7 @@ def main() -> int:
     profile_gd_tests = [str(name) for name in profile_config.get("gd_tests", [])]
     profile_godot_args = tuple(str(value) for value in profile_config.get("godot_args", []))
     profile_gd_mode = str(profile_config.get("gd_mode", "")).strip()
+    requires_renderer_proof = bool(profile_config.get("requires_renderer_proof", False))
     cpp_timeout = int(profile_config.get("cpp_timeout", args.cpp_timeout))
     gd_timeout = int(profile_config.get("gd_timeout", args.gd_timeout))
     env_gd_mode = os.environ.get("GS_RUNTIME_GD_MODE")
@@ -1020,6 +1113,10 @@ def main() -> int:
     summary["profile"] = profile_name
     summary["gd_mode"] = resolved_gd_mode
     summary["scenario_config"] = str(config_display)
+    summary["renderer_proof"] = _build_renderer_proof_summary(
+        all_results,
+        required=requires_renderer_proof,
+    )
     schema_errors = _validate_summary_schema(summary)
     summary["schema_valid"] = len(schema_errors) == 0
     summary["schema_errors"] = schema_errors
@@ -1037,7 +1134,13 @@ def main() -> int:
         report_display = report_path
     print(f"[runtime] Report saved to {report_display}")
 
-    return 0 if summary["failed"] == 0 and summary["schema_valid"] else 1
+    renderer_proof = summary.get("renderer_proof", {})
+    renderer_proof_failed = isinstance(renderer_proof, dict) and renderer_proof.get("status") == "failed"
+    if renderer_proof_failed:
+        for reason in renderer_proof.get("failure_reasons", []):
+            print(f"[runtime] ❌ renderer proof: {reason}")
+
+    return 0 if summary["failed"] == 0 and summary["schema_valid"] and not renderer_proof_failed else 1
 
 
 if __name__ == "__main__":
