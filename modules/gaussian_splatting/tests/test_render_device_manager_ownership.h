@@ -275,6 +275,8 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] RenderDeviceManager exposes owned an
 	CHECK(manager->get_tracked_resource_count() == 2);
 	CHECK(manager->get_tracked_owned_resource_count() == 1);
 	CHECK(manager->get_tracked_borrowed_resource_count() == 1);
+	CHECK(manager->has_tracked_resource(owned_buffer));
+	CHECK(manager->has_tracked_resource(borrowed_buffer));
 
 	RID managed_owned = owned_buffer;
 	manager->free_owned_resource(rd, managed_owned);
@@ -282,6 +284,8 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] RenderDeviceManager exposes owned an
 	CHECK(manager->get_tracked_resource_count() == 1);
 	CHECK(manager->get_tracked_owned_resource_count() == 0);
 	CHECK(manager->get_tracked_borrowed_resource_count() == 1);
+	CHECK_FALSE(manager->has_tracked_resource(owned_buffer));
+	CHECK(manager->has_tracked_resource(borrowed_buffer));
 
 	manager->forget_resource(borrowed_buffer);
 	rd->free(borrowed_buffer);
@@ -289,8 +293,12 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] RenderDeviceManager exposes owned an
 	CHECK(manager->get_tracked_resource_count() == 0);
 	CHECK(manager->get_tracked_owned_resource_count() == 0);
 	CHECK(manager->get_tracked_borrowed_resource_count() == 0);
+	CHECK_FALSE(manager->has_tracked_resource(borrowed_buffer));
 
 	manager->shutdown();
+	CHECK(manager->get_last_shutdown_tracked_resource_count() == 0);
+	CHECK(manager->get_last_shutdown_owned_resource_count() == 0);
+	CHECK(manager->get_last_shutdown_borrowed_resource_count() == 0);
 	if (owns_rd) {
 		memdelete(rd);
 	}
@@ -341,6 +349,9 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] RenderDeviceManager shutdown clears 
 
 	CHECK(manager->get_tracked_resource_count() == 0);
 	CHECK(manager->get_tracked_owned_resource_count() == 0);
+	CHECK(manager->get_last_shutdown_tracked_resource_count() == 1);
+	CHECK(manager->get_last_shutdown_owned_resource_count() == 1);
+	CHECK(manager->get_last_shutdown_borrowed_resource_count() == 0);
 	CHECK(manager->get_context().main_device == nullptr);
 	CHECK(manager->get_context().resource_device == nullptr);
 	CHECK(manager->get_context().submission_device == nullptr);

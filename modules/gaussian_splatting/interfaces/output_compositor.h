@@ -241,6 +241,7 @@ private:
     bool _is_depth_texture_valid(const RID &p_depth_texture) const;
     void _track_resource(const RID &p_rid, RenderingDevice *p_device, bool p_owned = true, const char *p_label = nullptr);
     void _forget_resource(const RID &p_rid);
+    void _free_tracked_resource(RenderingDevice *p_fallback_device, RID &r_rid);
 
     // Viewport blit helpers
     bool _ensure_viewport_blit_pipeline(RenderingDevice *p_device, RD::DataFormat p_format, RID &r_shader, RID &r_pipeline);

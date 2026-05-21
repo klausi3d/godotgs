@@ -30,6 +30,7 @@ public:
 
     // Resource ownership tracking
     virtual void track_resource(const RID &p_rid, RenderingDevice *p_device, bool p_owned = true, const char *p_label = nullptr) = 0;
+    virtual bool has_tracked_resource(const RID &p_rid) const = 0;
     virtual RenderingDevice *get_resource_owner(const RID &p_rid, RenderingDevice *p_fallback = nullptr) const = 0;
     virtual void forget_resource(const RID &p_rid) = 0;
     virtual void free_owned_resource(RenderingDevice *p_fallback_device, RID &p_rid) = 0;
@@ -67,6 +68,7 @@ public:
     bool ensure_submission_device(const char *p_context) override;
 
     void track_resource(const RID &p_rid, RenderingDevice *p_device, bool p_owned = true, const char *p_label = nullptr) override;
+    bool has_tracked_resource(const RID &p_rid) const override;
     RenderingDevice *get_resource_owner(const RID &p_rid, RenderingDevice *p_fallback = nullptr) const override;
     void forget_resource(const RID &p_rid) override;
     void free_owned_resource(RenderingDevice *p_fallback_device, RID &p_rid) override;
@@ -110,6 +112,9 @@ public:
     uint32_t get_tracked_owned_resource_count() const;
     uint32_t get_tracked_borrowed_resource_count() const;
     uint32_t get_tracked_texture_count() const { return texture_owner_map.size(); }
+    uint32_t get_last_shutdown_tracked_resource_count() const { return last_shutdown_tracked_resource_count; }
+    uint32_t get_last_shutdown_owned_resource_count() const { return last_shutdown_owned_resource_count; }
+    uint32_t get_last_shutdown_borrowed_resource_count() const { return last_shutdown_borrowed_resource_count; }
 
 protected:
     static void _bind_methods();
@@ -140,6 +145,9 @@ private:
 	HashMap<uint64_t, String> resource_label_map;
 	HashMap<uint64_t, uint8_t> resource_type_map;
 	HashMap<uint64_t, RenderingDevice *> texture_owner_map;
+	uint32_t last_shutdown_tracked_resource_count = 0;
+	uint32_t last_shutdown_owned_resource_count = 0;
+	uint32_t last_shutdown_borrowed_resource_count = 0;
 
     // Diagnostics
     Vector<TextureTraceEntry> texture_trace;

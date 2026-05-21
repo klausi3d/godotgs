@@ -286,6 +286,24 @@ void OutputCompositor::_forget_resource(const RID &p_rid) {
     }
 }
 
+void OutputCompositor::_free_tracked_resource(RenderingDevice *p_fallback_device, RID &r_rid) {
+    if (!r_rid.is_valid()) {
+        return;
+    }
+
+    if (device_manager.is_valid()) {
+        if (device_manager->has_tracked_resource(r_rid)) {
+            device_manager->free_owned_resource(p_fallback_device, r_rid);
+            return;
+        }
+    }
+
+    if (p_fallback_device) {
+        p_fallback_device->free(r_rid);
+    }
+    r_rid = RID();
+}
+
 // Static helper methods
 bool OutputCompositor::_is_depth_attachment_format(RD::DataFormat p_format) {
     switch (p_format) {
@@ -418,10 +436,7 @@ RID OutputCompositor::_ensure_viewport_blit_sampler(RenderingDevice *p_device) {
         }
 
         RenderingDevice *owner_device = existing->owner_device ? existing->owner_device : p_device;
-        if (existing->sampler.is_valid() && owner_device) {
-            owner_device->free(existing->sampler);
-        }
-        _forget_resource(existing->sampler);
+        _free_tracked_resource(owner_device, existing->sampler);
         viewport_blit_samplers.erase(device_key);
     }
 
@@ -477,10 +492,7 @@ RID OutputCompositor::_ensure_viewport_blit_scratch(RenderingDevice *p_device, c
             return existing->texture;
         }
         RenderingDevice *owner_device = existing->owner_device ? existing->owner_device : p_device;
-        if (existing->texture.is_valid() && owner_device) {
-            owner_device->free(existing->texture);
-        }
-        _forget_resource(existing->texture);
+        _free_tracked_resource(owner_device, existing->texture);
         viewport_blit_scratch.erase(key);
     }
 
@@ -504,11 +516,7 @@ RID OutputCompositor::_ensure_viewport_blit_scratch(RenderingDevice *p_device, c
             ViewportBlitScratch *victim = viewport_blit_scratch.getptr(oldest_key);
             if (victim) {
                 RenderingDevice *owner_device = victim->owner_device ? victim->owner_device : p_device;
-                if (victim->texture.is_valid() && owner_device &&
-                        owner_device->texture_is_valid(victim->texture)) {
-                    owner_device->free(victim->texture);
-                }
-                _forget_resource(victim->texture);
+                _free_tracked_resource(owner_device, victim->texture);
                 viewport_blit_scratch.erase(oldest_key);
             }
         }
@@ -572,16 +580,8 @@ bool OutputCompositor::_ensure_viewport_blit_pipeline(RenderingDevice *p_device,
         }
 
         RenderingDevice *owner_device = variant->owner_device ? variant->owner_device : p_device;
-        if (owner_device) {
-            if (variant->pipeline.is_valid() && owner_device->compute_pipeline_is_valid(variant->pipeline)) {
-                owner_device->free(variant->pipeline);
-            }
-            if (variant->shader.is_valid()) {
-                owner_device->free(variant->shader);
-            }
-        }
-        _forget_resource(variant->pipeline);
-        _forget_resource(variant->shader);
+        _free_tracked_resource(owner_device, variant->pipeline);
+        _free_tracked_resource(owner_device, variant->shader);
         viewport_blit_variants.erase(key);
     }
 
@@ -647,10 +647,7 @@ void OutputCompositor::clear_cached_framebuffers() {
     for (KeyValue<uint64_t, CachedFramebuffer> &E : output_cache.cached_framebuffers) {
         CachedFramebuffer &entry = E.value;
         RenderingDevice *fb_device = entry.device ? entry.device : rd;
-        if (entry.framebuffer.is_valid() && fb_device && fb_device->framebuffer_is_valid(entry.framebuffer)) {
-            fb_device->free(entry.framebuffer);
-        }
-        _forget_resource(entry.framebuffer);
+        _free_tracked_resource(fb_device, entry.framebuffer);
     }
 
     output_cache.cached_framebuffers.clear();
@@ -662,34 +659,20 @@ void OutputCompositor::clear_viewport_blit_resources() {
     for (KeyValue<uint64_t, ViewportBlitVariant> &E : viewport_blit_variants) {
         ViewportBlitVariant &variant = E.value;
         RenderingDevice *owner_device = variant.owner_device ? variant.owner_device : rd;
-        if (owner_device) {
-            if (variant.pipeline.is_valid() && owner_device->compute_pipeline_is_valid(variant.pipeline)) {
-                owner_device->free(variant.pipeline);
-            }
-            if (variant.shader.is_valid()) {
-                owner_device->free(variant.shader);
-            }
-        }
-        _forget_resource(variant.pipeline);
-        _forget_resource(variant.shader);
+        _free_tracked_resource(owner_device, variant.pipeline);
+        _free_tracked_resource(owner_device, variant.shader);
     }
 
     for (KeyValue<uint64_t, ViewportBlitSampler> &E : viewport_blit_samplers) {
         ViewportBlitSampler &sampler_entry = E.value;
         RenderingDevice *owner_device = sampler_entry.owner_device ? sampler_entry.owner_device : rd;
-        if (sampler_entry.sampler.is_valid() && owner_device) {
-            owner_device->free(sampler_entry.sampler);
-        }
-        _forget_resource(sampler_entry.sampler);
+        _free_tracked_resource(owner_device, sampler_entry.sampler);
     }
 
     for (KeyValue<uint64_t, ViewportBlitScratch> &E : viewport_blit_scratch) {
         ViewportBlitScratch &scratch_entry = E.value;
         RenderingDevice *owner_device = scratch_entry.owner_device ? scratch_entry.owner_device : rd;
-        if (scratch_entry.texture.is_valid() && owner_device && owner_device->texture_is_valid(scratch_entry.texture)) {
-            owner_device->free(scratch_entry.texture);
-        }
-        _forget_resource(scratch_entry.texture);
+        _free_tracked_resource(owner_device, scratch_entry.texture);
     }
 
     viewport_blit_variants.clear();
@@ -710,10 +693,7 @@ RID OutputCompositor::get_cached_framebuffer(RenderingDevice *p_device, const RI
                 entry_device && entry_device->framebuffer_is_valid(entry->framebuffer)) {
             return entry->framebuffer;
         }
-        if (entry->framebuffer.is_valid() && entry_device && entry_device->framebuffer_is_valid(entry->framebuffer)) {
-            entry_device->free(entry->framebuffer);
-        }
-        _forget_resource(entry->framebuffer);
+        _free_tracked_resource(entry_device, entry->framebuffer);
         output_cache.cached_framebuffers.erase(key);
     }
 

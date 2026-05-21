@@ -5,6 +5,7 @@
 
 #include "../interfaces/output_compositor.h"
 #include "../interfaces/output_compositor_interfaces.h"
+#include "../interfaces/render_device_manager.h"
 
 #include "core/io/image.h"
 #include "core/math/math_funcs.h"
@@ -243,6 +244,136 @@ TEST_CASE("[GaussianSplatting][RequiresGPU][HazardRepro] Compositor scratch-copy
 	// All cleanup (textures, compositor shutdown, locally-allocated fallback
 	// RD if any) is handled by _scope's destructor on function exit — including
 	// any path where an earlier REQUIRE failure threw a doctest exception.
+}
+
+TEST_CASE("[GaussianSplatting][RequiresGPU] OutputCompositor scratch resources return owned tracking to baseline across repeated shutdown") {
+	REQUIRE_GPU_DEVICE();
+
+	Ref<RenderDeviceManager> device_manager;
+	device_manager.instantiate();
+	REQUIRE(device_manager->initialize(rd) == OK);
+
+	const uint32_t baseline_tracked = device_manager->get_tracked_resource_count();
+	const uint32_t baseline_owned = device_manager->get_tracked_owned_resource_count();
+
+	for (int iteration = 0; iteration < 2; iteration++) {
+		HazardTestScope scope(rd);
+
+		RD::TextureFormat color_source_format;
+		color_source_format.width = 16;
+		color_source_format.height = 16;
+		color_source_format.depth = 1;
+		color_source_format.array_layers = 1;
+		color_source_format.mipmaps = 1;
+		color_source_format.texture_type = RD::TEXTURE_TYPE_2D;
+		color_source_format.samples = RD::TEXTURE_SAMPLES_1;
+		color_source_format.format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
+		color_source_format.usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT |
+				RD::TEXTURE_USAGE_CAN_UPDATE_BIT |
+				RD::TEXTURE_USAGE_CAN_COPY_TO_BIT |
+				RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
+
+		RD::TextureFormat color_destination_format = color_source_format;
+		color_destination_format.usage_bits = RD::TEXTURE_USAGE_STORAGE_BIT |
+				RD::TEXTURE_USAGE_SAMPLING_BIT |
+				RD::TEXTURE_USAGE_CAN_UPDATE_BIT |
+				RD::TEXTURE_USAGE_CAN_COPY_TO_BIT |
+				RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
+
+		RID source_tex = rd->texture_create(color_source_format, RD::TextureView());
+		RID destination_tex = rd->texture_create(color_destination_format, RD::TextureView());
+		scope.track(source_tex);
+		scope.track(destination_tex);
+		REQUIRE(source_tex.is_valid());
+		REQUIRE(destination_tex.is_valid());
+
+		Vector<uint8_t> source_data;
+		source_data.resize(16 * 16 * 4);
+		Vector<uint8_t> destination_data;
+		destination_data.resize(16 * 16 * 4);
+		for (int i = 0; i < source_data.size(); i += 4) {
+			source_data.write[i + 0] = 64;
+			source_data.write[i + 1] = 64;
+			source_data.write[i + 2] = 64;
+			source_data.write[i + 3] = 128;
+			destination_data.write[i + 0] = 12;
+			destination_data.write[i + 1] = 24;
+			destination_data.write[i + 2] = 48;
+			destination_data.write[i + 3] = 255;
+		}
+		REQUIRE(rd->texture_update(source_tex, 0, source_data) == OK);
+		REQUIRE(rd->texture_update(destination_tex, 0, destination_data) == OK);
+
+		RD::TextureFormat depth_format;
+		depth_format.width = 16;
+		depth_format.height = 16;
+		depth_format.depth = 1;
+		depth_format.array_layers = 1;
+		depth_format.mipmaps = 1;
+		depth_format.texture_type = RD::TEXTURE_TYPE_2D;
+		depth_format.samples = RD::TEXTURE_SAMPLES_1;
+		depth_format.format = RD::DATA_FORMAT_D32_SFLOAT;
+		depth_format.usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT |
+				RD::TEXTURE_USAGE_CAN_UPDATE_BIT |
+				RD::TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+		RID source_depth = rd->texture_create(depth_format, RD::TextureView());
+		RID destination_depth = rd->texture_create(depth_format, RD::TextureView());
+		scope.track(source_depth);
+		scope.track(destination_depth);
+		REQUIRE(source_depth.is_valid());
+		REQUIRE(destination_depth.is_valid());
+
+		Vector<uint8_t> depth_far_bytes;
+		depth_far_bytes.resize(16 * 16 * sizeof(float));
+		const float far_depth = 1.0f;
+		for (int i = 0; i < 16 * 16; i++) {
+			memcpy(depth_far_bytes.ptrw() + i * sizeof(float), &far_depth, sizeof(float));
+		}
+		REQUIRE(rd->texture_update(source_depth, 0, depth_far_bytes) == OK);
+		REQUIRE(rd->texture_update(destination_depth, 0, depth_far_bytes) == OK);
+
+		Ref<OutputCompositor> compositor;
+		compositor.instantiate();
+		compositor->set_device_manager(device_manager);
+		scope.compositor = compositor;
+		REQUIRE(compositor->initialize(rd) == OK);
+
+		OutputCopyParams params;
+		params.source_texture = source_tex;
+		params.source_depth = source_depth;
+		params.destination_texture = destination_tex;
+		params.destination_depth = destination_depth;
+		params.viewport_size = Size2i(16, 16);
+		params.composite_with_destination = true;
+		params.source_is_premultiplied = true;
+		params.depth_test_enabled = true;
+		params.z_near = 0.05f;
+		params.z_far = 4000.0f;
+		params.depth_linearize_mul = 1.0f;
+		params.depth_linearize_add = 1.0f;
+		params.depth_epsilon = 0.01f;
+
+		OutputCopyResult result = compositor->copy_to_render_target(params);
+		if (!result.success) {
+			print_line(vformat("[OutputCompositorLifetime] copy_to_render_target failed: %s", result.error));
+		}
+		REQUIRE(result.success);
+
+		CHECK(compositor->get_viewport_blit_scratch_count() == 1u);
+		CHECK(compositor->get_blit_variant_count() == 1u);
+		CHECK(device_manager->get_tracked_owned_resource_count() > baseline_owned);
+
+		compositor->shutdown();
+		CHECK(compositor->get_viewport_blit_scratch_count() == 0u);
+		CHECK(compositor->get_blit_variant_count() == 0u);
+		CHECK(device_manager->get_tracked_resource_count() == baseline_tracked);
+		CHECK(device_manager->get_tracked_owned_resource_count() == baseline_owned);
+		scope.compositor.unref();
+	}
+
+	device_manager->shutdown();
+	CHECK(device_manager->get_last_shutdown_owned_resource_count() == 0u);
 }
 
 } // namespace TestGaussianSplatting
