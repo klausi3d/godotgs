@@ -31,11 +31,24 @@
         "Scene Effector Runtime Controls",
         "World Streaming Gate",
         "Streaming Residency API",
+        "Canonical Node Asset Render",
         "Data Flow Recent Window",
         "Pipeline Trace Freshness",
         "Monitor Lifecycle Hardening"
       ],
-      "godot_args": []
+      "godot_args": [],
+      "requires_renderer_proof": true
+    },
+    "node-asset-gpu-ci": {
+      "description": "Focused GPU-backed proof that a canonical GaussianSplatNode3D renders a fixture GaussianSplatAsset and produces visual evidence.",
+      "gd_mode": "non-headless",
+      "cpp_tests": [],
+      "gd_tests": [
+        "Canonical Node Asset Render"
+      ],
+      "godot_args": [],
+      "fail_on_skip": true,
+      "requires_renderer_proof": true
     },
     "streaming-gpu-ci": {
       "description": "Canonical blocking GPU-backed streaming validation gate for runtime residency and world-streaming regressions; benchmark proof surfaces live in the benchmark workflow.",

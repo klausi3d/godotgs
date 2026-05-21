@@ -12,6 +12,7 @@ Runtime scenarios are defined declaratively in:
 
 The canonical headless CI profile is `headless-ci`.
 The canonical release-ready profile remains `release-ci` (default for explicit runtime validation).
+The focused canonical node proof profile is `node-asset-gpu-ci`.
 The canonical blocking GPU-backed streaming profile is `streaming-gpu-ci`.
 `--list-profiles` only lists runtime validation profiles; the benchmark proof surfaces are
 separate and live in the benchmark workflow/docs.
@@ -95,6 +96,11 @@ headless structural gate in GitHub Actions) execute:
 The full release-ready runtime gate uses:
 
 - `--profile release-ci`
+
+`release-ci` and `node-asset-gpu-ci` require at least one runtime test to emit
+`renderer_proof_status=passed` in its `[RUNTIME_METRICS]` payload. A skipped or
+unavailable local RenderingDevice is still reported explicitly, but it fails those
+proof-required profiles instead of looking like green renderer evidence.
 
 The blocking streaming-specific GPU runtime gate uses:
 
