@@ -26,6 +26,16 @@ PUBLIC_ALPHA_REQUIRED_FLAGS = (
     "disallow_missing_gpu_runner_downgrade",
     "disallow_open_world_advisory_only",
 )
+PREFERRED_ISSUE_CLASSIFICATIONS = (
+    "blocking",
+    "accepted_alpha_limitation",
+    "deferred",
+)
+LEGACY_ISSUE_CLASSIFICATIONS = (
+    "blocker",
+    "post_alpha",
+)
+ISSUE_CLASSIFICATIONS = PREFERRED_ISSUE_CLASSIFICATIONS + LEGACY_ISSUE_CLASSIFICATIONS
 UNSUPPORTED_WORKFLOW_CLAIMS = (
     "must_enforce_readiness",
     "manual_input_may_disable",
@@ -141,6 +151,111 @@ def _validate_public_alpha_predicate(manifest: dict[str, Any]) -> list[str]:
     for flag in PUBLIC_ALPHA_REQUIRED_FLAGS:
         if predicate.get(flag) is not True:
             failures.append(f"public_alpha_predicate.{flag} must be true")
+    return failures
+
+
+def _manifest_issue_classifications(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    ledger = manifest.get("public_alpha_issue_ledger", {})
+    tracked = ledger.get("tracked_issues", []) if isinstance(ledger, dict) else []
+    classifications: dict[str, dict[str, Any]] = {}
+    for issue in tracked:
+        if not isinstance(issue, dict):
+            continue
+        number = issue.get("number")
+        if number is None:
+            continue
+        classifications[str(number)] = issue
+    return classifications
+
+
+def _validate_issue_evidence_requirements(number: Any, classification: dict[str, Any]) -> list[str]:
+    evidence_required = classification.get("evidence_required")
+    if not isinstance(evidence_required, list) or not evidence_required:
+        return [f"candidate issue #{number} classification missing evidence_required"]
+    if any(not isinstance(item, str) or not item.strip() for item in evidence_required):
+        return [f"candidate issue #{number} evidence_required entries must be non-empty strings"]
+    return []
+
+
+def _validate_public_alpha_issue_ledger(root: Path, manifest: dict[str, Any]) -> list[str]:
+    ledger = manifest.get("public_alpha_issue_ledger")
+    if not isinstance(ledger, dict):
+        return ["public_alpha_issue_ledger must be a JSON object"]
+
+    failures: list[str] = []
+    allowed = ledger.get("allowed_statuses", [])
+    if set(allowed) != set(PREFERRED_ISSUE_CLASSIFICATIONS):
+        failures.append(
+            "public_alpha_issue_ledger.allowed_statuses must be "
+            f"{list(PREFERRED_ISSUE_CLASSIFICATIONS)!r}"
+        )
+
+    tracked = ledger.get("tracked_issues", [])
+    if not isinstance(tracked, list) or not tracked:
+        failures.append("public_alpha_issue_ledger.tracked_issues must be a non-empty list")
+        tracked = []
+
+    seen: set[Any] = set()
+    for issue in tracked:
+        if not isinstance(issue, dict):
+            failures.append(f"public_alpha_issue_ledger issue must be a JSON object: {issue!r}")
+            continue
+        number = issue.get("number")
+        if not isinstance(number, int) or number <= 0:
+            failures.append(f"public_alpha_issue_ledger issue number must be positive integer: {issue!r}")
+            continue
+        if number in seen:
+            failures.append(f"public_alpha_issue_ledger duplicate issue #{number}")
+        seen.add(number)
+
+        status = issue.get("status")
+        if status not in PREFERRED_ISSUE_CLASSIFICATIONS:
+            failures.append(f"public_alpha_issue_ledger issue #{number} has invalid status {status!r}")
+            continue
+        for field in ("title", "goal"):
+            if not issue.get(field):
+                failures.append(f"public_alpha_issue_ledger issue #{number} missing {field}")
+        failures.extend(_validate_issue_evidence_requirements(number, issue))
+        if status == "accepted_alpha_limitation":
+            failures.extend(_candidate_issue_accepted_limitation_failures(root, manifest, str(number), issue))
+        if status == "deferred" and not issue.get("rationale"):
+            failures.append(f"public_alpha_issue_ledger issue #{number} deferred classification missing rationale")
+
+    return failures
+
+
+def _validate_external_status_check_policy(manifest: dict[str, Any]) -> list[str]:
+    policy = manifest.get("external_status_check_policy")
+    if not isinstance(policy, dict):
+        return ["external_status_check_policy must be a JSON object"]
+
+    failures: list[str] = []
+    required_contexts = set(policy.get("branch_protection_required_status_checks", []))
+    public_alpha_required = set(policy.get("required_for_public_alpha", []))
+    non_blocking = policy.get("non_blocking_checks", [])
+    if not isinstance(non_blocking, list):
+        return ["external_status_check_policy.non_blocking_checks must be a list"]
+
+    qlty_found = False
+    for check in non_blocking:
+        if not isinstance(check, dict):
+            failures.append(f"external non-blocking check must be a JSON object: {check!r}")
+            continue
+        context = check.get("context")
+        if not context:
+            failures.append(f"external non-blocking check missing context: {check!r}")
+            continue
+        if context == "qlty check":
+            qlty_found = True
+        if context in required_contexts or context in public_alpha_required or check.get("required_for_public_alpha") is True:
+            failures.append(f"external check {context!r} cannot be both non-blocking and public-alpha required")
+        if check.get("classification") != "deferred":
+            failures.append(f"external non-blocking check {context!r} must use deferred classification")
+        for field in ("issue", "reason", "decision_evidence", "local_gate_behavior"):
+            if not check.get(field):
+                failures.append(f"external non-blocking check {context!r} missing {field}")
+    if not qlty_found:
+        failures.append("external_status_check_policy must classify qlty check")
     return failures
 
 
@@ -303,6 +418,8 @@ def validate_contract(root: Path, manifest: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     failures.extend(_validate_manifest_basics(root, manifest))
     failures.extend(_validate_public_alpha_predicate(manifest))
+    failures.extend(_validate_public_alpha_issue_ledger(root, manifest))
+    failures.extend(_validate_external_status_check_policy(manifest))
     failures.extend(_validate_requires_gpu_snapshot(manifest, tests))
     failures.extend(_validate_deferred_requires_gpu_waivers(root, manifest))
     failures.extend(_validate_gpu_harness_policy(root, manifest, tests))
@@ -784,6 +901,9 @@ def _candidate_issue_label_names(issue: dict[str, Any]) -> set[Any]:
 
 
 def _candidate_issue_is_relevant(policy: dict[str, Any], labels: set[Any]) -> bool:
+    classification_any = set(policy.get("classification_labels_any", []))
+    if classification_any:
+        return bool(classification_any.intersection(labels))
     blocking_any = set(policy.get("blocking_labels_any", []))
     alpha_p1_all = set(policy.get("alpha_relevant_p1_labels_all", []))
     return bool(blocking_any.intersection(labels)) or alpha_p1_all.issubset(labels)
@@ -802,8 +922,10 @@ def _validate_candidate_issue_classification(
 
     status = classification.get("status")
     handlers = {
+        "blocker": _candidate_issue_blocking_failures,
         "blocking": _candidate_issue_blocking_failures,
         "accepted_alpha_limitation": _candidate_issue_accepted_limitation_failures,
+        "deferred": _candidate_issue_deferred_failures,
         "post_alpha": _candidate_issue_post_alpha_failures,
     }
     handler = handlers.get(status)
@@ -827,18 +949,33 @@ def _candidate_issue_accepted_limitation_failures(
     number: str,
     classification: dict[str, Any],
 ) -> list[str]:
+    failures = _validate_issue_evidence_requirements(number, classification)
     docs_path = classification.get("docs_path")
     known_limitations = manifest.get("known_limitations_page")
     if not docs_path:
-        return [f"candidate issue #{number} accepted limitation missing docs_path"]
+        failures.append(f"candidate issue #{number} accepted limitation missing docs_path")
+        return failures
     if docs_path != known_limitations:
-        return [
+        failures.append(
             f"candidate issue #{number} accepted limitation must use known_limitations_page "
             f"{known_limitations!r}, got {docs_path!r}"
-        ]
+        )
+        return failures
     if not _repo_path(root, docs_path).exists():
-        return [f"candidate issue #{number} accepted limitation missing docs_path"]
-    return []
+        failures.append(f"candidate issue #{number} accepted limitation missing docs_path")
+    return failures
+
+
+def _candidate_issue_deferred_failures(
+    _root: Path,
+    _manifest: dict[str, Any],
+    number: str,
+    classification: dict[str, Any],
+) -> list[str]:
+    failures = _validate_issue_evidence_requirements(number, classification)
+    if not classification.get("rationale"):
+        failures.append(f"candidate issue #{number} deferred classification missing rationale")
+    return failures
 
 
 def _candidate_issue_post_alpha_failures(
@@ -867,14 +1004,15 @@ def _validate_candidate_issues(
     classifications = evidence.get("issue_classifications", {})
     if not isinstance(classifications, dict):
         return ["candidate issue_classifications must be a JSON object"]
+    manifest_classifications = _manifest_issue_classifications(manifest)
     for issue in issue_rows:
         if issue.get("state", "OPEN").upper() not in {"OPEN", "open".upper()}:
             continue
-        labels = _candidate_issue_label_names(issue)
-        if not _candidate_issue_is_relevant(policy, labels):
-            continue
         number = str(issue.get("number"))
-        classification = classifications.get(number)
+        labels = _candidate_issue_label_names(issue)
+        if not _candidate_issue_is_relevant(policy, labels) and number not in manifest_classifications:
+            continue
+        classification = classifications.get(number, manifest_classifications.get(number))
         failures.extend(_validate_candidate_issue_classification(root, manifest, number, classification))
     return failures
 

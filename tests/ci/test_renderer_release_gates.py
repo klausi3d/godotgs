@@ -81,9 +81,44 @@ def _base_manifest(root: Path) -> dict[str, Any]:
             "disallow_missing_gpu_runner_downgrade": True,
             "disallow_open_world_advisory_only": True,
             "required_issue_query": {
+                "classification_labels_any": ["priority:P0", "priority:P1", "release blocker"],
                 "blocking_labels_any": ["priority:P0", "release blocker"],
                 "alpha_relevant_p1_labels_all": ["priority:P1", "alpha-relevant"],
             },
+        },
+        "public_alpha_issue_ledger": {
+            "scope": "open P0, P1, and release-blocker issues from the candidate issue snapshot",
+            "allowed_statuses": ["blocking", "accepted_alpha_limitation", "deferred"],
+            "tracked_issues": [
+                {
+                    "number": 369,
+                    "title": "Audit P0: repair opaque qlty check failures blocking renderer PRs",
+                    "status": "deferred",
+                    "goal": "Keep opaque external quality checks out of the local public-alpha gate unless branch protection makes them required.",
+                    "rationale": "The qlty check is an external advisory signal in this repository policy.",
+                    "evidence_required": [
+                        "GitHub branch protection required_status_checks is empty or absent",
+                        "qlty check remains documented as non-blocking external signal",
+                    ],
+                }
+            ],
+        },
+        "external_status_check_policy": {
+            "branch_protection_required_status_checks": [],
+            "required_for_public_alpha": [],
+            "non_blocking_checks": [
+                {
+                    "context": "qlty check",
+                    "issue": 369,
+                    "classification": "deferred",
+                    "reason": "External qlty check is not required by branch protection in the current repo policy.",
+                    "decision_evidence": [
+                        "master branch protection required_status_checks is null",
+                        "No qlty configuration is tracked in the repo",
+                    ],
+                    "local_gate_behavior": "Do not fail the local renderer release gate solely on qlty check status.",
+                }
+            ],
         },
         "known_limitations_page": "docs/development/known-public-alpha-limitations.md",
         "references": [
@@ -290,6 +325,30 @@ class RendererReleaseGateTests(unittest.TestCase):
             manifest["workflow_policy"]["required_workflows"][0]["manual_input_may_disable"] = False
             failures = checker.validate_contract(root, manifest)
             self.assertTrue(any("not machine-enforced" in item for item in failures))
+
+    def test_issue_ledger_rejects_missing_evidence_requirements(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"][0].pop("evidence_required")
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("classification missing evidence_required" in item for item in failures))
+
+    def test_external_status_policy_keeps_qlty_non_blocking(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["external_status_check_policy"]["non_blocking_checks"][0]["required_for_public_alpha"] = True
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("cannot be both non-blocking and public-alpha required" in item for item in failures))
+
+    def test_external_status_policy_requires_qlty_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["external_status_check_policy"]["non_blocking_checks"] = []
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("must classify qlty check" in item for item in failures))
 
     def test_candidate_requires_issue_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -732,6 +791,7 @@ class RendererReleaseGateTests(unittest.TestCase):
                     "350": {
                         "status": "accepted_alpha_limitation",
                         "docs_path": "README.md",
+                        "evidence_required": ["published known limitation entry"],
                     }
                 }
             }
@@ -748,12 +808,58 @@ class RendererReleaseGateTests(unittest.TestCase):
                     "350": {
                         "status": "accepted_alpha_limitation",
                         "docs_path": "docs/development/known-public-alpha-limitations.md",
+                        "evidence_required": ["published known limitation entry"],
                     }
                 }
             }
             issues = [{"number": 350, "state": "OPEN", "labels": [{"name": "release blocker"}]}]
             failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
             self.assertEqual([], failures)
+
+    def test_candidate_relevant_p1_requires_classification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {"issue_classifications": {}}
+            issues = [{"number": 222, "state": "OPEN", "labels": [{"name": "priority:P1"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("issue #222 missing alpha classification" in item for item in failures))
+
+    def test_candidate_uses_manifest_deferred_issue_classification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {"issue_classifications": {}}
+            issues = [{"number": 369, "state": "OPEN", "labels": [{"name": "priority:P0"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertEqual([], failures)
+
+    def test_candidate_uses_manifest_tracked_issue_even_without_relevant_label(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
+            )
+            evidence = {"issue_classifications": {}}
+            issues = [{"number": 360, "state": "OPEN", "labels": [{"name": "priority:P3"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("issue #360 is still blocking" in item for item in failures))
+
+    def test_deferred_candidate_classification_requires_evidence_requirements(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {"issue_classifications": {"222": {"status": "deferred", "rationale": "post-alpha refactor"}}}
+            issues = [{"number": 222, "state": "OPEN", "labels": [{"name": "priority:P1"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("classification missing evidence_required" in item for item in failures))
 
     def test_candidate_issue_classification_must_be_object(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
