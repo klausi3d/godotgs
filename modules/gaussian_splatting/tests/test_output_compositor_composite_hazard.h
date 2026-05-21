@@ -376,6 +376,90 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] OutputCompositor scratch resources r
 	CHECK(device_manager->get_last_shutdown_owned_resource_count() == 0u);
 }
 
+TEST_CASE("[GaussianSplatting][RequiresGPU] OutputCompositor untracked cleanup skips stale resources") {
+	REQUIRE_GPU_DEVICE();
+
+	HazardTestScope scope(rd);
+
+	RD::TextureFormat color_format;
+	color_format.width = 16;
+	color_format.height = 16;
+	color_format.depth = 1;
+	color_format.array_layers = 1;
+	color_format.mipmaps = 1;
+	color_format.texture_type = RD::TEXTURE_TYPE_2D;
+	color_format.samples = RD::TEXTURE_SAMPLES_1;
+	color_format.format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
+	color_format.usage_bits = RD::TEXTURE_USAGE_STORAGE_BIT |
+			RD::TEXTURE_USAGE_SAMPLING_BIT |
+			RD::TEXTURE_USAGE_CAN_UPDATE_BIT |
+			RD::TEXTURE_USAGE_CAN_COPY_TO_BIT |
+			RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT |
+			RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT;
+
+	RID source_tex = rd->texture_create(color_format, RD::TextureView());
+	RID destination_tex = rd->texture_create(color_format, RD::TextureView());
+	RID framebuffer_tex = rd->texture_create(color_format, RD::TextureView());
+	scope.track(source_tex);
+	scope.track(destination_tex);
+	scope.track(framebuffer_tex);
+	REQUIRE(source_tex.is_valid());
+	REQUIRE(destination_tex.is_valid());
+	REQUIRE(framebuffer_tex.is_valid());
+
+	Vector<uint8_t> source_data;
+	source_data.resize(16 * 16 * 4);
+	Vector<uint8_t> destination_data;
+	destination_data.resize(16 * 16 * 4);
+	for (int i = 0; i < source_data.size(); i += 4) {
+		source_data.write[i + 0] = 80;
+		source_data.write[i + 1] = 120;
+		source_data.write[i + 2] = 160;
+		source_data.write[i + 3] = 192;
+		destination_data.write[i + 0] = 16;
+		destination_data.write[i + 1] = 32;
+		destination_data.write[i + 2] = 48;
+		destination_data.write[i + 3] = 255;
+	}
+	REQUIRE(rd->texture_update(source_tex, 0, source_data) == OK);
+	REQUIRE(rd->texture_update(destination_tex, 0, destination_data) == OK);
+
+	Ref<OutputCompositor> compositor;
+	compositor.instantiate();
+	scope.compositor = compositor;
+	REQUIRE(compositor->initialize(rd) == OK);
+
+	OutputCopyParams params;
+	params.source_texture = source_tex;
+	params.destination_texture = destination_tex;
+	params.viewport_size = Size2i(16, 16);
+	params.composite_with_destination = true;
+	params.source_is_premultiplied = true;
+	params.depth_test_enabled = false;
+
+	OutputCopyResult result = compositor->copy_to_render_target(params);
+	if (!result.success) {
+		print_line(vformat("[OutputCompositorUntrackedLifetime] copy_to_render_target failed: %s", result.error));
+	}
+	REQUIRE(result.success);
+	CHECK(compositor->get_viewport_blit_scratch_count() == 1u);
+	CHECK(compositor->get_blit_variant_count() == 1u);
+
+	RID framebuffer = compositor->get_cached_framebuffer(rd, framebuffer_tex);
+	REQUIRE(framebuffer.is_valid());
+	CHECK(compositor->get_cached_framebuffer_count() == 1u);
+	rd->free(framebuffer);
+	CHECK_FALSE(rd->framebuffer_is_valid(framebuffer));
+
+	compositor->clear_cached_framebuffers();
+	CHECK(compositor->get_cached_framebuffer_count() == 0u);
+
+	compositor->shutdown();
+	CHECK(compositor->get_viewport_blit_scratch_count() == 0u);
+	CHECK(compositor->get_blit_variant_count() == 0u);
+	scope.compositor.unref();
+}
+
 } // namespace TestGaussianSplatting
 
 #endif // TESTS_ENABLED

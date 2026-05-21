@@ -286,7 +286,7 @@ void OutputCompositor::_forget_resource(const RID &p_rid) {
     }
 }
 
-void OutputCompositor::_free_tracked_resource(RenderingDevice *p_fallback_device, RID &r_rid) {
+void OutputCompositor::_free_tracked_resource(RenderingDevice *p_fallback_device, RID &r_rid, TrackedResourceKind p_kind) {
     if (!r_rid.is_valid()) {
         return;
     }
@@ -299,7 +299,28 @@ void OutputCompositor::_free_tracked_resource(RenderingDevice *p_fallback_device
     }
 
     if (p_fallback_device) {
-        p_fallback_device->free(r_rid);
+        bool resource_valid = false;
+        switch (p_kind) {
+            case TrackedResourceKind::Texture:
+                resource_valid = p_fallback_device->texture_is_valid(r_rid);
+                break;
+            case TrackedResourceKind::Framebuffer:
+                resource_valid = p_fallback_device->framebuffer_is_valid(r_rid);
+                break;
+            case TrackedResourceKind::ComputePipeline:
+                resource_valid = p_fallback_device->compute_pipeline_is_valid(r_rid);
+                break;
+            case TrackedResourceKind::Shader:
+            case TrackedResourceKind::Sampler:
+                // RenderingDevice exposes no shader/sampler validity query. These
+                // resources are normally ledger-tracked; untracked fallback keeps
+                // the previous best-effort behavior for legacy cached entries.
+                resource_valid = true;
+                break;
+        }
+        if (resource_valid) {
+            p_fallback_device->free(r_rid);
+        }
     }
     r_rid = RID();
 }
@@ -436,7 +457,7 @@ RID OutputCompositor::_ensure_viewport_blit_sampler(RenderingDevice *p_device) {
         }
 
         RenderingDevice *owner_device = existing->owner_device ? existing->owner_device : p_device;
-        _free_tracked_resource(owner_device, existing->sampler);
+        _free_tracked_resource(owner_device, existing->sampler, TrackedResourceKind::Sampler);
         viewport_blit_samplers.erase(device_key);
     }
 
@@ -492,7 +513,7 @@ RID OutputCompositor::_ensure_viewport_blit_scratch(RenderingDevice *p_device, c
             return existing->texture;
         }
         RenderingDevice *owner_device = existing->owner_device ? existing->owner_device : p_device;
-        _free_tracked_resource(owner_device, existing->texture);
+        _free_tracked_resource(owner_device, existing->texture, TrackedResourceKind::Texture);
         viewport_blit_scratch.erase(key);
     }
 
@@ -516,7 +537,7 @@ RID OutputCompositor::_ensure_viewport_blit_scratch(RenderingDevice *p_device, c
             ViewportBlitScratch *victim = viewport_blit_scratch.getptr(oldest_key);
             if (victim) {
                 RenderingDevice *owner_device = victim->owner_device ? victim->owner_device : p_device;
-                _free_tracked_resource(owner_device, victim->texture);
+                _free_tracked_resource(owner_device, victim->texture, TrackedResourceKind::Texture);
                 viewport_blit_scratch.erase(oldest_key);
             }
         }
@@ -580,8 +601,8 @@ bool OutputCompositor::_ensure_viewport_blit_pipeline(RenderingDevice *p_device,
         }
 
         RenderingDevice *owner_device = variant->owner_device ? variant->owner_device : p_device;
-        _free_tracked_resource(owner_device, variant->pipeline);
-        _free_tracked_resource(owner_device, variant->shader);
+        _free_tracked_resource(owner_device, variant->pipeline, TrackedResourceKind::ComputePipeline);
+        _free_tracked_resource(owner_device, variant->shader, TrackedResourceKind::Shader);
         viewport_blit_variants.erase(key);
     }
 
@@ -647,7 +668,7 @@ void OutputCompositor::clear_cached_framebuffers() {
     for (KeyValue<uint64_t, CachedFramebuffer> &E : output_cache.cached_framebuffers) {
         CachedFramebuffer &entry = E.value;
         RenderingDevice *fb_device = entry.device ? entry.device : rd;
-        _free_tracked_resource(fb_device, entry.framebuffer);
+        _free_tracked_resource(fb_device, entry.framebuffer, TrackedResourceKind::Framebuffer);
     }
 
     output_cache.cached_framebuffers.clear();
@@ -659,20 +680,20 @@ void OutputCompositor::clear_viewport_blit_resources() {
     for (KeyValue<uint64_t, ViewportBlitVariant> &E : viewport_blit_variants) {
         ViewportBlitVariant &variant = E.value;
         RenderingDevice *owner_device = variant.owner_device ? variant.owner_device : rd;
-        _free_tracked_resource(owner_device, variant.pipeline);
-        _free_tracked_resource(owner_device, variant.shader);
+        _free_tracked_resource(owner_device, variant.pipeline, TrackedResourceKind::ComputePipeline);
+        _free_tracked_resource(owner_device, variant.shader, TrackedResourceKind::Shader);
     }
 
     for (KeyValue<uint64_t, ViewportBlitSampler> &E : viewport_blit_samplers) {
         ViewportBlitSampler &sampler_entry = E.value;
         RenderingDevice *owner_device = sampler_entry.owner_device ? sampler_entry.owner_device : rd;
-        _free_tracked_resource(owner_device, sampler_entry.sampler);
+        _free_tracked_resource(owner_device, sampler_entry.sampler, TrackedResourceKind::Sampler);
     }
 
     for (KeyValue<uint64_t, ViewportBlitScratch> &E : viewport_blit_scratch) {
         ViewportBlitScratch &scratch_entry = E.value;
         RenderingDevice *owner_device = scratch_entry.owner_device ? scratch_entry.owner_device : rd;
-        _free_tracked_resource(owner_device, scratch_entry.texture);
+        _free_tracked_resource(owner_device, scratch_entry.texture, TrackedResourceKind::Texture);
     }
 
     viewport_blit_variants.clear();
@@ -693,7 +714,7 @@ RID OutputCompositor::get_cached_framebuffer(RenderingDevice *p_device, const RI
                 entry_device && entry_device->framebuffer_is_valid(entry->framebuffer)) {
             return entry->framebuffer;
         }
-        _free_tracked_resource(entry_device, entry->framebuffer);
+        _free_tracked_resource(entry_device, entry->framebuffer, TrackedResourceKind::Framebuffer);
         output_cache.cached_framebuffers.erase(key);
     }
 
