@@ -8,9 +8,12 @@ const ASSET_PATH := "res://tests/fixtures/test_splats.ply"
 const MAX_RENDERER_WAIT_FRAMES := 120
 const MAX_PROOF_FRAMES := 240
 const MIN_VISIBLE_SPLATS := 1
-const MIN_VISUAL_LUMA_VARIANCE := 0.00001
-const MIN_NON_BACKGROUND_SAMPLES := 2
-const VISUAL_SAMPLE_STRIDE := 8
+const MIN_VISUAL_LUMA_VARIANCE := 0.00005
+const MIN_VISUAL_LUMA_RANGE := 0.05
+const MIN_NON_BACKGROUND_SAMPLES := 16
+const MIN_NON_BACKGROUND_RATIO := 0.0005
+const VISUAL_SAMPLE_STRIDE := 4
+const BACKGROUND_LUMA_THRESHOLD := 0.03
 
 var scene_root: Node3D
 var splat_node: GaussianSplatNode3D
@@ -36,7 +39,10 @@ var metrics: Dictionary = {
 	"stage_composite_status": "",
 	"visual_capture_count": 0,
 	"visual_luma_variance_max": 0.0,
+	"visual_luma_range_max": 0.0,
 	"visual_non_background_samples_max": 0,
+	"visual_non_background_ratio_max": 0.0,
+	"visual_sample_count_max": 0,
 	"visual_width": 0,
 	"visual_height": 0,
 	"status": "",
@@ -184,9 +190,21 @@ func _run() -> void:
 					float(metrics.get("visual_luma_variance_max", 0.0)),
 					float(visual_metrics.get("luma_variance", 0.0))
 				)
+				metrics["visual_luma_range_max"] = max(
+					float(metrics.get("visual_luma_range_max", 0.0)),
+					float(visual_metrics.get("luma_range", 0.0))
+				)
 				metrics["visual_non_background_samples_max"] = max(
 					int(metrics.get("visual_non_background_samples_max", 0)),
 					int(visual_metrics.get("non_background_samples", 0))
+				)
+				metrics["visual_non_background_ratio_max"] = max(
+					float(metrics.get("visual_non_background_ratio_max", 0.0)),
+					float(visual_metrics.get("non_background_ratio", 0.0))
+				)
+				metrics["visual_sample_count_max"] = max(
+					int(metrics.get("visual_sample_count_max", 0)),
+					int(visual_metrics.get("sample_count", 0))
 				)
 				visual_ok = _visual_metrics_pass()
 
@@ -259,18 +277,20 @@ func _capture_viewport() -> Image:
 func _compute_visual_metrics(image: Image) -> Dictionary:
 	var prepared = image.duplicate()
 	if prepared == null:
-		return {"width": 0, "height": 0, "luma_variance": 0.0, "non_background_samples": 0}
+		return _empty_visual_metrics(0, 0)
 	prepared.convert(Image.FORMAT_RGBA8)
 	var width := prepared.get_width()
 	var height := prepared.get_height()
 	if width <= 0 or height <= 0:
-		return {"width": width, "height": height, "luma_variance": 0.0, "non_background_samples": 0}
+		return _empty_visual_metrics(width, height)
 
 	var stride := max(1, VISUAL_SAMPLE_STRIDE)
 	var luma_sum := 0.0
 	var luma_sq_sum := 0.0
 	var sample_count := 0
 	var non_background_samples := 0
+	var min_luma := 1.0
+	var max_luma := 0.0
 	for y in range(0, height, stride):
 		for x in range(0, width, stride):
 			var c := prepared.get_pixel(x, y)
@@ -278,25 +298,45 @@ func _compute_visual_metrics(image: Image) -> Dictionary:
 			luma_sum += luma
 			luma_sq_sum += luma * luma
 			sample_count += 1
-			if luma > 0.02:
+			min_luma = min(min_luma, luma)
+			max_luma = max(max_luma, luma)
+			if luma > BACKGROUND_LUMA_THRESHOLD:
 				non_background_samples += 1
 
 	if sample_count <= 0:
-		return {"width": width, "height": height, "luma_variance": 0.0, "non_background_samples": 0}
+		return _empty_visual_metrics(width, height)
 	var mean_luma := luma_sum / float(sample_count)
 	var variance = max(0.0, (luma_sq_sum / float(sample_count)) - (mean_luma * mean_luma))
+	var non_background_ratio := float(non_background_samples) / float(sample_count)
 	return {
 		"width": width,
 		"height": height,
 		"luma_variance": variance,
+		"luma_range": max(0.0, max_luma - min_luma),
 		"non_background_samples": non_background_samples,
+		"non_background_ratio": non_background_ratio,
+		"sample_count": sample_count,
+	}
+
+
+func _empty_visual_metrics(width: int, height: int) -> Dictionary:
+	return {
+		"width": width,
+		"height": height,
+		"luma_variance": 0.0,
+		"luma_range": 0.0,
+		"non_background_samples": 0,
+		"non_background_ratio": 0.0,
+		"sample_count": 0,
 	}
 
 
 func _visual_metrics_pass() -> bool:
 	return (
 		float(metrics.get("visual_luma_variance_max", 0.0)) >= MIN_VISUAL_LUMA_VARIANCE and
-		int(metrics.get("visual_non_background_samples_max", 0)) >= MIN_NON_BACKGROUND_SAMPLES
+		float(metrics.get("visual_luma_range_max", 0.0)) >= MIN_VISUAL_LUMA_RANGE and
+		int(metrics.get("visual_non_background_samples_max", 0)) >= MIN_NON_BACKGROUND_SAMPLES and
+		float(metrics.get("visual_non_background_ratio_max", 0.0)) >= MIN_NON_BACKGROUND_RATIO
 	)
 
 

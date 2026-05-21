@@ -714,6 +714,9 @@ def _build_renderer_proof_summary(
                 "asset_path": str(metrics.get("asset_path", "")),
                 "visible_splats_max": metrics.get("visible_splats_max"),
                 "visual_luma_variance_max": metrics.get("visual_luma_variance_max"),
+                "visual_luma_range_max": metrics.get("visual_luma_range_max"),
+                "visual_non_background_samples_max": metrics.get("visual_non_background_samples_max"),
+                "visual_non_background_ratio_max": metrics.get("visual_non_background_ratio_max"),
             }
         )
 
