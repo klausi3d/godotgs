@@ -212,6 +212,8 @@ TEST_CASE("[Gaussian Diagnostics] Production metrics preserve GPU timing capture
     debug_state.sort_route_uid = RenderRouteUID::INSTANCE_SORT_GPU;
     debug_state.last_stage_metrics_valid = true;
     GaussianSplatRenderer::StageMetrics &stage_metrics = debug_state.last_stage_metrics;
+    stage_metrics.route_uid = RenderRouteUID::INSTANCE_STREAMING;
+    stage_metrics.selected_route_backend = "streaming";
     stage_metrics.cull.has_visible = true;
     stage_metrics.cull.visible_count = 2048;
     stage_metrics.cull.candidate_count = 4096;
@@ -261,6 +263,8 @@ TEST_CASE("[Gaussian Diagnostics] Production metrics preserve GPU timing capture
     diagnostics_require_key(production_metrics, "raster_overlap_thinning_keep_ratio");
     diagnostics_require_key(production_metrics, "raster_feature_tighter_bounds");
     diagnostics_require_key(production_metrics, "raster_shader_defines_hash");
+    diagnostics_require_key(production_metrics, "selected_route_uid");
+    diagnostics_require_key(production_metrics, "selected_route_backend");
 
     CHECK(float(production_metrics.get("gpu_frame_ms", 0.0f)) == doctest::Approx(3.50f));
     CHECK(float(production_metrics.get("gpu_binning_ms", 0.0f)) == doctest::Approx(0.40f));
@@ -275,6 +279,8 @@ TEST_CASE("[Gaussian Diagnostics] Production metrics preserve GPU timing capture
     CHECK(float(production_metrics.get("raster_overlap_thinning_keep_ratio", 0.0f)) == doctest::Approx(0.875f));
     CHECK(bool(production_metrics.get("raster_feature_tighter_bounds", false)));
     CHECK(String(production_metrics.get("raster_shader_defines_hash", String())) == "12345");
+    CHECK(String(production_metrics.get("selected_route_uid", String())) == String(RenderRouteUID::INSTANCE_STREAMING));
+    CHECK(String(production_metrics.get("selected_route_backend", String())) == String("streaming"));
     CHECK(bool(validation.get("valid", false)));
 
     CHECK(float(telemetry.get("gpu_frame_time_ms", 0.0f)) == doctest::Approx(3.50f));
@@ -286,6 +292,8 @@ TEST_CASE("[Gaussian Diagnostics] Production metrics preserve GPU timing capture
     CHECK(int64_t(telemetry.get("gpu_timing_frames_behind", int64_t(-1))) == 2);
     CHECK(int64_t(telemetry.get("raster_overlap_records", int64_t(0))) == 300000);
     CHECK(bool(telemetry.get("raster_feature_quantized_storage", false)));
+    CHECK(String(telemetry.get("selected_route_uid", String())) == String(RenderRouteUID::INSTANCE_STREAMING));
+    CHECK(String(telemetry.get("selected_route_backend", String())) == String("streaming"));
 
     Array summaries = snapshot.get("production_metrics_summaries", Array());
     REQUIRE(summaries.size() == 1);

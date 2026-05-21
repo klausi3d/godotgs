@@ -190,6 +190,8 @@ static Array _production_metrics_contract() {
 	keys.push_back("stage_skip_cause");
 	keys.push_back("stage_has_degradation");
 	keys.push_back("stage_composite_depth_test_honored");
+	keys.push_back("selected_route_uid");
+	keys.push_back("selected_route_backend");
 	keys.push_back("route_uid");
 	keys.push_back("sort_route_uid");
 	keys.push_back("cull_route_uid");
@@ -367,6 +369,8 @@ static void _append_production_stage_contract_metrics(Dictionary &r_metrics,
 	r_metrics["stage_skip_cause"] = p_stage_valid ? p_stage_metrics.skip_cause_stage : String();
 	r_metrics["stage_has_degradation"] = p_stage_valid ? p_stage_metrics.has_degradation : false;
 	r_metrics["stage_composite_depth_test_honored"] = p_stage_valid ? p_stage_metrics.composite_depth_test_honored : true;
+	r_metrics["selected_route_uid"] = p_stage_valid ? p_stage_metrics.route_uid : String();
+	r_metrics["selected_route_backend"] = p_stage_valid ? p_stage_metrics.selected_route_backend : String();
 }
 
 static Dictionary _build_production_metrics_snapshot(GaussianSplatRenderer &p_renderer,
@@ -533,6 +537,8 @@ static void _append_telemetry_extras(const GaussianSplatRenderer &p_renderer,
 	r_metrics["stage_composite_depth_test_honored"] = p_stage_metrics.composite_depth_test_honored;
 	r_metrics["stage_composite_degraded"] = p_stage_metrics.composite_result.degraded;
 	r_metrics["stage_composite_strict_contract_violation"] = p_stage_metrics.composite_result.strict_contract_violation;
+	r_metrics["selected_route_uid"] = p_stage_valid ? p_stage_metrics.route_uid : String();
+	r_metrics["selected_route_backend"] = p_stage_valid ? p_stage_metrics.selected_route_backend : String();
 	r_metrics["route_uid"] = debug_state.route_uid;
 	r_metrics["sort_route_uid"] = debug_state.sort_route_uid;
 	_append_raster_specialization_metrics(perf, r_metrics);
@@ -829,12 +835,23 @@ static Dictionary _validate_production_metrics(const Dictionary &p_metrics) {
 		issues.push_back("stage_metrics_invalid");
 	}
 	const String route_uid = p_metrics.get("route_uid", String());
+	const String selected_route_uid = p_metrics.get("selected_route_uid", String());
+	const String selected_route_backend = p_metrics.get("selected_route_backend", String());
 	const String sort_route_uid = p_metrics.get("sort_route_uid", String());
 	const String cull_route_uid = p_metrics.get("cull_route_uid", String());
 	const String cull_route_reason = p_metrics.get("cull_route_reason", String());
 	const bool route_no_device = route_uid == String(RenderRouteUID::COMMON_FAIL_NO_DEVICE);
 	if (stage_valid && route_uid.is_empty()) {
 		issues.push_back("route_uid_empty");
+	}
+	if (stage_valid && selected_route_uid.is_empty()) {
+		issues.push_back("selected_route_uid_empty");
+	}
+	if (stage_valid && RenderRouteUID::is_route_uid_missing(selected_route_uid)) {
+		issues.push_back("selected_route_uid_missing");
+	}
+	if (stage_valid && selected_route_backend.is_empty()) {
+		issues.push_back("selected_route_backend_empty");
 	}
 	// No-device fallback can legitimately skip sort-route assignment.
 	if (stage_valid && !route_no_device && sort_route_uid.is_empty()) {
@@ -1475,6 +1492,8 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 			GaussianRenderRouteLabels::describe_cull_route_reason(perf.cull_route_reason);
 	if (debug_state.last_stage_metrics_valid) {
 		const GaussianSplatRenderer::StageMetrics &stage_metrics = debug_state.last_stage_metrics;
+		stats["selected_route_uid"] = stage_metrics.route_uid;
+		stats["selected_route_backend"] = stage_metrics.selected_route_backend;
 		stats["stage_first_failure"] = stage_metrics.first_failure_stage;
 		stats["stage_skip_cause"] = stage_metrics.skip_cause_stage;
 		stats["stage_first_failure_instance_index"] = static_cast<int64_t>(stage_metrics.first_failure_instance_index);
