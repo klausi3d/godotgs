@@ -892,7 +892,7 @@ class RendererReleaseGateTests(unittest.TestCase):
             root = Path(tmp)
             manifest = _base_manifest(root)
             evidence = _valid_candidate_evidence(root)
-            evidence["artifacts"]["linux_release_archive"]["path"] = "/tmp/release.tar.xz"
+            evidence["artifacts"]["linux_release_archive"]["path"] = str((root.parent / "release.tar.xz").resolve())
             failures = checker._validate_candidate_artifacts(root, manifest, evidence)
             self.assertTrue(any("must be repo-relative" in item for item in failures))
 
@@ -918,7 +918,7 @@ class RendererReleaseGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             manifest = _base_manifest(root)
-            manifest["references"].append("/tmp/not-a-repo-reference.md")
+            manifest["references"].append(str((root.parent / "not-a-repo-reference.md").resolve()))
             failures = checker.validate_contract(root, manifest)
             self.assertTrue(any("reference path must be repo-relative" in item for item in failures))
 
