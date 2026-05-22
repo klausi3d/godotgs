@@ -39,7 +39,9 @@ The renderer/public-alpha evidence policy is maintained in
 python tests/ci/check_renderer_release_gates.py --mode contract
 ```
 
-The contract check is deterministic and GPU-free. Public-alpha candidate mode
+The same contract check is part of `tests/ci/run_module_tests.py --guard-only`,
+which is what the Gaussian Production Gates `guards` job runs. The contract check
+is deterministic and GPU-free. Public-alpha candidate mode
 requires the evidence bundle, a public-alpha channel/tag selector, and a live
 issue-label snapshot so P0, P1, and release-blocker issues cannot be bypassed by
 release notes or manual workflow choices. The workflow-policy

@@ -25,6 +25,8 @@ BUILD_METADATA_GUARD_SCRIPT = MODULE_SOURCE_DIR / "tests" / "check_build_metadat
 SHADER_DEPENDENCY_GUARD_SCRIPT = MODULE_SOURCE_DIR / "tests" / "check_shader_dependency_contract.py"
 PROJECT_SETTINGS_MANIFEST_GUARD_SCRIPT = MODULE_SOURCE_DIR / "tests" / "check_project_settings_manifest.py"
 GAUSSIAN_LAYOUT_GUARD_SCRIPT = ROOT / "tests" / "ci" / "check_gaussian_layout_sync.py"
+RENDERER_RELEASE_GATE_SCRIPT = ROOT / "tests" / "ci" / "check_renderer_release_gates.py"
+RENDERER_RELEASE_GATE_TEST_SCRIPT = ROOT / "tests" / "ci" / "test_renderer_release_gates.py"
 HISTORY_ARTIFACT_AUDIT_SCRIPT = ROOT / "scripts" / "repo" / "history_artifact_audit.py"
 SYNTHETIC_ASSET_PREP_SCRIPT = ROOT / "tests" / "runtime" / "prepare_synthetic_assets.py"
 BENCHMARK_ASSET_GUARD_SCRIPT = ROOT / "tests" / "runtime" / "check_benchmark_asset_paths.py"
@@ -539,6 +541,31 @@ def _run_gaussian_layout_guard() -> tuple[bool, list[str]]:
     return True, output_lines
 
 
+def _run_renderer_release_gate_guard() -> tuple[bool, list[str]]:
+    missing = [
+        path.relative_to(ROOT)
+        for path in (RENDERER_RELEASE_GATE_SCRIPT, RENDERER_RELEASE_GATE_TEST_SCRIPT)
+        if not path.is_file()
+    ]
+    if missing:
+        return False, [f"Missing renderer release gate guard file: {path}" for path in missing]
+
+    output_lines: list[str] = []
+    commands = (
+        [sys.executable, str(RENDERER_RELEASE_GATE_SCRIPT), "--mode", "contract"],
+        [sys.executable, str(RENDERER_RELEASE_GATE_TEST_SCRIPT)],
+    )
+    for args in commands:
+        code, out, err = _run_command(args)
+        output_lines.extend(line for line in (out + err).splitlines() if line.strip())
+        if code != 0:
+            if not output_lines:
+                output_lines = [f"Renderer release gate guard failed with exit code {code}."]
+            return False, output_lines
+
+    return True, output_lines
+
+
 def _tests_unavailable(output: str) -> bool:
     normalized_output = " ".join(output.lower().split())
     markers = (
@@ -870,6 +897,12 @@ def _run_optional_message_guards(cli_args: argparse.Namespace) -> int | None:
             _run_gaussian_layout_guard,
             "Gaussian layout guard failed.",
             "Gaussian layout guard passed.",
+        ),
+        (
+            True,
+            _run_renderer_release_gate_guard,
+            "Renderer release gate guard failed.",
+            "Renderer release gate guard passed.",
         ),
         (
             True,

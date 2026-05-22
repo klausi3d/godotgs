@@ -115,10 +115,16 @@ until a complete candidate evidence bundle exists.
 
 ## CI Hook
 
-Run the contract check locally or in CI:
+Run the direct contract check locally:
 
 ```bash
 python3 tests/ci/check_renderer_release_gates.py --mode contract
+```
+
+CI enforces the same contract through the existing module guard entry point:
+
+```bash
+python3 tests/ci/run_module_tests.py --guard-only
 ```
 
 Candidate release validation requires an evidence bundle and an issue snapshot

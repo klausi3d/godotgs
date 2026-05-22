@@ -25,6 +25,7 @@ scons platform=<platform> target=editor dev_build=yes tests=yes -j<jobs>
 - Module checks/tests:
   - `python3 tests/ci/run_module_tests.py --guard-only`
   - `python3 tests/ci/run_module_tests.py --godot-binary <module-built-binary>`
+  - `--guard-only` includes the renderer release-gate contract check.
 - Runtime validation:
   - `python3 tests/runtime/run_runtime_validation.py --godot-binary <module-built-binary> --gd-mode headless`
 - Benchmark suite:
