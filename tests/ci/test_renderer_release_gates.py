@@ -241,10 +241,17 @@ def _valid_candidate_evidence(root: Path) -> dict[str, Any]:
                     "godot_binary_mtime_utc": "2026-05-19T10:01:00Z",
                     "capture_count": 1,
                     "capture_reference_match_count": 1,
+                    "capture_threshold_pass_count": 1,
                     "capture_ssim_min": 0.99,
                     "capture_psnr_min": 40.0,
                     "gpu_timing_available": False,
                     "gpu_timing_source": "unavailable",
+                    "exit_code": 0,
+                    "report_valid": True,
+                    "visible_output_valid": True,
+                    "visual_reference_match": True,
+                    "proof_valid": True,
+                    "lane_valid": True,
                 }
             ]
         ),
@@ -728,6 +735,79 @@ class RendererReleaseGateTests(unittest.TestCase):
             failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
             self.assertTrue(any("capture_count must be numeric" in item for item in failures))
 
+    def test_candidate_benchmark_commit_must_match_candidate_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            _write(
+                root / "bench.json",
+                json.dumps(
+                    [
+                        {
+                            "lane_id": "static_baseline",
+                            "commit_sha": "old",
+                            "godot_binary_commit": "old",
+                            "godot_binary_mtime_utc": "2026-05-19T10:01:00Z",
+                            "capture_count": 1,
+                            "capture_reference_match_count": 1,
+                            "capture_threshold_pass_count": 1,
+                            "capture_ssim_min": 0.99,
+                            "capture_psnr_min": 40.0,
+                            "gpu_timing_available": False,
+                            "gpu_timing_source": "unavailable",
+                        }
+                    ]
+                ),
+            )
+            failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
+            self.assertTrue(any("commit_sha does not match candidate commit" in item for item in failures))
+            self.assertTrue(any("godot_binary_commit does not match candidate commit" in item for item in failures))
+
+    def test_candidate_benchmark_exit_code_must_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            lane = json.loads((root / "bench.json").read_text(encoding="utf-8"))[0]
+            lane["exit_code"] = 7
+            lane["lane_valid"] = False
+            _write(root / "bench.json", json.dumps([lane]))
+            failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
+            self.assertTrue(any("exited with 7" in item for item in failures))
+            self.assertTrue(any("lane_valid=false" in item for item in failures))
+
+    def test_candidate_benchmark_visual_thresholds_must_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            lane = json.loads((root / "bench.json").read_text(encoding="utf-8"))[0]
+            lane["capture_threshold_pass_count"] = 0
+            lane["visual_reference_match"] = False
+            _write(root / "bench.json", json.dumps([lane]))
+            failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
+            self.assertTrue(any("did not pass all visual thresholds" in item for item in failures))
+            self.assertTrue(any("failed visual reference match" in item for item in failures))
+
+    def test_candidate_benchmark_rejects_cpu_sort_route_and_fallback_counters(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            lane = json.loads((root / "bench.json").read_text(encoding="utf-8"))[0]
+            lane["cpu_sort_route_detected"] = True
+            lane["cpu_sort_route_uid"] = "INSTANCE_SORT_CPU_FALLBACK"
+            lane["sort_total_route_fallback_count"] = 2
+            _write(root / "bench.json", json.dumps([lane]))
+            failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
+            self.assertTrue(any("forbidden CPU sort route" in item for item in failures))
+            self.assertTrue(any("unallowed sort fallback routes" in item for item in failures))
+
+    def test_candidate_json_numbers_must_be_finite(self) -> None:
+        self.assertFalse(checker._is_json_number(float("nan")))
+        self.assertFalse(checker._is_json_number(float("inf")))
+
     def test_candidate_fails_stale_and_incomplete_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -864,16 +944,18 @@ class RendererReleaseGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             manifest = _base_manifest(root)
-            _write(root / "README.md", "not the known limitations page\n")
-            evidence = {
-                "issue_classifications": {
-                    "350": {
-                        "status": "accepted_alpha_limitation",
-                        "docs_path": "README.md",
-                        "evidence_required": ["published known limitation entry"],
-                    }
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 350,
+                    "title": "Known limitation",
+                    "status": "accepted_alpha_limitation",
+                    "goal": "Document the public alpha limitation.",
+                    "docs_path": "README.md",
+                    "evidence_required": ["published known limitation entry"],
                 }
-            }
+            )
+            _write(root / "README.md", "not the known limitations page\n")
+            evidence = {"issue_classifications": {}}
             issues = _base_issue_snapshot(_issue(350, ["release blocker"]))
             failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
             self.assertTrue(any("accepted limitation must use known_limitations_page" in item for item in failures))
@@ -882,15 +964,17 @@ class RendererReleaseGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             manifest = _base_manifest(root)
-            evidence = {
-                "issue_classifications": {
-                    "350": {
-                        "status": "accepted_alpha_limitation",
-                        "docs_path": "docs/development/known-public-alpha-limitations.md",
-                        "evidence_required": ["published known limitation entry"],
-                    }
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 350,
+                    "title": "Known limitation",
+                    "status": "accepted_alpha_limitation",
+                    "goal": "Document the public alpha limitation.",
+                    "docs_path": "docs/development/known-public-alpha-limitations.md",
+                    "evidence_required": ["published known limitation entry"],
                 }
-            }
+            )
+            evidence = {"issue_classifications": {}}
             issues = _base_issue_snapshot(_issue(350, ["release blocker"]))
             failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
             self.assertEqual([], failures)
@@ -964,7 +1048,43 @@ class RendererReleaseGateTests(unittest.TestCase):
             evidence = {"issue_classifications": {"222": {"status": "deferred", "rationale": "post-alpha refactor"}}}
             issues = [{"number": 222, "state": "OPEN", "labels": [{"name": "priority:P1"}]}]
             failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
-            self.assertTrue(any("classification missing evidence_required" in item for item in failures))
+            self.assertTrue(any("classification must be tracked in public_alpha_issue_ledger" in item for item in failures))
+
+    def test_candidate_rejects_untracked_accepted_limitation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {
+                "issue_classifications": {
+                    "222": {
+                        "status": "accepted_alpha_limitation",
+                        "docs_path": "docs/development/known-public-alpha-limitations.md",
+                        "evidence_required": ["published known limitation entry"],
+                    }
+                }
+            }
+            issues = [{"number": 222, "state": "OPEN", "labels": [{"name": "priority:P1"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("classification must be tracked in public_alpha_issue_ledger" in item for item in failures))
+
+    def test_candidate_closed_manifest_blocker_does_not_require_open_issue(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
+            )
+            evidence = {"issue_classifications": {}}
+            issues = _base_issue_snapshot(_issue(360, ["priority:P0"], state="CLOSED"))
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertFalse(any("manifest-tracked issue #360" in item for item in failures))
+            self.assertFalse(any("issue #360 is still blocking" in item for item in failures))
 
     def test_candidate_rejects_legacy_post_alpha_classification(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

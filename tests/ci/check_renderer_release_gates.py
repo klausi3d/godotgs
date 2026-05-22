@@ -9,6 +9,7 @@ import fnmatch
 import hashlib
 import importlib.util
 import json
+import math
 import re
 import subprocess
 import sys
@@ -538,7 +539,7 @@ def _to_utc_aware(value: _dt.datetime) -> _dt.datetime:
 
 
 def _is_json_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _candidate_selector_failures(manifest: dict[str, Any], evidence: dict[str, Any]) -> list[str]:
@@ -887,6 +888,38 @@ def _candidate_lane_visual_failures(
         failures.append(f"candidate benchmark lane {lane_id} has null capture_ssim_min")
     if row.get("capture_psnr_min") is None:
         failures.append(f"candidate benchmark lane {lane_id} has null capture_psnr_min")
+    capture_threshold_pass_count = row.get("capture_threshold_pass_count")
+    if capture_count_valid and capture_threshold_pass_count is not None:
+        if not _is_json_number(capture_threshold_pass_count):
+            failures.append(f"candidate benchmark lane {lane_id} capture_threshold_pass_count must be numeric")
+        elif capture_threshold_pass_count != capture_count:
+            failures.append(f"candidate benchmark lane {lane_id} did not pass all visual thresholds")
+    if row.get("visual_reference_match") is False:
+        failures.append(f"candidate benchmark lane {lane_id} failed visual reference match")
+    return failures
+
+
+def _candidate_lane_identity_failures(lane_id: str, row: dict[str, Any], commit: Any) -> list[str]:
+    failures: list[str] = []
+    if commit:
+        if row.get("commit_sha") != commit:
+            failures.append(f"candidate benchmark lane {lane_id} commit_sha does not match candidate commit")
+        if row.get("godot_binary_commit") != commit:
+            failures.append(f"candidate benchmark lane {lane_id} godot_binary_commit does not match candidate commit")
+    return failures
+
+
+def _candidate_lane_execution_status_failures(lane_id: str, row: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    exit_code = row.get("exit_code")
+    if exit_code is not None:
+        if not _is_json_number(exit_code):
+            failures.append(f"candidate benchmark lane {lane_id} exit_code must be numeric")
+        elif exit_code != 0:
+            failures.append(f"candidate benchmark lane {lane_id} exited with {exit_code}")
+    for field in ("report_valid", "visible_output_valid", "proof_valid", "lane_valid"):
+        if row.get(field) is False:
+            failures.append(f"candidate benchmark lane {lane_id} has {field}=false")
     return failures
 
 
@@ -903,9 +936,19 @@ def _candidate_lane_gpu_timing_failures(lane_id: str, row: dict[str, Any]) -> li
 
 
 def _candidate_lane_route_failures(lane_id: str, row: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
     if row.get("cpu_fallback_route") and not row.get("fallback_route_allowed"):
-        return [f"candidate benchmark lane {lane_id} used unallowed CPU/fallback route"]
-    return []
+        failures.append(f"candidate benchmark lane {lane_id} used unallowed CPU/fallback route")
+    if row.get("cpu_sort_route_detected") and not row.get("fallback_route_allowed"):
+        route_uid = row.get("cpu_sort_route_uid")
+        failures.append(f"candidate benchmark lane {lane_id} used forbidden CPU sort route {route_uid!r}")
+    fallback_count = row.get("sort_total_route_fallback_count")
+    if fallback_count is not None:
+        if not _is_json_number(fallback_count):
+            failures.append(f"candidate benchmark lane {lane_id} sort_total_route_fallback_count must be numeric")
+        elif fallback_count > 0 and not row.get("fallback_route_allowed"):
+            failures.append(f"candidate benchmark lane {lane_id} used unallowed sort fallback routes")
+    return failures
 
 
 def _validate_candidate_benchmark_lane(
@@ -913,9 +956,12 @@ def _validate_candidate_benchmark_lane(
     row: dict[str, Any],
     required_non_null: Iterable[str],
     visual_rules: dict[str, Any],
+    commit: Any,
 ) -> list[str]:
     failures: list[str] = []
     failures.extend(_candidate_lane_timeout_failures(lane_id, row))
+    failures.extend(_candidate_lane_identity_failures(lane_id, row, commit))
+    failures.extend(_candidate_lane_execution_status_failures(lane_id, row))
     failures.extend(_candidate_lane_required_field_failures(lane_id, row, required_non_null))
     failures.extend(_candidate_lane_visual_failures(lane_id, row, visual_rules))
     failures.extend(_candidate_lane_gpu_timing_failures(lane_id, row))
@@ -933,12 +979,13 @@ def _validate_candidate_benchmark_report(root: Path, manifest: dict[str, Any], e
     rows = _rows_from_report(report)
     required_non_null = manifest.get("benchmark_acceptance", {}).get("required_fields_non_null", [])
     visual_rules = manifest.get("visual_acceptance", {}).get("candidate_rules", {})
+    commit = evidence.get("commit")
     for lane_id in manifest.get("benchmark_acceptance", {}).get("candidate_required_lanes", []):
         row = _find_lane(rows, lane_id)
         if row is None:
             failures.append(f"candidate benchmark lane missing: {lane_id}")
             continue
-        failures.extend(_validate_candidate_benchmark_lane(lane_id, row, required_non_null, visual_rules))
+        failures.extend(_validate_candidate_benchmark_lane(lane_id, row, required_non_null, visual_rules, commit))
     return failures
 
 
@@ -1042,6 +1089,14 @@ def _candidate_issue_deferred_failures(
     return failures
 
 
+def _candidate_issue_is_manifest_resolved(
+    number: str,
+    issue: dict[str, Any],
+    classification: dict[str, Any],
+) -> bool:
+    return str(issue.get("number")) == number and not _candidate_issue_is_open(issue) and classification.get("status") == "blocking"
+
+
 def _validate_candidate_issues(
     root: Path,
     manifest: dict[str, Any],
@@ -1058,24 +1113,33 @@ def _validate_candidate_issues(
     if not isinstance(classifications, dict):
         return ["candidate issue_classifications must be a JSON object"]
     manifest_classifications = _manifest_issue_classifications(manifest)
-    open_issue_numbers: set[str] = set()
+    snapshot_issue_numbers: set[str] = set()
     for issue in issue_rows:
-        if _candidate_issue_is_open(issue):
-            number = issue.get("number")
-            if number is not None:
-                open_issue_numbers.add(str(number))
+        number = issue.get("number")
+        if number is not None:
+            snapshot_issue_numbers.add(str(number))
     for number in sorted(manifest_classifications):
-        if number not in open_issue_numbers:
+        if number not in snapshot_issue_numbers:
             failures.append(f"candidate issue snapshot missing manifest-tracked issue #{number}")
 
     for issue in issue_rows:
+        number = str(issue.get("number"))
+        manifest_classification = manifest_classifications.get(number)
+        if manifest_classification and _candidate_issue_is_manifest_resolved(number, issue, manifest_classification):
+            continue
         if not _candidate_issue_is_open(issue):
             continue
-        number = str(issue.get("number"))
         labels = _candidate_issue_label_names(issue)
-        if not _candidate_issue_is_relevant(policy, labels) and number not in manifest_classifications:
+        if not _candidate_issue_is_relevant(policy, labels) and manifest_classification is None:
             continue
-        classification = manifest_classifications.get(number, classifications.get(number))
+        classification = manifest_classification or classifications.get(number)
+        if isinstance(classification, dict):
+            status = classification.get("status")
+            if status in {"accepted_alpha_limitation", "deferred"} and number not in manifest_classifications:
+                failures.append(
+                    f"candidate issue #{number} {status} classification must be tracked in public_alpha_issue_ledger"
+                )
+                continue
         failures.extend(_validate_candidate_issue_classification(root, manifest, number, classification))
     return failures
 
