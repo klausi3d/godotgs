@@ -271,8 +271,15 @@ def _validate_external_status_check_policy(manifest: dict[str, Any]) -> list[str
         return ["external_status_check_policy.branch_protection_required_status_checks must be a list"]
     if not isinstance(public_alpha_status_checks, list):
         return ["external_status_check_policy.required_for_public_alpha must be a list"]
-    required_contexts = set(required_status_checks)
-    public_alpha_required = set(public_alpha_status_checks)
+    for field, checks in (
+        ("branch_protection_required_status_checks", required_status_checks),
+        ("required_for_public_alpha", public_alpha_status_checks),
+    ):
+        for index, check in enumerate(checks):
+            if not isinstance(check, str) or not check:
+                failures.append(f"external_status_check_policy.{field}[{index}] must be a non-empty string")
+    required_contexts = {check for check in required_status_checks if isinstance(check, str)}
+    public_alpha_required = {check for check in public_alpha_status_checks if isinstance(check, str)}
     non_blocking = policy.get("non_blocking_checks", [])
     if not isinstance(non_blocking, list):
         return ["external_status_check_policy.non_blocking_checks must be a list"]
@@ -284,8 +291,8 @@ def _validate_external_status_check_policy(manifest: dict[str, Any]) -> list[str
             failures.append(f"external non-blocking check must be a JSON object: {check!r}")
             continue
         context = check.get("context")
-        if not context:
-            failures.append(f"external non-blocking check missing context: {check!r}")
+        if not isinstance(context, str) or not context:
+            failures.append(f"external non-blocking check context must be a non-empty string: {check!r}")
             continue
         if context == "qlty check":
             qlty_non_blocking = True
@@ -996,6 +1003,12 @@ def _candidate_issue_rows(evidence: dict[str, Any], issues: Any | None) -> list[
     return _issue_rows_from_snapshot(evidence.get("issue_snapshot", evidence.get("issues", evidence.get("open_issues"))))
 
 
+def _candidate_resolved_manifest_issue_rows(evidence: dict[str, Any]) -> list[dict[str, Any]] | None:
+    if "resolved_manifest_issues" not in evidence:
+        return []
+    return _issue_rows_from_snapshot(evidence.get("resolved_manifest_issues"))
+
+
 def _candidate_issue_label_names(issue: dict[str, Any]) -> set[Any]:
     return {
         label.get("name", label) if isinstance(label, dict) else label
@@ -1005,6 +1018,10 @@ def _candidate_issue_label_names(issue: dict[str, Any]) -> set[Any]:
 
 def _candidate_issue_is_open(issue: dict[str, Any]) -> bool:
     return str(issue.get("state", "OPEN")).upper() == "OPEN"
+
+
+def _candidate_issue_is_closed(issue: dict[str, Any]) -> bool:
+    return str(issue.get("state", "")).upper() == "CLOSED"
 
 
 def _candidate_issue_is_relevant(policy: dict[str, Any], labels: set[Any]) -> bool:
@@ -1094,7 +1111,39 @@ def _candidate_issue_is_manifest_resolved(
     issue: dict[str, Any],
     classification: dict[str, Any],
 ) -> bool:
-    return str(issue.get("number")) == number and not _candidate_issue_is_open(issue) and classification.get("status") == "blocking"
+    return str(issue.get("number")) == number and _candidate_issue_is_closed(issue) and classification.get("status") == "blocking"
+
+
+def _validate_omitted_manifest_blockers(
+    manifest_classifications: dict[str, dict[str, Any]],
+    issue_rows: list[dict[str, Any]],
+    resolved_rows: list[dict[str, Any]],
+) -> list[str]:
+    snapshot_issue_numbers = {
+        str(issue.get("number"))
+        for issue in issue_rows
+        if issue.get("number") is not None
+    }
+    resolved_by_number = {
+        str(issue.get("number")): issue
+        for issue in resolved_rows
+        if issue.get("number") is not None
+    }
+
+    failures: list[str] = []
+    for number, classification in sorted(manifest_classifications.items()):
+        if number in snapshot_issue_numbers or classification.get("status") != "blocking":
+            continue
+        proof = resolved_by_number.get(number)
+        if proof is None:
+            failures.append(
+                f"candidate issue snapshot missing manifest-tracked blocking issue #{number}; "
+                "include it in issue_snapshot or resolved_manifest_issues"
+            )
+            continue
+        if not _candidate_issue_is_closed(proof):
+            failures.append(f"candidate resolved_manifest_issues issue #{number} must have state CLOSED")
+    return failures
 
 
 def _validate_candidate_issues(
@@ -1113,14 +1162,11 @@ def _validate_candidate_issues(
     if not isinstance(classifications, dict):
         return ["candidate issue_classifications must be a JSON object"]
     manifest_classifications = _manifest_issue_classifications(manifest)
-    snapshot_issue_numbers: set[str] = set()
-    for issue in issue_rows:
-        number = issue.get("number")
-        if number is not None:
-            snapshot_issue_numbers.add(str(number))
-    for number in sorted(manifest_classifications):
-        if number not in snapshot_issue_numbers:
-            failures.append(f"candidate issue snapshot missing manifest-tracked issue #{number}")
+    resolved_rows = _candidate_resolved_manifest_issue_rows(evidence)
+    if resolved_rows is None:
+        failures.append("candidate resolved_manifest_issues must be an issue snapshot object or list")
+        resolved_rows = []
+    failures.extend(_validate_omitted_manifest_blockers(manifest_classifications, issue_rows, resolved_rows))
 
     for issue in issue_rows:
         number = str(issue.get("number"))

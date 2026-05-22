@@ -379,6 +379,20 @@ class RendererReleaseGateTests(unittest.TestCase):
             failures = checker.validate_contract(root, manifest)
             self.assertEqual([], [failure for failure in failures if "qlty check" in failure])
 
+    def test_external_status_policy_rejects_non_string_status_contexts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["external_status_check_policy"]["branch_protection_required_status_checks"] = [{"context": "bad"}]
+            manifest["external_status_check_policy"]["required_for_public_alpha"] = [42]
+            manifest["external_status_check_policy"]["non_blocking_checks"][0]["context"] = {"context": "bad"}
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(
+                any("branch_protection_required_status_checks[0] must be a non-empty string" in item for item in failures)
+            )
+            self.assertTrue(any("required_for_public_alpha[0] must be a non-empty string" in item for item in failures))
+            self.assertTrue(any("context must be a non-empty string" in item for item in failures))
+
     def test_candidate_requires_issue_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -387,15 +401,85 @@ class RendererReleaseGateTests(unittest.TestCase):
             failures = checker.validate_candidate(root, manifest, evidence)
             self.assertTrue(any("issue snapshot missing" in item for item in failures))
 
-    def test_candidate_issue_snapshot_must_include_manifest_tracked_issues(self) -> None:
+    def test_candidate_open_issue_snapshot_may_omit_resolved_manifest_tracked_issues(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             manifest = _base_manifest(root)
             evidence = _valid_candidate_evidence(root)
-            failures = checker.validate_candidate(root, manifest, evidence, [])
-            self.assertTrue(
-                any("issue snapshot missing manifest-tracked issue #369" in item for item in failures)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
             )
+            evidence["resolved_manifest_issues"] = [_issue(360, ["priority:P0"], state="CLOSED")]
+            failures = checker.validate_candidate(root, manifest, evidence, [])
+            self.assertEqual([], failures)
+
+    def test_candidate_rejects_omitted_manifest_blocker_without_closure_proof(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
+            )
+            failures = checker.validate_candidate(root, manifest, evidence, [])
+            self.assertTrue(any("missing manifest-tracked blocking issue #360" in item for item in failures))
+
+    def test_candidate_rejects_open_closure_proof_for_omitted_manifest_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
+            )
+            evidence["resolved_manifest_issues"] = [_issue(360, ["priority:P0"], state="OPEN")]
+            failures = checker.validate_candidate(root, manifest, evidence, [])
+            self.assertTrue(any("resolved_manifest_issues issue #360 must have state CLOSED" in item for item in failures))
+
+    def test_candidate_rejects_malformed_closure_state_for_omitted_manifest_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
+            )
+            evidence["resolved_manifest_issues"] = [_issue(360, ["priority:P0"], state="NOT_A_GITHUB_STATE")]
+            failures = checker.validate_candidate(root, manifest, evidence, [])
+            self.assertTrue(any("resolved_manifest_issues issue #360 must have state CLOSED" in item for item in failures))
+
+    def test_candidate_rejects_malformed_resolved_manifest_issues(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["resolved_manifest_issues"] = "closed"
+            failures = checker.validate_candidate(root, manifest, evidence, _base_issue_snapshot())
+            self.assertTrue(any("resolved_manifest_issues must be an issue snapshot object or list" in item for item in failures))
 
     def test_candidate_accepts_embedded_issue_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -17,6 +17,8 @@ matches a `v*-alpha*` release tag, then passes the manifest predicate:
 - open `priority:P0`, `priority:P1`, and `release blocker` issues in that
   snapshot must be classified as `blocking`, `accepted_alpha_limitation`, or
   `deferred`;
+- if the snapshot is open-only, omitted manifest-tracked `blocking` issues must
+  be proven closed through candidate evidence `resolved_manifest_issues`;
 - any `accepted_alpha_limitation` must have a user-facing entry in
   `docs/development/known-public-alpha-limitations.md`;
 - Linux and Windows artifacts, runtime validation, GPU harness output,
@@ -138,5 +140,7 @@ python3 tests/ci/check_renderer_release_gates.py \
 ```
 
 The issue JSON is intended to come from `gh issue list` or the GitHub API with
-labels included. This PR does not require live network access for the
-deterministic contract check.
+labels included. When that snapshot is open-only, any manifest-tracked
+`blocking` issue omitted from it needs explicit closure proof in
+`resolved_manifest_issues` inside the evidence bundle. This PR does not require
+live network access for the deterministic contract check.
