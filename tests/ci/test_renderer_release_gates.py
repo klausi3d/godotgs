@@ -84,6 +84,7 @@ def _base_manifest(root: Path) -> dict[str, Any]:
                 "classification_labels_any": ["priority:P0", "priority:P1", "release blocker"],
                 "blocking_labels_any": ["priority:P0", "release blocker"],
                 "alpha_relevant_p1_labels_all": ["priority:P1", "alpha-relevant"],
+                "allowed_classifications": ["blocking", "accepted_alpha_limitation", "deferred"],
             },
         },
         "public_alpha_issue_ledger": {
@@ -196,6 +197,18 @@ def _base_manifest(root: Path) -> dict[str, Any]:
             "each_artifact_requires": ["path", "sha256", "godot_binary_commit", "godot_binary_mtime_utc"],
         },
     }
+
+
+def _issue(number: int, labels: list[str], state: str = "OPEN") -> dict[str, Any]:
+    return {
+        "number": number,
+        "state": state,
+        "labels": [{"name": label} for label in labels],
+    }
+
+
+def _base_issue_snapshot(*extra: dict[str, Any]) -> list[dict[str, Any]]:
+    return [_issue(369, ["priority:P0"])] + list(extra)
 
 
 def _valid_candidate_evidence(root: Path) -> dict[str, Any]:
@@ -367,12 +380,22 @@ class RendererReleaseGateTests(unittest.TestCase):
             failures = checker.validate_candidate(root, manifest, evidence)
             self.assertTrue(any("issue snapshot missing" in item for item in failures))
 
+    def test_candidate_issue_snapshot_must_include_manifest_tracked_issues(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            failures = checker.validate_candidate(root, manifest, evidence, [])
+            self.assertTrue(
+                any("issue snapshot missing manifest-tracked issue #369" in item for item in failures)
+            )
+
     def test_candidate_accepts_embedded_issue_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             manifest = _base_manifest(root)
             evidence = _valid_candidate_evidence(root)
-            evidence["issue_snapshot"] = []
+            evidence["issue_snapshot"] = _base_issue_snapshot()
             failures = checker.validate_candidate(root, manifest, evidence)
             self.assertEqual([], failures)
 
@@ -393,8 +416,20 @@ class RendererReleaseGateTests(unittest.TestCase):
             evidence = _valid_candidate_evidence(root)
             evidence["release_channel"] = "nightly"
             evidence["release_tag"] = "v1.0.0-alpha.1"
-            failures = checker.validate_candidate(root, manifest, evidence, [])
+            failures = checker.validate_candidate(root, manifest, evidence, _base_issue_snapshot())
             self.assertEqual([], failures)
+
+    def test_issue_status_policy_must_match_manifest_ledger(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["public_alpha_predicate"]["required_issue_query"]["allowed_classifications"] = [
+                "blocking",
+                "accepted_alpha_limitation",
+                "post_alpha",
+            ]
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("allowed_classifications must be" in item for item in failures))
 
     def test_candidate_requires_commit_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -772,6 +807,41 @@ class RendererReleaseGateTests(unittest.TestCase):
             failures = checker._validate_candidate_artifacts(root, manifest, evidence)
             self.assertTrue(any("artifact linux_release_archive path missing" in item for item in failures))
 
+    def test_candidate_artifact_paths_must_be_repo_relative(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["artifacts"]["linux_release_archive"]["path"] = "/tmp/release.tar.xz"
+            failures = checker._validate_candidate_artifacts(root, manifest, evidence)
+            self.assertTrue(any("must be repo-relative" in item for item in failures))
+
+    def test_candidate_artifact_paths_must_not_escape_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["artifacts"]["linux_release_archive"]["path"] = "../release.tar.xz"
+            failures = checker._validate_candidate_artifacts(root, manifest, evidence)
+            self.assertTrue(any("must not escape the repository" in item for item in failures))
+
+    def test_candidate_report_paths_must_not_escape_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["gpu_harness_report"] = "../gpu_report.json"
+            failures = checker._validate_candidate_gpu_report(root, manifest, evidence)
+            self.assertTrue(any("must not escape the repository" in item for item in failures))
+
+    def test_manifest_references_must_be_repo_relative(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["references"].append("/tmp/not-a-repo-reference.md")
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("reference path must be repo-relative" in item for item in failures))
+
     def test_candidate_artifact_sha256_must_match_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -804,7 +874,7 @@ class RendererReleaseGateTests(unittest.TestCase):
                     }
                 }
             }
-            issues = [{"number": 350, "state": "OPEN", "labels": [{"name": "release blocker"}]}]
+            issues = _base_issue_snapshot(_issue(350, ["release blocker"]))
             failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
             self.assertTrue(any("accepted limitation must use known_limitations_page" in item for item in failures))
 
@@ -821,7 +891,7 @@ class RendererReleaseGateTests(unittest.TestCase):
                     }
                 }
             }
-            issues = [{"number": 350, "state": "OPEN", "labels": [{"name": "release blocker"}]}]
+            issues = _base_issue_snapshot(_issue(350, ["release blocker"]))
             failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
             self.assertEqual([], failures)
 
@@ -911,6 +981,22 @@ class RendererReleaseGateTests(unittest.TestCase):
             issues = [{"number": 222, "state": "OPEN", "labels": [{"name": "priority:P1"}]}]
             failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
             self.assertTrue(any("invalid classification 'post_alpha'" in item for item in failures))
+
+    def test_candidate_rejects_unlisted_blocker_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {
+                "issue_classifications": {
+                    "222": {
+                        "status": "blocker",
+                        "evidence_required": ["legacy alias should not be accepted"],
+                    }
+                }
+            }
+            issues = [{"number": 222, "state": "OPEN", "labels": [{"name": "priority:P1"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("invalid classification 'blocker'" in item for item in failures))
 
     def test_candidate_issue_classification_must_be_object(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

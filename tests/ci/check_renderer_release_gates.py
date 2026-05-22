@@ -50,6 +50,33 @@ def _repo_path(root: Path, value: str) -> Path:
     return root / value
 
 
+def _repo_relative_path(root: Path, value: Any, label: str) -> tuple[Path | None, list[str]]:
+    if not isinstance(value, str) or not value.strip():
+        return None, [f"{label} must be a non-empty repo-relative path"]
+    path = Path(value)
+    if path.is_absolute():
+        return None, [f"{label} must be repo-relative: {value}"]
+    if ".." in path.parts:
+        return None, [f"{label} must not escape the repository: {value}"]
+
+    candidate = (root / path).resolve()
+    repo_root = root.resolve()
+    try:
+        candidate.relative_to(repo_root)
+    except ValueError:
+        return None, [f"{label} must stay inside the repository: {value}"]
+    return candidate, []
+
+
+def _repo_relative_path_exists(root: Path, value: Any, label: str) -> list[str]:
+    path, failures = _repo_relative_path(root, value, label)
+    if failures:
+        return failures
+    if path is None or not path.exists():
+        return [f"{label} missing: {value}"]
+    return []
+
+
 def _extract_requires_gpu_tests(root: Path) -> list[dict[str, Any]]:
     tests_root = root / "modules" / "gaussian_splatting" / "tests"
     tests: list[dict[str, Any]] = []
@@ -80,7 +107,9 @@ def _requires_gpu_snapshot(tests: Iterable[dict[str, Any]]) -> tuple[int, str]:
 
 
 def _load_gpu_harness_batches(root: Path, script_rel: str) -> dict[str, tuple[str, ...]]:
-    script = _repo_path(root, script_rel)
+    script, failures = _repo_relative_path(root, script_rel, "gpu_harness_policy.script")
+    if failures or script is None:
+        raise RuntimeError("; ".join(failures))
     spec = importlib.util.spec_from_file_location("godotgs_gpu_harness_contract", script)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to import {script_rel}")
@@ -130,12 +159,16 @@ def _validate_manifest_basics(root: Path, manifest: dict[str, Any]) -> list[str]
         failures.append("manifest schema_version must be 1")
 
     for ref in manifest.get("references", []):
-        if not _repo_path(root, ref).exists():
-            failures.append(f"reference path missing: {ref}")
+        failures.extend(_repo_relative_path_exists(root, ref, "reference path"))
 
     known_limitations = manifest.get("known_limitations_page")
-    if not known_limitations or not _repo_path(root, known_limitations).exists():
+    if not known_limitations:
         failures.append("known limitations page is missing")
+    else:
+        known_limitations_failures = _repo_relative_path_exists(root, known_limitations, "known limitations page")
+        if known_limitations_failures:
+            failures.append("known limitations page is missing")
+            failures.extend(known_limitations_failures)
 
     return failures
 
@@ -146,6 +179,12 @@ def _validate_public_alpha_predicate(manifest: dict[str, Any]) -> list[str]:
     for flag in PUBLIC_ALPHA_REQUIRED_FLAGS:
         if predicate.get(flag) is not True:
             failures.append(f"public_alpha_predicate.{flag} must be true")
+    allowed = predicate.get("required_issue_query", {}).get("allowed_classifications", [])
+    if not isinstance(allowed, list) or set(allowed) != set(PREFERRED_ISSUE_CLASSIFICATIONS):
+        failures.append(
+            "public_alpha_predicate.required_issue_query.allowed_classifications must be "
+            f"{list(PREFERRED_ISSUE_CLASSIFICATIONS)!r}"
+        )
     return failures
 
 
@@ -179,7 +218,7 @@ def _validate_public_alpha_issue_ledger(root: Path, manifest: dict[str, Any]) ->
 
     failures: list[str] = []
     allowed = ledger.get("allowed_statuses", [])
-    if set(allowed) != set(PREFERRED_ISSUE_CLASSIFICATIONS):
+    if not isinstance(allowed, list) or set(allowed) != set(PREFERRED_ISSUE_CLASSIFICATIONS):
         failures.append(
             "public_alpha_issue_ledger.allowed_statuses must be "
             f"{list(PREFERRED_ISSUE_CLASSIFICATIONS)!r}"
@@ -294,8 +333,8 @@ def _validate_deferred_requires_gpu_waivers(root: Path, manifest: dict[str, Any]
             if not waiver.get(field):
                 failures.append(f"deferred waiver missing {field}: {waiver!r}")
         docs_path = waiver.get("docs_path")
-        if docs_path and not _repo_path(root, docs_path).exists():
-            failures.append(f"deferred waiver docs_path missing: {docs_path}")
+        if docs_path:
+            failures.extend(_repo_relative_path_exists(root, docs_path, f"deferred waiver docs_path {docs_path}"))
     return failures
 
 
@@ -326,8 +365,12 @@ def _required_gpu_batch_reference_failures(
 ) -> list[str]:
     failures: list[str] = []
     for ref in batch.get("reference_artifacts", []):
-        if not _repo_path(root, ref).exists():
-            failures.append(f"required GPU batch {name} reference missing: {ref}")
+        ref_failures = _repo_relative_path_exists(root, ref, f"required GPU batch {name} reference")
+        for failure in ref_failures:
+            if "missing" in failure:
+                failures.append(f"required GPU batch {name} reference missing: {ref}")
+            else:
+                failures.append(f"required GPU batch {name} reference invalid: {failure}")
     return failures
 
 
@@ -376,8 +419,14 @@ def _validate_visual_acceptance(root: Path, manifest: dict[str, Any]) -> list[st
         if tracked_actual:
             failures.append(f"tracked .actual.png artifacts are forbidden: {tracked_actual}")
     for reference in visual.get("blocking_references", []):
-        if reference.get("required") and not _repo_path(root, reference.get("path", "")).exists():
-            failures.append(f"blocking visual reference missing: {reference.get('path')}")
+        if reference.get("required"):
+            path_value = reference.get("path", "")
+            ref_failures = _repo_relative_path_exists(root, path_value, "blocking visual reference")
+            for failure in ref_failures:
+                if "missing" in failure:
+                    failures.append(f"blocking visual reference missing: {path_value}")
+                else:
+                    failures.append(f"blocking visual reference invalid: {failure}")
     return failures
 
 
@@ -392,7 +441,9 @@ def _workflow_policy_scope_failures(workflow_policy: dict[str, Any]) -> list[str
 def _validate_required_workflow(root: Path, workflow: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     workflow_file = workflow.get("file", "")
-    text_path = _repo_path(root, workflow_file)
+    text_path, path_failures = _repo_relative_path(root, workflow_file, "required workflow")
+    if path_failures:
+        return path_failures
     if not text_path.exists():
         return [f"required workflow missing: {workflow_file}"]
 
@@ -451,7 +502,9 @@ def _rows_from_report(report: Any) -> list[dict[str, Any]]:
 def _load_candidate_json(root: Path, rel_path: Any, label: str) -> tuple[Any | None, list[str]]:
     if not rel_path:
         return None, [f"candidate evidence missing {label}"]
-    path = _repo_path(root, str(rel_path))
+    path, path_failures = _repo_relative_path(root, rel_path, f"candidate {label}")
+    if path_failures or path is None:
+        return None, path_failures
     try:
         return _load_json(path), []
     except OSError as exc:
@@ -609,7 +662,11 @@ def _candidate_artifact_integrity_failures(
     if not raw_path:
         return failures
 
-    artifact_path = _candidate_artifact_path(root, raw_path)
+    artifact_path, path_failures = _candidate_artifact_path(root, raw_path, group)
+    if path_failures:
+        return path_failures
+    if artifact_path is None:
+        return [f"candidate artifact {group} path missing: {raw_path}"]
     if not artifact_path.exists():
         return [f"candidate artifact {group} path missing: {raw_path}"]
     if not artifact_path.is_file():
@@ -630,11 +687,8 @@ def _candidate_artifact_integrity_failures(
     return failures
 
 
-def _candidate_artifact_path(root: Path, raw_path: Any) -> Path:
-    path = Path(str(raw_path))
-    if path.is_absolute():
-        return path
-    return _repo_path(root, path.as_posix())
+def _candidate_artifact_path(root: Path, raw_path: Any, group: Any) -> tuple[Path | None, list[str]]:
+    return _repo_relative_path(root, raw_path, f"candidate artifact {group} path")
 
 
 def _candidate_artifact_commit_failures(
@@ -902,6 +956,10 @@ def _candidate_issue_label_names(issue: dict[str, Any]) -> set[Any]:
     }
 
 
+def _candidate_issue_is_open(issue: dict[str, Any]) -> bool:
+    return str(issue.get("state", "OPEN")).upper() == "OPEN"
+
+
 def _candidate_issue_is_relevant(policy: dict[str, Any], labels: set[Any]) -> bool:
     classification_any = set(policy.get("classification_labels_any", []))
     if classification_any:
@@ -924,7 +982,6 @@ def _validate_candidate_issue_classification(
 
     status = classification.get("status")
     handlers = {
-        "blocker": _candidate_issue_blocking_failures,
         "blocking": _candidate_issue_blocking_failures,
         "accepted_alpha_limitation": _candidate_issue_accepted_limitation_failures,
         "deferred": _candidate_issue_deferred_failures,
@@ -956,14 +1013,20 @@ def _candidate_issue_accepted_limitation_failures(
     if not docs_path:
         failures.append(f"candidate issue #{number} accepted limitation missing docs_path")
         return failures
+    docs_path_failures = _repo_relative_path_exists(
+        root,
+        docs_path,
+        f"candidate issue #{number} accepted limitation docs_path",
+    )
+    if docs_path_failures:
+        failures.extend(docs_path_failures)
+        return failures
     if docs_path != known_limitations:
         failures.append(
             f"candidate issue #{number} accepted limitation must use known_limitations_page "
             f"{known_limitations!r}, got {docs_path!r}"
         )
         return failures
-    if not _repo_path(root, docs_path).exists():
-        failures.append(f"candidate issue #{number} accepted limitation missing docs_path")
     return failures
 
 
@@ -995,8 +1058,18 @@ def _validate_candidate_issues(
     if not isinstance(classifications, dict):
         return ["candidate issue_classifications must be a JSON object"]
     manifest_classifications = _manifest_issue_classifications(manifest)
+    open_issue_numbers: set[str] = set()
     for issue in issue_rows:
-        if issue.get("state", "OPEN").upper() not in {"OPEN", "open".upper()}:
+        if _candidate_issue_is_open(issue):
+            number = issue.get("number")
+            if number is not None:
+                open_issue_numbers.add(str(number))
+    for number in sorted(manifest_classifications):
+        if number not in open_issue_numbers:
+            failures.append(f"candidate issue snapshot missing manifest-tracked issue #{number}")
+
+    for issue in issue_rows:
+        if not _candidate_issue_is_open(issue):
             continue
         number = str(issue.get("number"))
         labels = _candidate_issue_label_names(issue)
@@ -1022,8 +1095,15 @@ def validate_candidate(
     failures.extend(_candidate_commit_metadata_failures(evidence))
 
     known_limitations = manifest.get("known_limitations_page")
-    if known_limitations and not _repo_path(root, known_limitations).exists():
-        failures.append("candidate known limitations page is missing")
+    if known_limitations:
+        known_limitations_failures = _repo_relative_path_exists(
+            root,
+            known_limitations,
+            "candidate known limitations page",
+        )
+        if known_limitations_failures:
+            failures.append("candidate known limitations page is missing")
+            failures.extend(known_limitations_failures)
 
     tests = _extract_requires_gpu_tests(root)
     failures.extend(_validate_candidate_deferred_waivers(manifest, tests))
