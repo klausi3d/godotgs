@@ -9,6 +9,7 @@ import fnmatch
 import hashlib
 import importlib.util
 import json
+import math
 import re
 import subprocess
 import sys
@@ -25,6 +26,11 @@ PUBLIC_ALPHA_REQUIRED_FLAGS = (
     "disallow_manual_downgrade",
     "disallow_missing_gpu_runner_downgrade",
     "disallow_open_world_advisory_only",
+)
+PREFERRED_ISSUE_CLASSIFICATIONS = (
+    "blocking",
+    "accepted_alpha_limitation",
+    "deferred",
 )
 UNSUPPORTED_WORKFLOW_CLAIMS = (
     "must_enforce_readiness",
@@ -43,6 +49,33 @@ def _load_json(path: Path) -> Any:
 
 def _repo_path(root: Path, value: str) -> Path:
     return root / value
+
+
+def _repo_relative_path(root: Path, value: Any, label: str) -> tuple[Path | None, list[str]]:
+    if not isinstance(value, str) or not value.strip():
+        return None, [f"{label} must be a non-empty repo-relative path"]
+    path = Path(value)
+    if path.is_absolute():
+        return None, [f"{label} must be repo-relative: {value}"]
+    if ".." in path.parts:
+        return None, [f"{label} must not escape the repository: {value}"]
+
+    candidate = (root / path).resolve()
+    repo_root = root.resolve()
+    try:
+        candidate.relative_to(repo_root)
+    except ValueError:
+        return None, [f"{label} must stay inside the repository: {value}"]
+    return candidate, []
+
+
+def _repo_relative_path_exists(root: Path, value: Any, label: str) -> list[str]:
+    path, failures = _repo_relative_path(root, value, label)
+    if failures:
+        return failures
+    if path is None or not path.exists():
+        return [f"{label} missing: {value}"]
+    return []
 
 
 def _extract_requires_gpu_tests(root: Path) -> list[dict[str, Any]]:
@@ -75,7 +108,9 @@ def _requires_gpu_snapshot(tests: Iterable[dict[str, Any]]) -> tuple[int, str]:
 
 
 def _load_gpu_harness_batches(root: Path, script_rel: str) -> dict[str, tuple[str, ...]]:
-    script = _repo_path(root, script_rel)
+    script, failures = _repo_relative_path(root, script_rel, "gpu_harness_policy.script")
+    if failures or script is None:
+        raise RuntimeError("; ".join(failures))
     spec = importlib.util.spec_from_file_location("godotgs_gpu_harness_contract", script)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to import {script_rel}")
@@ -125,12 +160,16 @@ def _validate_manifest_basics(root: Path, manifest: dict[str, Any]) -> list[str]
         failures.append("manifest schema_version must be 1")
 
     for ref in manifest.get("references", []):
-        if not _repo_path(root, ref).exists():
-            failures.append(f"reference path missing: {ref}")
+        failures.extend(_repo_relative_path_exists(root, ref, "reference path"))
 
     known_limitations = manifest.get("known_limitations_page")
-    if not known_limitations or not _repo_path(root, known_limitations).exists():
+    if not known_limitations:
         failures.append("known limitations page is missing")
+    else:
+        known_limitations_failures = _repo_relative_path_exists(root, known_limitations, "known limitations page")
+        if known_limitations_failures:
+            failures.append("known limitations page is missing")
+            failures.extend(known_limitations_failures)
 
     return failures
 
@@ -141,6 +180,131 @@ def _validate_public_alpha_predicate(manifest: dict[str, Any]) -> list[str]:
     for flag in PUBLIC_ALPHA_REQUIRED_FLAGS:
         if predicate.get(flag) is not True:
             failures.append(f"public_alpha_predicate.{flag} must be true")
+    allowed = predicate.get("required_issue_query", {}).get("allowed_classifications", [])
+    if not isinstance(allowed, list) or set(allowed) != set(PREFERRED_ISSUE_CLASSIFICATIONS):
+        failures.append(
+            "public_alpha_predicate.required_issue_query.allowed_classifications must be "
+            f"{list(PREFERRED_ISSUE_CLASSIFICATIONS)!r}"
+        )
+    return failures
+
+
+def _manifest_issue_classifications(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    ledger = manifest.get("public_alpha_issue_ledger", {})
+    tracked = ledger.get("tracked_issues", []) if isinstance(ledger, dict) else []
+    classifications: dict[str, dict[str, Any]] = {}
+    for issue in tracked:
+        if not isinstance(issue, dict):
+            continue
+        number = issue.get("number")
+        if number is None:
+            continue
+        classifications[str(number)] = issue
+    return classifications
+
+
+def _validate_issue_evidence_requirements(number: Any, classification: dict[str, Any]) -> list[str]:
+    evidence_required = classification.get("evidence_required")
+    if not isinstance(evidence_required, list) or not evidence_required:
+        return [f"candidate issue #{number} classification missing evidence_required"]
+    if any(not isinstance(item, str) or not item.strip() for item in evidence_required):
+        return [f"candidate issue #{number} evidence_required entries must be non-empty strings"]
+    return []
+
+
+def _validate_public_alpha_issue_ledger(root: Path, manifest: dict[str, Any]) -> list[str]:
+    ledger = manifest.get("public_alpha_issue_ledger")
+    if not isinstance(ledger, dict):
+        return ["public_alpha_issue_ledger must be a JSON object"]
+
+    failures: list[str] = []
+    allowed = ledger.get("allowed_statuses", [])
+    if not isinstance(allowed, list) or set(allowed) != set(PREFERRED_ISSUE_CLASSIFICATIONS):
+        failures.append(
+            "public_alpha_issue_ledger.allowed_statuses must be "
+            f"{list(PREFERRED_ISSUE_CLASSIFICATIONS)!r}"
+        )
+
+    tracked = ledger.get("tracked_issues", [])
+    if not isinstance(tracked, list) or not tracked:
+        failures.append("public_alpha_issue_ledger.tracked_issues must be a non-empty list")
+        tracked = []
+
+    seen: set[Any] = set()
+    for issue in tracked:
+        if not isinstance(issue, dict):
+            failures.append(f"public_alpha_issue_ledger issue must be a JSON object: {issue!r}")
+            continue
+        number = issue.get("number")
+        if not isinstance(number, int) or number <= 0:
+            failures.append(f"public_alpha_issue_ledger issue number must be positive integer: {issue!r}")
+            continue
+        if number in seen:
+            failures.append(f"public_alpha_issue_ledger duplicate issue #{number}")
+        seen.add(number)
+
+        status = issue.get("status")
+        if status not in PREFERRED_ISSUE_CLASSIFICATIONS:
+            failures.append(f"public_alpha_issue_ledger issue #{number} has invalid status {status!r}")
+            continue
+        for field in ("title", "goal"):
+            if not issue.get(field):
+                failures.append(f"public_alpha_issue_ledger issue #{number} missing {field}")
+        failures.extend(_validate_issue_evidence_requirements(number, issue))
+        if status == "accepted_alpha_limitation":
+            failures.extend(_candidate_issue_accepted_limitation_failures(root, manifest, str(number), issue))
+        if status == "deferred" and not issue.get("rationale"):
+            failures.append(f"public_alpha_issue_ledger issue #{number} deferred classification missing rationale")
+
+    return failures
+
+
+def _validate_external_status_check_policy(manifest: dict[str, Any]) -> list[str]:
+    policy = manifest.get("external_status_check_policy")
+    if not isinstance(policy, dict):
+        return ["external_status_check_policy must be a JSON object"]
+
+    failures: list[str] = []
+    required_status_checks = policy.get("branch_protection_required_status_checks", [])
+    public_alpha_status_checks = policy.get("required_for_public_alpha", [])
+    if not isinstance(required_status_checks, list):
+        return ["external_status_check_policy.branch_protection_required_status_checks must be a list"]
+    if not isinstance(public_alpha_status_checks, list):
+        return ["external_status_check_policy.required_for_public_alpha must be a list"]
+    for field, checks in (
+        ("branch_protection_required_status_checks", required_status_checks),
+        ("required_for_public_alpha", public_alpha_status_checks),
+    ):
+        for index, check in enumerate(checks):
+            if not isinstance(check, str) or not check:
+                failures.append(f"external_status_check_policy.{field}[{index}] must be a non-empty string")
+    required_contexts = {check for check in required_status_checks if isinstance(check, str)}
+    public_alpha_required = {check for check in public_alpha_status_checks if isinstance(check, str)}
+    non_blocking = policy.get("non_blocking_checks", [])
+    if not isinstance(non_blocking, list):
+        return ["external_status_check_policy.non_blocking_checks must be a list"]
+
+    qlty_non_blocking = False
+    qlty_required = "qlty check" in required_contexts or "qlty check" in public_alpha_required
+    for check in non_blocking:
+        if not isinstance(check, dict):
+            failures.append(f"external non-blocking check must be a JSON object: {check!r}")
+            continue
+        context = check.get("context")
+        if not isinstance(context, str) or not context:
+            failures.append(f"external non-blocking check context must be a non-empty string: {check!r}")
+            continue
+        if context == "qlty check":
+            qlty_non_blocking = True
+        if context in required_contexts or context in public_alpha_required or check.get("required_for_public_alpha") is True:
+            failures.append(f"external check {context!r} cannot be both non-blocking and public-alpha required")
+        if check.get("classification") != "deferred":
+            failures.append(f"external non-blocking check {context!r} must use deferred classification")
+        for field in ("issue", "reason", "decision_evidence", "local_gate_behavior"):
+            if not check.get(field):
+                failures.append(f"external non-blocking check {context!r} missing {field}")
+    if not qlty_non_blocking and not qlty_required:
+        failures.append("external_status_check_policy must classify qlty check as required or non-blocking")
     return failures
 
 
@@ -177,8 +341,8 @@ def _validate_deferred_requires_gpu_waivers(root: Path, manifest: dict[str, Any]
             if not waiver.get(field):
                 failures.append(f"deferred waiver missing {field}: {waiver!r}")
         docs_path = waiver.get("docs_path")
-        if docs_path and not _repo_path(root, docs_path).exists():
-            failures.append(f"deferred waiver docs_path missing: {docs_path}")
+        if docs_path:
+            failures.extend(_repo_relative_path_exists(root, docs_path, f"deferred waiver docs_path {docs_path}"))
     return failures
 
 
@@ -209,8 +373,12 @@ def _required_gpu_batch_reference_failures(
 ) -> list[str]:
     failures: list[str] = []
     for ref in batch.get("reference_artifacts", []):
-        if not _repo_path(root, ref).exists():
-            failures.append(f"required GPU batch {name} reference missing: {ref}")
+        ref_failures = _repo_relative_path_exists(root, ref, f"required GPU batch {name} reference")
+        for failure in ref_failures:
+            if "missing" in failure:
+                failures.append(f"required GPU batch {name} reference missing: {ref}")
+            else:
+                failures.append(f"required GPU batch {name} reference invalid: {failure}")
     return failures
 
 
@@ -259,8 +427,14 @@ def _validate_visual_acceptance(root: Path, manifest: dict[str, Any]) -> list[st
         if tracked_actual:
             failures.append(f"tracked .actual.png artifacts are forbidden: {tracked_actual}")
     for reference in visual.get("blocking_references", []):
-        if reference.get("required") and not _repo_path(root, reference.get("path", "")).exists():
-            failures.append(f"blocking visual reference missing: {reference.get('path')}")
+        if reference.get("required"):
+            path_value = reference.get("path", "")
+            ref_failures = _repo_relative_path_exists(root, path_value, "blocking visual reference")
+            for failure in ref_failures:
+                if "missing" in failure:
+                    failures.append(f"blocking visual reference missing: {path_value}")
+                else:
+                    failures.append(f"blocking visual reference invalid: {failure}")
     return failures
 
 
@@ -275,7 +449,9 @@ def _workflow_policy_scope_failures(workflow_policy: dict[str, Any]) -> list[str
 def _validate_required_workflow(root: Path, workflow: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     workflow_file = workflow.get("file", "")
-    text_path = _repo_path(root, workflow_file)
+    text_path, path_failures = _repo_relative_path(root, workflow_file, "required workflow")
+    if path_failures:
+        return path_failures
     if not text_path.exists():
         return [f"required workflow missing: {workflow_file}"]
 
@@ -303,6 +479,8 @@ def validate_contract(root: Path, manifest: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     failures.extend(_validate_manifest_basics(root, manifest))
     failures.extend(_validate_public_alpha_predicate(manifest))
+    failures.extend(_validate_public_alpha_issue_ledger(root, manifest))
+    failures.extend(_validate_external_status_check_policy(manifest))
     failures.extend(_validate_requires_gpu_snapshot(manifest, tests))
     failures.extend(_validate_deferred_requires_gpu_waivers(root, manifest))
     failures.extend(_validate_gpu_harness_policy(root, manifest, tests))
@@ -332,7 +510,9 @@ def _rows_from_report(report: Any) -> list[dict[str, Any]]:
 def _load_candidate_json(root: Path, rel_path: Any, label: str) -> tuple[Any | None, list[str]]:
     if not rel_path:
         return None, [f"candidate evidence missing {label}"]
-    path = _repo_path(root, str(rel_path))
+    path, path_failures = _repo_relative_path(root, rel_path, f"candidate {label}")
+    if path_failures or path is None:
+        return None, path_failures
     try:
         return _load_json(path), []
     except OSError as exc:
@@ -366,7 +546,7 @@ def _to_utc_aware(value: _dt.datetime) -> _dt.datetime:
 
 
 def _is_json_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _candidate_selector_failures(manifest: dict[str, Any], evidence: dict[str, Any]) -> list[str]:
@@ -490,7 +670,11 @@ def _candidate_artifact_integrity_failures(
     if not raw_path:
         return failures
 
-    artifact_path = _candidate_artifact_path(root, raw_path)
+    artifact_path, path_failures = _candidate_artifact_path(root, raw_path, group)
+    if path_failures:
+        return path_failures
+    if artifact_path is None:
+        return [f"candidate artifact {group} path missing: {raw_path}"]
     if not artifact_path.exists():
         return [f"candidate artifact {group} path missing: {raw_path}"]
     if not artifact_path.is_file():
@@ -511,11 +695,8 @@ def _candidate_artifact_integrity_failures(
     return failures
 
 
-def _candidate_artifact_path(root: Path, raw_path: Any) -> Path:
-    path = Path(str(raw_path))
-    if path.is_absolute():
-        return path
-    return _repo_path(root, path.as_posix())
+def _candidate_artifact_path(root: Path, raw_path: Any, group: Any) -> tuple[Path | None, list[str]]:
+    return _repo_relative_path(root, raw_path, f"candidate artifact {group} path")
 
 
 def _candidate_artifact_commit_failures(
@@ -714,6 +895,38 @@ def _candidate_lane_visual_failures(
         failures.append(f"candidate benchmark lane {lane_id} has null capture_ssim_min")
     if row.get("capture_psnr_min") is None:
         failures.append(f"candidate benchmark lane {lane_id} has null capture_psnr_min")
+    capture_threshold_pass_count = row.get("capture_threshold_pass_count")
+    if capture_count_valid and capture_threshold_pass_count is not None:
+        if not _is_json_number(capture_threshold_pass_count):
+            failures.append(f"candidate benchmark lane {lane_id} capture_threshold_pass_count must be numeric")
+        elif capture_threshold_pass_count != capture_count:
+            failures.append(f"candidate benchmark lane {lane_id} did not pass all visual thresholds")
+    if row.get("visual_reference_match") is False:
+        failures.append(f"candidate benchmark lane {lane_id} failed visual reference match")
+    return failures
+
+
+def _candidate_lane_identity_failures(lane_id: str, row: dict[str, Any], commit: Any) -> list[str]:
+    failures: list[str] = []
+    if commit:
+        if row.get("commit_sha") != commit:
+            failures.append(f"candidate benchmark lane {lane_id} commit_sha does not match candidate commit")
+        if row.get("godot_binary_commit") != commit:
+            failures.append(f"candidate benchmark lane {lane_id} godot_binary_commit does not match candidate commit")
+    return failures
+
+
+def _candidate_lane_execution_status_failures(lane_id: str, row: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    exit_code = row.get("exit_code")
+    if exit_code is not None:
+        if not _is_json_number(exit_code):
+            failures.append(f"candidate benchmark lane {lane_id} exit_code must be numeric")
+        elif exit_code != 0:
+            failures.append(f"candidate benchmark lane {lane_id} exited with {exit_code}")
+    for field in ("report_valid", "visible_output_valid", "proof_valid", "lane_valid"):
+        if row.get(field) is False:
+            failures.append(f"candidate benchmark lane {lane_id} has {field}=false")
     return failures
 
 
@@ -730,9 +943,19 @@ def _candidate_lane_gpu_timing_failures(lane_id: str, row: dict[str, Any]) -> li
 
 
 def _candidate_lane_route_failures(lane_id: str, row: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
     if row.get("cpu_fallback_route") and not row.get("fallback_route_allowed"):
-        return [f"candidate benchmark lane {lane_id} used unallowed CPU/fallback route"]
-    return []
+        failures.append(f"candidate benchmark lane {lane_id} used unallowed CPU/fallback route")
+    if row.get("cpu_sort_route_detected") and not row.get("fallback_route_allowed"):
+        route_uid = row.get("cpu_sort_route_uid")
+        failures.append(f"candidate benchmark lane {lane_id} used forbidden CPU sort route {route_uid!r}")
+    fallback_count = row.get("sort_total_route_fallback_count")
+    if fallback_count is not None:
+        if not _is_json_number(fallback_count):
+            failures.append(f"candidate benchmark lane {lane_id} sort_total_route_fallback_count must be numeric")
+        elif fallback_count > 0 and not row.get("fallback_route_allowed"):
+            failures.append(f"candidate benchmark lane {lane_id} used unallowed sort fallback routes")
+    return failures
 
 
 def _validate_candidate_benchmark_lane(
@@ -740,9 +963,12 @@ def _validate_candidate_benchmark_lane(
     row: dict[str, Any],
     required_non_null: Iterable[str],
     visual_rules: dict[str, Any],
+    commit: Any,
 ) -> list[str]:
     failures: list[str] = []
     failures.extend(_candidate_lane_timeout_failures(lane_id, row))
+    failures.extend(_candidate_lane_identity_failures(lane_id, row, commit))
+    failures.extend(_candidate_lane_execution_status_failures(lane_id, row))
     failures.extend(_candidate_lane_required_field_failures(lane_id, row, required_non_null))
     failures.extend(_candidate_lane_visual_failures(lane_id, row, visual_rules))
     failures.extend(_candidate_lane_gpu_timing_failures(lane_id, row))
@@ -760,12 +986,13 @@ def _validate_candidate_benchmark_report(root: Path, manifest: dict[str, Any], e
     rows = _rows_from_report(report)
     required_non_null = manifest.get("benchmark_acceptance", {}).get("required_fields_non_null", [])
     visual_rules = manifest.get("visual_acceptance", {}).get("candidate_rules", {})
+    commit = evidence.get("commit")
     for lane_id in manifest.get("benchmark_acceptance", {}).get("candidate_required_lanes", []):
         row = _find_lane(rows, lane_id)
         if row is None:
             failures.append(f"candidate benchmark lane missing: {lane_id}")
             continue
-        failures.extend(_validate_candidate_benchmark_lane(lane_id, row, required_non_null, visual_rules))
+        failures.extend(_validate_candidate_benchmark_lane(lane_id, row, required_non_null, visual_rules, commit))
     return failures
 
 
@@ -776,6 +1003,12 @@ def _candidate_issue_rows(evidence: dict[str, Any], issues: Any | None) -> list[
     return _issue_rows_from_snapshot(evidence.get("issue_snapshot", evidence.get("issues", evidence.get("open_issues"))))
 
 
+def _candidate_resolved_manifest_issue_rows(evidence: dict[str, Any]) -> list[dict[str, Any]] | None:
+    if "resolved_manifest_issues" not in evidence:
+        return []
+    return _issue_rows_from_snapshot(evidence.get("resolved_manifest_issues"))
+
+
 def _candidate_issue_label_names(issue: dict[str, Any]) -> set[Any]:
     return {
         label.get("name", label) if isinstance(label, dict) else label
@@ -783,7 +1016,18 @@ def _candidate_issue_label_names(issue: dict[str, Any]) -> set[Any]:
     }
 
 
+def _candidate_issue_is_open(issue: dict[str, Any]) -> bool:
+    return str(issue.get("state", "OPEN")).upper() == "OPEN"
+
+
+def _candidate_issue_is_closed(issue: dict[str, Any]) -> bool:
+    return str(issue.get("state", "")).upper() == "CLOSED"
+
+
 def _candidate_issue_is_relevant(policy: dict[str, Any], labels: set[Any]) -> bool:
+    classification_any = set(policy.get("classification_labels_any", []))
+    if classification_any:
+        return bool(classification_any.intersection(labels))
     blocking_any = set(policy.get("blocking_labels_any", []))
     alpha_p1_all = set(policy.get("alpha_relevant_p1_labels_all", []))
     return bool(blocking_any.intersection(labels)) or alpha_p1_all.issubset(labels)
@@ -804,7 +1048,7 @@ def _validate_candidate_issue_classification(
     handlers = {
         "blocking": _candidate_issue_blocking_failures,
         "accepted_alpha_limitation": _candidate_issue_accepted_limitation_failures,
-        "post_alpha": _candidate_issue_post_alpha_failures,
+        "deferred": _candidate_issue_deferred_failures,
     }
     handler = handlers.get(status)
     if handler:
@@ -827,29 +1071,79 @@ def _candidate_issue_accepted_limitation_failures(
     number: str,
     classification: dict[str, Any],
 ) -> list[str]:
+    failures = _validate_issue_evidence_requirements(number, classification)
     docs_path = classification.get("docs_path")
     known_limitations = manifest.get("known_limitations_page")
     if not docs_path:
-        return [f"candidate issue #{number} accepted limitation missing docs_path"]
+        failures.append(f"candidate issue #{number} accepted limitation missing docs_path")
+        return failures
+    docs_path_failures = _repo_relative_path_exists(
+        root,
+        docs_path,
+        f"candidate issue #{number} accepted limitation docs_path",
+    )
+    if docs_path_failures:
+        failures.extend(docs_path_failures)
+        return failures
     if docs_path != known_limitations:
-        return [
+        failures.append(
             f"candidate issue #{number} accepted limitation must use known_limitations_page "
             f"{known_limitations!r}, got {docs_path!r}"
-        ]
-    if not _repo_path(root, docs_path).exists():
-        return [f"candidate issue #{number} accepted limitation missing docs_path"]
-    return []
+        )
+        return failures
+    return failures
 
 
-def _candidate_issue_post_alpha_failures(
+def _candidate_issue_deferred_failures(
     _root: Path,
     _manifest: dict[str, Any],
     number: str,
     classification: dict[str, Any],
 ) -> list[str]:
+    failures = _validate_issue_evidence_requirements(number, classification)
     if not classification.get("rationale"):
-        return [f"candidate issue #{number} post_alpha classification missing rationale"]
-    return []
+        failures.append(f"candidate issue #{number} deferred classification missing rationale")
+    return failures
+
+
+def _candidate_issue_is_manifest_resolved(
+    number: str,
+    issue: dict[str, Any],
+    classification: dict[str, Any],
+) -> bool:
+    return str(issue.get("number")) == number and _candidate_issue_is_closed(issue) and classification.get("status") == "blocking"
+
+
+def _validate_omitted_manifest_blockers(
+    manifest_classifications: dict[str, dict[str, Any]],
+    issue_rows: list[dict[str, Any]],
+    resolved_rows: list[dict[str, Any]],
+) -> list[str]:
+    snapshot_issue_numbers = {
+        str(issue.get("number"))
+        for issue in issue_rows
+        if issue.get("number") is not None
+    }
+    resolved_by_number = {
+        str(issue.get("number")): issue
+        for issue in resolved_rows
+        if issue.get("number") is not None
+    }
+
+    failures: list[str] = []
+    for number, classification in sorted(manifest_classifications.items()):
+        if number in snapshot_issue_numbers or classification.get("status") != "blocking":
+            continue
+        proof = resolved_by_number.get(number)
+        if proof is None:
+            failures.append(
+                f"candidate issue snapshot missing manifest-tracked blocking issue #{number}; "
+                "include it in issue_snapshot or resolved_manifest_issues"
+            )
+            continue
+        if not _candidate_issue_is_closed(proof):
+            failures.append(f"candidate resolved_manifest_issues issue #{number} must have state CLOSED")
+    return failures
 
 
 def _validate_candidate_issues(
@@ -867,14 +1161,31 @@ def _validate_candidate_issues(
     classifications = evidence.get("issue_classifications", {})
     if not isinstance(classifications, dict):
         return ["candidate issue_classifications must be a JSON object"]
+    manifest_classifications = _manifest_issue_classifications(manifest)
+    resolved_rows = _candidate_resolved_manifest_issue_rows(evidence)
+    if resolved_rows is None:
+        failures.append("candidate resolved_manifest_issues must be an issue snapshot object or list")
+        resolved_rows = []
+    failures.extend(_validate_omitted_manifest_blockers(manifest_classifications, issue_rows, resolved_rows))
+
     for issue in issue_rows:
-        if issue.get("state", "OPEN").upper() not in {"OPEN", "open".upper()}:
+        number = str(issue.get("number"))
+        manifest_classification = manifest_classifications.get(number)
+        if manifest_classification and _candidate_issue_is_manifest_resolved(number, issue, manifest_classification):
+            continue
+        if not _candidate_issue_is_open(issue):
             continue
         labels = _candidate_issue_label_names(issue)
-        if not _candidate_issue_is_relevant(policy, labels):
+        if not _candidate_issue_is_relevant(policy, labels) and manifest_classification is None:
             continue
-        number = str(issue.get("number"))
-        classification = classifications.get(number)
+        classification = manifest_classification or classifications.get(number)
+        if isinstance(classification, dict):
+            status = classification.get("status")
+            if status in {"accepted_alpha_limitation", "deferred"} and number not in manifest_classifications:
+                failures.append(
+                    f"candidate issue #{number} {status} classification must be tracked in public_alpha_issue_ledger"
+                )
+                continue
         failures.extend(_validate_candidate_issue_classification(root, manifest, number, classification))
     return failures
 
@@ -894,8 +1205,15 @@ def validate_candidate(
     failures.extend(_candidate_commit_metadata_failures(evidence))
 
     known_limitations = manifest.get("known_limitations_page")
-    if known_limitations and not _repo_path(root, known_limitations).exists():
-        failures.append("candidate known limitations page is missing")
+    if known_limitations:
+        known_limitations_failures = _repo_relative_path_exists(
+            root,
+            known_limitations,
+            "candidate known limitations page",
+        )
+        if known_limitations_failures:
+            failures.append("candidate known limitations page is missing")
+            failures.extend(known_limitations_failures)
 
     tests = _extract_requires_gpu_tests(root)
     failures.extend(_validate_candidate_deferred_waivers(manifest, tests))

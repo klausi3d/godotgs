@@ -25,6 +25,7 @@ scons platform=<platform> target=editor dev_build=yes tests=yes -j<jobs>
 - Module checks/tests:
   - `python3 tests/ci/run_module_tests.py --guard-only`
   - `python3 tests/ci/run_module_tests.py --godot-binary <module-built-binary>`
+  - `--guard-only` includes the renderer release-gate contract check.
 - Runtime validation:
   - `python3 tests/runtime/run_runtime_validation.py --godot-binary <module-built-binary> --gd-mode headless`
 - Benchmark suite:
@@ -50,8 +51,15 @@ Required-batch contract: `REQUIRED_BATCHES = {"CompositorHazard"}` is asserted a
 - [Workflow overview](../../.github/workflows/README.md)
 - [Production gate workflow](../../.github/workflows/gaussian_production_gates.yml)
 - [Baseline QA workflow (gpu-tests + gpu-harness visual gate)](../../.github/workflows/baseline_qa.yml)
+- [Renderer release gate contract](renderer-release-gates.md)
 
 Fork-PR safety gate: the `gpu-tests` and `gpu-harness` jobs in `baseline_qa.yml` both guard on `github.event.pull_request.head.repo.full_name == github.repository`, so untrusted fork-PR code never executes on the self-hosted Windows GPU runner. Same-repo branch PRs and the merge queue still exercise the visual gate.
+
+External advisory checks: `qlty check` is not part of the local renderer
+release gate while `master` branch protection has no required status checks and
+the repo has no tracked qlty configuration. Treat qlty as a non-blocking signal
+unless branch protection or `docs/reference/renderer_release_gate_manifest.json`
+is changed to require it.
 
 ## Common Failure Modes
 

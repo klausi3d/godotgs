@@ -18,6 +18,10 @@ on:
       - "SConstruct"
       - "tests/**"
       - ".github/workflows/gaussian_production_gates.yml"
+      - ".github/workflows/README.md"
+      - "docs/reference/renderer-release-gates.md"
+      - "docs/reference/renderer_release_gate_manifest.json"
+      - "docs/development/known-public-alpha-limitations.md"
   push:
     branches: [master, develop]
     paths:
@@ -34,6 +38,10 @@ on:
       - "SConstruct"
       - "tests/**"
       - ".github/workflows/gaussian_production_gates.yml"
+      - ".github/workflows/README.md"
+      - "docs/reference/renderer-release-gates.md"
+      - "docs/reference/renderer_release_gate_manifest.json"
+      - "docs/development/known-public-alpha-limitations.md"
   workflow_dispatch:
     inputs:
       run_gpu_lane:

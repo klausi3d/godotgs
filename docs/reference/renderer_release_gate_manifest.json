@@ -13,17 +13,87 @@
     "disallow_missing_gpu_runner_downgrade": true,
     "disallow_open_world_advisory_only": true,
     "required_issue_query": {
+      "classification_labels_any": ["priority:P0", "priority:P1", "release blocker"],
       "blocking_labels_any": ["priority:P0", "release blocker"],
       "alpha_relevant_p1_labels_all": ["priority:P1", "alpha-relevant"],
-      "allowed_classifications": ["blocking", "accepted_alpha_limitation", "post_alpha"],
+      "allowed_classifications": ["blocking", "accepted_alpha_limitation", "deferred"],
       "accepted_limitation_requires_docs_path": true
     }
+  },
+  "public_alpha_issue_ledger": {
+    "scope": "Every open priority:P0, priority:P1, or release blocker issue in the candidate issue snapshot must resolve to one public-alpha classification.",
+    "allowed_statuses": ["blocking", "accepted_alpha_limitation", "deferred"],
+    "tracked_issues": [
+      {
+        "number": 351,
+        "title": "Audit P0: make render route, fallback, and stage failure contracts explicit",
+        "status": "blocking",
+        "goal": "Public alpha must expose one selected route per frame, typed stage results, visible degradation, and first-failure diagnostics for resident, streaming, and serial paths.",
+        "evidence_required": [
+          "PR closes #351 or splits only non-alpha follow-up work with owner and issue link",
+          "route/stage failure-injection tests cover resident, streaming, and serial paths",
+          "candidate benchmark rows include route_uid, stage_statuses, and fallback_counters for every required lane"
+        ]
+      },
+      {
+        "number": 352,
+        "title": "Audit P0: close GPU resource leaks and shutdown lifetime hazards",
+        "status": "blocking",
+        "goal": "Public alpha must prove renderer shutdown, compositor shutdown, node removal, and failed initialization do not retain owned GPU resources.",
+        "evidence_required": [
+          "PR closes #352 or splits only non-alpha follow-up work with owner and issue link",
+          "GPU/RID accounting tests fail on retained owned resources",
+          "candidate GPU harness report includes zero rid_leak_bytes for required batches"
+        ]
+      },
+      {
+        "number": 360,
+        "title": "Audit P3: define and enforce public alpha release acceptance gates",
+        "status": "blocking",
+        "goal": "Public alpha must be tied to an evidence bundle, issue snapshot, public known-limitations page, and deterministic local contract check.",
+        "evidence_required": [
+          "candidate evidence bundle passes tests/ci/check_renderer_release_gates.py --mode candidate",
+          "candidate issue snapshot classifies every open P0, P1, and release-blocker issue",
+          "docs/development/known-public-alpha-limitations.md contains each accepted public-alpha limitation"
+        ]
+      },
+      {
+        "number": 369,
+        "title": "Audit P0: repair opaque qlty check failures blocking renderer PRs",
+        "status": "deferred",
+        "goal": "Do not let opaque external qlty status block the local renderer release gate when GitHub branch protection does not require it.",
+        "rationale": "As of 2026-05-21, master branch protection reports required_status_checks=null and the repository tracks no qlty configuration; qlty is therefore an advisory external signal, not a public-alpha release blocker.",
+        "evidence_required": [
+          "GitHub branch protection for master has no required status checks",
+          "qlty check is documented as a non-blocking external signal in docs/reference/renderer-release-gates.md and .github/workflows/README.md",
+          "candidate issue validation can resolve #369 through this deferred manifest classification"
+        ]
+      }
+    ]
+  },
+  "external_status_check_policy": {
+    "source": "GitHub branch protection for master checked on 2026-05-21",
+    "branch_protection_required_status_checks": [],
+    "required_for_public_alpha": [],
+    "non_blocking_checks": [
+      {
+        "context": "qlty check",
+        "issue": 369,
+        "classification": "deferred",
+        "reason": "The qlty check is not required by master branch protection and has no repo-owned configuration/log contract in this tree.",
+        "decision_evidence": [
+          "gh api repos/klausi3D/godotGS/branches/master/protection returned required_status_checks=null on 2026-05-21",
+          "repo search found no tracked qlty.toml, .qlty, .codeclimate.yml, or .codefactor.yml policy file"
+        ],
+        "local_gate_behavior": "Do not fail tests/ci/check_renderer_release_gates.py solely because qlty check is failing, pending, absent, or inaccessible."
+      }
+    ]
   },
   "known_limitations_page": "docs/development/known-public-alpha-limitations.md",
   "requires_gpu_test_snapshot": {
     "source_glob": "modules/gaussian_splatting/tests/**/*.{h,cpp}",
-    "test_count": 93,
-    "sha256": "704a15f3989517fe04c16d9c6cae847f97d65db3c26324b851cf58eb2d6b04d0",
+    "test_count": 99,
+    "sha256": "ee61962cc8bb817d66b3cfd4e02679ff6ed321fbf13b52bfc38cf9da37fd59be",
     "deferred_tags_any": ["SceneTree", "Importer"],
     "deferred_count": 29,
     "new_or_missing_test_policy": "fail-contract-check",

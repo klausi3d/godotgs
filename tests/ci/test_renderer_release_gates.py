@@ -81,9 +81,45 @@ def _base_manifest(root: Path) -> dict[str, Any]:
             "disallow_missing_gpu_runner_downgrade": True,
             "disallow_open_world_advisory_only": True,
             "required_issue_query": {
+                "classification_labels_any": ["priority:P0", "priority:P1", "release blocker"],
                 "blocking_labels_any": ["priority:P0", "release blocker"],
                 "alpha_relevant_p1_labels_all": ["priority:P1", "alpha-relevant"],
+                "allowed_classifications": ["blocking", "accepted_alpha_limitation", "deferred"],
             },
+        },
+        "public_alpha_issue_ledger": {
+            "scope": "open P0, P1, and release-blocker issues from the candidate issue snapshot",
+            "allowed_statuses": ["blocking", "accepted_alpha_limitation", "deferred"],
+            "tracked_issues": [
+                {
+                    "number": 369,
+                    "title": "Audit P0: repair opaque qlty check failures blocking renderer PRs",
+                    "status": "deferred",
+                    "goal": "Keep opaque external quality checks out of the local public-alpha gate unless branch protection makes them required.",
+                    "rationale": "The qlty check is an external advisory signal in this repository policy.",
+                    "evidence_required": [
+                        "GitHub branch protection required_status_checks is empty or absent",
+                        "qlty check remains documented as non-blocking external signal",
+                    ],
+                }
+            ],
+        },
+        "external_status_check_policy": {
+            "branch_protection_required_status_checks": [],
+            "required_for_public_alpha": [],
+            "non_blocking_checks": [
+                {
+                    "context": "qlty check",
+                    "issue": 369,
+                    "classification": "deferred",
+                    "reason": "External qlty check is not required by branch protection in the current repo policy.",
+                    "decision_evidence": [
+                        "master branch protection required_status_checks is null",
+                        "No qlty configuration is tracked in the repo",
+                    ],
+                    "local_gate_behavior": "Do not fail the local renderer release gate solely on qlty check status.",
+                }
+            ],
         },
         "known_limitations_page": "docs/development/known-public-alpha-limitations.md",
         "references": [
@@ -163,6 +199,18 @@ def _base_manifest(root: Path) -> dict[str, Any]:
     }
 
 
+def _issue(number: int, labels: list[str], state: str = "OPEN") -> dict[str, Any]:
+    return {
+        "number": number,
+        "state": state,
+        "labels": [{"name": label} for label in labels],
+    }
+
+
+def _base_issue_snapshot(*extra: dict[str, Any]) -> list[dict[str, Any]]:
+    return [_issue(369, ["priority:P0"])] + list(extra)
+
+
 def _valid_candidate_evidence(root: Path) -> dict[str, Any]:
     _write(
         root / "gpu_report.json",
@@ -193,10 +241,17 @@ def _valid_candidate_evidence(root: Path) -> dict[str, Any]:
                     "godot_binary_mtime_utc": "2026-05-19T10:01:00Z",
                     "capture_count": 1,
                     "capture_reference_match_count": 1,
+                    "capture_threshold_pass_count": 1,
                     "capture_ssim_min": 0.99,
                     "capture_psnr_min": 40.0,
                     "gpu_timing_available": False,
                     "gpu_timing_source": "unavailable",
+                    "exit_code": 0,
+                    "report_valid": True,
+                    "visible_output_valid": True,
+                    "visual_reference_match": True,
+                    "proof_valid": True,
+                    "lane_valid": True,
                 }
             ]
         ),
@@ -291,6 +346,53 @@ class RendererReleaseGateTests(unittest.TestCase):
             failures = checker.validate_contract(root, manifest)
             self.assertTrue(any("not machine-enforced" in item for item in failures))
 
+    def test_issue_ledger_rejects_missing_evidence_requirements(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"][0].pop("evidence_required")
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("classification missing evidence_required" in item for item in failures))
+
+    def test_external_status_policy_keeps_qlty_non_blocking(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["external_status_check_policy"]["non_blocking_checks"][0]["required_for_public_alpha"] = True
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("cannot be both non-blocking and public-alpha required" in item for item in failures))
+
+    def test_external_status_policy_requires_qlty_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["external_status_check_policy"]["non_blocking_checks"] = []
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("must classify qlty check as required or non-blocking" in item for item in failures))
+
+    def test_external_status_policy_allows_qlty_to_be_required(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["external_status_check_policy"]["required_for_public_alpha"] = ["qlty check"]
+            manifest["external_status_check_policy"]["non_blocking_checks"] = []
+            failures = checker.validate_contract(root, manifest)
+            self.assertEqual([], [failure for failure in failures if "qlty check" in failure])
+
+    def test_external_status_policy_rejects_non_string_status_contexts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["external_status_check_policy"]["branch_protection_required_status_checks"] = [{"context": "bad"}]
+            manifest["external_status_check_policy"]["required_for_public_alpha"] = [42]
+            manifest["external_status_check_policy"]["non_blocking_checks"][0]["context"] = {"context": "bad"}
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(
+                any("branch_protection_required_status_checks[0] must be a non-empty string" in item for item in failures)
+            )
+            self.assertTrue(any("required_for_public_alpha[0] must be a non-empty string" in item for item in failures))
+            self.assertTrue(any("context must be a non-empty string" in item for item in failures))
+
     def test_candidate_requires_issue_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -299,12 +401,92 @@ class RendererReleaseGateTests(unittest.TestCase):
             failures = checker.validate_candidate(root, manifest, evidence)
             self.assertTrue(any("issue snapshot missing" in item for item in failures))
 
+    def test_candidate_open_issue_snapshot_may_omit_resolved_manifest_tracked_issues(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
+            )
+            evidence["resolved_manifest_issues"] = [_issue(360, ["priority:P0"], state="CLOSED")]
+            failures = checker.validate_candidate(root, manifest, evidence, [])
+            self.assertEqual([], failures)
+
+    def test_candidate_rejects_omitted_manifest_blocker_without_closure_proof(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
+            )
+            failures = checker.validate_candidate(root, manifest, evidence, [])
+            self.assertTrue(any("missing manifest-tracked blocking issue #360" in item for item in failures))
+
+    def test_candidate_rejects_open_closure_proof_for_omitted_manifest_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
+            )
+            evidence["resolved_manifest_issues"] = [_issue(360, ["priority:P0"], state="OPEN")]
+            failures = checker.validate_candidate(root, manifest, evidence, [])
+            self.assertTrue(any("resolved_manifest_issues issue #360 must have state CLOSED" in item for item in failures))
+
+    def test_candidate_rejects_malformed_closure_state_for_omitted_manifest_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
+            )
+            evidence["resolved_manifest_issues"] = [_issue(360, ["priority:P0"], state="NOT_A_GITHUB_STATE")]
+            failures = checker.validate_candidate(root, manifest, evidence, [])
+            self.assertTrue(any("resolved_manifest_issues issue #360 must have state CLOSED" in item for item in failures))
+
+    def test_candidate_rejects_malformed_resolved_manifest_issues(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["resolved_manifest_issues"] = "closed"
+            failures = checker.validate_candidate(root, manifest, evidence, _base_issue_snapshot())
+            self.assertTrue(any("resolved_manifest_issues must be an issue snapshot object or list" in item for item in failures))
+
     def test_candidate_accepts_embedded_issue_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             manifest = _base_manifest(root)
             evidence = _valid_candidate_evidence(root)
-            evidence["issue_snapshot"] = []
+            evidence["issue_snapshot"] = _base_issue_snapshot()
             failures = checker.validate_candidate(root, manifest, evidence)
             self.assertEqual([], failures)
 
@@ -325,8 +507,20 @@ class RendererReleaseGateTests(unittest.TestCase):
             evidence = _valid_candidate_evidence(root)
             evidence["release_channel"] = "nightly"
             evidence["release_tag"] = "v1.0.0-alpha.1"
-            failures = checker.validate_candidate(root, manifest, evidence, [])
+            failures = checker.validate_candidate(root, manifest, evidence, _base_issue_snapshot())
             self.assertEqual([], failures)
+
+    def test_issue_status_policy_must_match_manifest_ledger(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["public_alpha_predicate"]["required_issue_query"]["allowed_classifications"] = [
+                "blocking",
+                "accepted_alpha_limitation",
+                "post_alpha",
+            ]
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("allowed_classifications must be" in item for item in failures))
 
     def test_candidate_requires_commit_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -625,6 +819,79 @@ class RendererReleaseGateTests(unittest.TestCase):
             failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
             self.assertTrue(any("capture_count must be numeric" in item for item in failures))
 
+    def test_candidate_benchmark_commit_must_match_candidate_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            _write(
+                root / "bench.json",
+                json.dumps(
+                    [
+                        {
+                            "lane_id": "static_baseline",
+                            "commit_sha": "old",
+                            "godot_binary_commit": "old",
+                            "godot_binary_mtime_utc": "2026-05-19T10:01:00Z",
+                            "capture_count": 1,
+                            "capture_reference_match_count": 1,
+                            "capture_threshold_pass_count": 1,
+                            "capture_ssim_min": 0.99,
+                            "capture_psnr_min": 40.0,
+                            "gpu_timing_available": False,
+                            "gpu_timing_source": "unavailable",
+                        }
+                    ]
+                ),
+            )
+            failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
+            self.assertTrue(any("commit_sha does not match candidate commit" in item for item in failures))
+            self.assertTrue(any("godot_binary_commit does not match candidate commit" in item for item in failures))
+
+    def test_candidate_benchmark_exit_code_must_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            lane = json.loads((root / "bench.json").read_text(encoding="utf-8"))[0]
+            lane["exit_code"] = 7
+            lane["lane_valid"] = False
+            _write(root / "bench.json", json.dumps([lane]))
+            failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
+            self.assertTrue(any("exited with 7" in item for item in failures))
+            self.assertTrue(any("lane_valid=false" in item for item in failures))
+
+    def test_candidate_benchmark_visual_thresholds_must_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            lane = json.loads((root / "bench.json").read_text(encoding="utf-8"))[0]
+            lane["capture_threshold_pass_count"] = 0
+            lane["visual_reference_match"] = False
+            _write(root / "bench.json", json.dumps([lane]))
+            failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
+            self.assertTrue(any("did not pass all visual thresholds" in item for item in failures))
+            self.assertTrue(any("failed visual reference match" in item for item in failures))
+
+    def test_candidate_benchmark_rejects_cpu_sort_route_and_fallback_counters(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            lane = json.loads((root / "bench.json").read_text(encoding="utf-8"))[0]
+            lane["cpu_sort_route_detected"] = True
+            lane["cpu_sort_route_uid"] = "INSTANCE_SORT_CPU_FALLBACK"
+            lane["sort_total_route_fallback_count"] = 2
+            _write(root / "bench.json", json.dumps([lane]))
+            failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
+            self.assertTrue(any("forbidden CPU sort route" in item for item in failures))
+            self.assertTrue(any("unallowed sort fallback routes" in item for item in failures))
+
+    def test_candidate_json_numbers_must_be_finite(self) -> None:
+        self.assertFalse(checker._is_json_number(float("nan")))
+        self.assertFalse(checker._is_json_number(float("inf")))
+
     def test_candidate_fails_stale_and_incomplete_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -704,6 +971,41 @@ class RendererReleaseGateTests(unittest.TestCase):
             failures = checker._validate_candidate_artifacts(root, manifest, evidence)
             self.assertTrue(any("artifact linux_release_archive path missing" in item for item in failures))
 
+    def test_candidate_artifact_paths_must_be_repo_relative(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["artifacts"]["linux_release_archive"]["path"] = str((root.parent / "release.tar.xz").resolve())
+            failures = checker._validate_candidate_artifacts(root, manifest, evidence)
+            self.assertTrue(any("must be repo-relative" in item for item in failures))
+
+    def test_candidate_artifact_paths_must_not_escape_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["artifacts"]["linux_release_archive"]["path"] = "../release.tar.xz"
+            failures = checker._validate_candidate_artifacts(root, manifest, evidence)
+            self.assertTrue(any("must not escape the repository" in item for item in failures))
+
+    def test_candidate_report_paths_must_not_escape_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            evidence["gpu_harness_report"] = "../gpu_report.json"
+            failures = checker._validate_candidate_gpu_report(root, manifest, evidence)
+            self.assertTrue(any("must not escape the repository" in item for item in failures))
+
+    def test_manifest_references_must_be_repo_relative(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["references"].append(str((root.parent / "not-a-repo-reference.md").resolve()))
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(any("reference path must be repo-relative" in item for item in failures))
+
     def test_candidate_artifact_sha256_must_match_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -726,16 +1028,19 @@ class RendererReleaseGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             manifest = _base_manifest(root)
-            _write(root / "README.md", "not the known limitations page\n")
-            evidence = {
-                "issue_classifications": {
-                    "350": {
-                        "status": "accepted_alpha_limitation",
-                        "docs_path": "README.md",
-                    }
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 350,
+                    "title": "Known limitation",
+                    "status": "accepted_alpha_limitation",
+                    "goal": "Document the public alpha limitation.",
+                    "docs_path": "README.md",
+                    "evidence_required": ["published known limitation entry"],
                 }
-            }
-            issues = [{"number": 350, "state": "OPEN", "labels": [{"name": "release blocker"}]}]
+            )
+            _write(root / "README.md", "not the known limitations page\n")
+            evidence = {"issue_classifications": {}}
+            issues = _base_issue_snapshot(_issue(350, ["release blocker"]))
             failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
             self.assertTrue(any("accepted limitation must use known_limitations_page" in item for item in failures))
 
@@ -743,17 +1048,159 @@ class RendererReleaseGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             manifest = _base_manifest(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 350,
+                    "title": "Known limitation",
+                    "status": "accepted_alpha_limitation",
+                    "goal": "Document the public alpha limitation.",
+                    "docs_path": "docs/development/known-public-alpha-limitations.md",
+                    "evidence_required": ["published known limitation entry"],
+                }
+            )
+            evidence = {"issue_classifications": {}}
+            issues = _base_issue_snapshot(_issue(350, ["release blocker"]))
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertEqual([], failures)
+
+    def test_candidate_relevant_p1_requires_classification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {"issue_classifications": {}}
+            issues = [{"number": 222, "state": "OPEN", "labels": [{"name": "priority:P1"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("issue #222 missing alpha classification" in item for item in failures))
+
+    def test_candidate_uses_manifest_deferred_issue_classification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {"issue_classifications": {}}
+            issues = [{"number": 369, "state": "OPEN", "labels": [{"name": "priority:P0"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertEqual([], failures)
+
+    def test_candidate_uses_manifest_tracked_issue_even_without_relevant_label(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
+            )
+            evidence = {"issue_classifications": {}}
+            issues = [{"number": 360, "state": "OPEN", "labels": [{"name": "priority:P3"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("issue #360 is still blocking" in item for item in failures))
+
+    def test_candidate_cannot_downgrade_manifest_blocker_with_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
+            )
             evidence = {
                 "issue_classifications": {
-                    "350": {
-                        "status": "accepted_alpha_limitation",
-                        "docs_path": "docs/development/known-public-alpha-limitations.md",
+                    "360": {
+                        "status": "deferred",
+                        "rationale": "claimed downstream follow-up",
+                        "evidence_required": ["release owner approval"],
                     }
                 }
             }
-            issues = [{"number": 350, "state": "OPEN", "labels": [{"name": "release blocker"}]}]
+            issues = [{"number": 360, "state": "OPEN", "labels": [{"name": "priority:P0"}]}]
             failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
-            self.assertEqual([], failures)
+            self.assertTrue(any("issue #360 is still blocking" in item for item in failures))
+
+    def test_deferred_candidate_classification_requires_evidence_requirements(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {"issue_classifications": {"222": {"status": "deferred", "rationale": "post-alpha refactor"}}}
+            issues = [{"number": 222, "state": "OPEN", "labels": [{"name": "priority:P1"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("classification must be tracked in public_alpha_issue_ledger" in item for item in failures))
+
+    def test_candidate_rejects_untracked_accepted_limitation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {
+                "issue_classifications": {
+                    "222": {
+                        "status": "accepted_alpha_limitation",
+                        "docs_path": "docs/development/known-public-alpha-limitations.md",
+                        "evidence_required": ["published known limitation entry"],
+                    }
+                }
+            }
+            issues = [{"number": 222, "state": "OPEN", "labels": [{"name": "priority:P1"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("classification must be tracked in public_alpha_issue_ledger" in item for item in failures))
+
+    def test_candidate_closed_manifest_blocker_does_not_require_open_issue(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["public_alpha_issue_ledger"]["tracked_issues"].append(
+                {
+                    "number": 360,
+                    "title": "Public alpha gate",
+                    "status": "blocking",
+                    "goal": "Keep public alpha evidence explicit.",
+                    "evidence_required": ["candidate mode passes"],
+                }
+            )
+            evidence = {"issue_classifications": {}}
+            issues = _base_issue_snapshot(_issue(360, ["priority:P0"], state="CLOSED"))
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertFalse(any("manifest-tracked issue #360" in item for item in failures))
+            self.assertFalse(any("issue #360 is still blocking" in item for item in failures))
+
+    def test_candidate_rejects_legacy_post_alpha_classification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {
+                "issue_classifications": {
+                    "222": {
+                        "status": "post_alpha",
+                        "rationale": "legacy release evidence should not bypass current public-alpha policy",
+                    }
+                }
+            }
+            issues = [{"number": 222, "state": "OPEN", "labels": [{"name": "priority:P1"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("invalid classification 'post_alpha'" in item for item in failures))
+
+    def test_candidate_rejects_unlisted_blocker_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = {
+                "issue_classifications": {
+                    "222": {
+                        "status": "blocker",
+                        "evidence_required": ["legacy alias should not be accepted"],
+                    }
+                }
+            }
+            issues = [{"number": 222, "state": "OPEN", "labels": [{"name": "priority:P1"}]}]
+            failures = checker._validate_candidate_issues(root, manifest, evidence, issues)
+            self.assertTrue(any("invalid classification 'blocker'" in item for item in failures))
 
     def test_candidate_issue_classification_must_be_object(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -39,13 +39,22 @@ The renderer/public-alpha evidence policy is maintained in
 python tests/ci/check_renderer_release_gates.py --mode contract
 ```
 
-The contract check is deterministic and GPU-free. Public-alpha candidate mode
+The same contract check is part of `tests/ci/run_module_tests.py --guard-only`,
+which is what the Gaussian Production Gates `guards` job runs. The contract check
+is deterministic and GPU-free. Public-alpha candidate mode
 requires the evidence bundle, a public-alpha channel/tag selector, and a live
-issue-label snapshot so P0, release-blocker, and alpha-relevant P1 issues cannot
-be bypassed by release notes or manual workflow choices. The workflow-policy
+issue-label snapshot so P0, P1, and release-blocker issues cannot be bypassed by
+release notes or manual workflow choices. The workflow-policy
 portion of the checker validates required workflow files and job markers only;
 the stronger no-downgrade workflow rules remain documented review policy until
 the checker grows a real GitHub Actions behavior parser.
+
+External checks are not automatically renderer release blockers. `qlty check`
+is currently documented in the manifest as a deferred, non-blocking external
+signal because `master` branch protection has no required status checks and the
+repo does not track a qlty configuration/log contract. If branch protection
+later requires qlty, update the manifest before treating a qlty result as part
+of public-alpha signoff.
 
 ## Scheduled Triggers
 
