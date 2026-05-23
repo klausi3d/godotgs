@@ -183,3 +183,4 @@ Refactor note:
 - [Render pipeline details](render-pipeline.md)
 - [Module architecture map](../../modules/gaussian_splatting/ARCHITECTURE.md)
 - [Memory and residency invariants](../../modules/gaussian_splatting/MEMORY_SUBSYSTEM.md)
+- [Renderer lifetime ownership](renderer-lifetime-ownership.md) — per-owner create / destroy / idempotency / threading contract at file:line precision (work package #352).

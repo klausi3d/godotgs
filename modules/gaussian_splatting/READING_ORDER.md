@@ -38,5 +38,6 @@ For new contributors to understand the Gaussian Splatting module:
 21. `interfaces/` - Dependency-inverted interfaces (see `renderer_interfaces.h` for `IRenderer`, `output_compositor_interfaces.h` for the compositor contract)
 22. `lod/` - Level-of-detail management
 23. `painterly/` - Artistic rendering effects
+24. [`docs/architecture/renderer-lifetime-ownership.md`](../../docs/architecture/renderer-lifetime-ownership.md) - Per-owner GPU resource lifetime contract (create/destroy/idempotency/threading) at file:line precision. Read before changing any teardown path (work package #352).
 
 If you are investigating refactor outcomes, scan `render_*_orchestrator.*` (T9) after Level 2 to see where long-method responsibilities were split.
