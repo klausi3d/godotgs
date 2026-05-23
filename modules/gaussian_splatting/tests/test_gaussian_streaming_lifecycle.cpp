@@ -1,3 +1,4 @@
+#include "../core/gaussian_splat_manager.h"
 #include "../core/gaussian_streaming.h"
 
 #include "test_macros.h"
@@ -806,11 +807,20 @@ TEST_CASE("[GaussianSplatting][Streaming] Initialize without device emits at mos
     // If a RenderingDevice happens to be available in this lane, the failed-
     // init path is not exercised and the test is irrelevant — skip rather
     // than fail. The intent is to validate the *absence* of a cascade when
-    // the device is unavailable.
+    // the device is unavailable. GaussianStreamingSystem::initialize() can
+    // also obtain a device via GaussianSplatManager::get_primary_rendering_device(),
+    // so probe that path too — otherwise initialize() succeeds in lanes
+    // where the manager supplies a device and the CHECK_FALSE assertions
+    // below fail spuriously.
     bool has_device = RenderingDevice::get_singleton() != nullptr;
     if (!has_device) {
         if (RenderingServer *rs_probe = RenderingServer::get_singleton()) {
             has_device = rs_probe->get_rendering_device() != nullptr;
+        }
+    }
+    if (!has_device) {
+        if (GaussianSplatManager *mgr_probe = GaussianSplatManager::get_singleton()) {
+            has_device = mgr_probe->get_primary_rendering_device() != nullptr;
         }
     }
     if (has_device) {
