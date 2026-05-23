@@ -474,6 +474,93 @@ def _validate_workflow_policy(root: Path, manifest: dict[str, Any]) -> list[str]
     return failures
 
 
+def _validate_lifetime_accounting_proof_schema(manifest: dict[str, Any]) -> list[str]:
+    section = manifest.get("lifetime_accounting_proof")
+    if section is None:
+        return ["lifetime_accounting_proof section is missing"]
+    if not isinstance(section, dict):
+        return ["lifetime_accounting_proof must be a JSON object"]
+
+    failures: list[str] = []
+    marker = section.get("stdout_marker")
+    if not isinstance(marker, str) or not marker:
+        failures.append("lifetime_accounting_proof.stdout_marker must be a non-empty string")
+
+    required_scenarios = section.get("required_scenarios")
+    if not isinstance(required_scenarios, list) or not required_scenarios:
+        failures.append("lifetime_accounting_proof.required_scenarios must be a non-empty list")
+    else:
+        for index, name in enumerate(required_scenarios):
+            if not isinstance(name, str) or not name:
+                failures.append(
+                    f"lifetime_accounting_proof.required_scenarios[{index}] must be a non-empty string"
+                )
+
+    metric_fields = section.get("scenario_metric_fields", {})
+    if not isinstance(metric_fields, dict):
+        failures.append("lifetime_accounting_proof.scenario_metric_fields must be a JSON object")
+        metric_fields = {}
+    else:
+        for scenario, field in metric_fields.items():
+            if not isinstance(scenario, str) or not scenario:
+                failures.append(
+                    "lifetime_accounting_proof.scenario_metric_fields keys must be non-empty strings"
+                )
+                continue
+            if not isinstance(field, str) or not field:
+                failures.append(
+                    f"lifetime_accounting_proof.scenario_metric_fields[{scenario!r}] must be a non-empty string"
+                )
+
+    thresholds_bytes = section.get("thresholds_bytes")
+    if not isinstance(thresholds_bytes, dict) or not thresholds_bytes:
+        failures.append("lifetime_accounting_proof.thresholds_bytes must be a non-empty JSON object")
+    else:
+        for scenario, value in thresholds_bytes.items():
+            if not isinstance(scenario, str) or not scenario:
+                failures.append("lifetime_accounting_proof.thresholds_bytes keys must be non-empty strings")
+                continue
+            if not _is_json_number(value) or value < 0:
+                failures.append(
+                    f"lifetime_accounting_proof.thresholds_bytes[{scenario!r}] must be a non-negative number"
+                )
+
+    thresholds_counts = section.get("thresholds_counts", {})
+    if not isinstance(thresholds_counts, dict):
+        failures.append("lifetime_accounting_proof.thresholds_counts must be a JSON object")
+        thresholds_counts = {}
+    else:
+        for name, value in thresholds_counts.items():
+            if not isinstance(name, str) or not name:
+                failures.append("lifetime_accounting_proof.thresholds_counts keys must be non-empty strings")
+                continue
+            if not _is_json_number(value) or value < 0:
+                failures.append(
+                    f"lifetime_accounting_proof.thresholds_counts[{name!r}] must be a non-negative number"
+                )
+
+    advisory_fields = section.get("advisory_fields", [])
+    if not isinstance(advisory_fields, list):
+        failures.append("lifetime_accounting_proof.advisory_fields must be a list")
+    else:
+        for index, name in enumerate(advisory_fields):
+            if not isinstance(name, str) or not name:
+                failures.append(
+                    f"lifetime_accounting_proof.advisory_fields[{index}] must be a non-empty string"
+                )
+
+    sentinel = section.get("advisory_sentinel_value")
+    if sentinel is not None and not _is_json_number(sentinel):
+        failures.append("lifetime_accounting_proof.advisory_sentinel_value must be numeric or omitted")
+
+    for field in ("test_binary_lane", "gpu_harness_batch"):
+        value = section.get(field)
+        if value is not None and (not isinstance(value, str) or not value):
+            failures.append(f"lifetime_accounting_proof.{field} must be a non-empty string when present")
+
+    return failures
+
+
 def validate_contract(root: Path, manifest: dict[str, Any]) -> list[str]:
     tests = _extract_requires_gpu_tests(root)
     failures: list[str] = []
@@ -486,6 +573,7 @@ def validate_contract(root: Path, manifest: dict[str, Any]) -> list[str]:
     failures.extend(_validate_gpu_harness_policy(root, manifest, tests))
     failures.extend(_validate_visual_acceptance(root, manifest))
     failures.extend(_validate_workflow_policy(root, manifest))
+    failures.extend(_validate_lifetime_accounting_proof_schema(manifest))
     return failures
 
 
@@ -1225,12 +1313,169 @@ def validate_candidate(
     return failures
 
 
+def _coerce_lifetime_stdout_lines(stdout_artifact_or_path: Any) -> list[str]:
+    if stdout_artifact_or_path is None:
+        return []
+    if isinstance(stdout_artifact_or_path, (list, tuple)):
+        return [str(line) for line in stdout_artifact_or_path]
+    if isinstance(stdout_artifact_or_path, Path):
+        try:
+            return stdout_artifact_or_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError as exc:
+            raise RuntimeError(f"lifetime stdout artifact unreadable: {stdout_artifact_or_path} ({exc})") from exc
+    if isinstance(stdout_artifact_or_path, str):
+        candidate = Path(stdout_artifact_or_path)
+        # If it points at an existing file, treat as a path; otherwise treat as raw content.
+        if candidate.exists() and candidate.is_file():
+            try:
+                return candidate.read_text(encoding="utf-8", errors="ignore").splitlines()
+            except OSError as exc:
+                raise RuntimeError(f"lifetime stdout artifact unreadable: {candidate} ({exc})") from exc
+        return stdout_artifact_or_path.splitlines()
+    raise RuntimeError(f"lifetime stdout artifact has unsupported type: {type(stdout_artifact_or_path).__name__}")
+
+
+def _parse_lifetime_lines(marker: str, lines: Iterable[str]) -> tuple[list[dict[str, Any]], list[str]]:
+    entries: list[dict[str, Any]] = []
+    failures: list[str] = []
+    for raw_line in lines:
+        if not raw_line.startswith(marker):
+            continue
+        payload_text = raw_line[len(marker) :].strip()
+        if not payload_text:
+            continue
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError as exc:
+            failures.append(f"lifetime line is not valid JSON: {payload_text!r} ({exc})")
+            continue
+        if not isinstance(payload, dict):
+            failures.append(f"lifetime line payload must be a JSON object: {payload_text!r}")
+            continue
+        entries.append(payload)
+    return entries, failures
+
+
+def validate_lifetime_accounting_proof(
+    manifest_section: dict[str, Any],
+    stdout_artifact_or_path: Any,
+) -> tuple[bool, list[str]]:
+    """Validate [GS-LIFETIME] JSON lines emitted by the lifetime-proof fixture.
+
+    `manifest_section` is the `lifetime_accounting_proof` block from the manifest.
+    `stdout_artifact_or_path` may be a `Path`, a string containing either a
+    filesystem path or raw stdout, or an iterable of lines.
+
+    Returns `(passed, reasons)` where `reasons` is the list of human-readable
+    failure descriptions (empty when `passed=True`).
+    """
+    reasons: list[str] = []
+    if not isinstance(manifest_section, dict):
+        return False, ["lifetime_accounting_proof manifest section must be a JSON object"]
+
+    marker = manifest_section.get("stdout_marker")
+    if not isinstance(marker, str) or not marker:
+        return False, ["lifetime_accounting_proof.stdout_marker must be a non-empty string"]
+
+    required_scenarios = manifest_section.get("required_scenarios", [])
+    if not isinstance(required_scenarios, list) or not required_scenarios:
+        return False, ["lifetime_accounting_proof.required_scenarios must be a non-empty list"]
+
+    metric_fields = manifest_section.get("scenario_metric_fields", {}) or {}
+    thresholds_bytes = manifest_section.get("thresholds_bytes", {}) or {}
+    thresholds_counts = manifest_section.get("thresholds_counts", {}) or {}
+    advisory_fields = manifest_section.get("advisory_fields", []) or []
+    advisory_sentinel = manifest_section.get("advisory_sentinel_value")
+
+    try:
+        lines = _coerce_lifetime_stdout_lines(stdout_artifact_or_path)
+    except RuntimeError as exc:
+        return False, [str(exc)]
+
+    entries, parse_failures = _parse_lifetime_lines(marker, lines)
+    reasons.extend(parse_failures)
+
+    by_scenario: dict[str, list[dict[str, Any]]] = {}
+    for entry in entries:
+        scenario = entry.get("scenario")
+        if not isinstance(scenario, str) or not scenario:
+            reasons.append(f"lifetime entry missing scenario name: {entry!r}")
+            continue
+        by_scenario.setdefault(scenario, []).append(entry)
+
+    for scenario in required_scenarios:
+        if scenario not in by_scenario:
+            reasons.append(f"lifetime scenario missing from stdout: {scenario}")
+
+    for scenario, scenario_entries in by_scenario.items():
+        for entry in scenario_entries:
+            if entry.get("passed") is not True:
+                fail_reason = entry.get("fail_reason") or "no fail_reason reported"
+                reasons.append(f"lifetime scenario {scenario} reported passed=false: {fail_reason}")
+                # Continue with other checks so the failure surface is complete.
+
+            # Byte-threshold check using the scenario-specific metric field.
+            byte_threshold = thresholds_bytes.get(scenario)
+            if byte_threshold is not None:
+                metric_field = metric_fields.get(scenario)
+                if not metric_field:
+                    reasons.append(
+                        f"lifetime scenario {scenario} has bytes threshold but no scenario_metric_fields entry"
+                    )
+                else:
+                    metric_value = entry.get(metric_field)
+                    if metric_value is None:
+                        reasons.append(
+                            f"lifetime scenario {scenario} missing metric field {metric_field!r}"
+                        )
+                    elif not _is_json_number(metric_value):
+                        reasons.append(
+                            f"lifetime scenario {scenario} metric {metric_field} must be numeric, got {metric_value!r}"
+                        )
+                    elif metric_value > byte_threshold:
+                        reasons.append(
+                            f"lifetime scenario {scenario} {metric_field}={metric_value} exceeds threshold {byte_threshold}"
+                        )
+
+            # Advisory-field checks. -1 sentinel means "not measured this run".
+            for advisory_field in advisory_fields:
+                if advisory_field not in entry:
+                    continue
+                value = entry.get(advisory_field)
+                if advisory_sentinel is not None and value == advisory_sentinel:
+                    continue
+                # Map advisory field to a thresholds_counts key. The
+                # stringname_orphan_delta field is bounded by stringname_orphans_max.
+                if advisory_field == "stringname_orphan_delta":
+                    count_threshold = thresholds_counts.get("stringname_orphans_max")
+                else:
+                    count_threshold = thresholds_counts.get(advisory_field)
+                if count_threshold is None:
+                    continue
+                if not _is_json_number(value):
+                    reasons.append(
+                        f"lifetime scenario {scenario} advisory field {advisory_field} must be numeric, got {value!r}"
+                    )
+                    continue
+                if value > count_threshold:
+                    reasons.append(
+                        f"lifetime scenario {scenario} {advisory_field}={value} exceeds threshold {count_threshold}"
+                    )
+
+    return (not reasons), reasons
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("contract", "candidate"), default="contract")
+    parser.add_argument("--mode", choices=("contract", "candidate", "lifetime"), default="contract")
     parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
     parser.add_argument("--candidate-evidence", default=None)
     parser.add_argument("--issues-json", default=None)
+    parser.add_argument(
+        "--lifetime-stdout",
+        default=None,
+        help="Path to stdout artifact containing [GS-LIFETIME] JSON lines (required for --mode lifetime).",
+    )
     return parser
 
 
@@ -1242,6 +1487,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.mode == "contract":
         failures = validate_contract(root, manifest)
+    elif args.mode == "lifetime":
+        if not args.lifetime_stdout:
+            print("--lifetime-stdout is required in lifetime mode", file=sys.stderr)
+            return 2
+        section = manifest.get("lifetime_accounting_proof")
+        if not isinstance(section, dict):
+            print("manifest is missing lifetime_accounting_proof section", file=sys.stderr)
+            return 2
+        passed, reasons = validate_lifetime_accounting_proof(section, Path(args.lifetime_stdout))
+        failures = reasons if not passed else []
     else:
         if not args.candidate_evidence:
             print("--candidate-evidence is required in candidate mode", file=sys.stderr)

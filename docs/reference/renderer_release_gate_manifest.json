@@ -212,6 +212,37 @@
     ],
     "each_artifact_requires": ["path", "sha256", "godot_binary_commit", "godot_binary_mtime_utc"]
   },
+  "lifetime_accounting_proof": {
+    "stdout_marker": "[GS-LIFETIME] ",
+    "required_scenarios": [
+      "renderer_instance",
+      "failed_init",
+      "scene_director_reload",
+      "asset_attach_detach",
+      "stringname_orphans"
+    ],
+    "scenario_metric_fields": {
+      "renderer_instance": "rd_bytes_leaked",
+      "failed_init": "rd_bytes_leaked",
+      "scene_director_reload": "rd_bytes_leaked",
+      "asset_attach_detach": "rd_bytes_leaked"
+    },
+    "thresholds_bytes": {
+      "renderer_instance": 4194304,
+      "failed_init": 4194304,
+      "scene_director_reload": 262144,
+      "asset_attach_detach": 65536
+    },
+    "thresholds_counts": {
+      "stringname_orphans_max": 5
+    },
+    "test_binary_lane": "GaussianSplatting [Lifetime]",
+    "gpu_harness_batch": "Lifetime",
+    "advisory_fields": ["stringname_orphan_delta"],
+    "advisory_sentinel_value": -1,
+    "source_prs": [386, 389],
+    "owner_issue": 352
+  },
   "references": [
     "docs/reference/renderer-release-gates.md",
     "docs/development/known-public-alpha-limitations.md",

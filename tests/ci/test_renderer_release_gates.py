@@ -196,6 +196,37 @@ def _base_manifest(root: Path) -> dict[str, Any]:
             "required_groups": ["linux_release_archive", "known_limitations_page"],
             "each_artifact_requires": ["path", "sha256", "godot_binary_commit", "godot_binary_mtime_utc"],
         },
+        "lifetime_accounting_proof": {
+            "stdout_marker": "[GS-LIFETIME] ",
+            "required_scenarios": [
+                "renderer_instance",
+                "failed_init",
+                "scene_director_reload",
+                "asset_attach_detach",
+                "stringname_orphans",
+            ],
+            "scenario_metric_fields": {
+                "renderer_instance": "rd_bytes_leaked",
+                "failed_init": "rd_bytes_leaked",
+                "scene_director_reload": "rd_bytes_leaked",
+                "asset_attach_detach": "rd_bytes_leaked",
+            },
+            "thresholds_bytes": {
+                "renderer_instance": 4194304,
+                "failed_init": 4194304,
+                "scene_director_reload": 262144,
+                "asset_attach_detach": 65536,
+            },
+            "thresholds_counts": {
+                "stringname_orphans_max": 5,
+            },
+            "test_binary_lane": "GaussianSplatting [Lifetime]",
+            "gpu_harness_batch": "Lifetime",
+            "advisory_fields": ["stringname_orphan_delta"],
+            "advisory_sentinel_value": -1,
+            "source_prs": [386, 389],
+            "owner_issue": 352,
+        },
     }
 
 
@@ -1228,6 +1259,180 @@ class RendererReleaseGateTests(unittest.TestCase):
             issues = [{"number": 350, "state": "OPEN", "labels": [{"name": "release blocker"}]}]
             failures = checker.validate_candidate(root, manifest, evidence, issues)
             self.assertTrue(any("issue #350 is still blocking" in item for item in failures))
+
+
+def _lifetime_stdout_all_pass() -> str:
+    return "\n".join(
+        [
+            '[GS-LIFETIME] {"scenario":"renderer_instance","passed":true,"rd_bytes_leaked":131072,'
+            '"rdm_owned_leaked":0,"rdm_tracked_leaked":0,"teardown_sync":true,'
+            '"threshold_bytes":4194304,"stringname_orphan_delta":-1,"fail_reason":""}',
+            '[GS-LIFETIME] {"scenario":"failed_init","passed":true,"rd_bytes_leaked":0,'
+            '"rdm_owned_leaked":0,"rdm_tracked_leaked":0,"teardown_sync":false,'
+            '"threshold_bytes":4194304,"stringname_orphan_delta":-1,"fail_reason":""}',
+            '[GS-LIFETIME] {"scenario":"scene_director_reload","passed":true,"rd_bytes_leaked":0,'
+            '"rdm_owned_leaked":0,"rdm_tracked_leaked":0,"teardown_sync":true,'
+            '"threshold_bytes":262144,"stringname_orphan_delta":-1,"fail_reason":""}',
+            '[GS-LIFETIME] {"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":32768,'
+            '"rdm_owned_leaked":0,"rdm_tracked_leaked":0,"teardown_sync":true,'
+            '"threshold_bytes":65536,"stringname_orphan_delta":-1,"fail_reason":""}',
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5,"fail_reason":""}',
+        ]
+    )
+
+
+def _lifetime_manifest_section() -> dict[str, Any]:
+    return {
+        "stdout_marker": "[GS-LIFETIME] ",
+        "required_scenarios": [
+            "renderer_instance",
+            "failed_init",
+            "scene_director_reload",
+            "asset_attach_detach",
+            "stringname_orphans",
+        ],
+        "scenario_metric_fields": {
+            "renderer_instance": "rd_bytes_leaked",
+            "failed_init": "rd_bytes_leaked",
+            "scene_director_reload": "rd_bytes_leaked",
+            "asset_attach_detach": "rd_bytes_leaked",
+        },
+        "thresholds_bytes": {
+            "renderer_instance": 4194304,
+            "failed_init": 4194304,
+            "scene_director_reload": 262144,
+            "asset_attach_detach": 65536,
+        },
+        "thresholds_counts": {"stringname_orphans_max": 5},
+        "advisory_fields": ["stringname_orphan_delta"],
+        "advisory_sentinel_value": -1,
+    }
+
+
+class LifetimeAccountingProofTests(unittest.TestCase):
+    def test_lifetime_accounting_proof_all_pass(self) -> None:
+        section = _lifetime_manifest_section()
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, _lifetime_stdout_all_pass())
+        self.assertTrue(passed, reasons)
+        self.assertEqual([], reasons)
+
+    def test_lifetime_accounting_proof_missing_scenario(self) -> None:
+        section = _lifetime_manifest_section()
+        stdout_lines = [
+            line for line in _lifetime_stdout_all_pass().splitlines() if "stringname_orphans" not in line
+        ]
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, "\n".join(stdout_lines))
+        self.assertFalse(passed)
+        self.assertTrue(any("stringname_orphans" in reason and "missing" in reason for reason in reasons))
+
+    def test_lifetime_accounting_proof_scenario_failed(self) -> None:
+        section = _lifetime_manifest_section()
+        stdout = (
+            '[GS-LIFETIME] {"scenario":"renderer_instance","passed":false,"rd_bytes_leaked":131072,'
+            '"stringname_orphan_delta":-1,"fail_reason":"owned RD resources retained at teardown"}\n'
+            '[GS-LIFETIME] {"scenario":"failed_init","passed":true,"rd_bytes_leaked":0,'
+            '"stringname_orphan_delta":-1,"fail_reason":""}\n'
+            '[GS-LIFETIME] {"scenario":"scene_director_reload","passed":true,"rd_bytes_leaked":0,'
+            '"stringname_orphan_delta":-1,"fail_reason":""}\n'
+            '[GS-LIFETIME] {"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":0,'
+            '"stringname_orphan_delta":-1,"fail_reason":""}\n'
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"fail_reason":""}\n'
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(passed)
+        self.assertTrue(
+            any(
+                "renderer_instance" in reason and "passed=false" in reason and "owned RD" in reason
+                for reason in reasons
+            )
+        )
+
+    def test_lifetime_accounting_proof_threshold_exceeded(self) -> None:
+        section = _lifetime_manifest_section()
+        stdout = _lifetime_stdout_all_pass().replace(
+            '"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":32768',
+            '"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":1048576',
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(passed)
+        self.assertTrue(
+            any(
+                "asset_attach_detach" in reason and "exceeds threshold" in reason
+                for reason in reasons
+            )
+        )
+
+    def test_lifetime_accounting_proof_advisory_sentinel(self) -> None:
+        section = _lifetime_manifest_section()
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, _lifetime_stdout_all_pass())
+        self.assertTrue(passed, reasons)
+        # The renderer_instance scenario reports stringname_orphan_delta=-1; it
+        # must not be counted as an orphan-threshold violation.
+        self.assertFalse(any("stringname_orphan_delta" in reason for reason in reasons))
+
+    def test_lifetime_accounting_proof_advisory_real_value(self) -> None:
+        section = _lifetime_manifest_section()
+        stdout = _lifetime_stdout_all_pass().replace(
+            '"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5',
+            '"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":99,"threshold_orphans":5',
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(passed)
+        self.assertTrue(
+            any(
+                "stringname_orphans" in reason
+                and "stringname_orphan_delta=99" in reason
+                and "exceeds threshold 5" in reason
+                for reason in reasons
+            )
+        )
+
+    def test_lifetime_accounting_proof_manifest_schema_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            failures = checker.validate_contract(root, manifest)
+            self.assertEqual(
+                [],
+                [failure for failure in failures if "lifetime_accounting_proof" in failure],
+            )
+
+    def test_lifetime_accounting_proof_manifest_schema_missing_required_field(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["lifetime_accounting_proof"].pop("required_scenarios")
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(
+                any(
+                    "lifetime_accounting_proof.required_scenarios" in failure
+                    for failure in failures
+                )
+            )
+
+    def test_lifetime_accounting_proof_reads_from_file_path(self) -> None:
+        section = _lifetime_manifest_section()
+        with tempfile.TemporaryDirectory() as tmp:
+            stdout_path = Path(tmp) / "lifetime.log"
+            stdout_path.write_text(_lifetime_stdout_all_pass() + "\n", encoding="utf-8")
+            passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout_path)
+            self.assertTrue(passed, reasons)
+
+    def test_lifetime_accounting_proof_rejects_invalid_json_payload(self) -> None:
+        section = _lifetime_manifest_section()
+        stdout = _lifetime_stdout_all_pass() + "\n[GS-LIFETIME] {not valid json"
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(passed)
+        self.assertTrue(any("is not valid JSON" in reason for reason in reasons))
+
+    def test_lifetime_accounting_proof_missing_manifest_section(self) -> None:
+        manifest = {"schema_version": 1}
+        failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+        self.assertTrue(any("lifetime_accounting_proof section is missing" in failure for failure in failures))
 
 
 if __name__ == "__main__":
