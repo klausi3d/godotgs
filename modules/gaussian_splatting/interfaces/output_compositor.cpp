@@ -676,6 +676,90 @@ void OutputCompositor::clear_cached_framebuffers() {
     srgb_format_cache.clear();
 }
 
+void OutputCompositor::_evict_oldest_cached_framebuffer_if_needed(uint64_t p_incoming_key) {
+    // Caller has already erased any stale entry under p_incoming_key, so the
+    // cache size here reflects only entries that would remain after a fresh
+    // insert. If we're at the cap, evict the least-recently-used entry via
+    // the same destroy path clear_cached_framebuffers() uses.
+    if (output_cache.cached_framebuffers.size() < MAX_CACHED_FRAMEBUFFER_FORMATS) {
+        return;
+    }
+    uint64_t oldest_key = 0;
+    uint64_t oldest_id = UINT64_MAX;
+    bool found = false;
+    for (const KeyValue<uint64_t, CachedFramebuffer> &kv : output_cache.cached_framebuffers) {
+        if (kv.key == p_incoming_key) {
+            continue;
+        }
+        if (!found || kv.value.last_access_id < oldest_id) {
+            oldest_id = kv.value.last_access_id;
+            oldest_key = kv.key;
+            found = true;
+        }
+    }
+    if (!found) {
+        return;
+    }
+    CachedFramebuffer *victim = output_cache.cached_framebuffers.getptr(oldest_key);
+    if (victim) {
+        RenderingDevice *owner_device = victim->device ? victim->device : rd;
+        _free_tracked_resource(owner_device, victim->framebuffer, TrackedResourceKind::Framebuffer);
+        output_cache.cached_framebuffers.erase(oldest_key);
+    }
+}
+
+void OutputCompositor::_evict_oldest_framebuffer_validation_if_needed(uint64_t p_incoming_key) {
+    if (output_cache.framebuffer_validation_cache.size() < MAX_CACHED_FRAMEBUFFER_FORMATS) {
+        return;
+    }
+    uint64_t oldest_key = 0;
+    uint64_t oldest_id = UINT64_MAX;
+    bool found = false;
+    for (const KeyValue<uint64_t, FramebufferValidationCacheEntry> &kv : output_cache.framebuffer_validation_cache) {
+        if (kv.key == p_incoming_key) {
+            continue;
+        }
+        if (!found || kv.value.last_access_id < oldest_id) {
+            oldest_id = kv.value.last_access_id;
+            oldest_key = kv.key;
+            found = true;
+        }
+    }
+    if (!found) {
+        return;
+    }
+    // Validation entries hold only POD + Vector<AttachmentValidationInfo>; no
+    // GPU resources to free, just drop the map slot.
+    output_cache.framebuffer_validation_cache.erase(oldest_key);
+}
+
+void OutputCompositor::test_force_insert_cached_framebuffer(uint64_t p_key) {
+    if (CachedFramebuffer *existing = output_cache.cached_framebuffers.getptr(p_key)) {
+        existing->last_access_id = ++cached_framebuffer_next_id;
+        return;
+    }
+    _evict_oldest_cached_framebuffer_if_needed(p_key);
+    CachedFramebuffer entry;
+    entry.framebuffer = RID();
+    entry.device = rd;
+    entry.last_access_id = ++cached_framebuffer_next_id;
+    output_cache.cached_framebuffers.insert(p_key, entry);
+}
+
+void OutputCompositor::test_force_insert_framebuffer_validation(uint64_t p_key) {
+    if (FramebufferValidationCacheEntry *existing = output_cache.framebuffer_validation_cache.getptr(p_key)) {
+        existing->last_access_id = ++framebuffer_validation_next_id;
+        return;
+    }
+    _evict_oldest_framebuffer_validation_if_needed(p_key);
+    FramebufferValidationCacheEntry entry;
+    entry.valid = true;
+    entry.extent = Size2i(0, 0);
+    entry.samples = RD::TEXTURE_SAMPLES_1;
+    entry.last_access_id = ++framebuffer_validation_next_id;
+    output_cache.framebuffer_validation_cache.insert(p_key, entry);
+}
+
 void OutputCompositor::clear_viewport_blit_resources() {
     for (KeyValue<uint64_t, ViewportBlitVariant> &E : viewport_blit_variants) {
         ViewportBlitVariant &variant = E.value;
@@ -712,11 +796,14 @@ RID OutputCompositor::get_cached_framebuffer(RenderingDevice *p_device, const RI
         bool device_matches = entry_device == p_device;
         if (entry->framebuffer.is_valid() && device_matches &&
                 entry_device && entry_device->framebuffer_is_valid(entry->framebuffer)) {
+            entry->last_access_id = ++cached_framebuffer_next_id;
             return entry->framebuffer;
         }
         _free_tracked_resource(entry_device, entry->framebuffer, TrackedResourceKind::Framebuffer);
         output_cache.cached_framebuffers.erase(key);
     }
+
+    _evict_oldest_cached_framebuffer_if_needed(key);
 
     Vector<RID> attachments;
     attachments.push_back(p_texture);
@@ -746,6 +833,7 @@ RID OutputCompositor::get_cached_framebuffer(RenderingDevice *p_device, const RI
     CachedFramebuffer new_entry;
     new_entry.framebuffer = framebuffer;
     new_entry.device = p_device;
+    new_entry.last_access_id = ++cached_framebuffer_next_id;
     output_cache.cached_framebuffers.insert(key, new_entry);
     return framebuffer;
 }
@@ -781,6 +869,7 @@ bool OutputCompositor::validate_framebuffer_attachments(RenderingDevice *p_devic
                 r_infos = cache_entry->infos;
                 r_extent = cache_entry->extent;
                 r_samples = cache_entry->samples;
+                cache_entry->last_access_id = ++framebuffer_validation_next_id;
                 return true;
             }
         }
@@ -880,11 +969,14 @@ bool OutputCompositor::validate_framebuffer_attachments(RenderingDevice *p_devic
         return false;
     }
 
+    _evict_oldest_framebuffer_validation_if_needed(cache_key);
+
     FramebufferValidationCacheEntry cache_entry;
     cache_entry.valid = true;
     cache_entry.extent = r_extent;
     cache_entry.samples = r_samples;
     cache_entry.infos = r_infos;
+    cache_entry.last_access_id = ++framebuffer_validation_next_id;
     output_cache.framebuffer_validation_cache.insert(cache_key, cache_entry);
 
     return true;

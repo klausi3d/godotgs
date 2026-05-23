@@ -460,6 +460,57 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] OutputCompositor untracked cleanup s
 	scope.compositor.unref();
 }
 
+TEST_CASE("[GaussianSplatting][OutputCompositor][RequiresGPU] framebuffer LRU caps prevent unbounded growth across device switches") {
+	REQUIRE_GPU_DEVICE();
+
+	Ref<OutputCompositor> compositor;
+	compositor.instantiate();
+	REQUIRE(compositor->initialize(rd) == OK);
+
+	const uint32_t cap = OutputCompositor::get_max_cached_framebuffer_formats();
+	CHECK(cap == 8u);
+
+	// Drive 16 distinct synthetic format keys through the eviction path twice
+	// (once per cache). Without the cap added by this PR, the caches would
+	// hold all 16 entries; with the cap, each must stay <= 8.
+	for (uint64_t i = 1; i <= 16; ++i) {
+		compositor->test_force_insert_cached_framebuffer(i);
+		compositor->test_force_insert_framebuffer_validation(i + 0x1000ull);
+	}
+
+	CHECK(compositor->get_cached_framebuffer_count() <= cap);
+	CHECK(compositor->get_framebuffer_validation_cache_count() <= cap);
+	CHECK(compositor->get_cached_framebuffer_count() == cap);
+	CHECK(compositor->get_framebuffer_validation_cache_count() == cap);
+
+	// LRU correctness: the 8 most recently inserted keys (9..16) survive,
+	// the 8 oldest (1..8) were evicted.
+	OutputCompositor::OutputCacheState &state = compositor->get_cache_state();
+	for (uint64_t i = 1; i <= 8; ++i) {
+		CHECK_FALSE(state.cached_framebuffers.has(i));
+		CHECK_FALSE(state.framebuffer_validation_cache.has(i + 0x1000ull));
+	}
+	for (uint64_t i = 9; i <= 16; ++i) {
+		CHECK(state.cached_framebuffers.has(i));
+		CHECK(state.framebuffer_validation_cache.has(i + 0x1000ull));
+	}
+
+	// Driving an additional batch must not grow either cache.
+	for (uint64_t i = 17; i <= 24; ++i) {
+		compositor->test_force_insert_cached_framebuffer(i);
+		compositor->test_force_insert_framebuffer_validation(i + 0x1000ull);
+	}
+	CHECK(compositor->get_cached_framebuffer_count() == cap);
+	CHECK(compositor->get_framebuffer_validation_cache_count() == cap);
+
+	// Re-inserting an already-present key (LRU refresh) must not evict.
+	const uint32_t before_refresh = compositor->get_cached_framebuffer_count();
+	compositor->test_force_insert_cached_framebuffer(20);
+	CHECK(compositor->get_cached_framebuffer_count() == before_refresh);
+
+	compositor->shutdown();
+}
+
 } // namespace TestGaussianSplatting
 
 #endif // TESTS_ENABLED
