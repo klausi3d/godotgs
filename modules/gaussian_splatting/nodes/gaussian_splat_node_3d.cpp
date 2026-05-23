@@ -457,6 +457,26 @@ void GaussianSplatNode3D::_notification(int p_what) {
             _notification_exit_tree();
         } break;
 
+        case NOTIFICATION_PREDELETE: {
+            // F6 reload teardown: drop our cached renderer Ref BEFORE asking the
+            // director to free its SharedWorld entry. Without this our Ref would
+            // pin the renderer past worlds.erase(scenario) and the next F6 cycle
+            // would re-leak the same GPU allocations (see
+            // gaussian_splat_scene_director.cpp:351 and PR 4 of #352).
+            //
+            // last_known_scenario was cached at register time -- get_world_3d()
+            // typically returns null by PREDELETE because the node already
+            // exited its tree. The teardown is idempotent: multiple peers in
+            // the same scenario only pay the first call's worlds.erase().
+            renderer.unref();
+            if (last_known_scenario.is_valid()) {
+                if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
+                    director->teardown_world_for_scenario(last_known_scenario);
+                }
+                last_known_scenario = RID();
+            }
+        } break;
+
         case NOTIFICATION_TRANSFORM_CHANGED: {
             _on_transform_changed();
         } break;
@@ -2385,6 +2405,14 @@ void GaussianSplatNode3D::_register_instance_in_director() {
     GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
     if (!director) {
         return;
+    }
+    // Cache the scenario so NOTIFICATION_PREDELETE can call
+    // teardown_world_for_scenario(). PREDELETE may fire after the node has been
+    // removed from its tree, at which point get_world_3d() returns null.
+    // PR 4 of #352 -- the F6 reload teardown path.
+    Ref<World3D> resolved_world = get_world_3d();
+    if (resolved_world.is_valid()) {
+        last_known_scenario = resolved_world->get_scenario();
     }
     // Direct single-asset nodes are resident-only by contract. The streaming
     // backend is opt-in via GaussianSplatWorld3D, which is the only surface

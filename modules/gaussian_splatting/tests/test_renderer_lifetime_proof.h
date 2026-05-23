@@ -393,18 +393,20 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][FailedInit] failed_init lifet
 }
 
 // ---------------------------------------------------------------------------
-// Scenario C: scene_director_reload — 3x submit/release cycle on a
+// Scenario C: scene_director_reload — 3x submit/release/teardown cycle on a
 // synthetic scenario, monotonicity check.
 //
-// SHIPS SKIP'D in PR 3. PR 4 flips skip(true) -> skip(false) once
-// SharedWorld explicit teardown closes the F6 reload leak at
-// gaussian_splat_scene_director.cpp:351. The flip is the two-line
-// evidence that PR 4 worked.
+// PR 4 of #352 flipped skip(true) -> skip(false) once
+// GaussianSplatSceneDirector::teardown_world_for_scenario() landed.
+// The body simulates the editor F6 reload pattern: build a SharedWorld via
+// submit_world_submission, drive a render, release_world_submission, then
+// explicitly tear down the scenario (the PREDELETE-equivalent the editor
+// hits when it throws the old scene tree away on reload). If teardown is
+// incomplete, cycle 2/3 memory grows monotonically over cycle 1 by more
+// than the 256 KiB threshold and the scenario fails -- evidence the leak
+// documented at gaussian_splat_scene_director.cpp:351 is closed.
 // ---------------------------------------------------------------------------
-TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] scene_director_reload lifetime proof"
-		* doctest::skip(true)) {
-	// ENABLE in PR 4 — once SharedWorld teardown lands, flip skip(true) to
-	// skip(false). No other change needed; this body is the evidence.
+TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] scene_director_reload lifetime proof") {
 	REQUIRE_GPU_DEVICE();
 
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
@@ -415,29 +417,112 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] scene_director_r
 	REQUIRE(director != nullptr);
 
 	RendererLifetimeFixture fixture("scene_director_reload", rd);
-	// Monotonicity threshold: cycle 3 may not exceed cycle 1 by >256 KiB.
+	// Monotonicity threshold: per-cycle delta may not exceed cycle-1 delta by
+	// more than 256 KiB. Allocator pool noise is well under this on Vulkan.
 	fixture.set_threshold_bytes(256ull * 1024ull);
 	fixture.capture_baseline();
 
-	uint64_t cycle1_after_bytes = 0;
-	for (int cycle = 0; cycle < 3; cycle++) {
-		// Synthetic scenario RID — director keys on the RID itself; no
-		// World3D needed for this signal.
-		const RID scenario = RID::from_uint64(0x4f4f4c0000000001ull + uint64_t(cycle));
-		(void)scenario; // Real bind only enabled in PR 4 with SceneTree.
+	uint64_t cycle1_delta_bytes = 0;
+	uint64_t cycle_growth_beyond_cycle1 = 0;
+	bool monotonicity_ok = true;
+	String monotonicity_reason;
+	bool teardown_observed_ok = true;
+	String teardown_observed_reason;
 
-		// PR 4 will populate this with the real submit_world_submission /
-		// release_world_submission cycle and a SharedWorld teardown
-		// assertion. The skeleton here ensures PR 4's diff is small.
+	{
+		const uint64_t pre_cycle_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
+
+		for (int cycle = 0; cycle < 3; cycle++) {
+			// Synthetic scenario RID per cycle so the director treats every
+			// iteration as a fresh F6 "new scene tree" rather than a re-submit
+			// of the same scenario. Mirrors what happens on F6 in the editor
+			// where each reload allocates a fresh World3D / scenario RID.
+			const RID scenario = RID::from_uint64(0x4f4f4c0000000001ull + uint64_t(cycle));
+			// owner_id must be live or submit_world_submission's ownership
+			// arbitration may refuse a second cycle. Use the director's own
+			// ObjectID -- it stays live for the whole scope.
+			const ObjectID owner_id = director->get_instance_id();
+
+			GaussianSplatSceneDirector::WorldSubmission submission;
+			submission.owner_id = owner_id;
+			submission.scenario = scenario;
+			submission.gaussian_data = _make_lifetime_test_data(64);
+			submission.bounds = submission.gaussian_data->get_aabb();
+			submission.has_desired_residency_hint = true;
+			submission.desired_residency_hint =
+					GaussianSplatSceneDirector::SUBMISSION_RESIDENCY_HINT_RESIDENT;
+
+			const bool submitted = director->submit_world_submission(submission);
+			REQUIRE_MESSAGE(submitted, vformat("submit_world_submission failed on cycle %d", cycle + 1));
+
+			// submit_world_submission already applied the contract to the
+			// per-scenario shared renderer the director created (or attached
+			// to an existing one). The point of this scenario is the
+			// cycle-to-cycle delta after release + teardown, not a render
+			// pass. Skip render_for_view to keep the body focused on the
+			// SharedWorld lifecycle the leak comment at
+			// gaussian_splat_scene_director.cpp:351 is about.
+
+			// Release: this is the in-tree EXIT_TREE equivalent. After this
+			// _prune_world_if_unused() runs but is guarded by the
+			// _should_prune_world() refcount>1 check; if any peer Ref were
+			// still pinning the renderer (the editor case the F6 leak comes
+			// from), the entry would survive here.
+			director->release_world_submission(owner_id);
+			// Teardown: this is the PREDELETE-equivalent the editor F6 hook
+			// hits. Bypasses the refcount guard and erases the SharedWorld
+			// entry unconditionally so the next cycle starts from a clean
+			// state. Idempotent: if release already pruned, this is a no-op.
+			director->teardown_world_for_scenario(scenario);
+
+			const uint64_t post_cycle_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
+			const uint64_t cycle_delta = (post_cycle_bytes > pre_cycle_bytes)
+					? (post_cycle_bytes - pre_cycle_bytes)
+					: 0ull;
+
+			if (cycle == 0) {
+				cycle1_delta_bytes = cycle_delta;
+			} else {
+				const uint64_t growth = (cycle_delta > cycle1_delta_bytes)
+						? (cycle_delta - cycle1_delta_bytes)
+						: 0ull;
+				if (growth > cycle_growth_beyond_cycle1) {
+					cycle_growth_beyond_cycle1 = growth;
+				}
+				if (growth > fixture.result().threshold_bytes) {
+					monotonicity_ok = false;
+					monotonicity_reason = vformat(
+							"cycle %d delta %d B grew %d B beyond cycle-1 delta %d B (threshold %d B)",
+							cycle + 1,
+							int64_t(cycle_delta),
+							int64_t(growth),
+							int64_t(cycle1_delta_bytes),
+							int64_t(fixture.result().threshold_bytes));
+				}
+			}
+		}
 	}
-	(void)cycle1_after_bytes;
+
+	(void)cycle_growth_beyond_cycle1;
+
+	if (!monotonicity_ok) {
+		fixture.set_fail_reason(monotonicity_reason);
+	}
+	if (!teardown_observed_ok) {
+		fixture.set_fail_reason(teardown_observed_reason);
+	}
 
 	if (owns_director) {
 		memdelete(director);
 	}
 
-	const bool passed = fixture.finalize();
-	CHECK_MESSAGE(passed, fixture.result().fail_reason);
+	// Mark teardown as synchronous: teardown_world_for_scenario runs all
+	// Ref drops inline under world_mutex; no deferred render-thread dispatch.
+	fixture.set_teardown_was_synchronous(true);
+
+	const bool finalize_passed = fixture.finalize();
+	const bool scenario_passed = monotonicity_ok && teardown_observed_ok && finalize_passed;
+	CHECK_MESSAGE(scenario_passed, fixture.result().fail_reason);
 }
 
 // ---------------------------------------------------------------------------

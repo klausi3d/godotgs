@@ -246,6 +246,19 @@ public:
     // Runtime inverse of submit_world_submission(). Clears renderer-owned world state and
     // releases the active world-backed source for this owner.
     void release_world_submission(ObjectID p_owner_id);
+    // Explicit, idempotent teardown of every SharedWorld entry bound to this scenario.
+    //
+    // Drops the director's owned Ref<GaussianSplatRenderer> and clears all GPU-resource-bearing
+    // refs (asset records, world-submission record). Called by GaussianSplatWorld3D and
+    // GaussianSplatNode3D from NOTIFICATION_PREDELETE so editor F6 reload (which throws the
+    // SceneTree away without invoking `~GaussianSplatSceneDirector`) does not leak an entire
+    // renderer's worth of GPU allocations per cycle. See gaussian_splat_scene_director.cpp:351
+    // and the closing scenario_c test in test_renderer_lifetime_proof.h.
+    //
+    // Bypasses the `_should_prune_world` refcount>1 guard intentionally: external Refs held
+    // by the about-to-be-deleted scene tree nodes will drop in their own dtors that follow
+    // PREDELETE. After teardown the next register_* call rebuilds the SharedWorld lazily.
+    void teardown_world_for_scenario(const RID &p_scenario);
     bool get_world_submission(ObjectID p_owner_id, WorldSubmission *r_submission) const;
     bool get_world_submission_for_scenario(const RID &p_scenario, WorldSubmission *r_submission) const;
     bool has_world_submission_for_renderer(const GaussianSplatRenderer *p_renderer) const;
