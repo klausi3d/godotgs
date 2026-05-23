@@ -42,6 +42,7 @@
 #include "test_gaussian_splat_world_io.h"
 #include "test_view_transform.h"
 #include "test_memory_leak_detection.h"
+#include "test_renderer_lifetime_proof.h"
 #include "test_synthetic_splat_generators.h"
 #include "test_synthetic_uniform_generator.h"
 #include "test_synthetic_clustered_generator.h"
