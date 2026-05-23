@@ -369,6 +369,12 @@ void PipelineFeatureSet::print_config_summary() const {
     GS_LOG_INFO_DEFAULT("[Pipeline Feature Set] ================================================");
 }
 
+void PipelineFeatureSet::clear_provenance_snapshots() {
+    loaded_provenance_snapshot.clear();
+    effective_provenance_snapshot.clear();
+    effective_provenance_snapshot_valid = false;
+}
+
 void initialize_pipeline_feature_set() {
     _register_pipeline_project_settings();
     g_pipeline_feature_set.load_from_project_settings();
@@ -380,4 +386,13 @@ void initialize_pipeline_feature_set() {
         g_pipeline_feature_set.reset_to_defaults();
         g_pipeline_feature_set.save_to_project_settings();
     }
+}
+
+void release_pipeline_feature_set_module_strings() {
+    // The global feature-set Dictionary entries cache module-owned
+    // StringName keys (pipeline_two_stage_sort, ..., value, source, ...)
+    // that the engine's exit-time orphan StringName report would otherwise
+    // flag. Dropping the snapshot Dictionaries decrements those refcounts
+    // so the keys leave the StringName table cleanly at unregister.
+    g_pipeline_feature_set.clear_provenance_snapshots();
 }

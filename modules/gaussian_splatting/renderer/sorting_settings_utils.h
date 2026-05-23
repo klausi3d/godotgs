@@ -3,6 +3,7 @@
 
 #include "core/config/project_settings.h"
 #include "../core/gs_project_settings.h"
+#include "../core/module_string_names.h"
 
 #include "core/error/error_macros.h"
 #include "core/string/string_name.h"
@@ -10,14 +11,22 @@
 namespace gs {
 namespace sorting_settings {
 
+// The setting paths are cached in the module-owned StringName struct so
+// they can be released at module unregister; without this the
+// function-local statics would surface in the engine's exit-time orphan
+// StringName report. The fallback path constructs an on-demand
+// StringName for early callers (test fixtures) before
+// initialize_gaussian_splatting_module() runs.
 static inline const StringName &target_sort_time_path() {
-	static const StringName path("rendering/gaussian_splatting/sorting/target_sort_time_ms");
-	return path;
+	return gs::get_module_string_name_or_construct(
+			&gs::ModuleStringNames::sorting_target_sort_time_path,
+			"rendering/gaussian_splatting/sorting/target_sort_time_ms");
 }
 
 static inline const StringName &legacy_gpu_target_sort_time_path() {
-	static const StringName path("rendering/gaussian_splatting/gpu_sorting/target_sort_time_ms");
-	return path;
+	return gs::get_module_string_name_or_construct(
+			&gs::ModuleStringNames::legacy_gpu_sorting_target_sort_time_path,
+			"rendering/gaussian_splatting/gpu_sorting/target_sort_time_ms");
 }
 
 static inline bool has_explicit_target_sort_time_override(ProjectSettings *p_ps) {

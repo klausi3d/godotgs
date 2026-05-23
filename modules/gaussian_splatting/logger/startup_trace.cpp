@@ -91,6 +91,18 @@ void GSStartupTrace::reset() {
 	ever_flushed = false;
 }
 
+void GSStartupTrace::release_module_strings() {
+	// Same clear surface as reset(); separate entry point so the intent
+	// (module unregister, not asset-open reset) is explicit at call sites.
+	MutexLock lock(state_mutex);
+	sealed_traces.clear();
+	totals_usec.clear();
+	insertion_order.clear();
+	pending_flush_count.store(0, std::memory_order_relaxed);
+	active_begin_usec = 0;
+	ever_flushed = false;
+}
+
 // flush() and consume_pending_flush() used to be separate operations, but
 // decrementing pending_flush_count outside the state_mutex creates a window in
 // which a concurrent begin_asset_open() observes count==0 and skips sealing
