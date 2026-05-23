@@ -553,6 +553,29 @@ def _validate_lifetime_accounting_proof_schema(manifest: dict[str, Any]) -> list
     if sentinel is not None and not _is_json_number(sentinel):
         failures.append("lifetime_accounting_proof.advisory_sentinel_value must be numeric or omitted")
 
+    strict_for = section.get("advisory_fields_strict_for", {})
+    if not isinstance(strict_for, dict):
+        failures.append(
+            "lifetime_accounting_proof.advisory_fields_strict_for must be a JSON object mapping scenario -> [field, ...]"
+        )
+    else:
+        for scenario, fields in strict_for.items():
+            if not isinstance(scenario, str) or not scenario:
+                failures.append(
+                    "lifetime_accounting_proof.advisory_fields_strict_for keys must be non-empty strings"
+                )
+                continue
+            if not isinstance(fields, list) or not fields:
+                failures.append(
+                    f"lifetime_accounting_proof.advisory_fields_strict_for[{scenario!r}] must be a non-empty list of field names"
+                )
+                continue
+            for index, field_name in enumerate(fields):
+                if not isinstance(field_name, str) or not field_name:
+                    failures.append(
+                        f"lifetime_accounting_proof.advisory_fields_strict_for[{scenario!r}][{index}] must be a non-empty string"
+                    )
+
     for field in ("test_binary_lane", "gpu_harness_batch"):
         value = section.get(field)
         if value is not None and (not isinstance(value, str) or not value):
@@ -1386,6 +1409,12 @@ def validate_lifetime_accounting_proof(
     thresholds_counts = manifest_section.get("thresholds_counts", {}) or {}
     advisory_fields = manifest_section.get("advisory_fields", []) or []
     advisory_sentinel = manifest_section.get("advisory_sentinel_value")
+    # advisory_fields_strict_for maps scenario -> [advisory_field, ...] for
+    # scenarios where the advisory field MUST be present in the entry. The
+    # sentinel value remains a tolerated "not measured this run" signal in
+    # strict scenarios (it is the absence of the field, not the sentinel,
+    # that masks regressions like the orphan threshold never being enforced).
+    advisory_fields_strict_for = manifest_section.get("advisory_fields_strict_for", {}) or {}
 
     try:
         lines = _coerce_lifetime_stdout_lines(stdout_artifact_or_path)
@@ -1437,9 +1466,24 @@ def validate_lifetime_accounting_proof(
                             f"lifetime scenario {scenario} {metric_field}={metric_value} exceeds threshold {byte_threshold}"
                         )
 
+            # Strict-required advisory fields: scenarios listed in
+            # advisory_fields_strict_for MUST report each named field, even if
+            # the value is the sentinel. A silently missing field would
+            # otherwise let the count threshold go unenforced (e.g.
+            # stringname_orphans dropping stringname_orphan_delta entirely).
+            strict_required_for_scenario = advisory_fields_strict_for.get(scenario, []) or []
+            for required_field in strict_required_for_scenario:
+                if required_field not in entry:
+                    reasons.append(
+                        f"lifetime scenario {scenario} missing required advisory field {required_field!r} "
+                        f"(advisory_fields_strict_for requires it; sentinel {advisory_sentinel!r} is tolerated)"
+                    )
+
             # Advisory-field checks. -1 sentinel means "not measured this run".
             for advisory_field in advisory_fields:
                 if advisory_field not in entry:
+                    # Absent fields are tolerated for non-strict scenarios.
+                    # Strict-required scenarios already failed above.
                     continue
                 value = entry.get(advisory_field)
                 if advisory_sentinel is not None and value == advisory_sentinel:

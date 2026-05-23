@@ -145,6 +145,13 @@ number from the PR #389 scenario. The gate skips the count check when the
 sentinel is present, then enforces `stringname_orphans_max` when the
 `stringname_orphans` scenario supplies the real delta.
 
+The manifest also declares `advisory_fields_strict_for` — a map from scenario
+name to the list of advisory fields that scenario MUST report (even if the
+value is the sentinel). This closes a hole where a strict scenario could drop
+the advisory field entirely and silently bypass its count threshold; the
+`stringname_orphans` scenario is the canonical strict consumer of
+`stringname_orphan_delta`.
+
 ### Example stdout line
 
 ```text
@@ -180,7 +187,9 @@ python3 tests/ci/check_renderer_release_gates.py \
    `advisory_fields` and the corresponding cap in `thresholds_counts`. The
    validator's advisory-mapping currently routes `stringname_orphan_delta` to
    `stringname_orphans_max`; new advisory fields look up their cap by their own
-   name in `thresholds_counts`.
+   name in `thresholds_counts`. If the scenario is the canonical producer of
+   that advisory counter (so the field MUST always appear in its entry), also
+   list the scenario -> [field] pair under `advisory_fields_strict_for`.
 4. Have the producing fixture/guard print `[GS-LIFETIME] {...}` lines that
    include `scenario`, `passed`, `fail_reason`, and the metric/advisory fields
    referenced above.

@@ -224,6 +224,9 @@ def _base_manifest(root: Path) -> dict[str, Any]:
             "gpu_harness_batch": "Lifetime",
             "advisory_fields": ["stringname_orphan_delta"],
             "advisory_sentinel_value": -1,
+            "advisory_fields_strict_for": {
+                "stringname_orphans": ["stringname_orphan_delta"],
+            },
             "source_prs": [386, 389],
             "owner_issue": 352,
         },
@@ -1307,6 +1310,9 @@ def _lifetime_manifest_section() -> dict[str, Any]:
         "thresholds_counts": {"stringname_orphans_max": 5},
         "advisory_fields": ["stringname_orphan_delta"],
         "advisory_sentinel_value": -1,
+        "advisory_fields_strict_for": {
+            "stringname_orphans": ["stringname_orphan_delta"],
+        },
     }
 
 
@@ -1391,6 +1397,64 @@ class LifetimeAccountingProofTests(unittest.TestCase):
             )
         )
 
+    def test_lifetime_accounting_proof_missing_required_advisory_field(self) -> None:
+        """A strict-required advisory field MUST be present in its scenario.
+
+        Regression guard for PR #390 review: when stringname_orphans drops the
+        stringname_orphan_delta field entirely, the validator previously
+        passed silently and the count threshold was never enforced.
+        """
+        section = _lifetime_manifest_section()
+        # Replace the stringname_orphans line with one that drops the
+        # advisory field entirely (mirrors the bot-supplied bad-stdout).
+        stdout = _lifetime_stdout_all_pass().replace(
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5,"fail_reason":""}',
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,"fail_reason":""}',
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(passed, "missing strict-required advisory field must fail the gate")
+        self.assertTrue(
+            any(
+                "stringname_orphans" in reason
+                and "stringname_orphan_delta" in reason
+                and "required advisory field" in reason
+                for reason in reasons
+            ),
+            f"expected a clear missing-required-advisory failure, got: {reasons!r}",
+        )
+
+    def test_lifetime_accounting_proof_sentinel_in_non_strict_scenario_still_passes(self) -> None:
+        """The renderer_instance scenario reports stringname_orphan_delta=-1
+        as the sentinel ("not measured this run"). It is NOT listed in
+        advisory_fields_strict_for, so the sentinel must continue to pass
+        without regressing the existing tolerated-sentinel contract.
+        """
+        section = _lifetime_manifest_section()
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, _lifetime_stdout_all_pass())
+        self.assertTrue(passed, reasons)
+        self.assertFalse(
+            any("renderer_instance" in reason and "stringname_orphan_delta" in reason for reason in reasons),
+            f"sentinel in non-strict scenario must not trip the gate, got: {reasons!r}",
+        )
+
+    def test_lifetime_accounting_proof_strict_scenario_tolerates_sentinel(self) -> None:
+        """For a strict-required scenario, the field MUST be present, but the
+        sentinel value (-1, "not measured this run") is still tolerated as
+        long as the field itself is reported. This preserves the ability of
+        the lifetime fixture to emit the field even when the orphan probe is
+        skipped, while closing the silent-skip hole.
+        """
+        section = _lifetime_manifest_section()
+        stdout = _lifetime_stdout_all_pass().replace(
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5,"fail_reason":""}',
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":-1,"threshold_orphans":5,"fail_reason":""}',
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertTrue(passed, reasons)
+
     def test_lifetime_accounting_proof_manifest_schema_valid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1433,6 +1497,35 @@ class LifetimeAccountingProofTests(unittest.TestCase):
         manifest = {"schema_version": 1}
         failures = checker._validate_lifetime_accounting_proof_schema(manifest)
         self.assertTrue(any("lifetime_accounting_proof section is missing" in failure for failure in failures))
+
+    def test_lifetime_accounting_proof_advisory_fields_strict_for_schema(self) -> None:
+        """Schema validation must reject malformed advisory_fields_strict_for."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            # Map value must be a non-empty list of strings.
+            manifest["lifetime_accounting_proof"]["advisory_fields_strict_for"] = {
+                "stringname_orphans": [],
+            }
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "advisory_fields_strict_for" in failure
+                    and "stringname_orphans" in failure
+                    and "non-empty list" in failure
+                    for failure in failures
+                ),
+                f"expected empty-list to be rejected, got: {failures!r}",
+            )
+            manifest["lifetime_accounting_proof"]["advisory_fields_strict_for"] = "not-an-object"
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "advisory_fields_strict_for must be a JSON object" in failure
+                    for failure in failures
+                ),
+                f"expected non-object to be rejected, got: {failures!r}",
+            )
 
 
 if __name__ == "__main__":
