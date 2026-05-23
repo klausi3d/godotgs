@@ -275,7 +275,7 @@ func _capture_viewport() -> Image:
 
 
 func _compute_visual_metrics(image: Image) -> Dictionary:
-	var prepared = image.duplicate()
+	var prepared: Image = image.duplicate() as Image
 	if prepared == null:
 		return _empty_visual_metrics(0, 0)
 	prepared.convert(Image.FORMAT_RGBA8)
@@ -284,7 +284,7 @@ func _compute_visual_metrics(image: Image) -> Dictionary:
 	if width <= 0 or height <= 0:
 		return _empty_visual_metrics(width, height)
 
-	var stride := max(1, VISUAL_SAMPLE_STRIDE)
+	var stride: int = int(max(1, VISUAL_SAMPLE_STRIDE))
 	var luma_sum := 0.0
 	var luma_sq_sum := 0.0
 	var sample_count := 0
