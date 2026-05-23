@@ -371,7 +371,7 @@ def run_command(name: str, command: List[str], *, cwd: Optional[Path], timeout: 
         duration = time.time() - start
         stdout = _coerce_text(exc.stdout)
         stderr = _coerce_text(exc.stderr)
-        print(f"[runtime] ❌ {name} timed out after {timeout}s")
+        print(f"[runtime] [FAIL] {name} timed out after {timeout}s")
         return TestResult(
             name=name,
             command=command,
@@ -384,7 +384,7 @@ def run_command(name: str, command: List[str], *, cwd: Optional[Path], timeout: 
         )
     except (OSError, PermissionError) as exc:
         duration = time.time() - start
-        print(f"[runtime] ❌ {name} failed to launch: {type(exc).__name__}: {exc}")
+        print(f"[runtime] [FAIL] {name} failed to launch: {type(exc).__name__}: {exc}")
         return TestResult(
             name=name,
             command=command,
@@ -987,7 +987,7 @@ def main() -> int:
     try:
         ensure_synthetic_assets()
     except RuntimeError as exc:
-        print(f"[runtime] ❌ {exc}")
+        print(f"[runtime] [FAIL] {exc}")
         return 1
 
     report_path = Path(args.report_path)
@@ -1005,7 +1005,7 @@ def main() -> int:
     try:
         scenario_config = _load_scenario_config(scenario_config_path)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
-        print(f"[runtime] ❌ invalid scenario config: {exc}")
+        print(f"[runtime] [FAIL] invalid scenario config: {exc}")
         return 1
 
     if args.list_profiles:
@@ -1016,16 +1016,16 @@ def main() -> int:
 
     raw_profiles = scenario_config.get("profiles", {})
     if not isinstance(raw_profiles, dict):
-        print("[runtime] ❌ scenario config has invalid 'profiles' section.")
+        print("[runtime] [FAIL] scenario config has invalid 'profiles' section.")
         return 1
 
     profile_name = args.profile or str(scenario_config.get("default_profile", "")).strip()
     if not profile_name:
-        print("[runtime] ❌ no profile selected and scenario config has no default_profile.")
+        print("[runtime] [FAIL] no profile selected and scenario config has no default_profile.")
         return 1
     if profile_name not in raw_profiles:
         print(
-            "[runtime] ❌ unknown profile '{profile}'. available: {available}".format(
+            "[runtime] [FAIL] unknown profile '{profile}'. available: {available}".format(
                 profile=profile_name,
                 available=", ".join(sorted(str(name) for name in raw_profiles.keys())),
             )
@@ -1034,7 +1034,7 @@ def main() -> int:
 
     profile_config = raw_profiles[profile_name]
     if not isinstance(profile_config, dict):
-        print(f"[runtime] ❌ scenario profile '{profile_name}' must be an object.")
+        print(f"[runtime] [FAIL] scenario profile '{profile_name}' must be an object.")
         return 1
 
     profile_cpp_tests = [str(name) for name in profile_config.get("cpp_tests", [])]
@@ -1062,7 +1062,7 @@ def main() -> int:
         try:
             cpp_build_config = _load_cpp_build_config(args.cpp_link_mode, args.cpp_build_manifest)
         except (OSError, json.JSONDecodeError, ValueError) as exc:
-            print(f"[runtime] ❌ invalid C++ build configuration: {exc}")
+            print(f"[runtime] [FAIL] invalid C++ build configuration: {exc}")
             return 1
     allow_skip_tests = tuple(dict.fromkeys(str(name) for name in args.allow_skip_test if str(name).strip()))
 
@@ -1122,7 +1122,7 @@ def main() -> int:
     summary["schema_errors"] = schema_errors
     if schema_errors:
         for error in schema_errors:
-            print(f"[runtime] ❌ schema: {error}")
+            print(f"[runtime] [FAIL] schema: {error}")
     _print_summary(summary)
 
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1138,7 +1138,7 @@ def main() -> int:
     renderer_proof_failed = isinstance(renderer_proof, dict) and renderer_proof.get("status") == "failed"
     if renderer_proof_failed:
         for reason in renderer_proof.get("failure_reasons", []):
-            print(f"[runtime] ❌ renderer proof: {reason}")
+            print(f"[runtime] [FAIL] renderer proof: {reason}")
 
     return 0 if summary["failed"] == 0 and summary["schema_valid"] and not renderer_proof_failed else 1
 
