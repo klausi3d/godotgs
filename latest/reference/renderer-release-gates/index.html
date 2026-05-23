@@ -1653,6 +1653,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#public-alpha-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public Alpha Checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#issue-classifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issue Classifications
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-status-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External Status Checks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#workflow-policy-scope" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1713,9 +1746,11 @@ matches a <code>v*-alpha*</code> release tag, then passes the manifest predicate
 <ul>
 <li>an issue snapshot is required, either through <code>--issues-json</code> or an embedded
   candidate evidence <code>issue_snapshot</code>;</li>
-<li>open <code>priority:P0</code>, <code>release blocker</code>, and alpha-relevant <code>priority:P1</code> issues
-  in that snapshot must be classified as <code>blocking</code>,
-  <code>accepted_alpha_limitation</code>, or <code>post_alpha</code>;</li>
+<li>open <code>priority:P0</code>, <code>priority:P1</code>, and <code>release blocker</code> issues in that
+  snapshot must be classified as <code>blocking</code>, <code>accepted_alpha_limitation</code>, or
+  <code>deferred</code>;</li>
+<li>if the snapshot is open-only, omitted manifest-tracked <code>blocking</code> issues must
+  be proven closed through candidate evidence <code>resolved_manifest_issues</code>;</li>
 <li>any <code>accepted_alpha_limitation</code> must have a user-facing entry in
   <code>docs/development/known-public-alpha-limitations.md</code>;</li>
 <li>Linux and Windows artifacts, runtime validation, GPU harness output,
@@ -1724,6 +1759,65 @@ matches a <code>v*-alpha*</code> release tag, then passes the manifest predicate
 <li>missing GPU runner availability, manual inputs, path filters, or advisory
   open-world proof cannot downgrade a public-alpha candidate to pass.</li>
 </ul>
+<h2 id="public-alpha-checklist">Public Alpha Checklist<a class="headerlink" href="#public-alpha-checklist" title="Permanent link">¶</a></h2>
+<p>The manifest owns the machine-readable checklist. Public-alpha signoff requires
+all blocking rows below to be closed by code, evidence, or an explicit accepted
+limitation before candidate mode can pass.</p>
+<table>
+<thead>
+<tr>
+<th>Gate</th>
+<th>Classification</th>
+<th>Evidence Required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>#351 route/fallback/stage contracts</td>
+<td>Blocking</td>
+<td>#351 closed or split to non-alpha follow-up; resident, streaming, and serial route failure-injection tests; candidate benchmark rows include <code>route_uid</code>, <code>stage_statuses</code>, and <code>fallback_counters</code>.</td>
+</tr>
+<tr>
+<td>#352 GPU resource lifetime</td>
+<td>Blocking</td>
+<td>#352 closed or split to non-alpha follow-up; GPU/RID accounting fails on retained owned resources; required GPU batches report <code>rid_leak_bytes=0</code>.</td>
+</tr>
+<tr>
+<td>#360 public-alpha acceptance gates</td>
+<td>Blocking</td>
+<td>Candidate evidence bundle passes <code>--mode candidate</code>; issue snapshot classifies every open P0/P1/release-blocker issue; known limitations page contains each accepted alpha limitation.</td>
+</tr>
+<tr>
+<td>#369 opaque <code>qlty check</code></td>
+<td>Deferred external signal</td>
+<td><code>master</code> branch protection has no required status checks; no repo-owned qlty config is tracked; <code>qlty check</code> is documented as non-blocking unless branch protection later requires it.</td>
+</tr>
+</tbody>
+</table>
+<p>Closed umbrella issues #350 and #353 stay closed only because their remaining
+release risk is represented by open child blockers and follow-up issues. They
+must not be used as evidence that renderer correctness, GPU lifetime, streaming,
+or public-alpha acceptance is complete.</p>
+<h2 id="issue-classifications">Issue Classifications<a class="headerlink" href="#issue-classifications" title="Permanent link">¶</a></h2>
+<p><code>blocking</code> means the public-alpha candidate fails while the issue remains open.</p>
+<p><code>accepted_alpha_limitation</code> means the candidate may pass only when the evidence
+bundle points to the canonical known-limitations page and that page explains
+user impact, platform/workflow scope, mitigation, and proof that the limitation
+does not hide renderer correctness failures.</p>
+<p><code>deferred</code> means the issue is explicitly outside the public-alpha gate or is an
+external/non-required signal. A deferred issue still needs a rationale and
+evidence requirements in the manifest; an unclassified P0/P1 issue is a gate
+failure, not an implicit deferral.</p>
+<h2 id="external-status-checks">External Status Checks<a class="headerlink" href="#external-status-checks" title="Permanent link">¶</a></h2>
+<p>The local renderer release gate only treats repo-owned checks and required
+branch-protection contexts as release blockers. As of 2026-05-21, GitHub branch
+protection for <code>master</code> reports <code>required_status_checks=null</code>, and the repo does
+not track a qlty configuration file. Therefore <code>qlty check</code> is an advisory
+external signal for this gate. A failing, pending, absent, or login-gated qlty
+result must not fail <code>tests/ci/check_renderer_release_gates.py</code>.</p>
+<p>If qlty later becomes branch-protection-required or gets a repo-owned actionable
+configuration/log contract, update <code>external_status_check_policy</code> in the
+manifest and reclassify #369 before cutting a candidate.</p>
 <h2 id="workflow-policy-scope">Workflow Policy Scope<a class="headerlink" href="#workflow-policy-scope" title="Permanent link">¶</a></h2>
 <p>The contract checker currently validates that required workflow files exist and
 contain the required job markers. It does not yet parse GitHub Actions YAML
@@ -1761,8 +1855,11 @@ evidence:</p>
 <p>The current public performance dashboard remains a non-authoritative snapshot
 until a complete candidate evidence bundle exists.</p>
 <h2 id="ci-hook">CI Hook<a class="headerlink" href="#ci-hook" title="Permanent link">¶</a></h2>
-<p>Run the contract check locally or in CI:</p>
+<p>Run the direct contract check locally:</p>
 <div class="highlight"><pre><span></span><code>python3<span class="w"> </span>tests/ci/check_renderer_release_gates.py<span class="w"> </span>--mode<span class="w"> </span>contract
+</code></pre></div>
+<p>CI enforces the same contract through the existing module guard entry point:</p>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>tests/ci/run_module_tests.py<span class="w"> </span>--guard-only
 </code></pre></div>
 <p>Candidate release validation requires an evidence bundle and an issue snapshot
 unless the evidence bundle embeds <code>issue_snapshot</code>:</p>
@@ -1772,8 +1869,10 @@ unless the evidence bundle embeds <code>issue_snapshot</code>:</p>
 <span class="w">  </span>--issues-json<span class="w"> </span>artifacts/public-alpha/open_issues.json
 </code></pre></div>
 <p>The issue JSON is intended to come from <code>gh issue list</code> or the GitHub API with
-labels included. This PR does not require live network access for the
-deterministic contract check.</p>
+labels included. When that snapshot is open-only, any manifest-tracked
+<code>blocking</code> issue omitted from it needs explicit closure proof in
+<code>resolved_manifest_issues</code> inside the evidence bundle. This PR does not require
+live network access for the deterministic contract check.</p>
 
 
 
@@ -1794,7 +1893,7 @@ deterministic contract check.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 21, 2026 21:22:13 UTC">May 21, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 23, 2026 06:33:54 UTC">May 23, 2026</span>
   </span>
 
     
