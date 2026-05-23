@@ -2,6 +2,7 @@
 
 #include "test_macros.h"
 
+#include "core/error/error_macros.h"
 #include "core/os/os.h"
 #include "servers/rendering_server.h"
 
@@ -722,4 +723,163 @@ TEST_CASE("[Streaming Pipeline] initialize_empty keeps atlas metadata buffers va
     CHECK(system->get_asset_meta_buffer().is_valid());
     CHECK(system->get_chunk_meta_buffer().is_valid());
     CHECK(system->get_asset_chunk_index_buffer().is_valid());
+}
+
+namespace {
+
+// Captures every ERR_PRINT / WARN routed through Godot's error handlers so
+// the failed-init regression test can count how many ERR diagnostics escape
+// from a streaming system that never acquired a RenderingDevice. Pattern
+// borrowed from test_integration.cpp's ScopedErrorCapture.
+struct ScopedStreamingErrorCapture : public ErrorHandlerList {
+    Vector<String> messages;
+    int error_count = 0;
+
+    static void _error_handler(void *p_userdata, const char *, const char *, int,
+            const char *p_error, const char *p_message,
+            bool, ErrorHandlerType p_type) {
+        ScopedStreamingErrorCapture *self = static_cast<ScopedStreamingErrorCapture *>(p_userdata);
+        String message;
+        if (p_message && p_message[0]) {
+            message = String::utf8(p_message);
+        } else if (p_error) {
+            message = String::utf8(p_error);
+        }
+        if (!message.is_empty()) {
+            self->messages.push_back(message);
+        }
+        if (p_type == ERR_HANDLER_ERROR) {
+            self->error_count++;
+        }
+    }
+
+    ScopedStreamingErrorCapture() {
+        errfunc = _error_handler;
+        userdata = this;
+        add_error_handler(this);
+    }
+
+    ~ScopedStreamingErrorCapture() {
+        remove_error_handler(this);
+    }
+
+    int streaming_init_failed_count() const {
+        int n = 0;
+        for (int i = 0; i < messages.size(); i++) {
+            if (messages[i].find("[Streaming]") != -1 &&
+                    messages[i].find("Initialization failed") != -1) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    int streaming_update_aborted_count() const {
+        int n = 0;
+        for (int i = 0; i < messages.size(); i++) {
+            if (messages[i].find("[Streaming]") != -1 &&
+                    messages[i].find("update_streaming aborted") != -1) {
+                n++;
+            }
+        }
+        return n;
+    }
+};
+
+} // namespace
+
+// PR #352 regression: a GaussianStreamingSystem whose initialize() fails
+// because no RenderingDevice is available must not flood the log when
+// update_streaming() is then driven once per frame, and must not crash.
+//
+// Before the warned-once latch and entry guards, every frame re-entered
+// _run_streaming_frame_pipeline -> _load_visible_chunks, each call re-emitted
+// the "runtime not loadable" ERR, and run_module_tests.py's [untagged] lane
+// produced 602 SEH CrashHandlerException dumps with empty backtraces. See the
+// work-package brief in #352 for the full reproduction.
+//
+// This test deliberately bypasses any test infrastructure that would acquire
+// a real device — it constructs the system directly, calls initialize() with
+// no RenderDeviceManager, then ticks update_streaming five times and asserts
+// the diagnostic noise is bounded.
+TEST_CASE("[GaussianSplatting][Streaming] Initialize without device emits at most one ERR_PRINT") {
+    // If a RenderingDevice happens to be available in this lane, the failed-
+    // init path is not exercised and the test is irrelevant — skip rather
+    // than fail. The intent is to validate the *absence* of a cascade when
+    // the device is unavailable.
+    bool has_device = RenderingDevice::get_singleton() != nullptr;
+    if (!has_device) {
+        if (RenderingServer *rs_probe = RenderingServer::get_singleton()) {
+            has_device = rs_probe->get_rendering_device() != nullptr;
+        }
+    }
+    if (has_device) {
+        MESSAGE("Skipping test - this regression targets the no-device path; "
+                "this lane has a RenderingDevice");
+        return;
+    }
+
+    LocalVector<Gaussian> gaussians;
+    gaussians.resize(256);
+    for (uint32_t i = 0; i < gaussians.size(); i++) {
+        Gaussian &g = gaussians[i];
+        g.position = Vector3(float(i) * 0.01f, 0.0f, -2.0f);
+        g.scale = Vector3(0.05f, 0.05f, 0.05f);
+        g.rotation = Quaternion();
+        g.opacity = 1.0f;
+        g.sh_dc = Color(1.0f, 1.0f, 1.0f, 1.0f);
+        g.normal = Vector3(0.0f, 1.0f, 0.0f);
+        g.area = 0.01f;
+    }
+
+    Ref<::GaussianData> data;
+    data.instantiate();
+    data->set_gaussians(gaussians);
+
+    ScopedStreamingErrorCapture capture;
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize(data);
+
+    // initialize() must have failed (no device) and left the system in a
+    // safe, non-ready state.
+    CHECK_FALSE(system->is_runtime_ready());
+    CHECK_FALSE(system->is_streaming_capable());
+
+    // Exactly one [Streaming] initialization failure diagnostic. The wording
+    // can be one of several flavors (runtime not loadable, buffer overflow,
+    // addressable limit) depending on the platform's reported defaults, so
+    // we don't pin the exact substring beyond the [Streaming] +
+    // "Initialization failed" pair.
+    const int init_errs_after_initialize = capture.streaming_init_failed_count();
+    CHECK(init_errs_after_initialize <= 1);
+
+    // Now drive update_streaming five times. With the PR #352 guards in
+    // place this must not crash and must not emit additional [Streaming]
+    // ERRs — the warned-once latch is owned by initialize() so subsequent
+    // re-entries are silent.
+    const Transform3D camera = Transform3D();
+    const Projection projection = Projection();
+    for (int i = 0; i < 5; i++) {
+        system->update_streaming(camera, projection);
+    }
+
+    // Strong assertion: fewer than 5 ERR_PRINTs across the 5 update calls.
+    // The brief asks for "<5"; with the warned-once latch in place this
+    // should be 0 (the initialize call already armed the latch).
+    const int init_errs_after_updates = capture.streaming_init_failed_count();
+    CHECK(init_errs_after_updates - init_errs_after_initialize == 0);
+    const int update_errs_after_updates = capture.streaming_update_aborted_count();
+    CHECK(update_errs_after_updates == 0);
+
+    // Belt-and-braces total cap from the brief: combined [Streaming] ERRs
+    // across 5 update calls must stay below 5 (5 = naive per-frame
+    // re-emission baseline).
+    const int total_streaming_errs = init_errs_after_updates + update_errs_after_updates;
+    CHECK(total_streaming_errs < 5);
+
+    // Surviving the 5-call loop without an SEH crash IS the load-bearing
+    // assertion — doctest fails the test if the process aborts. Reaching
+    // this line proves the cascade is closed.
 }

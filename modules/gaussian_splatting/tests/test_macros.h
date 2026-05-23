@@ -104,6 +104,28 @@ public:
         return;                                                           \
     }
 
+// PR #352 helper for streaming tests: cheap probe symmetric to
+// REQUIRE_GPU_DEVICE(). Skips the calling test when the streaming pipeline
+// has no usable RenderingDevice — i.e. when
+// GaussianStreamingSystem::initialize() would fail with "runtime not
+// loadable". Use this in tests that exercise the streaming runtime end-to-
+// end (initialize -> update_streaming -> chunk uploads) so they degrade to
+// a skip on headless lanes instead of cascading into the failed-init crash
+// path the rest of this PR closes.
+#define REQUIRE_STREAMING_CAPABLE()                                          \
+    do {                                                                     \
+        RenderingDevice *_gs_streaming_probe = RenderingDevice::get_singleton(); \
+        if (_gs_streaming_probe == nullptr) {                                \
+            if (RenderingServer *_gs_streaming_rs = RenderingServer::get_singleton()) { \
+                _gs_streaming_probe = _gs_streaming_rs->get_rendering_device(); \
+            }                                                                \
+        }                                                                    \
+        if (_gs_streaming_probe == nullptr) {                                \
+            MESSAGE("Skipping test - streaming unavailable");                \
+            return;                                                          \
+        }                                                                    \
+    } while (0)
+
 // Performance baseline checking
 #define CHECK_PERFORMANCE(timer, max_ms, operation)                      \
     CHECK_MESSAGE(timer.elapsed_ms() < max_ms,                          \

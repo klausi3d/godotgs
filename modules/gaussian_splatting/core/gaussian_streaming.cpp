@@ -1143,6 +1143,10 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
     runtime_capacity_guard_runtime_capacity = UINT32_MAX;
     runtime_capacity_guard_buffer_valid = true;
     runtime_capacity_guard_initialized = true;
+    // PR #352: clear the warned-once latch on every (re-)initialize so a
+    // subsequent failure can re-arm the one-shot ERR. Successful init naturally
+    // leaves the flag false; failed init below will set it to true.
+    failed_init_warning_emitted = false;
     invalid_camera_input_events = 0;
     last_invalid_camera_log_frame = UINT64_MAX;
     visibility.reset_runtime_state();
@@ -1216,7 +1220,10 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
     budget.evicted_bytes_total = 0;
     _load_quantization_config_from_project_settings();
     if (!_create_chunks()) {
-        ERR_PRINT("[Streaming] Initialization failed: strict primary layout validation rejected chunk layout hints.");
+        if (!failed_init_warning_emitted) {
+            ERR_PRINT("[Streaming] Initialization failed: strict primary layout validation rejected chunk layout hints.");
+            failed_init_warning_emitted = true;
+        }
         streaming_initialized = false;
         return;
     }
@@ -1241,7 +1248,10 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
     uint32_t effective_max_chunks = get_effective_max_chunks();
     const uint32_t addressable_max_chunks = _streaming_addressable_chunk_limit();
     if (addressable_max_chunks == 0) {
-        ERR_PRINT("[Streaming] Initialization failed: chunk slot byte size is invalid for 32-bit RenderingDevice buffer addressing.");
+        if (!failed_init_warning_emitted) {
+            ERR_PRINT("[Streaming] Initialization failed: chunk slot byte size is invalid for 32-bit RenderingDevice buffer addressing.");
+            failed_init_warning_emitted = true;
+        }
         streaming_initialized = false;
         return;
     }
@@ -1266,8 +1276,11 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
         GS_STARTUP_SCOPE("streaming_persistent_buffer_alloc");
         const uint64_t persistent_bytes64 = uint64_t(initial_capacity) * _streaming_chunk_slot_bytes();
         if (persistent_bytes64 == 0 || persistent_bytes64 > uint64_t(UINT32_MAX)) {
-            ERR_PRINT(vformat("[Streaming] Initialization failed: persistent buffer size overflow (%s bytes, max=%u).",
-                    String::num_uint64(persistent_bytes64), UINT32_MAX));
+            if (!failed_init_warning_emitted) {
+                ERR_PRINT(vformat("[Streaming] Initialization failed: persistent buffer size overflow (%s bytes, max=%u).",
+                        String::num_uint64(persistent_bytes64), UINT32_MAX));
+                failed_init_warning_emitted = true;
+            }
             persistent_buffer = RID();
             persistent_buffer_size = 0;
         } else {
@@ -1286,11 +1299,14 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
     const uint32_t runtime_capacity_max = _compute_runtime_chunk_capacity_limit();
     const bool persistent_buffer_valid = persistent_buffer.is_valid() && persistent_buffer_size > 0;
     if (effective_max_chunks == 0 || runtime_capacity_max == 0 || !persistent_buffer_valid) {
-        ERR_PRINT(vformat("[Streaming] Initialization failed: runtime not loadable (effective_max=%d, runtime_capacity=%d, persistent_buffer_valid=%s, device_present=%s).",
-                effective_max_chunks,
-                runtime_capacity_max,
-                persistent_buffer_valid ? "yes" : "no",
-                rd ? "yes" : "no"));
+        if (!failed_init_warning_emitted) {
+            ERR_PRINT(vformat("[Streaming] Initialization failed: runtime not loadable (effective_max=%d, runtime_capacity=%d, persistent_buffer_valid=%s, device_present=%s).",
+                    effective_max_chunks,
+                    runtime_capacity_max,
+                    persistent_buffer_valid ? "yes" : "no",
+                    rd ? "yes" : "no"));
+            failed_init_warning_emitted = true;
+        }
         streaming_initialized = false;
         return;
     }
@@ -1346,6 +1362,10 @@ void GaussianStreamingSystem::initialize_empty(RenderingDevice *p_device) {
     runtime_capacity_guard_runtime_capacity = UINT32_MAX;
     runtime_capacity_guard_buffer_valid = true;
     runtime_capacity_guard_initialized = true;
+    // PR #352: clear the warned-once latch on every (re-)initialize so a
+    // subsequent failure can re-arm the one-shot ERR. See initialize() for
+    // the rationale.
+    failed_init_warning_emitted = false;
     invalid_camera_input_events = 0;
     last_invalid_camera_log_frame = UINT64_MAX;
     visibility.reset_runtime_state();
@@ -1419,7 +1439,10 @@ void GaussianStreamingSystem::initialize_empty(RenderingDevice *p_device) {
     uint32_t effective_max_chunks = get_effective_max_chunks();
     const uint32_t addressable_max_chunks = _streaming_addressable_chunk_limit();
     if (addressable_max_chunks == 0) {
-        ERR_PRINT("[Streaming] Empty initialization failed: chunk slot byte size is invalid for 32-bit RenderingDevice buffer addressing.");
+        if (!failed_init_warning_emitted) {
+            ERR_PRINT("[Streaming] Empty initialization failed: chunk slot byte size is invalid for 32-bit RenderingDevice buffer addressing.");
+            failed_init_warning_emitted = true;
+        }
         streaming_initialized = false;
         return;
     }
@@ -1435,8 +1458,11 @@ void GaussianStreamingSystem::initialize_empty(RenderingDevice *p_device) {
     if (rd) {
         const uint64_t persistent_bytes64 = uint64_t(initial_capacity) * _streaming_chunk_slot_bytes();
         if (persistent_bytes64 == 0 || persistent_bytes64 > uint64_t(UINT32_MAX)) {
-            ERR_PRINT(vformat("[Streaming] Empty initialization failed: persistent buffer size overflow (%s bytes, max=%u).",
-                    String::num_uint64(persistent_bytes64), UINT32_MAX));
+            if (!failed_init_warning_emitted) {
+                ERR_PRINT(vformat("[Streaming] Empty initialization failed: persistent buffer size overflow (%s bytes, max=%u).",
+                        String::num_uint64(persistent_bytes64), UINT32_MAX));
+                failed_init_warning_emitted = true;
+            }
             persistent_buffer = RID();
             persistent_buffer_size = 0;
         } else {
@@ -1454,11 +1480,14 @@ void GaussianStreamingSystem::initialize_empty(RenderingDevice *p_device) {
     const uint32_t runtime_capacity_max = _compute_runtime_chunk_capacity_limit();
     const bool persistent_buffer_valid = persistent_buffer.is_valid() && persistent_buffer_size > 0;
     if (effective_max_chunks == 0 || runtime_capacity_max == 0 || !persistent_buffer_valid) {
-        ERR_PRINT(vformat("[Streaming] Empty initialization failed: runtime not loadable (effective_max=%d, runtime_capacity=%d, persistent_buffer_valid=%s, device_present=%s).",
-                effective_max_chunks,
-                runtime_capacity_max,
-                persistent_buffer_valid ? "yes" : "no",
-                rd ? "yes" : "no"));
+        if (!failed_init_warning_emitted) {
+            ERR_PRINT(vformat("[Streaming] Empty initialization failed: runtime not loadable (effective_max=%d, runtime_capacity=%d, persistent_buffer_valid=%s, device_present=%s).",
+                    effective_max_chunks,
+                    runtime_capacity_max,
+                    persistent_buffer_valid ? "yes" : "no",
+                    rd ? "yes" : "no"));
+            failed_init_warning_emitted = true;
+        }
         streaming_initialized = false;
         return;
     }
@@ -2986,6 +3015,17 @@ void GaussianStreamingSystem::set_chunk_radius_multiplier(float p_multiplier) {
 }
 
 void GaussianStreamingSystem::update_streaming(const Transform3D &camera_transform, const Projection &projection, float frame_delta_seconds) {
+    // PR #352: short-circuit when initialize() previously failed. Without this
+    // guard, every frame re-entered the full pipeline below, the runtime
+    // capacity check below re-emitted the same ERR, and headless runs without
+    // a RenderingDevice produced a 602-event SEH crash cascade in
+    // run_module_tests.py (see #352 work-package brief). The warned-once
+    // latch is owned by initialize()/initialize_empty() so a successful
+    // re-init re-arms the one-shot diagnostic.
+    if (!streaming_initialized) {
+        return;
+    }
+
     // Extract camera position from camera-to-world transform
     Vector3 camera_pos = camera_transform.origin;
     const float resolved_frame_delta_seconds = _resolve_frame_delta_seconds(frame_delta_seconds);
@@ -3016,11 +3056,17 @@ void GaussianStreamingSystem::update_streaming(const Transform3D &camera_transfo
             runtime_capacity_max > 0 &&
             persistent_buffer_valid;
     if (!runtime_ready) {
-        if (!runtime_capacity_guard_logged ||
-                runtime_capacity_guard_effective_max != effective_max ||
-                runtime_capacity_guard_runtime_capacity != runtime_capacity_max ||
-                runtime_capacity_guard_buffer_valid != persistent_buffer_valid ||
-                runtime_capacity_guard_initialized != streaming_initialized) {
+        // PR #352: gate this ERR on the shared warned-once latch. The dynamic
+        // re-emit on field changes used to fire many times per session in
+        // headless lanes (and contributed to the 602-event crash cascade);
+        // for failed-init we want at most one diagnostic per session, and
+        // initialize() re-arms the latch on a successful re-init.
+        if (!failed_init_warning_emitted &&
+                (!runtime_capacity_guard_logged ||
+                        runtime_capacity_guard_effective_max != effective_max ||
+                        runtime_capacity_guard_runtime_capacity != runtime_capacity_max ||
+                        runtime_capacity_guard_buffer_valid != persistent_buffer_valid ||
+                        runtime_capacity_guard_initialized != streaming_initialized)) {
             ERR_PRINT(vformat("[Streaming] update_streaming aborted: runtime not loadable (initialized=%s, effective_max=%d, runtime_capacity=%d, persistent_buffer_valid=%s, configured_max=%d).",
                     streaming_initialized ? "yes" : "no",
                     effective_max,
@@ -3032,6 +3078,7 @@ void GaussianStreamingSystem::update_streaming(const Transform3D &camera_transfo
             runtime_capacity_guard_runtime_capacity = runtime_capacity_max;
             runtime_capacity_guard_buffer_valid = persistent_buffer_valid;
             runtime_capacity_guard_initialized = streaming_initialized;
+            failed_init_warning_emitted = true;
         }
         return;
     }
@@ -3396,14 +3443,30 @@ GaussianStreamingSystem::EvictionResult GaussianStreamingSystem::_evict_for_admi
 }
 
 void GaussianStreamingSystem::_load_visible_chunks(uint32_t effective_max, uint32_t &evictions_left, bool &eviction_blocked) {
+    // PR #352: short-circuit when initialize() previously failed so this
+    // method never touches persistent_buffer / chunks[] from a half-built
+    // runtime. The runtime_ready gate in update_streaming() already early-
+    // returns in that case, but the brief calls for an entry-level guard
+    // here too — _load_visible_chunks is reachable from
+    // _run_streaming_frame_pipeline and the test surface, both of which can
+    // be exercised independently.
+    if (!streaming_initialized) {
+        eviction_blocked = true;
+        return;
+    }
+
     const uint32_t runtime_capacity_max = _compute_runtime_chunk_capacity_limit();
     const bool persistent_buffer_valid = persistent_buffer.is_valid() && persistent_buffer_size > 0;
     if (effective_max == 0 || runtime_capacity_max == 0 || !persistent_buffer_valid) {
-        if (!runtime_capacity_guard_logged ||
-                runtime_capacity_guard_effective_max != effective_max ||
-                runtime_capacity_guard_runtime_capacity != runtime_capacity_max ||
-                runtime_capacity_guard_buffer_valid != persistent_buffer_valid ||
-                runtime_capacity_guard_initialized != streaming_initialized) {
+        // PR #352: gate on the warned-once latch so a regression that flips
+        // a previously-ready system into a half-built state still produces a
+        // single diagnostic instead of one per frame.
+        if (!failed_init_warning_emitted &&
+                (!runtime_capacity_guard_logged ||
+                        runtime_capacity_guard_effective_max != effective_max ||
+                        runtime_capacity_guard_runtime_capacity != runtime_capacity_max ||
+                        runtime_capacity_guard_buffer_valid != persistent_buffer_valid ||
+                        runtime_capacity_guard_initialized != streaming_initialized)) {
             ERR_PRINT(vformat("[Streaming] _load_visible_chunks aborted: runtime not loadable (initialized=%s, effective_max=%d, runtime_capacity=%d, persistent_buffer_valid=%s).",
                     streaming_initialized ? "yes" : "no",
                     effective_max,
@@ -3414,6 +3477,7 @@ void GaussianStreamingSystem::_load_visible_chunks(uint32_t effective_max, uint3
             runtime_capacity_guard_runtime_capacity = runtime_capacity_max;
             runtime_capacity_guard_buffer_valid = persistent_buffer_valid;
             runtime_capacity_guard_initialized = streaming_initialized;
+            failed_init_warning_emitted = true;
         }
         eviction_blocked = true;
         return;
