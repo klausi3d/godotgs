@@ -41,7 +41,7 @@
     },
     "node-asset-gpu-ci": {
       "description": "Focused GPU-backed proof that a canonical GaussianSplatNode3D renders a fixture GaussianSplatAsset and produces visual evidence.",
-      "gd_mode": "non-headless",
+      "gd_mode": "windows-vulkan",
       "cpp_tests": [],
       "gd_tests": [
         "Canonical Node Asset Render"
