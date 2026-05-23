@@ -9,9 +9,11 @@
 #include "core/gaussian_splat_scene_director.h"
 #include "core/gaussian_splat_config_registry.h"
 #include "core/gaussian_streaming.h"
+#include "core/module_string_names.h"
 #include "core/streaming_chunk_payload_source.h"
 #include "renderer/gaussian_splat_renderer.h"
 #include "renderer/gpu_buffer_manager.h"
+#include "renderer/pipeline_feature_set.h"
 #include "renderer/spirv_disk_cache.h"
 #include "core/gaussian_splat_manager.h"
 #include "core/config/engine.h"
@@ -71,6 +73,13 @@ void initialize_gaussian_splatting_module(ModuleInitializationLevel p_level) {
     // Register diagnostics setting before any GS code reads it; the trace
     // singleton refreshes its cached enable flag after registration.
     if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+        // Module-owned StringName cache must be live before any code under
+        // initialize_gaussian_splatting_module reads a path through the
+        // module_string_names accessors. Construct it first so paths like
+        // sorting_target_sort_time_path resolve into the releasable
+        // storage instead of the on-demand fallback that would leak.
+        gs::initialize_module_string_names();
+
         GLOBAL_DEF("rendering/gaussian_splatting/diagnostics/startup_trace", true);
         GSStartupTrace::get_singleton()->refresh_enabled();
         GSStartupTrace::get_singleton()->reset();
@@ -254,6 +263,23 @@ void uninitialize_gaussian_splatting_module(ModuleInitializationLevel p_level) {
             GaussianSplattingPerformanceMonitors::destroy_singleton();
             GaussianRenderingDiagnostics::destroy_singleton();
             SPIRVDiskCache::shutdown();
+
+            // Release module-owned StringName caches before the module
+            // unregisters so the engine's exit-time orphan StringName
+            // report (StringName::cleanup) does not surface them. Order
+            // matches the bug report's grouping:
+            //   1. PipelineFeatureSet snapshots — drops the pipeline_*
+            //      keys and the generic value/source/source_label/
+            //      display_value/note/fidelity_limited entry-field keys.
+            //   2. GSStartupTrace phase storage — drops manager_construct,
+            //      module_register, device_request_primary, and
+            //      device_request_shared.
+            //   3. ModuleStringNames — drops the function-local-static
+            //      replacements for the renderdoc_compatibility and
+            //      sorting target-sort-time paths.
+            release_pipeline_feature_set_module_strings();
+            GSStartupTrace::get_singleton()->release_module_strings();
+            gs::release_module_string_names();
             break;
 
 #ifdef TOOLS_ENABLED

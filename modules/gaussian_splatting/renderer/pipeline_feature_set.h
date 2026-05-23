@@ -53,10 +53,23 @@ struct PipelineFeatureSet {
     Dictionary loaded_provenance_snapshot;
     mutable Dictionary effective_provenance_snapshot;
     mutable bool effective_provenance_snapshot_valid = false;
+
+    // Releases provenance snapshot Dictionaries, dropping the StringName
+    // keys that constructor SNAME-style helpers cache for the lifetime of
+    // the snapshot. Called at module unregister so the engine's exit-time
+    // orphan StringName report stays bounded. See:
+    // tests/ci/run_module_tests.py::_run_stringname_orphan_guard_step
+    void clear_provenance_snapshots();
 };
 
 extern PipelineFeatureSet g_pipeline_feature_set;
 
 void initialize_pipeline_feature_set();
+
+// Releases the global pipeline feature set's provenance snapshots. Wrapper
+// for register_types.cpp::uninitialize_gaussian_splatting_module() so the
+// per-call-site StringName keys (pipeline_two_stage_sort, ..., value,
+// source, ...) do not show up in the exit-time orphan StringName report.
+void release_pipeline_feature_set_module_strings();
 
 #endif // PIPELINE_FEATURE_SET_H
