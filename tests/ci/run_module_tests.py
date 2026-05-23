@@ -13,6 +13,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -948,10 +949,14 @@ def _run_stringname_orphan_guard_step(godot: str) -> int | None:
         return None
 
     binary_path = Path(normalized_binary)
-    if not binary_path.is_file():
+    # Accept either a direct file path or a command-style name that is
+    # resolvable via PATH (e.g. the default `godot`). shutil.which honors
+    # PATHEXT on Windows so `godot` can resolve to `godot.exe`/`.bat`.
+    path_resolved_binary = shutil.which(normalized_binary)
+    if not binary_path.is_file() and path_resolved_binary is None:
         print(
             f"[module-tests] StringName orphan guard skipped: binary not found "
-            f"at '{normalized_binary}'."
+            f"at '{normalized_binary}' and not resolvable via PATH."
         )
         _emit_stringname_orphan_lifetime_line(
             passed=True,
@@ -960,6 +965,11 @@ def _run_stringname_orphan_guard_step(godot: str) -> int | None:
             fail_reason="binary_missing",
         )
         return None
+    # Prefer the literal path when it exists; otherwise use the PATH-resolved
+    # location so subprocess.run does not need to re-resolve via PATHEXT.
+    invocation_binary = (
+        normalized_binary if binary_path.is_file() else path_resolved_binary
+    )
 
     if not project.is_dir() or not (project / "project.godot").is_file():
         print(
@@ -975,7 +985,7 @@ def _run_stringname_orphan_guard_step(godot: str) -> int | None:
         return None
 
     command = [
-        normalized_binary,
+        invocation_binary,
         "--path",
         str(project),
         "--headless",
@@ -1015,6 +1025,25 @@ def _run_stringname_orphan_guard_step(godot: str) -> int | None:
     if orphan_count > 0:
         sample = ", ".join(sorted(set(orphan_names))[:10])
         print(f"[module-tests]   orphan StringNames (deduped, first 10): {sample}")
+
+    # A crashed/failed Godot invocation must not be reported as a passing
+    # guard just because the orphan parse stayed under threshold (the
+    # teardown path we are validating may not even have executed). Emit a
+    # failing [GS-LIFETIME] line so PR 7's manifest parser consumes it
+    # uniformly as a failure.
+    if result.returncode != 0:
+        fail_reason = f"probe_exit:{result.returncode}"
+        _emit_stringname_orphan_lifetime_line(
+            passed=False,
+            delta=orphan_count,
+            threshold=threshold,
+            fail_reason=fail_reason,
+        )
+        print(
+            f"[module-tests] StringName orphan guard FAILED: probe exited with "
+            f"code {result.returncode}."
+        )
+        return 1
 
     if orphan_count > threshold:
         fail_reason = (
