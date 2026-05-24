@@ -1620,6 +1620,130 @@ class LifetimeAccountingProofTests(unittest.TestCase):
                 f"base manifest must satisfy the new cross-field invariant, got: {failures!r}",
             )
 
+    def test_lifetime_accounting_proof_rejects_duplicate_required_scenario(self) -> None:
+        """Codex P1 review on PR #390: required scenarios must appear EXACTLY
+        once. Two passing stringname_orphans entries -- as would result from
+        concatenated or stale logs from a previous run -- must trip the gate.
+
+        Without this check, an old successful run could contribute a
+        stringname_orphans line even when the current run omitted the
+        scenario, and required coverage would be silently satisfied.
+        """
+        section = _lifetime_manifest_section()
+        duplicate_line = (
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5,"fail_reason":""}'
+        )
+        stdout = _lifetime_stdout_all_pass() + "\n" + duplicate_line
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(
+            passed,
+            "duplicate required-scenario entries must fail the gate",
+        )
+        self.assertTrue(
+            any(
+                "stringname_orphans" in reason
+                and "2 entries" in reason
+                and "exactly one" in reason
+                and ("duplicate" in reason or "stale" in reason)
+                for reason in reasons
+            ),
+            f"expected duplicate-scenario error citing the count, got: {reasons!r}",
+        )
+
+    def test_lifetime_accounting_proof_rejects_duplicate_with_mixed_pass_fail(self) -> None:
+        """Strictest interpretation of Codex P1: duplicates with any mix of
+        passed=true/false are rejected. The bot's concern is mixed-run
+        artifacts, so any duplicate is suspect even when one entry happens
+        to be failing.
+        """
+        section = _lifetime_manifest_section()
+        duplicate_failing_line = (
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":false,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5,'
+            '"fail_reason":"stale log from previous run"}'
+        )
+        stdout = _lifetime_stdout_all_pass() + "\n" + duplicate_failing_line
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(passed)
+        self.assertTrue(
+            any(
+                "stringname_orphans" in reason
+                and "2 entries" in reason
+                and "exactly one" in reason
+                for reason in reasons
+            ),
+            f"expected duplicate-scenario error even with mixed passed flags, got: {reasons!r}",
+        )
+
+    def test_lifetime_accounting_proof_schema_requires_orphan_threshold_when_advisory_listed(self) -> None:
+        """Codex P2 review on PR #390 (schema side).
+
+        When advisory_fields lists stringname_orphan_delta, the schema MUST
+        require thresholds_counts to declare stringname_orphans_max.
+        Otherwise a manifest typo or accidental key removal silently
+        disables the orphan-count guard while still letting the runtime
+        accept arbitrarily large deltas (passed=true with no enforcement).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            # Precondition: base manifest lists the advisory field.
+            self.assertIn("stringname_orphan_delta", section["advisory_fields"])
+            # Remove the orphan-count threshold from thresholds_counts.
+            section["thresholds_counts"] = {}
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "thresholds_counts" in failure
+                    and "stringname_orphans_max" in failure
+                    and "stringname_orphan_delta" in failure
+                    and "silently disabled" in failure
+                    for failure in failures
+                ),
+                f"expected missing-threshold-despite-advisory to be rejected, got: {failures!r}",
+            )
+
+    def test_lifetime_accounting_proof_runtime_rejects_delta_without_threshold(self) -> None:
+        """Codex P2 review on PR #390 (runtime defense-in-depth side).
+
+        Even if someone edits the schema check out, the runtime must refuse
+        to silently skip orphan-delta enforcement when no threshold is
+        declared. An entry that reports a real (non-sentinel) delta with no
+        threshold in thresholds_counts must fail the lifetime gate instead
+        of passing because count_threshold is None.
+        """
+        section = _lifetime_manifest_section()
+        # Remove the threshold from the manifest section so the runtime
+        # lookup returns None even though stringname_orphan_delta is in
+        # the entry. The schema validator would normally reject this; we
+        # are testing the runtime fallback behaviour.
+        section["thresholds_counts"] = {}
+        # Use a real (non-sentinel) value so the sentinel-skip branch
+        # does not short-circuit the check.
+        stdout = _lifetime_stdout_all_pass().replace(
+            '"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5',
+            '"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":42,"threshold_orphans":5',
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(
+            passed,
+            "runtime must refuse to silently skip enforcement when threshold is missing",
+        )
+        self.assertTrue(
+            any(
+                "stringname_orphans" in reason
+                and "stringname_orphan_delta=42" in reason
+                and "stringname_orphans_max" in reason
+                and "not declared" in reason
+                for reason in reasons
+            ),
+            f"expected runtime defense-in-depth error citing the missing threshold, got: {reasons!r}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

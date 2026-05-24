@@ -474,6 +474,19 @@ def _validate_workflow_policy(root: Path, manifest: dict[str, Any]) -> list[str]
     return failures
 
 
+# Cross-field invariant binding for lifetime advisory fields. Each entry
+# maps an advisory_field -> (required strict scenario, count threshold key).
+# Used at schema-check time to require thresholds_counts to declare the
+# threshold and advisory_fields_strict_for to require the field, and at
+# runtime to look up the threshold from the advisory field. Keeping the
+# table shared means both sides cannot drift apart (Codex P2 review on
+# PR #390).
+ADVISORY_FIELD_STRICT_BINDINGS: dict[str, tuple[str, str]] = {
+    # advisory_field -> (required strict scenario, count threshold key)
+    "stringname_orphan_delta": ("stringname_orphans", "stringname_orphans_max"),
+}
+
+
 def _validate_lifetime_accounting_proof_schema(manifest: dict[str, Any]) -> list[str]:
     section = manifest.get("lifetime_accounting_proof")
     if section is None:
@@ -586,23 +599,28 @@ def _validate_lifetime_accounting_proof_schema(manifest: dict[str, Any]) -> list
     # thresholds_counts entry at runtime MUST appear in
     # advisory_fields_strict_for under the threshold's scenario; otherwise a
     # manifest can silently drop the field from the entry and the count
-    # threshold goes unenforced (Codex P2 review on PR #390). The current
-    # runtime mapping in validate_lifetime_accounting_proof hardcodes
-    # stringname_orphan_delta -> stringname_orphans_max, owned by the
-    # stringname_orphans scenario; declare that binding here.
-    ADVISORY_FIELD_STRICT_BINDINGS: dict[str, tuple[str, str]] = {
-        # advisory_field -> (required strict scenario, count threshold key)
-        "stringname_orphan_delta": ("stringname_orphans", "stringname_orphans_max"),
-    }
+    # threshold goes unenforced (Codex P2 review on PR #390). The binding
+    # is declared once at module scope as ADVISORY_FIELD_STRICT_BINDINGS
+    # so the schema validator and the runtime validator look up the same
+    # advisory_field -> (scenario, count_threshold_key) mapping.
     advisory_fields_set: set[str] = set()
     if isinstance(advisory_fields, list):
         advisory_fields_set = {name for name in advisory_fields if isinstance(name, str) and name}
     for advisory_field, (required_scenario, count_threshold_key) in ADVISORY_FIELD_STRICT_BINDINGS.items():
         if advisory_field not in advisory_fields_set:
             continue
-        # Only enforce when the count threshold is actually declared; otherwise
-        # there is no threshold to silently disable.
+        # Codex P2 review on PR #390: the count threshold must be declared
+        # whenever the advisory field is listed. A missing threshold would
+        # let the runtime silently skip enforcement (arbitrarily large
+        # orphan deltas pass as long as passed=true). Reject the manifest
+        # at contract-check time instead.
         if not isinstance(thresholds_counts, dict) or count_threshold_key not in thresholds_counts:
+            failures.append(
+                f"lifetime_accounting_proof.thresholds_counts must declare "
+                f"{count_threshold_key!r} when advisory_fields lists "
+                f"{advisory_field!r}; otherwise the orphan-count guard is "
+                f"silently disabled by a manifest typo or accidental key removal"
+            )
             continue
         strict_fields_for_scenario = strict_for_valid.get(required_scenario, [])
         if advisory_field not in strict_fields_for_scenario:
@@ -1471,8 +1489,21 @@ def validate_lifetime_accounting_proof(
         by_scenario.setdefault(scenario, []).append(entry)
 
     for scenario in required_scenarios:
-        if scenario not in by_scenario:
+        scenario_entries = by_scenario.get(scenario, [])
+        count = len(scenario_entries)
+        if count == 0:
             reasons.append(f"lifetime scenario missing from stdout: {scenario}")
+        elif count > 1:
+            # Codex P1 review on PR #390: required scenarios must appear
+            # EXACTLY once. Concatenated or stale logs can otherwise
+            # contribute entries that satisfy required coverage even
+            # when the latest run omitted scenarios. Any duplicate (any
+            # mix of passed=true/false) is treated as suspect.
+            reasons.append(
+                f"lifetime scenario {scenario} reported {count} entries; "
+                f"expected exactly one (duplicate lifetime entry -- "
+                f"concatenated or stale logs)"
+            )
 
     for scenario, scenario_entries in by_scenario.items():
         for entry in scenario_entries:
@@ -1526,13 +1557,33 @@ def validate_lifetime_accounting_proof(
                 value = entry.get(advisory_field)
                 if advisory_sentinel is not None and value == advisory_sentinel:
                     continue
-                # Map advisory field to a thresholds_counts key. The
-                # stringname_orphan_delta field is bounded by stringname_orphans_max.
-                if advisory_field == "stringname_orphan_delta":
-                    count_threshold = thresholds_counts.get("stringname_orphans_max")
+                # Map advisory field to a thresholds_counts key via the
+                # shared ADVISORY_FIELD_STRICT_BINDINGS table. Fall back to
+                # the advisory field name itself when no explicit binding
+                # is declared (legacy behaviour).
+                binding = ADVISORY_FIELD_STRICT_BINDINGS.get(advisory_field)
+                if binding is not None:
+                    _, count_threshold_key = binding
                 else:
-                    count_threshold = thresholds_counts.get(advisory_field)
+                    count_threshold_key = advisory_field
+                count_threshold = thresholds_counts.get(count_threshold_key)
                 if count_threshold is None:
+                    if binding is not None:
+                        # Codex P2 review on PR #390: defense-in-depth.
+                        # When the manifest binds this advisory field to a
+                        # count threshold key but the threshold is missing,
+                        # never silently skip enforcement -- the schema
+                        # check normally rejects this at contract time,
+                        # but if someone edits the schema check out the
+                        # runtime must still refuse to pass arbitrarily
+                        # large deltas.
+                        reasons.append(
+                            f"lifetime scenario {scenario} advisory field "
+                            f"{advisory_field}={value} cannot be enforced "
+                            f"because thresholds_counts.{count_threshold_key} "
+                            f"is not declared (manifest invariant; the schema "
+                            f"check should have rejected this)"
+                        )
                     continue
                 if not _is_json_number(value):
                     reasons.append(
