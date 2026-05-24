@@ -1732,6 +1732,18 @@ public:
     uint64_t test_get_render_thread_dispatch_timeout_usec() const;
     bool test_dispatch_call_on_render_thread_blocking_without_completion();
     bool test_dispatch_call_on_render_thread_blocking_with_completion();
+    // Returns true iff the render-thread dispatch path is currently live —
+    // i.e. a future call to _dispatch_call_on_render_thread_blocking()
+    // would actually submit a callable to the RenderingServer rather than
+    // short-circuit via the early-exit guard. Unlike the bool return of
+    // test_dispatch_call_on_render_thread_blocking_without_completion(),
+    // this probe does NOT submit anything and cannot be confounded by a
+    // wait-for-completion timeout. Callers that need to reason about
+    // whether the renderer dtor will dispatch teardown to the render
+    // thread or fall through to the synchronous teardown path MUST use
+    // this probe rather than the bool return of the dispatch test helper.
+    // (Codex PR #386 review, P1.)
+    bool test_is_render_thread_dispatch_path_active() const;
     void test_notify_render_thread_dispatch_completed(uint64_t p_request_id);
     uint64_t test_get_render_thread_dispatch_completed_request_id() const;
     bool test_shadow_pass_guard_restores_after_scope();

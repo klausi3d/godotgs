@@ -3131,6 +3131,10 @@ bool GaussianSplatRenderer::test_dispatch_call_on_render_thread_blocking_with_co
     return _dispatch_call_on_render_thread_blocking(callable_mp(this, &GaussianSplatRenderer::_notify_render_thread_dispatch_completed));
 }
 
+bool GaussianSplatRenderer::test_is_render_thread_dispatch_path_active() const {
+    return render_thread_dispatcher && render_thread_dispatcher->is_render_thread_dispatch_path_active();
+}
+
 void GaussianSplatRenderer::test_notify_render_thread_dispatch_completed(uint64_t p_request_id) {
     _notify_render_thread_dispatch_completed(p_request_id);
 }
