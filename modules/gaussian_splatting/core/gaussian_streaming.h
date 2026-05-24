@@ -131,6 +131,15 @@ private:
     uint32_t runtime_capacity_guard_runtime_capacity = UINT32_MAX;
     bool runtime_capacity_guard_buffer_valid = true;
     bool runtime_capacity_guard_initialized = true;
+    // PR #352: warned-once latch for failed-init cascades. Set on the first
+    // ERR_PRINT emitted by initialize()/update_streaming()/_load_visible_chunks()
+    // when the streaming runtime is unavailable, then suppresses identical
+    // ERRs on every subsequent frame so a headless-no-device run does not
+    // emit one ERR per frame (which previously snowballed into 602 SEH
+    // CrashHandlerException dumps in run_module_tests.py). Cleared inside
+    // initialize()/initialize_empty() so a successful re-init re-arms the
+    // warning for a subsequent failure.
+    bool failed_init_warning_emitted = false;
     uint64_t invalid_camera_input_events = 0;
     uint64_t last_invalid_camera_log_frame = UINT64_MAX;
     uint32_t invalid_camera_log_interval_frames = 120;
@@ -236,6 +245,10 @@ public:
     Dictionary get_task_debug_state() const;
     Dictionary get_streaming_analytics() const;
     bool is_runtime_ready(String *r_reason = nullptr) const;
+    // PR #352 helper: cheap probe used by tests/macros to skip work when no
+    // streaming runtime is loadable. Wraps is_runtime_ready() so the call
+    // site does not need to construct a reason string.
+    bool is_streaming_capable() const { return is_runtime_ready(nullptr); }
     bool is_runtime_capacity_zero() const;
     bool is_persistent_buffer_invalid() const;
     uint32_t get_registered_asset_count_with_data() const;

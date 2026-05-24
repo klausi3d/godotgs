@@ -14,6 +14,8 @@
 #include "servers/rendering_server.h"
 #include "servers/rendering/rendering_device.h"
 
+#include "../core/gaussian_splat_manager.h"
+
 // Performance testing utilities
 class PerformanceTimer {
 private:
@@ -103,6 +105,41 @@ public:
         MESSAGE("Skipping test - RenderingDevice unavailable");           \
         return;                                                           \
     }
+
+// PR #352 helper for streaming tests: cheap probe symmetric to
+// REQUIRE_GPU_DEVICE(). Skips the calling test when the streaming pipeline
+// has no usable RenderingDevice — i.e. when
+// GaussianStreamingSystem::initialize() would fail with "runtime not
+// loadable". Use this in tests that exercise the streaming runtime end-to-
+// end (initialize -> update_streaming -> chunk uploads) so they degrade to
+// a skip on headless lanes instead of cascading into the failed-init crash
+// path the rest of this PR closes.
+//
+// Probes all three device paths that GaussianStreamingSystem::initialize()
+// can use: RenderingDevice::get_singleton(),
+// RenderingServer::get_rendering_device(), and
+// GaussianSplatManager::get_primary_rendering_device() (which may construct
+// a local-device fallback). Only skips when ALL THREE report no device,
+// matching the retry fix pattern in test_gaussian_streaming_lifecycle.cpp
+// (1c447b99e3) and test_renderer_lifetime_proof.h (97f295e57a, PR #386).
+#define REQUIRE_STREAMING_CAPABLE()                                          \
+    do {                                                                     \
+        RenderingDevice *_gs_streaming_probe = RenderingDevice::get_singleton(); \
+        if (_gs_streaming_probe == nullptr) {                                \
+            if (RenderingServer *_gs_streaming_rs = RenderingServer::get_singleton()) { \
+                _gs_streaming_probe = _gs_streaming_rs->get_rendering_device(); \
+            }                                                                \
+        }                                                                    \
+        if (_gs_streaming_probe == nullptr) {                                \
+            if (GaussianSplatManager *_gs_streaming_mgr = GaussianSplatManager::get_singleton()) { \
+                _gs_streaming_probe = _gs_streaming_mgr->get_primary_rendering_device(); \
+            }                                                                \
+        }                                                                    \
+        if (_gs_streaming_probe == nullptr) {                                \
+            MESSAGE("Skipping test - streaming unavailable");                \
+            return;                                                          \
+        }                                                                    \
+    } while (0)
 
 // Performance baseline checking
 #define CHECK_PERFORMANCE(timer, max_ms, operation)                      \
