@@ -13,6 +13,18 @@ public:
 
     virtual bool dispatch_call_on_render_thread_blocking(const Callable &p_callable, bool *r_dispatched,
             bool p_allow_timeout, uint64_t *r_request_id, const char *p_log_prefix) = 0;
+    // Returns true iff a call to dispatch_call_on_render_thread_blocking()
+    // would actually attempt a dispatch (i.e. the early-exit guard would
+    // not short-circuit it). This is the discrimination signal callers need
+    // when reasoning about "is the render-thread dispatch path live?",
+    // because the bool return of dispatch_call_on_render_thread_blocking()
+    // conflates "no dispatch path active" (early-exit returned false) with
+    // "dispatched but timed out waiting for completion" (also returned
+    // false). The fixture in test_renderer_lifetime_proof.h depends on
+    // this distinction to decide whether the renderer dtor will fall
+    // through to the synchronous teardown path. (Codex PR #386 review,
+    // P1.)
+    virtual bool is_render_thread_dispatch_path_active() const = 0;
     virtual void notify_completed(uint64_t p_request_id) = 0;
     virtual void set_timeout_usec(uint64_t p_timeout_usec) = 0;
     virtual uint64_t get_timeout_usec() const = 0;
@@ -31,6 +43,7 @@ public:
 
     bool dispatch_call_on_render_thread_blocking(const Callable &p_callable, bool *r_dispatched,
             bool p_allow_timeout, uint64_t *r_request_id, const char *p_log_prefix) override;
+    bool is_render_thread_dispatch_path_active() const override;
     void notify_completed(uint64_t p_request_id) override;
     void set_timeout_usec(uint64_t p_timeout_usec) override;
     uint64_t get_timeout_usec() const override;

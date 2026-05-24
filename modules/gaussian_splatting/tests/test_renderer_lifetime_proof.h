@@ -332,18 +332,32 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] renderer_instanc
 		projection.set_perspective(60.0f, 1.0f, 0.1f, 200.0f);
 		renderer->render_for_view(cam_transform, projection, RID(), Size2i(128, 128));
 
-		// Dispatcher-timeout sentinel: probe the test-only hook BEFORE
-		// unref. If a render loop was somehow standing (a future runner
+		// Dispatcher-path probe: ask the renderer (via the dispatcher)
+		// whether a render-thread dispatch would actually be attempted
+		// BEFORE unref. If a render loop is standing (a future runner
 		// flips REQUIRE_GPU_DEVICE to use a live RD), this returns true
-		// and the renderer dtor would try to dispatch teardown to that
-		// loop — silent mis-measurement. We require it to return false
-		// (no loop) so the dtor falls through to the synchronous
+		// and the renderer dtor would dispatch teardown to that loop —
+		// silent mis-measurement. We require it to return false (no
+		// dispatch path) so the dtor falls through to the synchronous
 		// _teardown_resources() path. See
-		// renderer/gaussian_splat_renderer.cpp:1232-1239 and :3126.
-		const bool dispatched =
-				renderer->test_dispatch_call_on_render_thread_blocking_without_completion();
-		REQUIRE_FALSE_MESSAGE(dispatched,
-				"render_thread_dispatcher should not be running in lifetime tests; "
+		// renderer/gaussian_splat_renderer.cpp:1232-1239.
+		//
+		// Importantly, this is the new
+		// test_is_render_thread_dispatch_path_active() probe — NOT the
+		// older test_dispatch_call_on_render_thread_blocking_without_completion()
+		// helper, which submits an actual dispatch and conflates
+		// "no dispatch path active" (early-exit returned false) with
+		// "dispatched but timed out waiting for completion" (also
+		// returned false). In a render-loop-enabled environment the
+		// older helper could time out and the fixture would silently
+		// mis-mark teardown as synchronous. The new probe is a pure
+		// inspection of the dispatcher's early-exit state and cannot be
+		// confounded by a wait-for-completion timeout. (Codex PR #386
+		// review, P1.)
+		const bool dispatch_path_active =
+				renderer->test_is_render_thread_dispatch_path_active();
+		REQUIRE_FALSE_MESSAGE(dispatch_path_active,
+				"render_thread_dispatcher path is active in lifetime tests; "
 				"renderer dtor would otherwise dispatch teardown to it and the fixture "
 				"would mis-measure the post-unref baseline.");
 		fixture.set_teardown_was_synchronous(true);

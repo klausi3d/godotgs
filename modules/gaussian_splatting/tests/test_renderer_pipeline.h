@@ -4523,6 +4523,63 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Render-thread blocking dispatch pres
     }
 }
 
+TEST_CASE("[GaussianSplatting][RequiresGPU] Render-thread dispatch path probe stays true through a wait-for-completion timeout") {
+    // Regression for Codex PR #386 review (P1): the lifetime-proof fixture
+    // previously used the bool return of
+    // test_dispatch_call_on_render_thread_blocking_without_completion() to
+    // decide whether the renderer dtor would fall through to the
+    // synchronous teardown path. That bool returns false in TWO cases:
+    //   (a) no dispatch path is active (the early-exit guard short-circuits),
+    //   (b) a dispatch was submitted but the wait for completion timed out.
+    // Treating (b) as proof of (a) silently mis-measured post-unref
+    // lifetime behavior in render-loop-enabled environments. The new
+    // probe test_is_render_thread_dispatch_path_active() must NOT be
+    // confounded by a wait-for-completion timeout: when the render loop
+    // is enabled, the probe stays true regardless of whether a previous
+    // dispatch timed out.
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (rs == nullptr) {
+        MESSAGE("Skipping test - RenderingServer unavailable");
+        return;
+    }
+    if (rs->is_on_render_thread()) {
+        MESSAGE("Skipping test - Test must run off the render thread");
+        return;
+    }
+    if (!rs->is_render_loop_enabled()) {
+        MESSAGE("Skipping test - Render loop disabled");
+        return;
+    }
+
+    Ref<GaussianSplatRenderer> renderer;
+    renderer.instantiate();
+    CHECK(renderer.is_valid());
+    if (!renderer.is_valid()) {
+        return;
+    }
+
+    // Render loop is enabled and we are off the render thread, so the
+    // probe must report the dispatch path as active BEFORE we attempt
+    // anything.
+    CHECK(renderer->test_is_render_thread_dispatch_path_active());
+
+    const uint64_t original_timeout_usec = renderer->test_get_render_thread_dispatch_timeout_usec();
+    renderer->test_set_render_thread_dispatch_timeout_usec(10000); // 10 ms timeout for test.
+
+    // Force a wait-for-completion timeout. The bool return is false
+    // (timeout), which is the case the lifetime fixture previously
+    // mis-interpreted as "no dispatch path active".
+    const bool timed_out_dispatch = renderer->test_dispatch_call_on_render_thread_blocking_without_completion();
+    CHECK_FALSE(timed_out_dispatch);
+
+    // The dispatch path is STILL active — the timeout does not tear it
+    // down. The probe must continue to report true. This is the actual
+    // discrimination the lifetime fixture now relies on.
+    CHECK(renderer->test_is_render_thread_dispatch_path_active());
+
+    renderer->test_set_render_thread_dispatch_timeout_usec(original_timeout_usec);
+}
+
 TEST_CASE("[GaussianSplatting][RequiresGPU] Render-thread dispatch teardown remains bounded after timeout recovery") {
     RenderingServer *rs = RenderingServer::get_singleton();
     OS *os = OS::get_singleton();
