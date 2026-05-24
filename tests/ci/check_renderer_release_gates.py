@@ -474,6 +474,263 @@ def _validate_workflow_policy(root: Path, manifest: dict[str, Any]) -> list[str]
     return failures
 
 
+# Cross-field invariant binding for lifetime advisory fields. Each entry
+# maps an advisory_field -> (required strict scenario, count threshold key).
+# Used at schema-check time to require thresholds_counts to declare the
+# threshold and advisory_fields_strict_for to require the field, and at
+# runtime to look up the threshold from the advisory field. Keeping the
+# table shared means both sides cannot drift apart (Codex P2 review on
+# PR #390).
+ADVISORY_FIELD_STRICT_BINDINGS: dict[str, tuple[str, str]] = {
+    # advisory_field -> (required strict scenario, count threshold key)
+    "stringname_orphan_delta": ("stringname_orphans", "stringname_orphans_max"),
+}
+
+
+def _validate_lifetime_accounting_proof_schema(manifest: dict[str, Any]) -> list[str]:
+    section = manifest.get("lifetime_accounting_proof")
+    if section is None:
+        return ["lifetime_accounting_proof section is missing"]
+    if not isinstance(section, dict):
+        return ["lifetime_accounting_proof must be a JSON object"]
+
+    failures: list[str] = []
+    marker = section.get("stdout_marker")
+    if not isinstance(marker, str) or not marker:
+        failures.append("lifetime_accounting_proof.stdout_marker must be a non-empty string")
+
+    required_scenarios = section.get("required_scenarios")
+    if not isinstance(required_scenarios, list) or not required_scenarios:
+        failures.append("lifetime_accounting_proof.required_scenarios must be a non-empty list")
+    else:
+        for index, name in enumerate(required_scenarios):
+            if not isinstance(name, str) or not name:
+                failures.append(
+                    f"lifetime_accounting_proof.required_scenarios[{index}] must be a non-empty string"
+                )
+        # Codex P2 review on PR #390 (comment #3295128412): the element-type
+        # loop above accepts duplicate scenario names, so a manifest typo
+        # that replaces "failed_init" with a second "renderer_instance"
+        # silently disables coverage for the dropped scenario -- the
+        # runtime walks scenarios via membership in required_scenarios, so
+        # the duplicated entry is matched twice while failed_init is never
+        # required to appear in stdout, and validate_lifetime_accounting_proof
+        # passes a stdout artifact that never reports failed_init at all.
+        # Reject duplicates at contract time and name them so the operator
+        # can locate the typo immediately.
+        seen: list[str] = []
+        duplicates: list[str] = []
+        for name in required_scenarios:
+            if not isinstance(name, str) or not name:
+                continue
+            if name in seen and name not in duplicates:
+                duplicates.append(name)
+            else:
+                seen.append(name)
+        if duplicates:
+            failures.append(
+                f"lifetime_accounting_proof.required_scenarios contains duplicate "
+                f"entries: {duplicates}; every scenario name must be unique so that "
+                f"a typo replacing one scenario with a copy of another cannot "
+                f"silently disable coverage for the dropped scenario"
+            )
+
+    metric_fields = section.get("scenario_metric_fields", {})
+    if not isinstance(metric_fields, dict):
+        failures.append("lifetime_accounting_proof.scenario_metric_fields must be a JSON object")
+        metric_fields = {}
+    else:
+        for scenario, field in metric_fields.items():
+            if not isinstance(scenario, str) or not scenario:
+                failures.append(
+                    "lifetime_accounting_proof.scenario_metric_fields keys must be non-empty strings"
+                )
+                continue
+            if not isinstance(field, str) or not field:
+                failures.append(
+                    f"lifetime_accounting_proof.scenario_metric_fields[{scenario!r}] must be a non-empty string"
+                )
+
+    thresholds_bytes = section.get("thresholds_bytes")
+    if not isinstance(thresholds_bytes, dict) or not thresholds_bytes:
+        failures.append("lifetime_accounting_proof.thresholds_bytes must be a non-empty JSON object")
+    else:
+        for scenario, value in thresholds_bytes.items():
+            if not isinstance(scenario, str) or not scenario:
+                failures.append("lifetime_accounting_proof.thresholds_bytes keys must be non-empty strings")
+                continue
+            if not _is_json_number(value) or value < 0:
+                failures.append(
+                    f"lifetime_accounting_proof.thresholds_bytes[{scenario!r}] must be a non-negative number"
+                )
+
+    thresholds_counts = section.get("thresholds_counts", {})
+    if not isinstance(thresholds_counts, dict):
+        failures.append("lifetime_accounting_proof.thresholds_counts must be a JSON object")
+        thresholds_counts = {}
+    else:
+        for name, value in thresholds_counts.items():
+            if not isinstance(name, str) or not name:
+                failures.append("lifetime_accounting_proof.thresholds_counts keys must be non-empty strings")
+                continue
+            if not _is_json_number(value) or value < 0:
+                failures.append(
+                    f"lifetime_accounting_proof.thresholds_counts[{name!r}] must be a non-negative number"
+                )
+
+    advisory_fields = section.get("advisory_fields", [])
+    if not isinstance(advisory_fields, list):
+        failures.append("lifetime_accounting_proof.advisory_fields must be a list")
+    else:
+        for index, name in enumerate(advisory_fields):
+            if not isinstance(name, str) or not name:
+                failures.append(
+                    f"lifetime_accounting_proof.advisory_fields[{index}] must be a non-empty string"
+                )
+
+    sentinel = section.get("advisory_sentinel_value")
+    if sentinel is not None and not _is_json_number(sentinel):
+        failures.append("lifetime_accounting_proof.advisory_sentinel_value must be numeric or omitted")
+
+    strict_for_raw = section.get("advisory_fields_strict_for", {})
+    strict_for_valid: dict[str, list[str]] = {}
+    if not isinstance(strict_for_raw, dict):
+        failures.append(
+            "lifetime_accounting_proof.advisory_fields_strict_for must be a JSON object mapping scenario -> [field, ...]"
+        )
+    else:
+        for scenario, fields in strict_for_raw.items():
+            if not isinstance(scenario, str) or not scenario:
+                failures.append(
+                    "lifetime_accounting_proof.advisory_fields_strict_for keys must be non-empty strings"
+                )
+                continue
+            if not isinstance(fields, list) or not fields:
+                failures.append(
+                    f"lifetime_accounting_proof.advisory_fields_strict_for[{scenario!r}] must be a non-empty list of field names"
+                )
+                continue
+            valid_fields: list[str] = []
+            for index, field_name in enumerate(fields):
+                if not isinstance(field_name, str) or not field_name:
+                    failures.append(
+                        f"lifetime_accounting_proof.advisory_fields_strict_for[{scenario!r}][{index}] must be a non-empty string"
+                    )
+                    continue
+                valid_fields.append(field_name)
+            if valid_fields:
+                strict_for_valid[scenario] = valid_fields
+
+    # Cross-field invariant: any advisory field that is bounded by a
+    # thresholds_counts entry at runtime MUST appear in
+    # advisory_fields_strict_for under the threshold's scenario; otherwise a
+    # manifest can silently drop the field from the entry and the count
+    # threshold goes unenforced (Codex P2 review on PR #390). The binding
+    # is declared once at module scope as ADVISORY_FIELD_STRICT_BINDINGS
+    # so the schema validator and the runtime validator look up the same
+    # advisory_field -> (scenario, count_threshold_key) mapping.
+    advisory_fields_set: set[str] = set()
+    if isinstance(advisory_fields, list):
+        advisory_fields_set = {name for name in advisory_fields if isinstance(name, str) and name}
+    required_scenarios_set: set[str] = set()
+    if isinstance(required_scenarios, list):
+        required_scenarios_set = {
+            name for name in required_scenarios if isinstance(name, str) and name
+        }
+    for advisory_field, (required_scenario, count_threshold_key) in ADVISORY_FIELD_STRICT_BINDINGS.items():
+        if advisory_field not in advisory_fields_set:
+            continue
+        # Codex P2 review on PR #390 (round 6, comment #3295080072): the
+        # bound scenario must appear in required_scenarios whenever the
+        # advisory field is listed. Otherwise removing the scenario from
+        # required_scenarios silently disables orphan-threshold
+        # enforcement even though advisory_fields_strict_for and
+        # thresholds_counts still validate: the runtime only walks
+        # advisory fields for scenarios that actually appear, so dropping
+        # the scenario from required_scenarios means the entry is never
+        # required to exist and the count threshold is never compared.
+        # Reject at contract-check time, parallel to the round-3/4/5
+        # invariants and reusing the same ADVISORY_FIELD_STRICT_BINDINGS
+        # source of truth.
+        if required_scenario not in required_scenarios_set:
+            failures.append(
+                f"lifetime_accounting_proof.required_scenarios must include "
+                f"{required_scenario!r} when advisory_fields lists "
+                f"{advisory_field!r}; otherwise the orphan-threshold "
+                f"enforcement is silently disabled by a manifest typo or "
+                f"accidental scenario removal (bound scenario not required "
+                f"(manifest invariant))"
+            )
+            continue
+        # Codex P2 review on PR #390: the count threshold must be declared
+        # whenever the advisory field is listed. A missing threshold would
+        # let the runtime silently skip enforcement (arbitrarily large
+        # orphan deltas pass as long as passed=true). Reject the manifest
+        # at contract-check time instead.
+        if not isinstance(thresholds_counts, dict) or count_threshold_key not in thresholds_counts:
+            failures.append(
+                f"lifetime_accounting_proof.thresholds_counts must declare "
+                f"{count_threshold_key!r} when advisory_fields lists "
+                f"{advisory_field!r}; otherwise the orphan-count guard is "
+                f"silently disabled by a manifest typo or accidental key removal"
+            )
+            continue
+        strict_fields_for_scenario = strict_for_valid.get(required_scenario, [])
+        if advisory_field not in strict_fields_for_scenario:
+            failures.append(
+                f"lifetime_accounting_proof.advisory_fields_strict_for must require "
+                f"{advisory_field!r} under scenario {required_scenario!r} when "
+                f"advisory_fields lists {advisory_field!r} and thresholds_counts declares "
+                f"{count_threshold_key!r}; otherwise the count threshold is silently "
+                f"disablable by omitting the field from the entry"
+            )
+
+    # Cross-field invariant: every required scenario that declares a metric
+    # field (i.e., appears in scenario_metric_fields) MUST also have a
+    # thresholds_bytes entry. Otherwise the runtime byte-threshold check
+    # silently no-ops (the `if byte_threshold is not None` branch in
+    # validate_lifetime_accounting_proof falls through), and a manifest
+    # typo or accidental key removal can disable the byte guard while still
+    # passing the lifetime gate with arbitrarily large rd_bytes_leaked
+    # values (Codex P2 review on PR #390; bot verified the exploit by
+    # removing asset_attach_detach from thresholds_bytes and feeding a
+    # huge leak value -- validate_lifetime_accounting_proof returned
+    # success).
+    required_scenarios_list: list[str] = []
+    if isinstance(required_scenarios, list):
+        required_scenarios_list = [
+            name for name in required_scenarios if isinstance(name, str) and name
+        ]
+    metric_fields_dict: dict[str, Any] = (
+        metric_fields if isinstance(metric_fields, dict) else {}
+    )
+    thresholds_bytes_dict: dict[str, Any] = (
+        thresholds_bytes if isinstance(thresholds_bytes, dict) else {}
+    )
+    for scenario in required_scenarios_list:
+        if scenario not in metric_fields_dict:
+            # Scenarios without a declared metric field (e.g.
+            # stringname_orphans, which is count-only) do not participate
+            # in byte-threshold enforcement and so do not require an
+            # entry in thresholds_bytes.
+            continue
+        if scenario not in thresholds_bytes_dict:
+            failures.append(
+                f"lifetime_accounting_proof.thresholds_bytes must declare an entry for "
+                f"required scenario {scenario!r} because scenario_metric_fields binds it "
+                f"to metric {metric_fields_dict[scenario]!r}; otherwise the byte-leak "
+                f"guard is silently disabled by a manifest typo or accidental key removal "
+                f"(byte threshold not declared (manifest invariant))"
+            )
+
+    for field in ("test_binary_lane", "gpu_harness_batch"):
+        value = section.get(field)
+        if value is not None and (not isinstance(value, str) or not value):
+            failures.append(f"lifetime_accounting_proof.{field} must be a non-empty string when present")
+
+    return failures
+
+
 def validate_contract(root: Path, manifest: dict[str, Any]) -> list[str]:
     tests = _extract_requires_gpu_tests(root)
     failures: list[str] = []
@@ -486,6 +743,7 @@ def validate_contract(root: Path, manifest: dict[str, Any]) -> list[str]:
     failures.extend(_validate_gpu_harness_policy(root, manifest, tests))
     failures.extend(_validate_visual_acceptance(root, manifest))
     failures.extend(_validate_workflow_policy(root, manifest))
+    failures.extend(_validate_lifetime_accounting_proof_schema(manifest))
     return failures
 
 
@@ -1225,12 +1483,244 @@ def validate_candidate(
     return failures
 
 
+def _coerce_lifetime_stdout_lines(stdout_artifact_or_path: Any) -> list[str]:
+    if stdout_artifact_or_path is None:
+        return []
+    if isinstance(stdout_artifact_or_path, (list, tuple)):
+        return [str(line) for line in stdout_artifact_or_path]
+    if isinstance(stdout_artifact_or_path, Path):
+        try:
+            return stdout_artifact_or_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError as exc:
+            raise RuntimeError(f"lifetime stdout artifact unreadable: {stdout_artifact_or_path} ({exc})") from exc
+    if isinstance(stdout_artifact_or_path, str):
+        candidate = Path(stdout_artifact_or_path)
+        # If it points at an existing file, treat as a path; otherwise treat as raw content.
+        if candidate.exists() and candidate.is_file():
+            try:
+                return candidate.read_text(encoding="utf-8", errors="ignore").splitlines()
+            except OSError as exc:
+                raise RuntimeError(f"lifetime stdout artifact unreadable: {candidate} ({exc})") from exc
+        return stdout_artifact_or_path.splitlines()
+    raise RuntimeError(f"lifetime stdout artifact has unsupported type: {type(stdout_artifact_or_path).__name__}")
+
+
+def _parse_lifetime_lines(marker: str, lines: Iterable[str]) -> tuple[list[dict[str, Any]], list[str]]:
+    entries: list[dict[str, Any]] = []
+    failures: list[str] = []
+    for raw_line in lines:
+        if not raw_line.startswith(marker):
+            continue
+        payload_text = raw_line[len(marker) :].strip()
+        if not payload_text:
+            continue
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError as exc:
+            failures.append(f"lifetime line is not valid JSON: {payload_text!r} ({exc})")
+            continue
+        if not isinstance(payload, dict):
+            failures.append(f"lifetime line payload must be a JSON object: {payload_text!r}")
+            continue
+        entries.append(payload)
+    return entries, failures
+
+
+def validate_lifetime_accounting_proof(
+    manifest_section: dict[str, Any],
+    stdout_artifact_or_path: Any,
+) -> tuple[bool, list[str]]:
+    """Validate [GS-LIFETIME] JSON lines emitted by the lifetime-proof fixture.
+
+    `manifest_section` is the `lifetime_accounting_proof` block from the manifest.
+    `stdout_artifact_or_path` may be a `Path`, a string containing either a
+    filesystem path or raw stdout, or an iterable of lines.
+
+    Returns `(passed, reasons)` where `reasons` is the list of human-readable
+    failure descriptions (empty when `passed=True`).
+    """
+    reasons: list[str] = []
+    if not isinstance(manifest_section, dict):
+        return False, ["lifetime_accounting_proof manifest section must be a JSON object"]
+
+    marker = manifest_section.get("stdout_marker")
+    if not isinstance(marker, str) or not marker:
+        return False, ["lifetime_accounting_proof.stdout_marker must be a non-empty string"]
+
+    required_scenarios = manifest_section.get("required_scenarios", [])
+    if not isinstance(required_scenarios, list) or not required_scenarios:
+        return False, ["lifetime_accounting_proof.required_scenarios must be a non-empty list"]
+
+    metric_fields = manifest_section.get("scenario_metric_fields", {}) or {}
+    thresholds_bytes = manifest_section.get("thresholds_bytes", {}) or {}
+    thresholds_counts = manifest_section.get("thresholds_counts", {}) or {}
+    advisory_fields = manifest_section.get("advisory_fields", []) or []
+    advisory_sentinel = manifest_section.get("advisory_sentinel_value")
+    # advisory_fields_strict_for maps scenario -> [advisory_field, ...] for
+    # scenarios where the advisory field MUST be present in the entry. The
+    # sentinel value remains a tolerated "not measured this run" signal in
+    # strict scenarios (it is the absence of the field, not the sentinel,
+    # that masks regressions like the orphan threshold never being enforced).
+    advisory_fields_strict_for = manifest_section.get("advisory_fields_strict_for", {}) or {}
+
+    try:
+        lines = _coerce_lifetime_stdout_lines(stdout_artifact_or_path)
+    except RuntimeError as exc:
+        return False, [str(exc)]
+
+    entries, parse_failures = _parse_lifetime_lines(marker, lines)
+    reasons.extend(parse_failures)
+
+    by_scenario: dict[str, list[dict[str, Any]]] = {}
+    for entry in entries:
+        scenario = entry.get("scenario")
+        if not isinstance(scenario, str) or not scenario:
+            reasons.append(f"lifetime entry missing scenario name: {entry!r}")
+            continue
+        by_scenario.setdefault(scenario, []).append(entry)
+
+    for scenario in required_scenarios:
+        scenario_entries = by_scenario.get(scenario, [])
+        count = len(scenario_entries)
+        if count == 0:
+            reasons.append(f"lifetime scenario missing from stdout: {scenario}")
+        elif count > 1:
+            # Codex P1 review on PR #390: required scenarios must appear
+            # EXACTLY once. Concatenated or stale logs can otherwise
+            # contribute entries that satisfy required coverage even
+            # when the latest run omitted scenarios. Any duplicate (any
+            # mix of passed=true/false) is treated as suspect.
+            reasons.append(
+                f"lifetime scenario {scenario} reported {count} entries; "
+                f"expected exactly one (duplicate lifetime entry -- "
+                f"concatenated or stale logs)"
+            )
+
+    for scenario, scenario_entries in by_scenario.items():
+        for entry in scenario_entries:
+            if entry.get("passed") is not True:
+                fail_reason = entry.get("fail_reason") or "no fail_reason reported"
+                reasons.append(f"lifetime scenario {scenario} reported passed=false: {fail_reason}")
+                # Continue with other checks so the failure surface is complete.
+
+            # Byte-threshold check using the scenario-specific metric field.
+            byte_threshold = thresholds_bytes.get(scenario)
+            metric_field = metric_fields.get(scenario)
+            if byte_threshold is not None:
+                if not metric_field:
+                    reasons.append(
+                        f"lifetime scenario {scenario} has bytes threshold but no scenario_metric_fields entry"
+                    )
+                else:
+                    metric_value = entry.get(metric_field)
+                    if metric_value is None:
+                        reasons.append(
+                            f"lifetime scenario {scenario} missing metric field {metric_field!r}"
+                        )
+                    elif not _is_json_number(metric_value):
+                        reasons.append(
+                            f"lifetime scenario {scenario} metric {metric_field} must be numeric, got {metric_value!r}"
+                        )
+                    elif metric_value > byte_threshold:
+                        reasons.append(
+                            f"lifetime scenario {scenario} {metric_field}={metric_value} exceeds threshold {byte_threshold}"
+                        )
+            elif metric_field:
+                # Codex P2 review on PR #390: defense-in-depth. When the
+                # scenario declares a metric field (via
+                # scenario_metric_fields) but no corresponding
+                # thresholds_bytes entry, the original code silently
+                # skipped the byte check entirely -- a manifest typo or
+                # accidental key removal could disable the byte guard
+                # while still letting the runtime pass arbitrarily large
+                # rd_bytes_leaked values. The schema validator normally
+                # rejects this at contract time, but if someone edits the
+                # schema check out the runtime must still refuse to
+                # silently accept entries that report a real numeric
+                # value in the metric field with no threshold.
+                metric_value = entry.get(metric_field)
+                if metric_value is not None and _is_json_number(metric_value):
+                    reasons.append(
+                        f"lifetime scenario {scenario} {metric_field}={metric_value} "
+                        f"cannot be enforced because thresholds_bytes.{scenario} is not "
+                        f"declared (byte threshold not declared (manifest invariant); the "
+                        f"schema check should have rejected this)"
+                    )
+
+            # Strict-required advisory fields: scenarios listed in
+            # advisory_fields_strict_for MUST report each named field, even if
+            # the value is the sentinel. A silently missing field would
+            # otherwise let the count threshold go unenforced (e.g.
+            # stringname_orphans dropping stringname_orphan_delta entirely).
+            strict_required_for_scenario = advisory_fields_strict_for.get(scenario, []) or []
+            for required_field in strict_required_for_scenario:
+                if required_field not in entry:
+                    reasons.append(
+                        f"lifetime scenario {scenario} missing required advisory field {required_field!r} "
+                        f"(advisory_fields_strict_for requires it; sentinel {advisory_sentinel!r} is tolerated)"
+                    )
+
+            # Advisory-field checks. -1 sentinel means "not measured this run".
+            for advisory_field in advisory_fields:
+                if advisory_field not in entry:
+                    # Absent fields are tolerated for non-strict scenarios.
+                    # Strict-required scenarios already failed above.
+                    continue
+                value = entry.get(advisory_field)
+                if advisory_sentinel is not None and value == advisory_sentinel:
+                    continue
+                # Map advisory field to a thresholds_counts key via the
+                # shared ADVISORY_FIELD_STRICT_BINDINGS table. Fall back to
+                # the advisory field name itself when no explicit binding
+                # is declared (legacy behaviour).
+                binding = ADVISORY_FIELD_STRICT_BINDINGS.get(advisory_field)
+                if binding is not None:
+                    _, count_threshold_key = binding
+                else:
+                    count_threshold_key = advisory_field
+                count_threshold = thresholds_counts.get(count_threshold_key)
+                if count_threshold is None:
+                    if binding is not None:
+                        # Codex P2 review on PR #390: defense-in-depth.
+                        # When the manifest binds this advisory field to a
+                        # count threshold key but the threshold is missing,
+                        # never silently skip enforcement -- the schema
+                        # check normally rejects this at contract time,
+                        # but if someone edits the schema check out the
+                        # runtime must still refuse to pass arbitrarily
+                        # large deltas.
+                        reasons.append(
+                            f"lifetime scenario {scenario} advisory field "
+                            f"{advisory_field}={value} cannot be enforced "
+                            f"because thresholds_counts.{count_threshold_key} "
+                            f"is not declared (manifest invariant; the schema "
+                            f"check should have rejected this)"
+                        )
+                    continue
+                if not _is_json_number(value):
+                    reasons.append(
+                        f"lifetime scenario {scenario} advisory field {advisory_field} must be numeric, got {value!r}"
+                    )
+                    continue
+                if value > count_threshold:
+                    reasons.append(
+                        f"lifetime scenario {scenario} {advisory_field}={value} exceeds threshold {count_threshold}"
+                    )
+
+    return (not reasons), reasons
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("contract", "candidate"), default="contract")
+    parser.add_argument("--mode", choices=("contract", "candidate", "lifetime"), default="contract")
     parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
     parser.add_argument("--candidate-evidence", default=None)
     parser.add_argument("--issues-json", default=None)
+    parser.add_argument(
+        "--lifetime-stdout",
+        default=None,
+        help="Path to stdout artifact containing [GS-LIFETIME] JSON lines (required for --mode lifetime).",
+    )
     return parser
 
 
@@ -1242,6 +1732,32 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.mode == "contract":
         failures = validate_contract(root, manifest)
+    elif args.mode == "lifetime":
+        if not args.lifetime_stdout:
+            print("--lifetime-stdout is required in lifetime mode", file=sys.stderr)
+            return 2
+        # Codex P2 review on PR #390 (comment #3294976919): run the schema
+        # validator BEFORE invoking validate_lifetime_accounting_proof so
+        # standalone lifetime runs cannot silently accept a malformed
+        # manifest. Without this, e.g. removing advisory_fields_strict_for
+        # or thresholds_counts.stringname_orphans_max would slip past the
+        # lifetime gate because the runtime treats the bound advisory
+        # field as optional. The strictest interpretation -- no opt-out
+        # flag -- is intentional: any workflow that invokes lifetime mode
+        # by itself (local checks, CI lifetime jobs) must satisfy the
+        # same schema invariants that contract mode enforces.
+        schema_failures = _validate_lifetime_accounting_proof_schema(manifest)
+        if schema_failures:
+            print("Renderer release gate lifetime schema check failed:")
+            for failure in schema_failures:
+                print(f" - {failure}")
+            return 1
+        section = manifest.get("lifetime_accounting_proof")
+        if not isinstance(section, dict):
+            print("manifest is missing lifetime_accounting_proof section", file=sys.stderr)
+            return 2
+        passed, reasons = validate_lifetime_accounting_proof(section, Path(args.lifetime_stdout))
+        failures = reasons if not passed else []
     else:
         if not args.candidate_evidence:
             print("--candidate-evidence is required in candidate mode", file=sys.stderr)

@@ -196,6 +196,40 @@ def _base_manifest(root: Path) -> dict[str, Any]:
             "required_groups": ["linux_release_archive", "known_limitations_page"],
             "each_artifact_requires": ["path", "sha256", "godot_binary_commit", "godot_binary_mtime_utc"],
         },
+        "lifetime_accounting_proof": {
+            "stdout_marker": "[GS-LIFETIME] ",
+            "required_scenarios": [
+                "renderer_instance",
+                "failed_init",
+                "scene_director_reload",
+                "asset_attach_detach",
+                "stringname_orphans",
+            ],
+            "scenario_metric_fields": {
+                "renderer_instance": "rd_bytes_leaked",
+                "failed_init": "rd_bytes_leaked",
+                "scene_director_reload": "rd_bytes_leaked",
+                "asset_attach_detach": "rd_bytes_leaked",
+            },
+            "thresholds_bytes": {
+                "renderer_instance": 4194304,
+                "failed_init": 4194304,
+                "scene_director_reload": 262144,
+                "asset_attach_detach": 65536,
+            },
+            "thresholds_counts": {
+                "stringname_orphans_max": 5,
+            },
+            "test_binary_lane": "GaussianSplatting [Lifetime]",
+            "gpu_harness_batch": "Lifetime",
+            "advisory_fields": ["stringname_orphan_delta"],
+            "advisory_sentinel_value": -1,
+            "advisory_fields_strict_for": {
+                "stringname_orphans": ["stringname_orphan_delta"],
+            },
+            "source_prs": [386, 389],
+            "owner_issue": 352,
+        },
     }
 
 
@@ -1228,6 +1262,978 @@ class RendererReleaseGateTests(unittest.TestCase):
             issues = [{"number": 350, "state": "OPEN", "labels": [{"name": "release blocker"}]}]
             failures = checker.validate_candidate(root, manifest, evidence, issues)
             self.assertTrue(any("issue #350 is still blocking" in item for item in failures))
+
+
+def _lifetime_stdout_all_pass() -> str:
+    return "\n".join(
+        [
+            '[GS-LIFETIME] {"scenario":"renderer_instance","passed":true,"rd_bytes_leaked":131072,'
+            '"rdm_owned_leaked":0,"rdm_tracked_leaked":0,"teardown_sync":true,'
+            '"threshold_bytes":4194304,"stringname_orphan_delta":-1,"fail_reason":""}',
+            '[GS-LIFETIME] {"scenario":"failed_init","passed":true,"rd_bytes_leaked":0,'
+            '"rdm_owned_leaked":0,"rdm_tracked_leaked":0,"teardown_sync":false,'
+            '"threshold_bytes":4194304,"stringname_orphan_delta":-1,"fail_reason":""}',
+            '[GS-LIFETIME] {"scenario":"scene_director_reload","passed":true,"rd_bytes_leaked":0,'
+            '"rdm_owned_leaked":0,"rdm_tracked_leaked":0,"teardown_sync":true,'
+            '"threshold_bytes":262144,"stringname_orphan_delta":-1,"fail_reason":""}',
+            '[GS-LIFETIME] {"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":32768,'
+            '"rdm_owned_leaked":0,"rdm_tracked_leaked":0,"teardown_sync":true,'
+            '"threshold_bytes":65536,"stringname_orphan_delta":-1,"fail_reason":""}',
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5,"fail_reason":""}',
+        ]
+    )
+
+
+def _lifetime_manifest_section() -> dict[str, Any]:
+    return {
+        "stdout_marker": "[GS-LIFETIME] ",
+        "required_scenarios": [
+            "renderer_instance",
+            "failed_init",
+            "scene_director_reload",
+            "asset_attach_detach",
+            "stringname_orphans",
+        ],
+        "scenario_metric_fields": {
+            "renderer_instance": "rd_bytes_leaked",
+            "failed_init": "rd_bytes_leaked",
+            "scene_director_reload": "rd_bytes_leaked",
+            "asset_attach_detach": "rd_bytes_leaked",
+        },
+        "thresholds_bytes": {
+            "renderer_instance": 4194304,
+            "failed_init": 4194304,
+            "scene_director_reload": 262144,
+            "asset_attach_detach": 65536,
+        },
+        "thresholds_counts": {"stringname_orphans_max": 5},
+        "advisory_fields": ["stringname_orphan_delta"],
+        "advisory_sentinel_value": -1,
+        "advisory_fields_strict_for": {
+            "stringname_orphans": ["stringname_orphan_delta"],
+        },
+    }
+
+
+class LifetimeAccountingProofTests(unittest.TestCase):
+    def test_lifetime_accounting_proof_all_pass(self) -> None:
+        section = _lifetime_manifest_section()
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, _lifetime_stdout_all_pass())
+        self.assertTrue(passed, reasons)
+        self.assertEqual([], reasons)
+
+    def test_lifetime_accounting_proof_missing_scenario(self) -> None:
+        section = _lifetime_manifest_section()
+        stdout_lines = [
+            line for line in _lifetime_stdout_all_pass().splitlines() if "stringname_orphans" not in line
+        ]
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, "\n".join(stdout_lines))
+        self.assertFalse(passed)
+        self.assertTrue(any("stringname_orphans" in reason and "missing" in reason for reason in reasons))
+
+    def test_lifetime_accounting_proof_scenario_failed(self) -> None:
+        section = _lifetime_manifest_section()
+        stdout = (
+            '[GS-LIFETIME] {"scenario":"renderer_instance","passed":false,"rd_bytes_leaked":131072,'
+            '"stringname_orphan_delta":-1,"fail_reason":"owned RD resources retained at teardown"}\n'
+            '[GS-LIFETIME] {"scenario":"failed_init","passed":true,"rd_bytes_leaked":0,'
+            '"stringname_orphan_delta":-1,"fail_reason":""}\n'
+            '[GS-LIFETIME] {"scenario":"scene_director_reload","passed":true,"rd_bytes_leaked":0,'
+            '"stringname_orphan_delta":-1,"fail_reason":""}\n'
+            '[GS-LIFETIME] {"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":0,'
+            '"stringname_orphan_delta":-1,"fail_reason":""}\n'
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"fail_reason":""}\n'
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(passed)
+        self.assertTrue(
+            any(
+                "renderer_instance" in reason and "passed=false" in reason and "owned RD" in reason
+                for reason in reasons
+            )
+        )
+
+    def test_lifetime_accounting_proof_threshold_exceeded(self) -> None:
+        section = _lifetime_manifest_section()
+        stdout = _lifetime_stdout_all_pass().replace(
+            '"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":32768',
+            '"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":1048576',
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(passed)
+        self.assertTrue(
+            any(
+                "asset_attach_detach" in reason and "exceeds threshold" in reason
+                for reason in reasons
+            )
+        )
+
+    def test_lifetime_accounting_proof_advisory_sentinel(self) -> None:
+        section = _lifetime_manifest_section()
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, _lifetime_stdout_all_pass())
+        self.assertTrue(passed, reasons)
+        # The renderer_instance scenario reports stringname_orphan_delta=-1; it
+        # must not be counted as an orphan-threshold violation.
+        self.assertFalse(any("stringname_orphan_delta" in reason for reason in reasons))
+
+    def test_lifetime_accounting_proof_advisory_real_value(self) -> None:
+        section = _lifetime_manifest_section()
+        stdout = _lifetime_stdout_all_pass().replace(
+            '"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5',
+            '"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":99,"threshold_orphans":5',
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(passed)
+        self.assertTrue(
+            any(
+                "stringname_orphans" in reason
+                and "stringname_orphan_delta=99" in reason
+                and "exceeds threshold 5" in reason
+                for reason in reasons
+            )
+        )
+
+    def test_lifetime_accounting_proof_missing_required_advisory_field(self) -> None:
+        """A strict-required advisory field MUST be present in its scenario.
+
+        Regression guard for PR #390 review: when stringname_orphans drops the
+        stringname_orphan_delta field entirely, the validator previously
+        passed silently and the count threshold was never enforced.
+        """
+        section = _lifetime_manifest_section()
+        # Replace the stringname_orphans line with one that drops the
+        # advisory field entirely (mirrors the bot-supplied bad-stdout).
+        stdout = _lifetime_stdout_all_pass().replace(
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5,"fail_reason":""}',
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,"fail_reason":""}',
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(passed, "missing strict-required advisory field must fail the gate")
+        self.assertTrue(
+            any(
+                "stringname_orphans" in reason
+                and "stringname_orphan_delta" in reason
+                and "required advisory field" in reason
+                for reason in reasons
+            ),
+            f"expected a clear missing-required-advisory failure, got: {reasons!r}",
+        )
+
+    def test_lifetime_accounting_proof_sentinel_in_non_strict_scenario_still_passes(self) -> None:
+        """The renderer_instance scenario reports stringname_orphan_delta=-1
+        as the sentinel ("not measured this run"). It is NOT listed in
+        advisory_fields_strict_for, so the sentinel must continue to pass
+        without regressing the existing tolerated-sentinel contract.
+        """
+        section = _lifetime_manifest_section()
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, _lifetime_stdout_all_pass())
+        self.assertTrue(passed, reasons)
+        self.assertFalse(
+            any("renderer_instance" in reason and "stringname_orphan_delta" in reason for reason in reasons),
+            f"sentinel in non-strict scenario must not trip the gate, got: {reasons!r}",
+        )
+
+    def test_lifetime_accounting_proof_strict_scenario_tolerates_sentinel(self) -> None:
+        """For a strict-required scenario, the field MUST be present, but the
+        sentinel value (-1, "not measured this run") is still tolerated as
+        long as the field itself is reported. This preserves the ability of
+        the lifetime fixture to emit the field even when the orphan probe is
+        skipped, while closing the silent-skip hole.
+        """
+        section = _lifetime_manifest_section()
+        stdout = _lifetime_stdout_all_pass().replace(
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5,"fail_reason":""}',
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":-1,"threshold_orphans":5,"fail_reason":""}',
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertTrue(passed, reasons)
+
+    def test_lifetime_accounting_proof_manifest_schema_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            failures = checker.validate_contract(root, manifest)
+            self.assertEqual(
+                [],
+                [failure for failure in failures if "lifetime_accounting_proof" in failure],
+            )
+
+    def test_lifetime_accounting_proof_manifest_schema_missing_required_field(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["lifetime_accounting_proof"].pop("required_scenarios")
+            failures = checker.validate_contract(root, manifest)
+            self.assertTrue(
+                any(
+                    "lifetime_accounting_proof.required_scenarios" in failure
+                    for failure in failures
+                )
+            )
+
+    def test_lifetime_accounting_proof_reads_from_file_path(self) -> None:
+        section = _lifetime_manifest_section()
+        with tempfile.TemporaryDirectory() as tmp:
+            stdout_path = Path(tmp) / "lifetime.log"
+            stdout_path.write_text(_lifetime_stdout_all_pass() + "\n", encoding="utf-8")
+            passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout_path)
+            self.assertTrue(passed, reasons)
+
+    def test_lifetime_accounting_proof_rejects_invalid_json_payload(self) -> None:
+        section = _lifetime_manifest_section()
+        stdout = _lifetime_stdout_all_pass() + "\n[GS-LIFETIME] {not valid json"
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(passed)
+        self.assertTrue(any("is not valid JSON" in reason for reason in reasons))
+
+    def test_lifetime_accounting_proof_missing_manifest_section(self) -> None:
+        manifest = {"schema_version": 1}
+        failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+        self.assertTrue(any("lifetime_accounting_proof section is missing" in failure for failure in failures))
+
+    def test_lifetime_accounting_proof_advisory_fields_strict_for_schema(self) -> None:
+        """Schema validation must reject malformed advisory_fields_strict_for."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            # Map value must be a non-empty list of strings.
+            manifest["lifetime_accounting_proof"]["advisory_fields_strict_for"] = {
+                "stringname_orphans": [],
+            }
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "advisory_fields_strict_for" in failure
+                    and "stringname_orphans" in failure
+                    and "non-empty list" in failure
+                    for failure in failures
+                ),
+                f"expected empty-list to be rejected, got: {failures!r}",
+            )
+            manifest["lifetime_accounting_proof"]["advisory_fields_strict_for"] = "not-an-object"
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "advisory_fields_strict_for must be a JSON object" in failure
+                    for failure in failures
+                ),
+                f"expected non-object to be rejected, got: {failures!r}",
+            )
+
+    def test_lifetime_accounting_proof_strict_binding_required_when_advisory_listed(self) -> None:
+        """Cross-field schema invariant (Codex P2 review on PR #390).
+
+        When advisory_fields lists stringname_orphan_delta and
+        thresholds_counts declares stringname_orphans_max, the schema MUST
+        require advisory_fields_strict_for to map
+        stringname_orphans -> [stringname_orphan_delta]. Otherwise the
+        manifest can silently drop the field from the entry at runtime and
+        the orphan-count threshold is never enforced (the runtime fix in
+        commit c3ec582e14 only catches it when the map is actually present).
+
+        Covers both failure modes:
+          (a) advisory_fields_strict_for missing entirely.
+          (b) advisory_fields_strict_for exists but does not list
+              stringname_orphans -> [stringname_orphan_delta].
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            # (a) advisory_fields_strict_for missing entirely.
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            self.assertIn(
+                "stringname_orphan_delta",
+                section["advisory_fields"],
+                "test precondition: base manifest lists the advisory field",
+            )
+            self.assertIn(
+                "stringname_orphans_max",
+                section["thresholds_counts"],
+                "test precondition: base manifest declares the count threshold",
+            )
+            del section["advisory_fields_strict_for"]
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "advisory_fields_strict_for" in failure
+                    and "stringname_orphan_delta" in failure
+                    and "stringname_orphans" in failure
+                    and "silently disablable" in failure
+                    for failure in failures
+                ),
+                f"expected missing strict map to be rejected, got: {failures!r}",
+            )
+
+            # (b) advisory_fields_strict_for exists but does not list
+            # stringname_orphans -> [stringname_orphan_delta]. Use a different
+            # (placeholder) scenario so the map is structurally valid.
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            section["advisory_fields_strict_for"] = {
+                "renderer_instance": ["stringname_orphan_delta"],
+            }
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "advisory_fields_strict_for" in failure
+                    and "stringname_orphan_delta" in failure
+                    and "stringname_orphans" in failure
+                    and "silently disablable" in failure
+                    for failure in failures
+                ),
+                f"expected wrong-scenario strict map to be rejected, got: {failures!r}",
+            )
+
+            # (b') strict map lists the right scenario but the wrong field.
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            section["advisory_fields_strict_for"] = {
+                "stringname_orphans": ["some_other_advisory_field"],
+            }
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "advisory_fields_strict_for" in failure
+                    and "stringname_orphan_delta" in failure
+                    and "stringname_orphans" in failure
+                    and "silently disablable" in failure
+                    for failure in failures
+                ),
+                f"expected wrong-field strict map to be rejected, got: {failures!r}",
+            )
+
+            # Positive control: the base manifest (which DOES bind the field
+            # correctly) must still pass cleanly.
+            manifest = _base_manifest(root)
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertEqual(
+                failures,
+                [],
+                f"base manifest must satisfy the new cross-field invariant, got: {failures!r}",
+            )
+
+    def test_lifetime_accounting_proof_rejects_duplicate_required_scenario(self) -> None:
+        """Codex P1 review on PR #390: required scenarios must appear EXACTLY
+        once. Two passing stringname_orphans entries -- as would result from
+        concatenated or stale logs from a previous run -- must trip the gate.
+
+        Without this check, an old successful run could contribute a
+        stringname_orphans line even when the current run omitted the
+        scenario, and required coverage would be silently satisfied.
+        """
+        section = _lifetime_manifest_section()
+        duplicate_line = (
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5,"fail_reason":""}'
+        )
+        stdout = _lifetime_stdout_all_pass() + "\n" + duplicate_line
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(
+            passed,
+            "duplicate required-scenario entries must fail the gate",
+        )
+        self.assertTrue(
+            any(
+                "stringname_orphans" in reason
+                and "2 entries" in reason
+                and "exactly one" in reason
+                and ("duplicate" in reason or "stale" in reason)
+                for reason in reasons
+            ),
+            f"expected duplicate-scenario error citing the count, got: {reasons!r}",
+        )
+
+    def test_lifetime_accounting_proof_rejects_duplicate_with_mixed_pass_fail(self) -> None:
+        """Strictest interpretation of Codex P1: duplicates with any mix of
+        passed=true/false are rejected. The bot's concern is mixed-run
+        artifacts, so any duplicate is suspect even when one entry happens
+        to be failing.
+        """
+        section = _lifetime_manifest_section()
+        duplicate_failing_line = (
+            '[GS-LIFETIME] {"scenario":"stringname_orphans","passed":false,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5,'
+            '"fail_reason":"stale log from previous run"}'
+        )
+        stdout = _lifetime_stdout_all_pass() + "\n" + duplicate_failing_line
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(passed)
+        self.assertTrue(
+            any(
+                "stringname_orphans" in reason
+                and "2 entries" in reason
+                and "exactly one" in reason
+                for reason in reasons
+            ),
+            f"expected duplicate-scenario error even with mixed passed flags, got: {reasons!r}",
+        )
+
+    def test_lifetime_accounting_proof_schema_requires_orphan_threshold_when_advisory_listed(self) -> None:
+        """Codex P2 review on PR #390 (schema side).
+
+        When advisory_fields lists stringname_orphan_delta, the schema MUST
+        require thresholds_counts to declare stringname_orphans_max.
+        Otherwise a manifest typo or accidental key removal silently
+        disables the orphan-count guard while still letting the runtime
+        accept arbitrarily large deltas (passed=true with no enforcement).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            # Precondition: base manifest lists the advisory field.
+            self.assertIn("stringname_orphan_delta", section["advisory_fields"])
+            # Remove the orphan-count threshold from thresholds_counts.
+            section["thresholds_counts"] = {}
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "thresholds_counts" in failure
+                    and "stringname_orphans_max" in failure
+                    and "stringname_orphan_delta" in failure
+                    and "silently disabled" in failure
+                    for failure in failures
+                ),
+                f"expected missing-threshold-despite-advisory to be rejected, got: {failures!r}",
+            )
+
+    def test_lifetime_accounting_proof_runtime_rejects_delta_without_threshold(self) -> None:
+        """Codex P2 review on PR #390 (runtime defense-in-depth side).
+
+        Even if someone edits the schema check out, the runtime must refuse
+        to silently skip orphan-delta enforcement when no threshold is
+        declared. An entry that reports a real (non-sentinel) delta with no
+        threshold in thresholds_counts must fail the lifetime gate instead
+        of passing because count_threshold is None.
+        """
+        section = _lifetime_manifest_section()
+        # Remove the threshold from the manifest section so the runtime
+        # lookup returns None even though stringname_orphan_delta is in
+        # the entry. The schema validator would normally reject this; we
+        # are testing the runtime fallback behaviour.
+        section["thresholds_counts"] = {}
+        # Use a real (non-sentinel) value so the sentinel-skip branch
+        # does not short-circuit the check.
+        stdout = _lifetime_stdout_all_pass().replace(
+            '"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":0,"threshold_orphans":5',
+            '"scenario":"stringname_orphans","passed":true,'
+            '"stringname_orphan_delta":42,"threshold_orphans":5',
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(
+            passed,
+            "runtime must refuse to silently skip enforcement when threshold is missing",
+        )
+        self.assertTrue(
+            any(
+                "stringname_orphans" in reason
+                and "stringname_orphan_delta=42" in reason
+                and "stringname_orphans_max" in reason
+                and "not declared" in reason
+                for reason in reasons
+            ),
+            f"expected runtime defense-in-depth error citing the missing threshold, got: {reasons!r}",
+        )
+
+    def test_main_lifetime_mode_validates_schema_before_runtime(self) -> None:
+        """Codex P2 review on PR #390 (comment #3294976919).
+
+        main()'s --mode lifetime branch must run schema validation BEFORE
+        calling validate_lifetime_accounting_proof, so a manifest missing
+        advisory_fields_strict_for cannot silently pass standalone lifetime
+        runs. Pre-fix, the runtime treated stringname_orphan_delta as
+        optional and returned passed=True for such manifests, disabling
+        the orphan-count guard while still exiting 0.
+
+        Strict interpretation: there is no opt-out flag -- any workflow
+        that invokes --mode lifetime must satisfy the same schema
+        invariants that --mode contract enforces.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # main() computes root = manifest_path.parents[2], so place
+            # the manifest two directories deep so the resolved root points
+            # at the tempdir. The lifetime path does not read other files
+            # from root, so the tempdir itself can stay empty.
+            manifest_path = root / "docs" / "reference" / "renderer_release_gate_manifest.json"
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            section = _lifetime_manifest_section()
+            # Drop advisory_fields_strict_for entirely while leaving
+            # advisory_fields listing stringname_orphan_delta. Pre-fix,
+            # the schema check did not run in lifetime mode and the
+            # runtime accepted the manifest because the missing strict
+            # map silently disabled the bound enforcement.
+            section.pop("advisory_fields_strict_for", None)
+            manifest = {"lifetime_accounting_proof": section}
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            stdout_path = root / "lifetime.log"
+            stdout_path.write_text(_lifetime_stdout_all_pass() + "\n", encoding="utf-8")
+
+            from contextlib import redirect_stdout
+            import io
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                exit_code = checker.main(
+                    [
+                        "--mode",
+                        "lifetime",
+                        "--manifest",
+                        str(manifest_path),
+                        "--lifetime-stdout",
+                        str(stdout_path),
+                    ]
+                )
+            output = buf.getvalue()
+            self.assertNotEqual(
+                exit_code,
+                0,
+                f"lifetime mode must reject a manifest missing advisory_fields_strict_for; "
+                f"got exit_code={exit_code} output={output!r}",
+            )
+            self.assertIn(
+                "lifetime schema check failed",
+                output,
+                f"expected schema-failure header in lifetime mode output, got: {output!r}",
+            )
+            self.assertIn(
+                "advisory_fields_strict_for",
+                output,
+                f"expected error to name the missing schema field, got: {output!r}",
+            )
+            self.assertIn(
+                "stringname_orphan_delta",
+                output,
+                f"expected error to name the bound advisory field, got: {output!r}",
+            )
+
+    def test_schema_requires_strict_scenario_in_required_scenarios(self) -> None:
+        """Codex P2 review on PR #390 (round 6, comment #3295080072).
+
+        Rounds 3, 4, and 5 added schema invariants for the strict map and
+        the count threshold, but none of them required the bound scenario
+        itself to appear in required_scenarios. Removing
+        stringname_orphans from required_scenarios silently disables
+        orphan-threshold enforcement even when advisory_fields_strict_for
+        still maps it and thresholds_counts still declares the bound
+        threshold: the runtime only walks scenarios that actually appear
+        in required_scenarios, so dropping it means the entry is never
+        required to exist and the count threshold is never compared.
+
+        Schema must reject at contract time, reusing the same
+        ADVISORY_FIELD_STRICT_BINDINGS source of truth as the round-3/4/5
+        invariants.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            # Preconditions: every other invariant is satisfied. The
+            # exploit is specifically removing the scenario from
+            # required_scenarios while keeping the rest intact.
+            self.assertIn("stringname_orphan_delta", section["advisory_fields"])
+            self.assertEqual(
+                section["advisory_fields_strict_for"].get("stringname_orphans"),
+                ["stringname_orphan_delta"],
+                "test precondition: strict map binds the field to the scenario",
+            )
+            self.assertIn("stringname_orphans_max", section["thresholds_counts"])
+            self.assertIn("stringname_orphans", section["required_scenarios"])
+            # Drop only the scenario from required_scenarios.
+            section["required_scenarios"] = [
+                name for name in section["required_scenarios"] if name != "stringname_orphans"
+            ]
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "required_scenarios" in failure
+                    and "stringname_orphans" in failure
+                    and "stringname_orphan_delta" in failure
+                    and "bound scenario not required" in failure
+                    for failure in failures
+                ),
+                f"expected missing-scenario-despite-advisory to be rejected, got: {failures!r}",
+            )
+
+    def test_lifetime_mode_rejects_missing_strict_scenario_in_required_scenarios(self) -> None:
+        """Round-6 schema invariant must trip --mode lifetime too.
+
+        Round 4 wired schema checks into the lifetime entrypoint so
+        standalone lifetime runs cannot bypass invariants. The round-6
+        invariant must therefore also fail lifetime mode when the bound
+        scenario is missing from required_scenarios, with exit_code != 0
+        before validate_lifetime_accounting_proof is even invoked.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest_path = root / "docs" / "reference" / "renderer_release_gate_manifest.json"
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            section = _lifetime_manifest_section()
+            # Drop stringname_orphans from required_scenarios while keeping
+            # everything else intact (strict map + count threshold + advisory
+            # field listed). Pre-fix, this would slip past the lifetime
+            # gate because the runtime never walks the absent scenario.
+            section["required_scenarios"] = [
+                name for name in section["required_scenarios"] if name != "stringname_orphans"
+            ]
+            manifest = {"lifetime_accounting_proof": section}
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            stdout_path = root / "lifetime.log"
+            # Use a stdout artifact that also omits the scenario, matching
+            # the manifest. Without the new invariant, the gate would
+            # silently pass.
+            stdout_lines = [
+                line for line in _lifetime_stdout_all_pass().splitlines() if "stringname_orphans" not in line
+            ]
+            stdout_path.write_text("\n".join(stdout_lines) + "\n", encoding="utf-8")
+
+            from contextlib import redirect_stdout
+            import io
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                exit_code = checker.main(
+                    [
+                        "--mode",
+                        "lifetime",
+                        "--manifest",
+                        str(manifest_path),
+                        "--lifetime-stdout",
+                        str(stdout_path),
+                    ]
+                )
+            output = buf.getvalue()
+            self.assertNotEqual(
+                exit_code,
+                0,
+                f"--mode lifetime must reject a manifest whose required_scenarios "
+                f"omits the bound strict scenario; got exit_code={exit_code} "
+                f"output={output!r}",
+            )
+            self.assertIn(
+                "lifetime schema check failed",
+                output,
+                f"expected schema-failure header in lifetime mode output, got: {output!r}",
+            )
+            self.assertIn(
+                "required_scenarios",
+                output,
+                f"expected error to name the missing scenarios field, got: {output!r}",
+            )
+            self.assertIn(
+                "stringname_orphans",
+                output,
+                f"expected error to name the missing bound scenario, got: {output!r}",
+            )
+
+    def test_schema_rejects_duplicate_required_scenarios(self) -> None:
+        """Codex P2 review on PR #390 (comment #3295128412).
+
+        The element-type loop in _validate_lifetime_accounting_proof_schema
+        only checked that each required_scenarios entry was a non-empty
+        string, so a typo replacing "failed_init" with a second
+        "renderer_instance" was accepted silently. The runtime then walked
+        scenarios via membership in required_scenarios, matched the
+        duplicated entry twice while never requiring failed_init to appear
+        in stdout, and validate_lifetime_accounting_proof returned success
+        for an stdout artifact that never reported the dropped scenario --
+        disabling coverage for failed_init while every other gate still
+        returned success.
+
+        Schema must reject duplicates at contract time and the failure
+        message must name the duplicate so the operator can locate the
+        typo immediately.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            # The bot's exploit recipe: replace failed_init with a second
+            # copy of renderer_instance, leaving every other invariant
+            # intact (strict map + thresholds + advisory fields).
+            self.assertIn("renderer_instance", section["required_scenarios"])
+            self.assertIn("failed_init", section["required_scenarios"])
+            section["required_scenarios"] = [
+                "renderer_instance" if name == "failed_init" else name
+                for name in section["required_scenarios"]
+            ]
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "required_scenarios" in failure
+                    and "duplicate" in failure
+                    and "renderer_instance" in failure
+                    for failure in failures
+                ),
+                f"expected duplicate-required-scenarios to be rejected with the duplicate "
+                f"value named, got: {failures!r}",
+            )
+
+    def test_lifetime_mode_rejects_duplicate_required_scenarios(self) -> None:
+        """Round-4 wired the schema check into --mode lifetime so standalone
+        lifetime runs cannot bypass invariants. The duplicate-rejection
+        invariant added for Codex comment #3295128412 must therefore also
+        fail lifetime mode, with exit_code != 0 before
+        validate_lifetime_accounting_proof is invoked.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest_path = root / "docs" / "reference" / "renderer_release_gate_manifest.json"
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            section = _lifetime_manifest_section()
+            # Same exploit as the schema test: drop failed_init by
+            # duplicating renderer_instance. Pre-fix, the lifetime gate
+            # would accept this because the runtime never required
+            # failed_init to appear in the stdout artifact.
+            section["required_scenarios"] = [
+                "renderer_instance" if name == "failed_init" else name
+                for name in section["required_scenarios"]
+            ]
+            manifest = {"lifetime_accounting_proof": section}
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            stdout_path = root / "lifetime.log"
+            # Mirror the manifest: drop failed_init from stdout too.
+            # Without the new invariant, the gate would silently pass.
+            stdout_lines = [
+                line for line in _lifetime_stdout_all_pass().splitlines()
+                if "failed_init" not in line
+            ]
+            stdout_path.write_text("\n".join(stdout_lines) + "\n", encoding="utf-8")
+
+            from contextlib import redirect_stdout
+            import io
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                exit_code = checker.main(
+                    [
+                        "--mode",
+                        "lifetime",
+                        "--manifest",
+                        str(manifest_path),
+                        "--lifetime-stdout",
+                        str(stdout_path),
+                    ]
+                )
+            output = buf.getvalue()
+            self.assertNotEqual(
+                exit_code,
+                0,
+                f"--mode lifetime must reject a manifest whose required_scenarios "
+                f"contains duplicates; got exit_code={exit_code} output={output!r}",
+            )
+            self.assertIn(
+                "lifetime schema check failed",
+                output,
+                f"expected schema-failure header in lifetime mode output, got: {output!r}",
+            )
+            self.assertIn(
+                "required_scenarios",
+                output,
+                f"expected error to name the required_scenarios field, got: {output!r}",
+            )
+            self.assertIn(
+                "duplicate",
+                output,
+                f"expected error to mention duplicates, got: {output!r}",
+            )
+            self.assertIn(
+                "renderer_instance",
+                output,
+                f"expected error to name the duplicated value, got: {output!r}",
+            )
+
+    def test_schema_requires_bytes_threshold_for_metric_scenario(self) -> None:
+        """Codex P2 review on PR #390 (schema side, byte thresholds).
+
+        The bot's exploit recipe: remove asset_attach_detach from
+        thresholds_bytes while still listing it in required_scenarios and
+        scenario_metric_fields, then feed a huge rd_bytes_leaked value --
+        validate_lifetime_accounting_proof returned success because the
+        runtime check at `if byte_threshold is not None` silently fell
+        through, disabling the byte-leak guard for that scenario.
+
+        The schema validator must reject such a manifest at contract time:
+        every required scenario that declares a metric field MUST also
+        declare a thresholds_bytes entry. Mirrors the orphan-count
+        threshold enforcement added in 54fab045a8 but for byte thresholds.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            # Precondition: base manifest binds asset_attach_detach to
+            # a metric field AND a byte threshold.
+            self.assertIn("asset_attach_detach", section["required_scenarios"])
+            self.assertIn("asset_attach_detach", section["scenario_metric_fields"])
+            self.assertIn("asset_attach_detach", section["thresholds_bytes"])
+            # The bot's exploit: drop the threshold while keeping the
+            # metric-field binding and required-scenario membership.
+            del section["thresholds_bytes"]["asset_attach_detach"]
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "thresholds_bytes" in failure
+                    and "asset_attach_detach" in failure
+                    and "scenario_metric_fields" in failure
+                    and "byte threshold not declared" in failure
+                    for failure in failures
+                ),
+                f"expected missing-byte-threshold-despite-metric-field to be rejected, got: {failures!r}",
+            )
+
+    def test_lifetime_mode_rejects_metric_scenario_without_byte_threshold(self) -> None:
+        """Codex P2 review on PR #390 (schema side, byte thresholds) via the
+        --mode lifetime entrypoint added in f6932de597.
+
+        Same exploit as test_schema_requires_bytes_threshold_for_metric_scenario,
+        but routed through the lifetime-mode CLI. The schema-first guard
+        added in f6932de597 means standalone lifetime runs must satisfy the
+        same invariants -- removing a required byte threshold must fail
+        with exit_code != 0 before validate_lifetime_accounting_proof is
+        even invoked.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest_path = root / "docs" / "reference" / "renderer_release_gate_manifest.json"
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            section = _lifetime_manifest_section()
+            # Bot's exploit: drop asset_attach_detach from thresholds_bytes
+            # while keeping it in required_scenarios + scenario_metric_fields.
+            del section["thresholds_bytes"]["asset_attach_detach"]
+            manifest = {"lifetime_accounting_proof": section}
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            # Use a huge leak value, matching the bot's verification recipe.
+            stdout_path = root / "lifetime.log"
+            stdout_text = _lifetime_stdout_all_pass().replace(
+                '"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":32768',
+                '"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":999999999',
+            )
+            stdout_path.write_text(stdout_text + "\n", encoding="utf-8")
+
+            from contextlib import redirect_stdout
+            import io
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                exit_code = checker.main(
+                    [
+                        "--mode",
+                        "lifetime",
+                        "--manifest",
+                        str(manifest_path),
+                        "--lifetime-stdout",
+                        str(stdout_path),
+                    ]
+                )
+            output = buf.getvalue()
+            self.assertNotEqual(
+                exit_code,
+                0,
+                f"--mode lifetime must reject a manifest missing a required byte "
+                f"threshold; got exit_code={exit_code} output={output!r}",
+            )
+            self.assertIn(
+                "lifetime schema check failed",
+                output,
+                f"expected schema-failure header in lifetime mode output, got: {output!r}",
+            )
+            self.assertIn(
+                "thresholds_bytes",
+                output,
+                f"expected error to name the missing threshold map, got: {output!r}",
+            )
+            self.assertIn(
+                "asset_attach_detach",
+                output,
+                f"expected error to name the offending scenario, got: {output!r}",
+            )
+
+    def test_runtime_rejects_real_bytes_without_threshold(self) -> None:
+        """Codex P2 review on PR #390 (runtime defense-in-depth, byte side).
+
+        Even if someone edits the schema check out, the runtime must refuse
+        to silently skip byte-threshold enforcement when no threshold is
+        declared but the entry reports a real numeric rd_bytes_leaked
+        value. Without this, the bot's exploit -- huge leak value with no
+        threshold -- passes the gate.
+        """
+        section = _lifetime_manifest_section()
+        # Bot's exploit: drop the threshold while keeping the metric-field
+        # binding so the scenario still attempts byte enforcement.
+        del section["thresholds_bytes"]["asset_attach_detach"]
+        # Feed a huge non-sentinel leak value -- the exact recipe the bot
+        # verified experimentally.
+        stdout = _lifetime_stdout_all_pass().replace(
+            '"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":32768',
+            '"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":999999999',
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(
+            passed,
+            "runtime must refuse to silently skip byte enforcement when threshold is missing",
+        )
+        self.assertTrue(
+            any(
+                "asset_attach_detach" in reason
+                and "rd_bytes_leaked=999999999" in reason
+                and "thresholds_bytes.asset_attach_detach" in reason
+                and "not declared" in reason
+                for reason in reasons
+            ),
+            f"expected runtime defense-in-depth error citing the missing byte threshold, got: {reasons!r}",
+        )
+
+    def test_main_lifetime_mode_passes_on_valid_manifest(self) -> None:
+        """Positive control for the new schema-first guard: a structurally
+        valid manifest with a passing stdout artifact must still exit 0
+        under --mode lifetime. Without this control, a regression that
+        accidentally rejects all manifests would go undetected.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest_path = root / "docs" / "reference" / "renderer_release_gate_manifest.json"
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            manifest = {"lifetime_accounting_proof": _lifetime_manifest_section()}
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            stdout_path = root / "lifetime.log"
+            stdout_path.write_text(_lifetime_stdout_all_pass() + "\n", encoding="utf-8")
+
+            from contextlib import redirect_stdout
+            import io
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                exit_code = checker.main(
+                    [
+                        "--mode",
+                        "lifetime",
+                        "--manifest",
+                        str(manifest_path),
+                        "--lifetime-stdout",
+                        str(stdout_path),
+                    ]
+                )
+            self.assertEqual(
+                exit_code,
+                0,
+                f"valid lifetime manifest must still pass; got exit_code={exit_code} "
+                f"output={buf.getvalue()!r}",
+            )
 
 
 if __name__ == "__main__":
