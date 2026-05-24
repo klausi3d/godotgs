@@ -2665,6 +2665,22 @@ void GaussianSplatSceneDirector::release_world_submission(ObjectID p_owner_id) {
 	_prune_world_if_unused(scenario);
 }
 
+void GaussianSplatSceneDirector::try_prune_world_if_unused(const RID &p_scenario) {
+	if (!p_scenario.is_valid()) {
+		return;
+	}
+	MutexLock lock(world_mutex);
+	_prune_world_if_unused(p_scenario);
+}
+
+bool GaussianSplatSceneDirector::has_shared_world_for_scenario(const RID &p_scenario) const {
+	if (!p_scenario.is_valid()) {
+		return false;
+	}
+	MutexLock lock(world_mutex);
+	return worlds.getptr(p_scenario) != nullptr;
+}
+
 void GaussianSplatSceneDirector::teardown_world_for_scenario(const RID &p_scenario) {
 	// Explicit, idempotent F6-reload teardown. See header comment for rationale.
 	// Drops every Ref the SharedWorld holds (renderer, asset records, world-submission

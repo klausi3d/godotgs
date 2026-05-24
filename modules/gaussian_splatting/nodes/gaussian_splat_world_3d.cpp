@@ -148,8 +148,29 @@ void GaussianSplatWorld3D::_notification(int p_what) {
             // last_known_scenario is no longer needed for teardown
             // (release_world_submission resolves the scenario from the
             // owner id), but cleared for parity with the node-side fix.
+            //
+            // Ordering matters here. NOTIFICATION_EXIT_TREE already ran
+            // _unregister_shared_renderer() -> release_world_submission(),
+            // which cleared the world_submission record and called
+            // _prune_world_if_unused. At that point this node still held
+            // its `renderer` member Ref so _should_prune_world saw
+            // refcount>1 and skipped the prune. We now drop our renderer
+            // Ref first so the refcount actually falls when we explicitly
+            // re-run the prune below. The second _unregister_shared_renderer()
+            // call is a no-op for prune purposes -- the owner record was
+            // cleared in EXIT_TREE so release_world_submission's
+            // _find_world_for_world_submission() returns null and never
+            // reaches _prune_world_if_unused, which is exactly the bug
+            // Codex review comment #3294797697 on PR #387 flagged. Without
+            // the explicit try_prune_world_if_unused() the SharedWorld
+            // lingers across reload cycles holding the renderer/data
+            // lifetime anchor, defeating the F6-reload-leak fix that
+            // motivated the scenario-wide teardown originally.
             renderer.unref();
             _unregister_shared_renderer();
+            if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
+                director->try_prune_world_if_unused(last_known_scenario);
+            }
             last_known_scenario = RID();
         } break;
         case NOTIFICATION_TRANSFORM_CHANGED: {

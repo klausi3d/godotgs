@@ -475,8 +475,27 @@ void GaussianSplatNode3D::_notification(int p_what) {
             // GaussianSplatWorld3D::NOTIFICATION_PREDELETE (the World3D
             // container surface) -- see PR 4 of #352 and the F6 reload path
             // in gaussian_splat_world_3d.cpp.
+            //
+            // Ordering matters here. NOTIFICATION_EXIT_TREE already ran
+            // _unregister_shared_renderer() -> unregister_instance() ->
+            // _prune_world_if_unused(); at that point this node still held
+            // its `renderer` member Ref, so _should_prune_world saw
+            // refcount>1 and skipped the prune. We now drop our renderer
+            // Ref first so the refcount actually falls when we explicitly
+            // re-run the prune below. The second _unregister_shared_renderer()
+            // call is harmless but a no-op for prune purposes -- the
+            // instance record was removed in EXIT_TREE so unregister_instance
+            // returns early without calling _prune_world_if_unused, which is
+            // exactly the bug Codex review comment #3294797692 on PR #387
+            // flagged. Without the explicit try_prune_world_if_unused() the
+            // SharedWorld lingers across reload cycles holding the
+            // renderer/data lifetime anchor, defeating the F6-reload-leak
+            // fix that motivated the per-node teardown originally.
             renderer.unref();
             _unregister_shared_renderer();
+            if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
+                director->try_prune_world_if_unused(last_known_scenario);
+            }
             last_known_scenario = RID();
         } break;
 
