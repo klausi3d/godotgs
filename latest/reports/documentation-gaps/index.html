@@ -3545,17 +3545,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattinginterfacesoutput_compositorcpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/interfaces/output_compositor.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingcorestreaming_eviction_controllercpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3820,6 +3809,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#modulesgaussian_splattinginterfacesoutput_compositorcpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/interfaces/output_compositor.cpp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingioi_gaussian_loadercpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4011,17 +4011,6 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/renderer/gpu_sorting_config.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingteststest_output_compositor_composite_hazardh" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/tests/test_output_compositor_composite_hazard.h
       
     </span>
   </a>
@@ -4755,6 +4744,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingteststest_output_compositor_composite_hazardh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/tests/test_output_compositor_composite_hazard.h
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingtestssynthetic_ply_writercpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4953,17 +4953,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattinginterfacesoutput_compositorh" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/interfaces/output_compositor.h
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#scriptscoregaussian_splatting_managergd" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5056,6 +5045,17 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/core/gs_project_settings.h
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modulesgaussian_splattinginterfacesoutput_compositorh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/interfaces/output_compositor.h
       
     </span>
   </a>
@@ -8693,39 +8693,6 @@
 <li>line 12: PackedByteArray serialize_records(const Vector&lt;StreamingChun...</li>
 <li>line 24: bool deserialize_records(const PackedByteArray &amp;p_bytes, Vec...</li>
 </ul>
-<h2 id="modulesgaussian_splattinginterfacesoutput_compositorcpp">modules/gaussian_splatting/interfaces/output_compositor.cpp<a class="headerlink" href="#modulesgaussian_splattinginterfacesoutput_compositorcpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 32: bool gs_get_composite_depth_test_enabled() {...</li>
-<li>line 41: GSSceneCompositeDepthPolicy gs_get_scene_composite_depth_pol...</li>
-<li>line 78: void gs_log_scene_depth_contract_skip_once(bool p_missing_so...</li>
-<li>line 99: void OutputCompositor::_bind_methods() {...</li>
-<li>line 110: Error OutputCompositor::initialize(RenderingDevice *p_device...</li>
-<li>line 120: void OutputCompositor::shutdown() {...</li>
-<li>line 138: void OutputCompositor::invalidate_cached_render() {...</li>
-<li>line 147: bool OutputCompositor::<em>is_depth_texture_valid(const RID &amp;p</em>...</li>
-<li>line 220: void OutputCompositor::test_reset_last_viewport_copy_state()...</li>
-<li>line 233: void OutputCompositor::set_device_manager(Ref&lt;RenderDeviceMa...</li>
-<li>line 238: RD::TextureFormat OutputCompositor::_get_texture_format(Rend...</li>
-<li>line 254: bool OutputCompositor::_is_texture_srgb(RenderingDevice *p_d...</li>
-<li>line 277: void OutputCompositor::_track_resource(const RID &amp;p_rid, Ren...</li>
-<li>line 283: void OutputCompositor::_forget_resource(const RID &amp;p_rid) {...</li>
-<li>line 289: void OutputCompositor::_free_tracked_resource(RenderingDevic...</li>
-<li>line 329: bool OutputCompositor::_is_depth_attachment_format(RD::DataF...</li>
-<li>line 345: bool OutputCompositor::_is_srgb_format(RD::DataFormat p_form...</li>
-<li>line 365: static RD::DataFormat _canonical_storage_format(RD::DataForm...</li>
-<li>line 386: String OutputCompositor::_attachment_usage_label(bool p_is_d...</li>
-<li>line 390: bool OutputCompositor::_determine_viewport_blit_format(RD::D...</li>
-<li>line 426: uint64_t OutputCompositor::_viewport_blit_key(RenderingDevic...</li>
-<li>line 432: uint64_t OutputCompositor::_viewport_blit_scratch_key(Render...</li>
-<li>line 439: uint64_t OutputCompositor::_compute_framebuffer_validation_k...</li>
-<li>line 448: RID OutputCompositor::_ensure_viewport_blit_sampler(Renderin...</li>
-<li>line 585: bool OutputCompositor::_ensure_viewport_blit_pipeline(Render...</li>
-<li>line 667: void OutputCompositor::clear_cached_framebuffers() {...</li>
-<li>line 679: void OutputCompositor::clear_viewport_blit_resources() {...</li>
-<li>line 704: RID OutputCompositor::get_cached_framebuffer(RenderingDevice...</li>
-<li>line 1100: bool OutputCompositor::copy_to_framebuffer(const Framebuffer...</li>
-<li>line 1154: OutputCopyResult OutputCompositor::copy_to_render_target(con...</li>
-</ul>
 <h2 id="modulesgaussian_splattingcorestreaming_eviction_controllercpp">modules/gaussian_splatting/core/streaming_eviction_controller.cpp<a class="headerlink" href="#modulesgaussian_splattingcorestreaming_eviction_controllercpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 10: void StreamingEvictionController::load_streaming_tuning_conf...</li>
@@ -9283,6 +9250,43 @@
 <li>line 243: void <em>test_on_tile_counts_readback(const Vector<uint8_t> &amp;p</uint8_t></em>...</li>
 <li>line 316: bool is_complete() const { return begin_ns &gt;= 0.0 &amp;&amp; end_ns ...</li>
 </ul>
+<h2 id="modulesgaussian_splattinginterfacesoutput_compositorcpp">modules/gaussian_splatting/interfaces/output_compositor.cpp<a class="headerlink" href="#modulesgaussian_splattinginterfacesoutput_compositorcpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 32: bool gs_get_composite_depth_test_enabled() {...</li>
+<li>line 41: GSSceneCompositeDepthPolicy gs_get_scene_composite_depth_pol...</li>
+<li>line 78: void gs_log_scene_depth_contract_skip_once(bool p_missing_so...</li>
+<li>line 99: void OutputCompositor::_bind_methods() {...</li>
+<li>line 110: Error OutputCompositor::initialize(RenderingDevice *p_device...</li>
+<li>line 120: void OutputCompositor::shutdown() {...</li>
+<li>line 138: void OutputCompositor::invalidate_cached_render() {...</li>
+<li>line 147: bool OutputCompositor::<em>is_depth_texture_valid(const RID &amp;p</em>...</li>
+<li>line 220: void OutputCompositor::test_reset_last_viewport_copy_state()...</li>
+<li>line 233: void OutputCompositor::set_device_manager(Ref&lt;RenderDeviceMa...</li>
+<li>line 238: RD::TextureFormat OutputCompositor::_get_texture_format(Rend...</li>
+<li>line 254: bool OutputCompositor::_is_texture_srgb(RenderingDevice *p_d...</li>
+<li>line 277: void OutputCompositor::_track_resource(const RID &amp;p_rid, Ren...</li>
+<li>line 283: void OutputCompositor::_forget_resource(const RID &amp;p_rid) {...</li>
+<li>line 289: void OutputCompositor::_free_tracked_resource(RenderingDevic...</li>
+<li>line 329: bool OutputCompositor::_is_depth_attachment_format(RD::DataF...</li>
+<li>line 345: bool OutputCompositor::_is_srgb_format(RD::DataFormat p_form...</li>
+<li>line 365: static RD::DataFormat _canonical_storage_format(RD::DataForm...</li>
+<li>line 386: String OutputCompositor::_attachment_usage_label(bool p_is_d...</li>
+<li>line 390: bool OutputCompositor::_determine_viewport_blit_format(RD::D...</li>
+<li>line 426: uint64_t OutputCompositor::_viewport_blit_key(RenderingDevic...</li>
+<li>line 432: uint64_t OutputCompositor::_viewport_blit_scratch_key(Render...</li>
+<li>line 439: uint64_t OutputCompositor::_compute_framebuffer_validation_k...</li>
+<li>line 448: RID OutputCompositor::_ensure_viewport_blit_sampler(Renderin...</li>
+<li>line 585: bool OutputCompositor::_ensure_viewport_blit_pipeline(Render...</li>
+<li>line 667: void OutputCompositor::clear_cached_framebuffers() {...</li>
+<li>line 679: void OutputCompositor::_evict_oldest_cached_framebuffer_if_n...</li>
+<li>line 711: void OutputCompositor::<em>evict_oldest_framebuffer_validation</em>...</li>
+<li>line 736: void OutputCompositor::test_force_insert_cached_framebuffer(...</li>
+<li>line 749: void OutputCompositor::test_force_insert_framebuffer_validat...</li>
+<li>line 763: void OutputCompositor::clear_viewport_blit_resources() {...</li>
+<li>line 788: RID OutputCompositor::get_cached_framebuffer(RenderingDevice...</li>
+<li>line 1211: bool OutputCompositor::copy_to_framebuffer(const Framebuffer...</li>
+<li>line 1265: OutputCopyResult OutputCompositor::copy_to_render_target(con...</li>
+</ul>
 <h2 id="modulesgaussian_splattingioi_gaussian_loadercpp">modules/gaussian_splatting/io/i_gaussian_loader.cpp<a class="headerlink" href="#modulesgaussian_splattingioi_gaussian_loadercpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 51: void ResourceFormatLoaderGaussianSplat::get_recognized_exten...</li>
@@ -9639,12 +9643,6 @@
 <li>line 492: String GPUSortingConfig::get_current_preset_name() const {...</li>
 <li>line 521: void initialize_gpu_sorting_config() {...</li>
 <li>line 561: void log_sorting_performance(uint32_t element_count, float s...</li>
-</ul>
-<h2 id="modulesgaussian_splattingteststest_output_compositor_composite_hazardh">modules/gaussian_splatting/tests/test_output_compositor_composite_hazard.h<a class="headerlink" href="#modulesgaussian_splattingteststest_output_compositor_composite_hazardh" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 26: static Vector<uint8_t> _build_destination_gradient_256() {...</uint8_t></li>
-<li>line 45: static Vector<uint8_t> _build_source_premultiplied_circle_25...</uint8_t></li>
-<li>line 96: void track(RID p_texture) { textures.push_back(p_texture); }...</li>
 </ul>
 <h2 id="modulesgaussian_splattingrenderertile_render_async_readbackcpp">modules/gaussian_splatting/renderer/tile_render_async_readback.cpp<a class="headerlink" href="#modulesgaussian_splattingrenderertile_render_async_readbackcpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -10601,6 +10599,12 @@
 <li>line 48: Dictionary GaussianStreamingSystem::get_lod_debug_stats() co...</li>
 <li>line 191: uint32_t GaussianStreamingSystem::get_effective_splat_count(...</li>
 </ul>
+<h2 id="modulesgaussian_splattingteststest_output_compositor_composite_hazardh">modules/gaussian_splatting/tests/test_output_compositor_composite_hazard.h<a class="headerlink" href="#modulesgaussian_splattingteststest_output_compositor_composite_hazardh" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 26: static Vector<uint8_t> _build_destination_gradient_256() {...</uint8_t></li>
+<li>line 45: static Vector<uint8_t> _build_source_premultiplied_circle_25...</uint8_t></li>
+<li>line 96: void track(RID p_texture) { textures.push_back(p_texture); }...</li>
+</ul>
 <h2 id="modulesgaussian_splattingtestssynthetic_ply_writercpp">modules/gaussian_splatting/tests/synthetic_ply_writer.cpp<a class="headerlink" href="#modulesgaussian_splattingtestssynthetic_ply_writercpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 13: static float _logit(float p_x) {...</li>
@@ -10748,18 +10752,6 @@
 <li>line 200: void set_max_memory_threshold(size_t bytes) { max_memory_thr...</li>
 <li>line 201: void set_track_stack_traces(bool track) { track_stack_traces...</li>
 </ul>
-<h2 id="modulesgaussian_splattinginterfacesoutput_compositorh">modules/gaussian_splatting/interfaces/output_compositor.h<a class="headerlink" href="#modulesgaussian_splattinginterfacesoutput_compositorh" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 58: RID get_cached_render_depth() const { return output_cache.ca...</li>
-<li>line 68: void set_texture_format_callback(TextureFormatCallback p_cal...</li>
-<li>line 71: void set_internal_render_size(const Size2i &amp;p_size) { intern...</li>
-<li>line 122: void set_cached_render_reuse_enabled(bool p_enabled) {...</li>
-<li>line 128: bool is_cached_render_reuse_enabled() const { return cached_...</li>
-<li>line 150: uint32_t get_cached_framebuffer_count() const { return outpu...</li>
-<li>line 151: uint32_t get_blit_variant_count() const { return viewport_bl...</li>
-<li>line 152: uint32_t get_viewport_blit_scratch_count() const { return vi...</li>
-<li>line 169: LastCompositeStats get_last_composite_stats() const { return...</li>
-</ul>
 <h2 id="scriptscoregaussian_splatting_managergd">scripts/core/gaussian_splatting_manager.gd<a class="headerlink" href="#scriptscoregaussian_splatting_managergd" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 50: func _gs_debug_flag() -&gt; String:...</li>
@@ -10849,6 +10841,20 @@
 <li>line 150: static inline bool is_frame_log_enabled() {...</li>
 <li>line 218: static inline int get_streaming_route_policy(ProjectSettings...</li>
 <li>line 226: static inline GSSphereEffectorSettings get_sphere_effector_s...</li>
+</ul>
+<h2 id="modulesgaussian_splattinginterfacesoutput_compositorh">modules/gaussian_splatting/interfaces/output_compositor.h<a class="headerlink" href="#modulesgaussian_splattinginterfacesoutput_compositorh" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 58: RID get_cached_render_depth() const { return output_cache.ca...</li>
+<li>line 68: void set_texture_format_callback(TextureFormatCallback p_cal...</li>
+<li>line 71: void set_internal_render_size(const Size2i &amp;p_size) { intern...</li>
+<li>line 127: void set_cached_render_reuse_enabled(bool p_enabled) {...</li>
+<li>line 133: bool is_cached_render_reuse_enabled() const { return cached_...</li>
+<li>line 155: uint32_t get_cached_framebuffer_count() const { return outpu...</li>
+<li>line 156: uint32_t get_blit_variant_count() const { return viewport_bl...</li>
+<li>line 157: uint32_t get_viewport_blit_scratch_count() const { return vi...</li>
+<li>line 158: uint32_t get_framebuffer_validation_cache_count() const { re...</li>
+<li>line 159: static constexpr uint32_t get_max_cached_framebuffer_formats...</li>
+<li>line 186: LastCompositeStats get_last_composite_stats() const { return...</li>
 </ul>
 <h2 id="testsexamplesgodottest_projectscriptsmaterialize_corridor_worldgd">tests/examples/godot/test_project/scripts/materialize_corridor_world.gd<a class="headerlink" href="#testsexamplesgodottest_projectscriptsmaterialize_corridor_worldgd" title="Permanent link">¶</a></h2>
 <ul>
@@ -11113,7 +11119,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 23, 2026 20:34:49 UTC">May 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 24, 2026 18:28:55 UTC">May 24, 2026</span>
   </span>
 
     
