@@ -47,6 +47,7 @@
 #include "test_macros.h"
 
 #include "../core/gaussian_data.h"
+#include "../core/gaussian_splat_manager.h"
 #include "../core/gaussian_splat_scene_director.h"
 #include "../core/gaussian_streaming.h"
 #include "../interfaces/render_device_manager.h"
@@ -152,7 +153,19 @@ public:
 		if (finalized_) {
 			return result_.passed;
 		}
+		// Preserve RDM shutdown counts already folded in by
+		// record_rdm_shutdown_counts() before _snapshot() overwrites the
+		// after-baseline's RDM fields with the sentinel 0s. Without this,
+		// rdm_owned_leaked / rdm_tracked_leaked are always 0 in the pass
+		// rule and a real RDM-owned RID leak can slip through whenever
+		// rd_memory_leaked_bytes stays under threshold. (Codex PR #386
+		// review, P1.) Strategy: option (b) — save+restore around
+		// _snapshot, keeping the API unchanged.
+		const uint32_t saved_rdm_owned = result_.after.rdm_owned_resources;
+		const uint32_t saved_rdm_tracked = result_.after.rdm_tracked_resources;
 		_snapshot(result_.after);
+		result_.after.rdm_owned_resources = saved_rdm_owned;
+		result_.after.rdm_tracked_resources = saved_rdm_tracked;
 		_compute_pass();
 		result_.emit_to_stdout();
 		finalized_ = true;
@@ -360,14 +373,39 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] renderer_instanc
 // ---------------------------------------------------------------------------
 TEST_CASE("[GaussianSplatting][Renderer][Lifetime][FailedInit] failed_init lifetime proof") {
 	// Tag is intentionally NOT [RequiresGPU]; this scenario asserts the
-	// no-device path stays clean. If the runner DID provision an RD
-	// singleton, emit a skipped JSON line so the manifest still sees the
-	// scenario in its row count.
-	RenderingDevice *singleton_rd = RenderingDevice::get_singleton();
-	if (singleton_rd != nullptr) {
+	// no-device path stays clean. If the runner DID provision an RD via
+	// ANY of the three resolution paths the GaussianStreamingSystem will
+	// itself consult (RD singleton, RenderingServer, or the
+	// GaussianSplatManager), emit a skipped JSON line so the manifest
+	// still sees the scenario in its row count. Checking only the RD
+	// singleton — as before — meant the system could obtain a device via
+	// the manager/RenderingServer path and the assertion that
+	// is_streaming_capable() == false would then target the wrong branch.
+	// Mirrors the pattern PR #383 shipped in
+	// test_gaussian_streaming_lifecycle.cpp:810-820. (Codex PR #386
+	// review, P2.)
+	bool has_device = RenderingDevice::get_singleton() != nullptr;
+	const char *which_device = "RD singleton";
+	if (!has_device) {
+		if (RenderingServer *rs_probe = RenderingServer::get_singleton()) {
+			if (rs_probe->get_rendering_device() != nullptr) {
+				has_device = true;
+				which_device = "RenderingServer device";
+			}
+		}
+	}
+	if (!has_device) {
+		if (GaussianSplatManager *mgr_probe = GaussianSplatManager::get_singleton()) {
+			if (mgr_probe->get_primary_rendering_device() != nullptr) {
+				has_device = true;
+				which_device = "GaussianSplatManager primary device";
+			}
+		}
+	}
+	if (has_device) {
 		RendererLifetimeFixture fixture("failed_init", nullptr);
 		fixture.capture_baseline();
-		fixture.mark_skipped("RD singleton present");
+		fixture.mark_skipped(String(which_device) + " present");
 		return;
 	}
 
