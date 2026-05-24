@@ -1854,6 +1854,103 @@ evidence:</p>
 </ul>
 <p>The current public performance dashboard remains a non-authoritative snapshot
 until a complete candidate evidence bundle exists.</p>
+<h2 id="lifetime-accounting-proof">Lifetime Accounting Proof<a class="headerlink" href="#lifetime-accounting-proof" title="Permanent link">¶</a></h2>
+<p>The <code>lifetime_accounting_proof</code> manifest section gates the renderer-lifetime
+hazards tracked by #352. It consumes structured <code>[GS-LIFETIME]</code> JSON lines
+written to stdout by the renderer lifetime-proof fixture (PR #386) and the
+orphan-<code>StringName</code> CI guard (PR #389). Each scenario emits one self-contained
+JSON object after the marker prefix declared in the manifest
+(<code>stdout_marker</code>, currently <code>"[GS-LIFETIME] "</code>).</p>
+<p>A passing run reports every required scenario exactly once with <code>passed=true</code>,
+its scenario-specific byte counter below the manifest threshold, and either a
+real orphan-<code>StringName</code> delta below the count threshold or the
+<code>advisory_sentinel_value</code> (<code>-1</code>, "not measured this run").</p>
+<h3 id="required-scenarios">Required scenarios<a class="headerlink" href="#required-scenarios" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Source</th>
+<th>Metric (<code>scenario_metric_fields</code>)</th>
+<th>Byte threshold</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>renderer_instance</code></td>
+<td>PR #386 fixture</td>
+<td><code>rd_bytes_leaked</code></td>
+<td>4194304</td>
+</tr>
+<tr>
+<td><code>failed_init</code></td>
+<td>PR #386 fixture</td>
+<td><code>rd_bytes_leaked</code></td>
+<td>4194304</td>
+</tr>
+<tr>
+<td><code>scene_director_reload</code></td>
+<td>PR #386 fixture</td>
+<td><code>rd_bytes_leaked</code> (growth)</td>
+<td>262144</td>
+</tr>
+<tr>
+<td><code>asset_attach_detach</code></td>
+<td>PR #386 fixture</td>
+<td><code>rd_bytes_leaked</code> (growth)</td>
+<td>65536</td>
+</tr>
+<tr>
+<td><code>stringname_orphans</code></td>
+<td>PR #389 guard</td>
+<td><code>stringname_orphan_delta</code> (advisory)</td>
+<td><code>stringname_orphans_max=5</code></td>
+</tr>
+</tbody>
+</table>
+<p>The advisory counter <code>stringname_orphan_delta</code> is reported by every PR #386
+scenario as the sentinel <code>-1</code> ("not measured this run") and only carries a real
+number from the PR #389 scenario. The gate skips the count check when the
+sentinel is present, then enforces <code>stringname_orphans_max</code> when the
+<code>stringname_orphans</code> scenario supplies the real delta.</p>
+<p>The manifest also declares <code>advisory_fields_strict_for</code> — a map from scenario
+name to the list of advisory fields that scenario MUST report (even if the
+value is the sentinel). This closes a hole where a strict scenario could drop
+the advisory field entirely and silently bypass its count threshold; the
+<code>stringname_orphans</code> scenario is the canonical strict consumer of
+<code>stringname_orphan_delta</code>.</p>
+<h3 id="example-stdout-line">Example stdout line<a class="headerlink" href="#example-stdout-line" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>[GS-LIFETIME] {"scenario":"renderer_instance","passed":true,"rd_bytes_leaked":131072,
+"rdm_owned_leaked":0,"rdm_tracked_leaked":0,"teardown_sync":true,
+"threshold_bytes":4194304,"stringname_orphan_delta":-1,"fail_reason":""}
+</code></pre></div>
+<h3 id="running-the-check">Running the check<a class="headerlink" href="#running-the-check" title="Permanent link">¶</a></h3>
+<p><code>--mode contract</code> only validates that the manifest section exists and is
+well-formed:</p>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>tests/ci/check_renderer_release_gates.py<span class="w"> </span>--mode<span class="w"> </span>contract
+</code></pre></div>
+<p><code>--mode lifetime</code> consumes a captured stdout artifact and runs the full
+scenario-by-scenario check:</p>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>tests/ci/check_renderer_release_gates.py<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--mode<span class="w"> </span>lifetime<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--lifetime-stdout<span class="w"> </span>artifacts/lifetime_stdout.log
+</code></pre></div>
+<h3 id="adding-a-new-scenario">Adding a new scenario<a class="headerlink" href="#adding-a-new-scenario" title="Permanent link">¶</a></h3>
+<ol>
+<li>Add the scenario name to <code>required_scenarios</code> in the manifest section.</li>
+<li>If the scenario reports a byte counter, register the field name in
+   <code>scenario_metric_fields</code> and the threshold in <code>thresholds_bytes</code>.</li>
+<li>If the scenario reports a new advisory counter, add the field name to
+   <code>advisory_fields</code> and the corresponding cap in <code>thresholds_counts</code>. The
+   validator's advisory-mapping currently routes <code>stringname_orphan_delta</code> to
+   <code>stringname_orphans_max</code>; new advisory fields look up their cap by their own
+   name in <code>thresholds_counts</code>. If the scenario is the canonical producer of
+   that advisory counter (so the field MUST always appear in its entry), also
+   list the scenario -&gt; [field] pair under <code>advisory_fields_strict_for</code>.</li>
+<li>Have the producing fixture/guard print <code>[GS-LIFETIME] {...}</code> lines that
+   include <code>scenario</code>, <code>passed</code>, <code>fail_reason</code>, and the metric/advisory fields
+   referenced above.</li>
+</ol>
 <h2 id="ci-hook">CI Hook<a class="headerlink" href="#ci-hook" title="Permanent link">¶</a></h2>
 <p>Run the direct contract check locally:</p>
 <div class="highlight"><pre><span></span><code>python3<span class="w"> </span>tests/ci/check_renderer_release_gates.py<span class="w"> </span>--mode<span class="w"> </span>contract
@@ -1893,7 +1990,7 @@ live network access for the deterministic contract check.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 24, 2026 18:31:22 UTC">May 24, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 24, 2026 19:32:51 UTC">May 24, 2026</span>
   </span>
 
     
