@@ -458,23 +458,26 @@ void GaussianSplatNode3D::_notification(int p_what) {
         } break;
 
         case NOTIFICATION_PREDELETE: {
-            // F6 reload teardown: drop our cached renderer Ref BEFORE asking the
-            // director to free its SharedWorld entry. Without this our Ref would
-            // pin the renderer past worlds.erase(scenario) and the next F6 cycle
-            // would re-leak the same GPU allocations (see
-            // gaussian_splat_scene_director.cpp:351 and PR 4 of #352).
+            // Per-node PREDELETE drops *this* node's references only. It
+            // intentionally does NOT call teardown_world_for_scenario(): that
+            // is a scenario-wide nuclear teardown which would wipe the
+            // SharedWorld (instances, world-submission, renderer ref) shared
+            // by sibling nodes in the same scenario, breaking their rendering
+            // until they happen to re-register.
             //
-            // last_known_scenario was cached at register time -- get_world_3d()
-            // typically returns null by PREDELETE because the node already
-            // exited its tree. The teardown is idempotent: multiple peers in
-            // the same scenario only pay the first call's worlds.erase().
+            // The director already handles correct lifetime: unregister_instance
+            // calls _prune_world_if_unused which checks the renderer's
+            // reference count, so the SharedWorld is reclaimed exactly when
+            // the LAST node leaves (matching the prior per-instance contract
+            // from NOTIFICATION_EXIT_TREE).
+            //
+            // Scenario-wide teardown is the responsibility of
+            // GaussianSplatWorld3D::NOTIFICATION_PREDELETE (the World3D
+            // container surface) -- see PR 4 of #352 and the F6 reload path
+            // in gaussian_splat_world_3d.cpp.
             renderer.unref();
-            if (last_known_scenario.is_valid()) {
-                if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
-                    director->teardown_world_for_scenario(last_known_scenario);
-                }
-                last_known_scenario = RID();
-            }
+            _unregister_shared_renderer();
+            last_known_scenario = RID();
         } break;
 
         case NOTIFICATION_TRANSFORM_CHANGED: {

@@ -17,6 +17,15 @@ private:
     RID render_instance;
     RID gaussian_base;
 
+    // Scenario RID cached at the moment we first resolve a valid World3D
+    // (in _ensure_renderer / _apply_world_internal). NOTIFICATION_PREDELETE
+    // can run after the node has left its world ancestor, at which point
+    // Node3D::get_world_3d() returns null; without this cache the director
+    // entry for world-submission-only scenes would leak because PREDELETE
+    // could not resolve the scenario. Mirrors GaussianSplatNode3D's
+    // last_known_scenario pattern -- see PR 4 of #352.
+    RID last_known_scenario;
+
     bool auto_apply_on_ready = true;
     bool cast_shadow = false;
     bool bounds_dirty = true;

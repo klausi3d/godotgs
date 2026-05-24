@@ -124,13 +124,18 @@ void GaussianSplatWorld3D::_notification(int p_what) {
             // pin the renderer past worlds.erase(scenario) and the next F6 cycle
             // would re-leak the same GPU allocations (see
             // gaussian_splat_scene_director.cpp:351 and PR 4 of #352).
-            const RID scenario = get_world_3d().is_valid() ? get_world_3d()->get_scenario() : RID();
+            //
+            // Use the cached scenario: get_world_3d() returns null once the
+            // node has left its world ancestor (is_inside_world() == false),
+            // which is the common case by PREDELETE in the reload/destruction
+            // path. Without the cache, teardown would be skipped and the
+            // director entry would leak for world-submission-only scenes.
             renderer.unref();
-            if (scenario.is_valid()) {
-                GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
-                if (director) {
-                    director->teardown_world_for_scenario(scenario);
+            if (last_known_scenario.is_valid()) {
+                if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
+                    director->teardown_world_for_scenario(last_known_scenario);
                 }
+                last_known_scenario = RID();
             }
         } break;
         case NOTIFICATION_TRANSFORM_CHANGED: {
@@ -248,10 +253,19 @@ void GaussianSplatWorld3D::clear_world() {
 void GaussianSplatWorld3D::_ensure_renderer() {
     _ensure_gaussian_base();
 
+    // Cache the scenario for PREDELETE. get_world_3d() typically returns null
+    // by the time PREDELETE fires (the node has left its world ancestor), so
+    // we record the scenario at the first opportunity we have a valid one.
+    // See last_known_scenario in the header for rationale.
+    Ref<World3D> resolved_world = get_world_3d();
+    if (resolved_world.is_valid()) {
+        last_known_scenario = resolved_world->get_scenario();
+    }
+
     if (!renderer.is_valid()) {
         GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
         if (director) {
-            renderer = director->get_shared_renderer(get_world_3d().ptr());
+            renderer = director->get_shared_renderer(resolved_world.ptr());
         }
     }
 
@@ -406,6 +420,11 @@ void GaussianSplatWorld3D::_register_shared_renderer() {
     GaussianSplatSceneDirector::WorldSubmission submission;
     submission.owner_id = get_instance_id();
     submission.scenario = get_world_3d().is_valid() ? get_world_3d()->get_scenario() : RID();
+    // Refresh the cached scenario so PREDELETE can teardown even after the
+    // node has left its world ancestor. See last_known_scenario in the header.
+    if (submission.scenario.is_valid()) {
+        last_known_scenario = submission.scenario;
+    }
     submission.gaussian_data = world->get_gaussian_data();
     submission.payload_source = world->get_chunk_payload_source();
     submission.static_chunks = world->get_static_chunks();
