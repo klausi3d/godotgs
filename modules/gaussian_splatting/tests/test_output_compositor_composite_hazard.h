@@ -511,6 +511,129 @@ TEST_CASE("[GaussianSplatting][OutputCompositor][RequiresGPU] framebuffer LRU ca
 	compositor->shutdown();
 }
 
+// Regression for PR #388 bot review: when validate_framebuffer_attachments encounters
+// a stale entry for an existing cache_key (entry present but cache_still_valid == false),
+// the prior implementation called _evict_oldest_framebuffer_validation_if_needed(cache_key)
+// FIRST -- which skips cache_key by design and evicts a DIFFERENT entry -- then the
+// trailing insert(cache_key, ...) overwrote the stale entry. Net effect at cap: cache
+// silently drops from 8 to 7. Fix erases the stale entry BEFORE the eviction helper, so
+// the helper sees size < cap and returns immediately, the trailing insert restores cap,
+// and the refreshed key becomes MRU.
+TEST_CASE("[GaussianSplatting][OutputCompositor][RequiresGPU] framebuffer validation cache refresh-stale-key preserves cap") {
+	REQUIRE_GPU_DEVICE();
+
+	Ref<OutputCompositor> compositor;
+	compositor.instantiate();
+	REQUIRE(compositor->initialize(rd) == OK);
+
+	const uint32_t cap = OutputCompositor::get_max_cached_framebuffer_formats();
+	REQUIRE(cap == 8u);
+
+	// Create `cap` real RGBA8 color textures so validate_framebuffer_attachments
+	// has live attachments to hash into cache keys. Tracking them in a scope guard
+	// keeps cleanup deterministic across REQUIRE failures.
+	HazardTestScope _scope(rd);
+
+	RD::TextureFormat color_format;
+	color_format.width = 32;
+	color_format.height = 32;
+	color_format.depth = 1;
+	color_format.array_layers = 1;
+	color_format.mipmaps = 1;
+	color_format.texture_type = RD::TEXTURE_TYPE_2D;
+	color_format.format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
+	color_format.usage_bits = RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT |
+			RD::TEXTURE_USAGE_SAMPLING_BIT |
+			RD::TEXTURE_USAGE_CAN_UPDATE_BIT;
+
+	Vector<RID> textures;
+	for (uint32_t i = 0; i < cap; i++) {
+		RID tex = rd->texture_create(color_format, RD::TextureView());
+		REQUIRE(tex.is_valid());
+		_scope.track(tex);
+		textures.push_back(tex);
+
+		Vector<RID> attachments;
+		attachments.push_back(tex);
+
+		Vector<AttachmentValidationInfo> infos;
+		Size2i extent;
+		RD::TextureSamples samples = RD::TEXTURE_SAMPLES_1;
+		String err;
+		REQUIRE(compositor->validate_framebuffer_attachments(rd, attachments, infos, extent, samples, err));
+	}
+
+	REQUIRE(compositor->get_framebuffer_validation_cache_count() == cap);
+
+	// Capture the (single) key in the cache that corresponds to textures[0], by
+	// identifying which cache entry holds it as the original_attachment. We can't
+	// recompute the private hash, but we can find the entry by attachment match.
+	OutputCompositor::OutputCacheState &state = compositor->get_cache_state();
+	uint64_t stale_key = 0;
+	bool stale_key_found = false;
+	for (KeyValue<uint64_t, OutputCompositor::FramebufferValidationCacheEntry> &kv : state.framebuffer_validation_cache) {
+		const Vector<AttachmentValidationInfo> &infos = kv.value.infos;
+		if (infos.size() == 1 && infos[0].original_attachment == textures[0]) {
+			stale_key = kv.key;
+			stale_key_found = true;
+			break;
+		}
+	}
+	REQUIRE(stale_key_found);
+
+	// Mark the entry as stale by flipping `valid` to false. This forces the
+	// production refresh-stale code path on the next validate call for the same
+	// attachments (cache_still_valid never gets a chance to be true because the
+	// outer `valid` check short-circuits the hit-path).
+	{
+		OutputCompositor::FramebufferValidationCacheEntry *entry = state.framebuffer_validation_cache.getptr(stale_key);
+		REQUIRE(entry != nullptr);
+		entry->valid = false;
+	}
+
+	// Re-validate using the SAME attachment, which hashes to the SAME cache_key.
+	// Pre-fix: stale entry stays put, eviction helper skips it and evicts a different
+	// slot, insert overwrites stale -> cache size = cap - 1. Post-fix: stale entry is
+	// erased first, eviction helper no-ops because size < cap, insert restores cap.
+	{
+		Vector<RID> attachments;
+		attachments.push_back(textures[0]);
+		Vector<AttachmentValidationInfo> infos;
+		Size2i extent;
+		RD::TextureSamples samples = RD::TEXTURE_SAMPLES_1;
+		String err;
+		REQUIRE(compositor->validate_framebuffer_attachments(rd, attachments, infos, extent, samples, err));
+	}
+
+	// Primary assertion: cache stays at cap (the bug dropped it to cap - 1).
+	CHECK(compositor->get_framebuffer_validation_cache_count() == cap);
+	CHECK(state.framebuffer_validation_cache.has(stale_key));
+
+	// Secondary assertion: the refreshed key is MRU. Drive `cap` additional
+	// distinct synthetic inserts via the test helper; the stale_key entry must
+	// survive because it was most recently touched, while the other 7 original
+	// entries are the LRU victims.
+	for (uint64_t i = 0xF000ull; i < 0xF000ull + cap; ++i) {
+		compositor->test_force_insert_framebuffer_validation(i);
+	}
+	CHECK(compositor->get_framebuffer_validation_cache_count() == cap);
+	CHECK(state.framebuffer_validation_cache.has(stale_key));
+	// All 7 other original keys should have been evicted.
+	uint32_t original_survivors = 0;
+	for (uint32_t i = 0; i < cap; i++) {
+		for (KeyValue<uint64_t, OutputCompositor::FramebufferValidationCacheEntry> &kv : state.framebuffer_validation_cache) {
+			const Vector<AttachmentValidationInfo> &infos = kv.value.infos;
+			if (infos.size() == 1 && infos[0].original_attachment == textures[i]) {
+				original_survivors++;
+				break;
+			}
+		}
+	}
+	CHECK(original_survivors == 1u);
+
+	compositor->shutdown();
+}
+
 } // namespace TestGaussianSplatting
 
 #endif // TESTS_ENABLED

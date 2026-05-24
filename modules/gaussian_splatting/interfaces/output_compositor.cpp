@@ -873,6 +873,14 @@ bool OutputCompositor::validate_framebuffer_attachments(RenderingDevice *p_devic
                 return true;
             }
         }
+        // Stale entry (invalid bit, or one of the cached attachments was freed/recreated
+        // and the new RID reuses the same key path). Erase it BEFORE the eviction helper
+        // runs so the helper sees the cache below cap and does not evict a different,
+        // still-live entry. Without this, the eviction helper would skip cache_key,
+        // evict an unrelated slot, and the trailing insert() would just overwrite the
+        // stale entry -- net effect: cache silently drops one slot below the intended
+        // cap, causing avoidable thrash under attachment-churn workloads.
+        output_cache.framebuffer_validation_cache.erase(cache_key);
     }
     Vector<String> errors;
 

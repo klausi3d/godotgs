@@ -92,8 +92,8 @@
   "known_limitations_page": "docs/development/known-public-alpha-limitations.md",
   "requires_gpu_test_snapshot": {
     "source_glob": "modules/gaussian_splatting/tests/**/*.{h,cpp}",
-    "test_count": 100,
-    "sha256": "154edc04ec9195b85de7bd49ceb640de9a99376d4ef38eb354d005646a893675",
+    "test_count": 101,
+    "sha256": "1af46c9b4af19c242705139ba9839ba9916997d40be41c8a23f8d07fbd84f440",
     "deferred_tags_any": ["SceneTree", "Importer"],
     "deferred_count": 29,
     "new_or_missing_test_policy": "fail-contract-check",
