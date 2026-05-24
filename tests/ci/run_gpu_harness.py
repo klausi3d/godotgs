@@ -62,6 +62,7 @@ BATCHES: tuple[BatchSpec, ...] = (
     BatchSpec("GpuSorting", ("*Sort*][RequiresGPU]*",)),
     BatchSpec("MemoryStream", ("*MemoryStream*][RequiresGPU]*",)),
     BatchSpec("Streaming", ("*Streaming*][RequiresGPU]*",)),
+    BatchSpec("Lifetime", ("*][Lifetime][RequiresGPU]*",)),
 )
 
 # Batches whose filter MUST resolve to at least one matching doctest test case
