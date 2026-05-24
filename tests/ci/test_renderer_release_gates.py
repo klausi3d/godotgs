@@ -1937,6 +1937,124 @@ class LifetimeAccountingProofTests(unittest.TestCase):
                 f"expected error to name the missing bound scenario, got: {output!r}",
             )
 
+    def test_schema_rejects_duplicate_required_scenarios(self) -> None:
+        """Codex P2 review on PR #390 (comment #3295128412).
+
+        The element-type loop in _validate_lifetime_accounting_proof_schema
+        only checked that each required_scenarios entry was a non-empty
+        string, so a typo replacing "failed_init" with a second
+        "renderer_instance" was accepted silently. The runtime then walked
+        scenarios via membership in required_scenarios, matched the
+        duplicated entry twice while never requiring failed_init to appear
+        in stdout, and validate_lifetime_accounting_proof returned success
+        for an stdout artifact that never reported the dropped scenario --
+        disabling coverage for failed_init while every other gate still
+        returned success.
+
+        Schema must reject duplicates at contract time and the failure
+        message must name the duplicate so the operator can locate the
+        typo immediately.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            # The bot's exploit recipe: replace failed_init with a second
+            # copy of renderer_instance, leaving every other invariant
+            # intact (strict map + thresholds + advisory fields).
+            self.assertIn("renderer_instance", section["required_scenarios"])
+            self.assertIn("failed_init", section["required_scenarios"])
+            section["required_scenarios"] = [
+                "renderer_instance" if name == "failed_init" else name
+                for name in section["required_scenarios"]
+            ]
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "required_scenarios" in failure
+                    and "duplicate" in failure
+                    and "renderer_instance" in failure
+                    for failure in failures
+                ),
+                f"expected duplicate-required-scenarios to be rejected with the duplicate "
+                f"value named, got: {failures!r}",
+            )
+
+    def test_lifetime_mode_rejects_duplicate_required_scenarios(self) -> None:
+        """Round-4 wired the schema check into --mode lifetime so standalone
+        lifetime runs cannot bypass invariants. The duplicate-rejection
+        invariant added for Codex comment #3295128412 must therefore also
+        fail lifetime mode, with exit_code != 0 before
+        validate_lifetime_accounting_proof is invoked.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest_path = root / "docs" / "reference" / "renderer_release_gate_manifest.json"
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            section = _lifetime_manifest_section()
+            # Same exploit as the schema test: drop failed_init by
+            # duplicating renderer_instance. Pre-fix, the lifetime gate
+            # would accept this because the runtime never required
+            # failed_init to appear in the stdout artifact.
+            section["required_scenarios"] = [
+                "renderer_instance" if name == "failed_init" else name
+                for name in section["required_scenarios"]
+            ]
+            manifest = {"lifetime_accounting_proof": section}
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            stdout_path = root / "lifetime.log"
+            # Mirror the manifest: drop failed_init from stdout too.
+            # Without the new invariant, the gate would silently pass.
+            stdout_lines = [
+                line for line in _lifetime_stdout_all_pass().splitlines()
+                if "failed_init" not in line
+            ]
+            stdout_path.write_text("\n".join(stdout_lines) + "\n", encoding="utf-8")
+
+            from contextlib import redirect_stdout
+            import io
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                exit_code = checker.main(
+                    [
+                        "--mode",
+                        "lifetime",
+                        "--manifest",
+                        str(manifest_path),
+                        "--lifetime-stdout",
+                        str(stdout_path),
+                    ]
+                )
+            output = buf.getvalue()
+            self.assertNotEqual(
+                exit_code,
+                0,
+                f"--mode lifetime must reject a manifest whose required_scenarios "
+                f"contains duplicates; got exit_code={exit_code} output={output!r}",
+            )
+            self.assertIn(
+                "lifetime schema check failed",
+                output,
+                f"expected schema-failure header in lifetime mode output, got: {output!r}",
+            )
+            self.assertIn(
+                "required_scenarios",
+                output,
+                f"expected error to name the required_scenarios field, got: {output!r}",
+            )
+            self.assertIn(
+                "duplicate",
+                output,
+                f"expected error to mention duplicates, got: {output!r}",
+            )
+            self.assertIn(
+                "renderer_instance",
+                output,
+                f"expected error to name the duplicated value, got: {output!r}",
+            )
+
     def test_schema_requires_bytes_threshold_for_metric_scenario(self) -> None:
         """Codex P2 review on PR #390 (schema side, byte thresholds).
 

@@ -508,6 +508,32 @@ def _validate_lifetime_accounting_proof_schema(manifest: dict[str, Any]) -> list
                 failures.append(
                     f"lifetime_accounting_proof.required_scenarios[{index}] must be a non-empty string"
                 )
+        # Codex P2 review on PR #390 (comment #3295128412): the element-type
+        # loop above accepts duplicate scenario names, so a manifest typo
+        # that replaces "failed_init" with a second "renderer_instance"
+        # silently disables coverage for the dropped scenario -- the
+        # runtime walks scenarios via membership in required_scenarios, so
+        # the duplicated entry is matched twice while failed_init is never
+        # required to appear in stdout, and validate_lifetime_accounting_proof
+        # passes a stdout artifact that never reports failed_init at all.
+        # Reject duplicates at contract time and name them so the operator
+        # can locate the typo immediately.
+        seen: list[str] = []
+        duplicates: list[str] = []
+        for name in required_scenarios:
+            if not isinstance(name, str) or not name:
+                continue
+            if name in seen and name not in duplicates:
+                duplicates.append(name)
+            else:
+                seen.append(name)
+        if duplicates:
+            failures.append(
+                f"lifetime_accounting_proof.required_scenarios contains duplicate "
+                f"entries: {duplicates}; every scenario name must be unique so that "
+                f"a typo replacing one scenario with a copy of another cannot "
+                f"silently disable coverage for the dropped scenario"
+            )
 
     metric_fields = section.get("scenario_metric_fields", {})
     if not isinstance(metric_fields, dict):
