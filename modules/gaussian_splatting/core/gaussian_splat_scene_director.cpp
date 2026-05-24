@@ -2665,6 +2665,62 @@ void GaussianSplatSceneDirector::release_world_submission(ObjectID p_owner_id) {
 	_prune_world_if_unused(scenario);
 }
 
+void GaussianSplatSceneDirector::try_prune_world_if_unused(const RID &p_scenario) {
+	if (!p_scenario.is_valid()) {
+		return;
+	}
+	MutexLock lock(world_mutex);
+	_prune_world_if_unused(p_scenario);
+}
+
+bool GaussianSplatSceneDirector::has_shared_world_for_scenario(const RID &p_scenario) const {
+	if (!p_scenario.is_valid()) {
+		return false;
+	}
+	MutexLock lock(world_mutex);
+	return worlds.getptr(p_scenario) != nullptr;
+}
+
+void GaussianSplatSceneDirector::teardown_world_for_scenario(const RID &p_scenario) {
+	// Explicit, idempotent F6-reload teardown. See header comment for rationale.
+	// Drops every Ref the SharedWorld holds (renderer, asset records, world-submission
+	// data) so the renderer dtor can run as soon as the about-to-be-deleted scene
+	// tree nodes drop their own Refs (which they do in the dtors that follow
+	// PREDELETE). Bypasses _should_prune_world() on purpose -- that check is
+	// designed for in-tree unregistration where reference-holding peers may still
+	// rebind; in the PREDELETE/F6 case the holders themselves are being destroyed.
+	if (!p_scenario.is_valid()) {
+		return;
+	}
+	MutexLock lock(world_mutex);
+	SharedWorld *entry = worlds.getptr(p_scenario);
+	if (!entry) {
+		// Already torn down (e.g. another peer on the same scenario beat us to
+		// the punch) or never existed -- both are no-ops.
+		return;
+	}
+
+	// Drop the renderer's world-submission contract first so the renderer no
+	// longer points at the gaussian_data / payload_source we are about to
+	// release. If the renderer is the last owner this is a no-op once we unref.
+	if (entry->renderer.is_valid()) {
+		entry->renderer->clear_world_submission_contract();
+	}
+
+	// Clear every Ref-holding field on the SharedWorld so the only owner of
+	// the renderer/data is the about-to-be-erased map entry.
+	entry->instances.clear();
+	entry->instance_lookup.clear();
+	entry->sphere_effectors.clear();
+	entry->sphere_effector_lookup.clear();
+	entry->asset_records.clear();
+	entry->world_submission = SharedWorld::WorldSubmissionRecord();
+	entry->renderer.unref();
+
+	// Erase the map entry -- last reference holder for everything above.
+	worlds.erase(p_scenario);
+}
+
 bool GaussianSplatSceneDirector::get_world_submission(ObjectID p_owner_id, WorldSubmission *r_submission) const {
 	ERR_FAIL_NULL_V(r_submission, false);
 

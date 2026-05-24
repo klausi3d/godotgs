@@ -1921,4 +1921,323 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree][RequiresGPU] Resident p
 	tree->process(0.0);
 }
 
+// Regression test for Codex review comment #3294053937 on PR #387.
+//
+// Before the fix, GaussianSplatWorld3D::NOTIFICATION_PREDELETE
+// unconditionally called teardown_world_for_scenario(last_known_scenario).
+// When a non-owner duplicate world node (whose submit_world_submission
+// was rejected because another live owner held the scenario) was deleted,
+// that scenario-wide teardown wiped the SharedWorld entry for the active
+// owner, dropping renderer/submission state for the still-live peer.
+//
+// The fix routes per-instance world node PREDELETE through the existing
+// ownership-aware release_world_submission(owner_id) path (mirroring
+// _unregister_shared_renderer / EXIT_TREE). Non-owners become a no-op
+// and the active owner's SharedWorld is preserved.
+TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Deleting a non-owner world node preserves the active owner's SharedWorld") {
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	Ref<World3D> world = root->get_world_3d();
+	REQUIRE(world.is_valid());
+	const RID scenario = world->get_scenario();
+	REQUIRE(scenario.is_valid());
+
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	const bool owns_director = (director == nullptr);
+	if (!director) {
+		director = memnew(GaussianSplatSceneDirector);
+	}
+	REQUIRE(director != nullptr);
+
+	Ref<GaussianSplatWorld> world_resource_a;
+	world_resource_a.instantiate();
+	world_resource_a->set_gaussian_data(stage1a_make_submission_test_data(8, 1.0f));
+	Vector<GaussianSplatRenderer::StaticChunk> chunks_a;
+	chunks_a.push_back(stage1a_make_submission_test_chunk(0));
+	world_resource_a->set_static_chunks(chunks_a);
+
+	Ref<GaussianSplatWorld> world_resource_b;
+	world_resource_b.instantiate();
+	world_resource_b->set_gaussian_data(stage1a_make_submission_test_data(4, 50.0f));
+	Vector<GaussianSplatRenderer::StaticChunk> chunks_b;
+	chunks_b.push_back(stage1a_make_submission_test_chunk(1));
+	world_resource_b->set_static_chunks(chunks_b);
+
+	// First world node: registers, wins ownership of the scenario's
+	// world-submission slot. submit_world_submission's ownership
+	// arbitration runs without needing a real GPU renderer (the contract
+	// apply is a no-op when the shared renderer is null), so this test
+	// validates the PREDELETE ownership gate even on headless / no-GPU
+	// environments.
+	GaussianSplatWorld3D *world_node_a = memnew(GaussianSplatWorld3D);
+	REQUIRE(world_node_a != nullptr);
+	world_node_a->set_auto_apply_on_ready(false);
+	world_node_a->set_world(world_resource_a);
+	root->add_child(world_node_a);
+	tree->process(0.0);
+	world_node_a->apply_world();
+
+	// Confirm A is the active world-submission owner of the scenario.
+	// Query via the director (not via world_node_a->get_renderer(), which
+	// may be null when no GPU is available -- ownership is independent
+	// of renderer availability).
+	GaussianSplatSceneDirector::WorldSubmission queried_submission;
+	const ObjectID owner_a_id = world_node_a->get_instance_id();
+	REQUIRE_MESSAGE(director->get_world_submission_for_scenario(scenario, &queried_submission),
+			"world_node_a should have submitted to the director on apply_world().");
+	REQUIRE(queried_submission.owner_id == owner_a_id);
+	REQUIRE_MESSAGE(director->get_world_submission(owner_a_id, &queried_submission),
+			"Director should have an active world-submission keyed by owner_a_id.");
+
+	// Snapshot the renderer Ref if one exists; pure-CPU environments may
+	// return null but that's fine for the ownership-gate assertion below.
+	Ref<GaussianSplatRenderer> renderer_a_before = director->get_shared_renderer(world.ptr());
+
+	// Second world node bound to the SAME scenario: its submit must be
+	// rejected by ownership arbitration since A is still live (see
+	// gaussian_splat_scene_director.cpp::submit_world_submission and
+	// _is_world_submission_owner_live).
+	GaussianSplatWorld3D *world_node_b = memnew(GaussianSplatWorld3D);
+	REQUIRE(world_node_b != nullptr);
+	world_node_b->set_auto_apply_on_ready(false);
+	world_node_b->set_world(world_resource_b);
+	root->add_child(world_node_b);
+	tree->process(0.0);
+	world_node_b->apply_world();
+
+	// B is a non-owner: the scenario's world-submission must still point at A.
+	CHECK_MESSAGE(director->get_world_submission_for_scenario(scenario, &queried_submission),
+			"Active owner's world-submission must still exist after a non-owner peer applies.");
+	CHECK_MESSAGE(queried_submission.owner_id == owner_a_id,
+			"Expected the second GaussianSplatWorld3D to be rejected by ownership arbitration; "
+			"active owner of the scenario must still be world_node_a.");
+	// B's own world-submission must NOT exist (it was rejected).
+	GaussianSplatSceneDirector::WorldSubmission rejected_query;
+	CHECK_FALSE_MESSAGE(director->get_world_submission(world_node_b->get_instance_id(), &rejected_query),
+			"Non-owner world_node_b should not have an active world-submission record.");
+
+	// The bug under test: memdelete(B) triggers NOTIFICATION_PREDELETE on a
+	// non-owner. Pre-fix, this called teardown_world_for_scenario(scenario),
+	// erasing the SharedWorld for A.
+	root->remove_child(world_node_b);
+	memdelete(world_node_b);
+	tree->process(0.0);
+
+	// Post-fix expectations: A's SharedWorld entry and active world-submission
+	// must be intact. The director's world-submission record for A must still
+	// be queryable both by scenario and by owner id.
+	CHECK_MESSAGE(director->get_world_submission_for_scenario(scenario, &queried_submission),
+			"Scenario's world-submission record must survive a non-owner peer's PREDELETE.");
+	CHECK_MESSAGE(queried_submission.owner_id == owner_a_id,
+			"Active owner of the scenario must still be world_node_a after non-owner PREDELETE.");
+	CHECK_MESSAGE(director->get_world_submission(owner_a_id, &queried_submission),
+			"Active owner's world-submission must survive a non-owner peer's PREDELETE.");
+	// If a renderer was created, it must be the same Ref (the SharedWorld
+	// entry must not have been torn down and recreated). Pre-fix this also
+	// became null because the entry was erased.
+	if (renderer_a_before.is_valid()) {
+		Ref<GaussianSplatRenderer> renderer_a_after = director->get_shared_renderer(world.ptr());
+		CHECK_MESSAGE(renderer_a_after == renderer_a_before,
+				"Active owner's shared renderer must be the same instance after a non-owner peer's PREDELETE.");
+		CHECK_MESSAGE(director->has_world_submission_for_renderer(renderer_a_before.ptr()),
+				"Active owner's world-submission must still resolve from its renderer.");
+	}
+
+	// Cleanup: removing A IS the owner-path, this exercises the
+	// release_world_submission + _prune_world_if_unused tail.
+	world_node_a->clear_world();
+	root->remove_child(world_node_a);
+	memdelete(world_node_a);
+	tree->process(0.0);
+
+	// After the owner leaves, the world-submission must be gone.
+	CHECK_FALSE_MESSAGE(director->get_world_submission_for_scenario(scenario, &queried_submission),
+			"Owner's PREDELETE must release the world-submission record.");
+
+	if (owns_director) {
+		memdelete(director);
+	}
+}
+
+// Regression test for Codex review comment #3294797697 on PR #387 (world-node analog).
+//
+// Before the fix, GaussianSplatWorld3D::NOTIFICATION_PREDELETE relied on the
+// second `release_world_submission()` call to trigger _prune_world_if_unused
+// AFTER the per-instance `renderer.unref()`. But NOTIFICATION_EXIT_TREE
+// already ran release_world_submission, so the second call's
+// `_find_world_for_world_submission(owner_id)` returned null and never
+// reached the prune helper. With the refcount drop happening only at
+// PREDELETE, the SharedWorld entry persisted across reload cycles holding
+// the renderer/data lifetime anchor.
+//
+// This test exercises the EXIT_TREE-then-PREDELETE ordering with an
+// external Ref on the renderer that keeps the refcount above 1 across
+// EXIT_TREE (so the EXIT_TREE prune correctly observes refcount>1 and
+// skips the prune). Then we drop the external Ref and trigger PREDELETE
+// via memdelete; the fix's explicit `try_prune_world_if_unused` after
+// `renderer.unref()` must garbage-collect the SharedWorld.
+//
+// The pre-existing non-owner test (above) does NOT cover this case --
+// it exercises a DIFFERENT no-op reason (ownership-aware path correctly
+// does nothing for non-owners while the owner's entry is preserved).
+TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] World node PREDELETE prunes SharedWorld after renderer ref drop") {
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	Ref<World3D> world = root->get_world_3d();
+	REQUIRE(world.is_valid());
+	const RID scenario = world->get_scenario();
+	REQUIRE(scenario.is_valid());
+
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	const bool owns_director = (director == nullptr);
+	if (!director) {
+		director = memnew(GaussianSplatSceneDirector);
+	}
+	REQUIRE(director != nullptr);
+
+	Ref<GaussianSplatWorld> world_resource;
+	world_resource.instantiate();
+	world_resource->set_gaussian_data(stage1a_make_submission_test_data(8, 1.0f));
+	Vector<GaussianSplatRenderer::StaticChunk> chunks;
+	chunks.push_back(stage1a_make_submission_test_chunk(0));
+	world_resource->set_static_chunks(chunks);
+
+	GaussianSplatWorld3D *world_node = memnew(GaussianSplatWorld3D);
+	REQUIRE(world_node != nullptr);
+	world_node->set_auto_apply_on_ready(false);
+	world_node->set_world(world_resource);
+	root->add_child(world_node);
+	tree->process(0.0);
+	world_node->apply_world();
+
+	// Snapshot a renderer Ref. On headless / no-GPU runners this may be null;
+	// in that case the SharedWorld is created without a renderer and prune
+	// reduces to the refcount==null branch of _should_prune_world, which is
+	// still the correct gate.
+	Ref<GaussianSplatRenderer> external_renderer_ref = director->get_shared_renderer(world.ptr());
+
+	// The director should have created an entry for this scenario.
+	REQUIRE_MESSAGE(director->has_shared_world_for_scenario(scenario),
+			"Director should have a SharedWorld entry for the scenario after world_node->apply_world().");
+
+	// EXIT_TREE: remove from tree. This triggers
+	// _unregister_shared_renderer() -> release_world_submission() which calls
+	// _prune_world_if_unused. Because world_node still holds its renderer
+	// member Ref AND we hold an external Ref above, refcount must be >1 and
+	// the SharedWorld entry must be preserved.
+	root->remove_child(world_node);
+	tree->process(0.0);
+
+	if (external_renderer_ref.is_valid()) {
+		// The renderer Ref keeps refcount > 1 -- entry must survive EXIT_TREE.
+		CHECK_MESSAGE(director->has_shared_world_for_scenario(scenario),
+				"SharedWorld must survive EXIT_TREE while an external renderer Ref still pins refcount > 1.");
+	}
+
+	// Drop the external Ref. Now the only remaining Ref is whatever
+	// world_node->renderer holds. PREDELETE's renderer.unref() will drop
+	// the last meaningful Ref, and the explicit try_prune_world_if_unused()
+	// must garbage-collect the SharedWorld entry. Pre-fix this never
+	// happened because the second release_world_submission() in PREDELETE
+	// was a no-op (the owner record was cleared in EXIT_TREE).
+	external_renderer_ref.unref();
+
+	// memdelete triggers NOTIFICATION_PREDELETE.
+	memdelete(world_node);
+	tree->process(0.0);
+
+	CHECK_FALSE_MESSAGE(director->has_shared_world_for_scenario(scenario),
+			"SharedWorld must be pruned after PREDELETE's renderer.unref() drops the last reference. "
+			"Pre-fix this entry persisted because the second release_world_submission() in PREDELETE "
+			"was a no-op (owner record already cleared in EXIT_TREE), so _prune_world_if_unused was "
+			"never re-run with the reduced refcount. Defeated the F6-reload-leak fix in PR #387.");
+	GaussianSplatSceneDirector::WorldSubmission queried_submission;
+	CHECK_FALSE_MESSAGE(director->get_world_submission_for_scenario(scenario, &queried_submission),
+			"No world-submission record should remain for the scenario after PREDELETE.");
+
+	if (owns_director) {
+		memdelete(director);
+	}
+}
+
+// Regression test for Codex review comment #3294797692 on PR #387 (node-side analog).
+//
+// Mirrors the world-node case above for GaussianSplatNode3D. The bug shape
+// is identical: NOTIFICATION_EXIT_TREE runs _unregister_shared_renderer() ->
+// unregister_instance() -> _prune_world_if_unused; the prune correctly
+// observes refcount>1 (this node still holds renderer Ref) and skips. On
+// PREDELETE the second _unregister_shared_renderer() call's
+// unregister_instance() finds no instance record (already removed in
+// EXIT_TREE) and returns early WITHOUT calling _prune_world_if_unused. With
+// renderer.unref() happening before the second call, the refcount drop
+// never reaches the prune helper, so the SharedWorld entry persists.
+TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Node PREDELETE prunes SharedWorld after renderer ref drop") {
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	Ref<World3D> world = root->get_world_3d();
+	REQUIRE(world.is_valid());
+	const RID scenario = world->get_scenario();
+	REQUIRE(scenario.is_valid());
+
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	const bool owns_director = (director == nullptr);
+	if (!director) {
+		director = memnew(GaussianSplatSceneDirector);
+	}
+	REQUIRE(director != nullptr);
+
+	GaussianSplatNode3D *instance_node = memnew(GaussianSplatNode3D);
+	REQUIRE(instance_node != nullptr);
+	instance_node->set_splat_asset(stage1a_make_submission_test_asset(2.0f));
+	root->add_child(instance_node);
+	tree->process(0.0);
+
+	// Snapshot an external renderer Ref to keep refcount > 1 across EXIT_TREE.
+	Ref<GaussianSplatRenderer> external_renderer_ref = director->get_shared_renderer(world.ptr());
+
+	REQUIRE_MESSAGE(director->has_shared_world_for_scenario(scenario),
+			"Director should have a SharedWorld entry after instance_node registers.");
+
+	// EXIT_TREE: triggers unregister_instance -> _prune_world_if_unused, but
+	// the prune is gated by refcount>1 (node + external Ref both alive).
+	root->remove_child(instance_node);
+	tree->process(0.0);
+
+	if (external_renderer_ref.is_valid()) {
+		CHECK_MESSAGE(director->has_shared_world_for_scenario(scenario),
+				"SharedWorld must survive EXIT_TREE while an external renderer Ref still pins refcount > 1.");
+	}
+
+	// Drop the external Ref so the node's `renderer` member is the only
+	// remaining Ref. PREDELETE's renderer.unref() must drop the last
+	// meaningful Ref and the explicit try_prune_world_if_unused() must
+	// garbage-collect the SharedWorld.
+	external_renderer_ref.unref();
+
+	memdelete(instance_node);
+	tree->process(0.0);
+
+	CHECK_FALSE_MESSAGE(director->has_shared_world_for_scenario(scenario),
+			"SharedWorld must be pruned after PREDELETE's renderer.unref() drops the last reference. "
+			"Pre-fix this entry persisted because the second _unregister_shared_renderer() in PREDELETE "
+			"was a no-op (instance record already removed in EXIT_TREE), so _prune_world_if_unused was "
+			"never re-run with the reduced refcount. Defeated the F6-reload-leak fix in PR #387.");
+
+	if (owns_director) {
+		memdelete(director);
+	}
+}
+
 #endif // TESTS_ENABLED || TOOLS_ENABLED

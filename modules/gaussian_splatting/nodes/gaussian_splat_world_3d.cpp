@@ -118,6 +118,61 @@ void GaussianSplatWorld3D::_notification(int p_what) {
                 render_instance = RID();
             }
         } break;
+        case NOTIFICATION_PREDELETE: {
+            // Per-instance PREDELETE drops *this* world node's references only.
+            // It intentionally does NOT call teardown_world_for_scenario():
+            // that is a scenario-wide nuclear teardown which would wipe the
+            // SharedWorld entry (instances, world-submission, renderer ref)
+            // even when THIS world node is not the active world-submission
+            // owner -- e.g. a duplicate/secondary GaussianSplatWorld3D in the
+            // same scenario whose submit_world_submission() was rejected by
+            // the director's ownership arbitration. In that case the active
+            // owner is a still-live peer, and the scenario-wide teardown
+            // would drop renderer/submission state for that peer and break
+            // rendering until it fully rebuilds state. Codex review comment
+            // #3294053937 on PR #387 (the WORLD-node analog of the per-NODE
+            // PREDELETE bug fixed in commit d939d11b27).
+            //
+            // release_world_submission(owner_id) is the per-instance,
+            // ownership-aware release path: the director's
+            // _find_world_for_world_submission only matches when this
+            // instance is the actual owner, so non-owners are a no-op and
+            // the active owner's SharedWorld is preserved. When this node
+            // IS the owner, release_world_submission restores the renderer
+            // and calls _prune_world_if_unused, which checks the renderer's
+            // reference count -- combined with the renderer.unref() above,
+            // the SharedWorld is reclaimed exactly when the last external
+            // Ref-holder leaves (the F6 reload intent that motivated the
+            // scenario-wide teardown originally; see PR 4 of #352).
+            //
+            // last_known_scenario is no longer needed for teardown
+            // (release_world_submission resolves the scenario from the
+            // owner id), but cleared for parity with the node-side fix.
+            //
+            // Ordering matters here. NOTIFICATION_EXIT_TREE already ran
+            // _unregister_shared_renderer() -> release_world_submission(),
+            // which cleared the world_submission record and called
+            // _prune_world_if_unused. At that point this node still held
+            // its `renderer` member Ref so _should_prune_world saw
+            // refcount>1 and skipped the prune. We now drop our renderer
+            // Ref first so the refcount actually falls when we explicitly
+            // re-run the prune below. The second _unregister_shared_renderer()
+            // call is a no-op for prune purposes -- the owner record was
+            // cleared in EXIT_TREE so release_world_submission's
+            // _find_world_for_world_submission() returns null and never
+            // reaches _prune_world_if_unused, which is exactly the bug
+            // Codex review comment #3294797697 on PR #387 flagged. Without
+            // the explicit try_prune_world_if_unused() the SharedWorld
+            // lingers across reload cycles holding the renderer/data
+            // lifetime anchor, defeating the F6-reload-leak fix that
+            // motivated the scenario-wide teardown originally.
+            renderer.unref();
+            _unregister_shared_renderer();
+            if (GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton()) {
+                director->try_prune_world_if_unused(last_known_scenario);
+            }
+            last_known_scenario = RID();
+        } break;
         case NOTIFICATION_TRANSFORM_CHANGED: {
             bounds_dirty = true;
             _update_bounds();
@@ -233,10 +288,19 @@ void GaussianSplatWorld3D::clear_world() {
 void GaussianSplatWorld3D::_ensure_renderer() {
     _ensure_gaussian_base();
 
+    // Cache the scenario for PREDELETE. get_world_3d() typically returns null
+    // by the time PREDELETE fires (the node has left its world ancestor), so
+    // we record the scenario at the first opportunity we have a valid one.
+    // See last_known_scenario in the header for rationale.
+    Ref<World3D> resolved_world = get_world_3d();
+    if (resolved_world.is_valid()) {
+        last_known_scenario = resolved_world->get_scenario();
+    }
+
     if (!renderer.is_valid()) {
         GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
         if (director) {
-            renderer = director->get_shared_renderer(get_world_3d().ptr());
+            renderer = director->get_shared_renderer(resolved_world.ptr());
         }
     }
 
@@ -391,6 +455,11 @@ void GaussianSplatWorld3D::_register_shared_renderer() {
     GaussianSplatSceneDirector::WorldSubmission submission;
     submission.owner_id = get_instance_id();
     submission.scenario = get_world_3d().is_valid() ? get_world_3d()->get_scenario() : RID();
+    // Refresh the cached scenario so PREDELETE can teardown even after the
+    // node has left its world ancestor. See last_known_scenario in the header.
+    if (submission.scenario.is_valid()) {
+        last_known_scenario = submission.scenario;
+    }
     submission.gaussian_data = world->get_gaussian_data();
     submission.payload_source = world->get_chunk_payload_source();
     submission.static_chunks = world->get_static_chunks();
