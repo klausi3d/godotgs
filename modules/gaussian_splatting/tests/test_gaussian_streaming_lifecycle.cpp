@@ -808,10 +808,12 @@ TEST_CASE("[GaussianSplatting][Streaming] Initialize without device emits at mos
     // init path is not exercised and the test is irrelevant — skip rather
     // than fail. The intent is to validate the *absence* of a cascade when
     // the device is unavailable. GaussianStreamingSystem::initialize() can
-    // also obtain a device via GaussianSplatManager::get_primary_rendering_device(),
-    // so probe that path too — otherwise initialize() succeeds in lanes
-    // where the manager supplies a device and the CHECK_FALSE assertions
-    // below fail spuriously.
+    // also obtain a device via GaussianSplatManager::get_primary_rendering_device()
+    // (including its local-device fallback), so probe that path too —
+    // otherwise initialize() succeeds in lanes where the manager supplies a
+    // device and the CHECK_FALSE assertions below fail spuriously. Matches
+    // the 3-probe pattern in 1c447b99e3 and the REQUIRE_STREAMING_CAPABLE
+    // macro fix in f42e803ce9.
     bool has_device = RenderingDevice::get_singleton() != nullptr;
     if (!has_device) {
         if (RenderingServer *rs_probe = RenderingServer::get_singleton()) {

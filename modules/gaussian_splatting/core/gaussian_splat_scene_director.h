@@ -246,6 +246,34 @@ public:
     // Runtime inverse of submit_world_submission(). Clears renderer-owned world state and
     // releases the active world-backed source for this owner.
     void release_world_submission(ObjectID p_owner_id);
+    // Explicit, idempotent teardown of every SharedWorld entry bound to this scenario.
+    //
+    // Drops the director's owned Ref<GaussianSplatRenderer> and clears all GPU-resource-bearing
+    // refs (asset records, world-submission record). Called by GaussianSplatWorld3D and
+    // GaussianSplatNode3D from NOTIFICATION_PREDELETE so editor F6 reload (which throws the
+    // SceneTree away without invoking `~GaussianSplatSceneDirector`) does not leak an entire
+    // renderer's worth of GPU allocations per cycle. See gaussian_splat_scene_director.cpp:351
+    // and the closing scenario_c test in test_renderer_lifetime_proof.h.
+    //
+    // Bypasses the `_should_prune_world` refcount>1 guard intentionally: external Refs held
+    // by the about-to-be-deleted scene tree nodes will drop in their own dtors that follow
+    // PREDELETE. After teardown the next register_* call rebuilds the SharedWorld lazily.
+    void teardown_world_for_scenario(const RID &p_scenario);
+    // Public wrapper around _prune_world_if_unused. Required by per-instance PREDELETE
+    // handlers (GaussianSplatNode3D and GaussianSplatWorld3D) to garbage-collect the
+    // SharedWorld AFTER renderer.unref() finally drops the node's reference. The
+    // earlier NOTIFICATION_EXIT_TREE prune call still observes refcount>1 because the
+    // node still holds its renderer Ref at that point; the second unregister call in
+    // PREDELETE is a no-op (the instance/world-submission record is already gone), so
+    // it never reaches the internal prune helper with the reduced refcount. Without
+    // this explicit call the SharedWorld lingers across F6 reload cycles holding the
+    // renderer/data lifetime anchor. See Codex review comments #3294797692 and
+    // #3294797697 on PR #387.
+    void try_prune_world_if_unused(const RID &p_scenario);
+    // Test/diagnostics-only: returns true iff a SharedWorld entry exists for the
+    // given scenario in the director's map. Distinct from get_shared_renderer(),
+    // which lazily creates the entry on a miss.
+    bool has_shared_world_for_scenario(const RID &p_scenario) const;
     bool get_world_submission(ObjectID p_owner_id, WorldSubmission *r_submission) const;
     bool get_world_submission_for_scenario(const RID &p_scenario, WorldSubmission *r_submission) const;
     bool has_world_submission_for_renderer(const GaussianSplatRenderer *p_renderer) const;

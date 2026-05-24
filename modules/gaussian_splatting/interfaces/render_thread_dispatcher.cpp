@@ -106,6 +106,23 @@ bool RenderThreadDispatcher::dispatch_call_on_render_thread_blocking(const Calla
     return true;
 }
 
+bool RenderThreadDispatcher::is_render_thread_dispatch_path_active() const {
+    // Mirrors the early-exit guard at the top of
+    // dispatch_call_on_render_thread_blocking(). If this returns false, a
+    // dispatch attempt would short-circuit to return false WITHOUT
+    // submitting any callable to RenderingServer. If it returns true, the
+    // dispatcher would actually call rs->call_on_render_thread() and then
+    // wait for completion (which itself may still time out).
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs || rs->is_on_render_thread()) {
+        return false;
+    }
+    if (!rs->is_render_loop_enabled()) {
+        return false;
+    }
+    return true;
+}
+
 void RenderThreadDispatcher::notify_completed(uint64_t p_request_id) {
     uint64_t completed = completed_request_id.load(std::memory_order_acquire);
     while (completed < p_request_id &&

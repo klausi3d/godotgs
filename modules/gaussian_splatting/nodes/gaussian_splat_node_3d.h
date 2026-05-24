@@ -206,6 +206,12 @@ private:
     // Rendering resources
     RID render_instance;
     RID gaussian_base;
+    // Cached on every register so NOTIFICATION_PREDELETE can call
+    // GaussianSplatSceneDirector::teardown_world_for_scenario() without depending on
+    // get_world_3d() (which can return null by the time PREDELETE fires after the
+    // node has already exited its tree). PR 4 of #352 -- the F6 reload teardown
+    // path documented at gaussian_splat_scene_director.cpp:351.
+    RID last_known_scenario;
     bool visible_in_viewport = false;
     bool parent_visible = true;
     Node *parent_visibility_target = nullptr;
