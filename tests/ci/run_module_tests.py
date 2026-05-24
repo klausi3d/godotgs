@@ -101,7 +101,7 @@ MODULE_TEST_FILTERS: tuple[tuple[str, tuple[str, ...], tuple[str, ...], bool], .
     # Use stable description fragments instead of tag prefixes for secondary
     # lanes, as doctest matching can differ depending on how bracketed prefixes
     # are parsed in test names.
-    ("GaussianSplatting [Lifetime]", ("*][Lifetime]*",), (), True),
+    ("GaussianSplatting [Lifetime]", ("*][Lifetime]*",), ("*][RequiresGPU]*",), True),
     ("GaussianSplatting [Renderer]", ("*GaussianSplatting*][Renderer]*",), ("*][RequiresGPU]*",), False),
     ("TileRenderer", ("*Shader compilation on local device*",), (), False),
     ("GPU Memory Stream", ("*Triple Buffering*",), (), False),
