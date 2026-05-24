@@ -803,7 +803,12 @@ RID OutputCompositor::get_cached_framebuffer(RenderingDevice *p_device, const RI
         output_cache.cached_framebuffers.erase(key);
     }
 
-    _evict_oldest_cached_framebuffer_if_needed(key);
+    // Eviction is deferred to AFTER validate_framebuffer_attachments() and
+    // framebuffer_create() succeed (Codex review #3294032623 on PR #388). If we
+    // evict here and validation/creation then fails (invalid/non-attachable RID,
+    // transient driver failure), we would have dropped an unrelated cached
+    // framebuffer permanently without inserting a replacement -- repeated failed
+    // requests would drain the cache.
 
     Vector<RID> attachments;
     attachments.push_back(p_texture);
@@ -829,6 +834,12 @@ RID OutputCompositor::get_cached_framebuffer(RenderingDevice *p_device, const RI
     }
     p_device->set_resource_name(framebuffer, "GS_OutputCompositor_CachedFramebuffer");
     _track_resource(framebuffer, p_device, true, "cached_framebuffer");
+
+    // Insertion is committed: only now is it safe to evict an LRU entry to make
+    // room. The stale entry under `key` (if any) was already erased above, so
+    // the helper's "skip incoming key" branch is a no-op here and it will pick
+    // a genuinely different LRU victim when at cap.
+    _evict_oldest_cached_framebuffer_if_needed(key);
 
     CachedFramebuffer new_entry;
     new_entry.framebuffer = framebuffer;

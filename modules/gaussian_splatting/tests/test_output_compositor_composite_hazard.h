@@ -634,6 +634,115 @@ TEST_CASE("[GaussianSplatting][OutputCompositor][RequiresGPU] framebuffer valida
 	compositor->shutdown();
 }
 
+// Regression for PR #388 Codex review #3294032623: get_cached_framebuffer()
+// previously called _evict_oldest_cached_framebuffer_if_needed(key) BEFORE
+// validate_framebuffer_attachments() and framebuffer_create(). If either
+// downstream call failed (invalid/non-attachable RID, transient driver
+// failure), the function returned without inserting a replacement, so an
+// unrelated cached framebuffer had already been evicted permanently. Repeated
+// failed requests would drain the cache below cap. Fix defers eviction until
+// after both calls succeed and an insertion is about to commit.
+TEST_CASE("[GaussianSplatting][OutputCompositor][RequiresGPU] cached framebuffer failed request preserves LRU cache") {
+	REQUIRE_GPU_DEVICE();
+
+	Ref<OutputCompositor> compositor;
+	compositor.instantiate();
+	REQUIRE(compositor->initialize(rd) == OK);
+
+	const uint32_t cap = OutputCompositor::get_max_cached_framebuffer_formats();
+	REQUIRE(cap == 8u);
+
+	HazardTestScope _scope(rd);
+	_scope.compositor = compositor;
+
+	// Color-attachable format so get_cached_framebuffer() goes all the way
+	// through validate_framebuffer_attachments() and framebuffer_create().
+	RD::TextureFormat color_format;
+	color_format.width = 32;
+	color_format.height = 32;
+	color_format.depth = 1;
+	color_format.array_layers = 1;
+	color_format.mipmaps = 1;
+	color_format.texture_type = RD::TEXTURE_TYPE_2D;
+	color_format.format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
+	color_format.usage_bits = RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT |
+			RD::TEXTURE_USAGE_SAMPLING_BIT |
+			RD::TEXTURE_USAGE_CAN_UPDATE_BIT;
+
+	// Fill the cached_framebuffers cache to cap with real, valid framebuffers.
+	Vector<RID> textures;
+	Vector<uint64_t> cached_keys;
+	for (uint32_t i = 0; i < cap; i++) {
+		RID tex = rd->texture_create(color_format, RD::TextureView());
+		REQUIRE(tex.is_valid());
+		_scope.track(tex);
+		textures.push_back(tex);
+
+		RID fb = compositor->get_cached_framebuffer(rd, tex);
+		REQUIRE(fb.is_valid());
+		cached_keys.push_back(tex.get_id());
+	}
+	REQUIRE(compositor->get_cached_framebuffer_count() == cap);
+
+	// Sanity: every key we just inserted is present in the cache map.
+	OutputCompositor::OutputCacheState &state = compositor->get_cache_state();
+	for (uint64_t k : cached_keys) {
+		REQUIRE(state.cached_framebuffers.has(k));
+	}
+
+	// Snapshot LRU ordering by last_access_id so we can detect any eviction.
+	HashMap<uint64_t, uint64_t> pre_failure_access_ids;
+	for (KeyValue<uint64_t, OutputCompositor::CachedFramebuffer> &kv : state.cached_framebuffers) {
+		pre_failure_access_ids.insert(kv.key, kv.value.last_access_id);
+	}
+
+	// Construct a request that will deliberately fail at
+	// validate_framebuffer_attachments(): create a fresh texture, capture its
+	// RID, then immediately free it. The RID stays a valid object (so the
+	// early-out `!p_texture.is_valid()` does not trip), but texture_is_valid()
+	// returns false, which causes validate_framebuffer_attachments() to
+	// return false and get_cached_framebuffer() to bail.
+	RID doomed_tex = rd->texture_create(color_format, RD::TextureView());
+	REQUIRE(doomed_tex.is_valid());
+	const uint64_t doomed_key = doomed_tex.get_id();
+	// Guard against the (extremely unlikely) RID-id collision with any of the
+	// already-cached keys; if this fires the test setup is wrong and we'd be
+	// testing the cache-hit branch instead of the eviction branch.
+	for (uint64_t k : cached_keys) {
+		REQUIRE(k != doomed_key);
+	}
+	rd->free(doomed_tex);
+	REQUIRE_FALSE(rd->texture_is_valid(doomed_tex));
+
+	// The bug being fixed: pre-fix, this call evicts an unrelated LRU entry
+	// BEFORE validation runs, then returns RID() because validation fails.
+	// Post-fix, eviction is deferred until after both validation and
+	// framebuffer_create succeed, so a failed request must NOT mutate the
+	// cache at all.
+	RID result = compositor->get_cached_framebuffer(rd, doomed_tex);
+	CHECK_FALSE(result.is_valid());
+
+	// Primary assertion: cache size unchanged (no eviction occurred).
+	CHECK(compositor->get_cached_framebuffer_count() == cap);
+
+	// Secondary assertion: every originally-cached key is still present and
+	// its last_access_id is unchanged (no LRU rotation, no silent replacement).
+	for (uint64_t k : cached_keys) {
+		CHECK(state.cached_framebuffers.has(k));
+		OutputCompositor::CachedFramebuffer *entry = state.cached_framebuffers.getptr(k);
+		REQUIRE(entry != nullptr);
+		const uint64_t *prev_id = pre_failure_access_ids.getptr(k);
+		REQUIRE(prev_id != nullptr);
+		CHECK(entry->last_access_id == *prev_id);
+	}
+
+	// Tertiary assertion: the doomed key was never inserted as a side effect.
+	CHECK_FALSE(state.cached_framebuffers.has(doomed_key));
+
+	compositor->shutdown();
+	_scope.compositor.unref();
+}
+
 } // namespace TestGaussianSplatting
 
 #endif // TESTS_ENABLED
