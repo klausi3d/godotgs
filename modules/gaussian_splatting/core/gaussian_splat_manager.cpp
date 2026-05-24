@@ -7,6 +7,7 @@
 #include "core/variant/variant.h"
 #include "gaussian_data.h"
 #include "gs_project_settings.h"
+#include "module_string_names.h"
 #include "quality_tier_config.h"
 #include "streaming_vram_regulator.h"
 #include "../renderer/sorting_settings_utils.h"
@@ -25,7 +26,15 @@
 #endif
 
 namespace {
-static const StringName &RENDERDOC_COMPATIBILITY_PATH() { static const StringName s("rendering/gaussian_splatting/renderdoc_compatibility"); return s; }
+// Resolves to the module-owned StringName cache when the module is
+// initialized; constructs an on-demand fallback otherwise (e.g. during
+// early test fixtures). Releasing the cache at module unregister keeps
+// the path out of the engine's exit-time orphan StringName report.
+static const StringName &RENDERDOC_COMPATIBILITY_PATH() {
+    return gs::get_module_string_name_or_construct(
+            &gs::ModuleStringNames::renderdoc_compatibility_path,
+            "rendering/gaussian_splatting/renderdoc_compatibility");
+}
 // Project settings helpers: delegates to gs_project_settings.h (gs::settings namespace).
 static uint32_t _get_uint_setting(ProjectSettings *ps, const StringName &name, uint32_t fallback) {
     return gs::settings::get_uint(ps, name, fallback);

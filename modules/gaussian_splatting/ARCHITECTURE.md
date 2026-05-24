@@ -89,4 +89,4 @@ The streaming system in `core/gaussian_streaming.h` uses state structs and compa
 
 The graphics raster pipeline owned by `tile_render_resources` is also created at module init (PR #345), so the first rendered frame no longer pays the pipeline-create stall. Cached pipeline format is tracked in `tile_render_resources.h` (`tile_raster_pipeline`, plus the framebuffer format the cached pipeline was created against) and invalidated when the framebuffer format changes.
 
-See [READING_ORDER](READING_ORDER.md) for a guided walkthrough and [ABBREVIATIONS](ABBREVIATIONS.md) for naming conventions.
+See [READING_ORDER](READING_ORDER.md) for a guided walkthrough and [ABBREVIATIONS](ABBREVIATIONS.md) for naming conventions. For per-owner GPU resource lifetime contracts (create / destroy / idempotency / threading at file:line precision) see [`docs/architecture/renderer-lifetime-ownership.md`](../../docs/architecture/renderer-lifetime-ownership.md).

@@ -70,18 +70,23 @@ public:
     // Set internal render size (from painterly pass graph)
     void set_internal_render_size(const Size2i &p_size) { internal_render_size = p_size; }
 
-    // Cached framebuffer entry
+    // Cached framebuffer entry. `last_access_id` is bumped on every hit/insert
+    // and consumed by the LRU eviction in get_cached_framebuffer().
     struct CachedFramebuffer {
         RID framebuffer;
         RenderingDevice *device = nullptr;
+        uint64_t last_access_id = 0;
     };
 
-    // Framebuffer validation cache entry
+    // Framebuffer validation cache entry. `last_access_id` is bumped on every
+    // hit/insert and consumed by the LRU eviction in
+    // validate_framebuffer_attachments().
     struct FramebufferValidationCacheEntry {
         bool valid = false;
         Size2i extent = Size2i();
         RD::TextureSamples samples = RD::TEXTURE_SAMPLES_1;
         Vector<AttachmentValidationInfo> infos;
+        uint64_t last_access_id = 0;
     };
 
     struct OutputCacheState {
@@ -150,6 +155,18 @@ public:
     uint32_t get_cached_framebuffer_count() const { return output_cache.cached_framebuffers.size(); }
     uint32_t get_blit_variant_count() const { return viewport_blit_variants.size(); }
     uint32_t get_viewport_blit_scratch_count() const { return viewport_blit_scratch.size(); }
+    uint32_t get_framebuffer_validation_cache_count() const { return output_cache.framebuffer_validation_cache.size(); }
+    static constexpr uint32_t get_max_cached_framebuffer_formats() { return MAX_CACHED_FRAMEBUFFER_FORMATS; }
+
+    // Test-only: directly drive synthetic LRU entries through the same
+    // eviction path the production cache uses. Lets the regression test
+    // assert the cap holds without round-tripping real GPU framebuffers (the
+    // attachment-validation path requires color/depth attachments owned by
+    // the test, which makes a 16-format sweep awkward). Both helpers reuse
+    // the production add/erase site so any future refactor of eviction logic
+    // covers them too.
+    void test_force_insert_cached_framebuffer(uint64_t p_key);
+    void test_force_insert_framebuffer_validation(uint64_t p_key);
 
     // Debug seam published by _copy_final_output_compute. Test-only contract: the
     // hazard-repro test reads this to verify the scratch-copy path was exercised
@@ -220,6 +237,20 @@ private:
     static constexpr uint32_t VIEWPORT_BLIT_SCRATCH_MAX_PER_KIND = 4;
     uint64_t viewport_blit_scratch_next_id = 0;
 
+    // Per-cache entry cap shared by `cached_framebuffers` and
+    // `framebuffer_validation_cache`. Both are keyed by
+    // (RenderingDevice*, attachment-RID-set) so multi-device sessions
+    // (multi-window editor, RenderDoc capture, project reload) accumulate one
+    // entry per unique attachment combination, never evicting. The scratch
+    // pool's matching cap is VIEWPORT_BLIT_SCRATCH_MAX_PER_KIND=4 per kind;
+    // these caches are not partitioned by kind so 8 is the global ceiling. On
+    // insert past the cap we evict the entry with the lowest `last_access_id`
+    // via the existing destroy path (see get_cached_framebuffer and
+    // validate_framebuffer_attachments).
+    static constexpr uint32_t MAX_CACHED_FRAMEBUFFER_FORMATS = 8;
+    uint64_t cached_framebuffer_next_id = 0;
+    uint64_t framebuffer_validation_next_id = 0;
+
     // State
     bool initialized = false;
     RenderingDevice *rd = nullptr;
@@ -270,6 +301,14 @@ private:
             const RD::TextureFormat &p_destination_format, RID p_source_depth, RID p_destination_depth,
             bool p_depth_test_enabled, bool p_depth_is_orthogonal, float p_z_near, float p_z_far,
             float p_depth_linearize_mul, float p_depth_linearize_add, float p_depth_epsilon);
+
+    // LRU eviction for the format-keyed caches. Both share the
+    // MAX_CACHED_FRAMEBUFFER_FORMATS cap; on insert past the cap the entry
+    // with the lowest `last_access_id` is freed via the existing destroy
+    // path. Skips eviction when the key already exists (caller is refreshing
+    // an entry, not adding a new one).
+    void _evict_oldest_cached_framebuffer_if_needed(uint64_t p_incoming_key);
+    void _evict_oldest_framebuffer_validation_if_needed(uint64_t p_incoming_key);
 
     // Attachment validation helpers
     uint64_t _compute_framebuffer_validation_key(RenderingDevice *p_device, const Vector<RID> &p_attachments) const;

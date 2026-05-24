@@ -10,8 +10,10 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import importlib.util
+import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -143,6 +145,44 @@ HISTORY_ARTIFACT_GUARD_MODE_ENV = "GS_CI_HISTORY_ARTIFACT_GUARD_MODE"
 HISTORY_ARTIFACT_GUARD_MODES = ("off", "warn", "strict")
 HISTORY_ARTIFACT_MATCH_COUNT_RE = re.compile(r"Matched blob entries:\s*(\d+)")
 DOCTEST_SKIP_MARKER_RE = re.compile(r"(?m)^\s*(?:Skipping(?: test)?\s*-\s+.+)$")
+
+# StringName orphan guard: PR 6 of work package #352.
+#
+# Headless --verbose runs of the engine trigger StringName::cleanup() in
+# core/string/string_name.cpp, which prints `Orphan StringName: ...`
+# lines for any StringName whose refcount != static_count at exit. The
+# Gaussian Splatting module previously surfaced ~19 orphan entries from
+# its own cached StringName paths and Dictionary-key sites because the
+# module never released those caches at unregister. PR 6 closes the
+# module-owned cases; this guard locks the post-fix count in place so a
+# future regression cannot silently re-leak module-owned StringNames.
+#
+# The guard runs the binary on the canonical synthetic-test project
+# (which loads the module, registers project settings, and exits via
+# --quit). The `--test --test-case=*Synthetic*` doctest mode does NOT
+# exercise the orphan report because doctest's exit path is not the same
+# as the engine's cleanup path, so the project-with-quit run is what
+# actually exercises StringName::cleanup.
+#
+# Threshold is configurable so the guard can absorb a small bounded set
+# of orphans that may come from engine-side Variant infrastructure
+# rather than from this module. PR 7 will tighten this to a
+# delta-vs-baseline rule of zero. Set GS_STRINGNAME_ORPHAN_THRESHOLD to
+# override the default. Set GS_STRINGNAME_ORPHAN_PROJECT to override the
+# probe project (default tests/examples/godot/test_project).
+STRINGNAME_ORPHAN_GUARD_DEFAULT_PROJECT = (
+    ROOT / "tests" / "examples" / "godot" / "test_project"
+)
+STRINGNAME_ORPHAN_GUARD_PROJECT_ENV = "GS_STRINGNAME_ORPHAN_PROJECT"
+# Empirical post-fix module-owned orphan count is 0; a small headroom
+# absorbs unrelated engine-side noise.
+STRINGNAME_ORPHAN_GUARD_DEFAULT_THRESHOLD = 5
+STRINGNAME_ORPHAN_GUARD_THRESHOLD_ENV = "GS_STRINGNAME_ORPHAN_THRESHOLD"
+STRINGNAME_ORPHAN_GUARD_BINARY_ENV = "GODOT_BINARY"
+STRINGNAME_ORPHAN_GUARD_TIMEOUT_SEC = 120
+STRINGNAME_ORPHAN_LINE_RE = re.compile(
+    r"^Orphan StringName:\s*(?P<name>[^\(]+?)\s*\(.*\)\s*$", re.MULTILINE
+)
 
 SETTING_MUTATION_RE = re.compile(r"->set_setting\s*\(")
 FS_WRITE_RULES = (
@@ -837,6 +877,200 @@ def _run_render_guard_step(base_ref: str | None) -> int | None:
     return None
 
 
+def _resolve_stringname_orphan_threshold() -> int:
+    raw = os.environ.get(STRINGNAME_ORPHAN_GUARD_THRESHOLD_ENV, "").strip()
+    if not raw:
+        return STRINGNAME_ORPHAN_GUARD_DEFAULT_THRESHOLD
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return STRINGNAME_ORPHAN_GUARD_DEFAULT_THRESHOLD
+
+
+def _count_stringname_orphans(output: str) -> tuple[int, list[str]]:
+    matches = STRINGNAME_ORPHAN_LINE_RE.findall(output)
+    return len(matches), matches
+
+
+def _emit_stringname_orphan_lifetime_line(
+    passed: bool, delta: int, threshold: int, fail_reason: str
+) -> None:
+    payload = {
+        "scenario": "stringname_orphans",
+        "passed": passed,
+        "stringname_orphan_delta": delta,
+        "threshold_orphans": threshold,
+        "fail_reason": fail_reason,
+    }
+    # Stable ordering so PR 7's manifest parser can diff the line verbatim.
+    print("[GS-LIFETIME] " + json.dumps(payload, sort_keys=False, separators=(",", ":")))
+
+
+def _resolve_stringname_orphan_project() -> Path:
+    raw = os.environ.get(STRINGNAME_ORPHAN_GUARD_PROJECT_ENV, "").strip()
+    if raw:
+        candidate = Path(raw)
+        if not candidate.is_absolute():
+            candidate = (ROOT / candidate).resolve()
+        return candidate
+    return STRINGNAME_ORPHAN_GUARD_DEFAULT_PROJECT
+
+
+def _run_stringname_orphan_guard_step(godot: str) -> int | None:
+    """Subprocess CI guard for PR 6 of work package #352.
+
+    Spawns the Godot binary headless+verbose against a representative
+    project (default tests/examples/godot/test_project) with --quit so
+    that StringName::cleanup() runs at exit, then counts the
+    ``Orphan StringName:`` lines it emits. Emits one ``[GS-LIFETIME]``
+    JSON line shaped to match the stringname_orphans scenario PR 7's
+    manifest gate will consume.
+
+    The guard is informational for now: it passes when the orphan count
+    is at or below threshold. PR 7 tightens this to ``delta vs baseline
+    must be 0``. Missing binary path or missing probe project is
+    non-fatal (the guard short-circuits and emits a passing line with a
+    sentinel delta of -1 so guard-only mode still completes in
+    environments without a built binary or sample project).
+    """
+    threshold = _resolve_stringname_orphan_threshold()
+    project = _resolve_stringname_orphan_project()
+    normalized_binary = _normalize_process_arg(godot)
+    if not normalized_binary:
+        print(
+            "[module-tests] StringName orphan guard skipped: no Godot binary "
+            f"specified (set --godot-binary or {STRINGNAME_ORPHAN_GUARD_BINARY_ENV})."
+        )
+        _emit_stringname_orphan_lifetime_line(
+            passed=True,
+            delta=-1,
+            threshold=threshold,
+            fail_reason="binary_unspecified",
+        )
+        return None
+
+    binary_path = Path(normalized_binary)
+    # Accept either a direct file path or a command-style name that is
+    # resolvable via PATH (e.g. the default `godot`). shutil.which honors
+    # PATHEXT on Windows so `godot` can resolve to `godot.exe`/`.bat`.
+    path_resolved_binary = shutil.which(normalized_binary)
+    if not binary_path.is_file() and path_resolved_binary is None:
+        print(
+            f"[module-tests] StringName orphan guard skipped: binary not found "
+            f"at '{normalized_binary}' and not resolvable via PATH."
+        )
+        _emit_stringname_orphan_lifetime_line(
+            passed=True,
+            delta=-1,
+            threshold=threshold,
+            fail_reason="binary_missing",
+        )
+        return None
+    # Prefer the literal path when it exists; otherwise use the PATH-resolved
+    # location so subprocess.run does not need to re-resolve via PATHEXT.
+    invocation_binary = (
+        normalized_binary if binary_path.is_file() else path_resolved_binary
+    )
+
+    if not project.is_dir() or not (project / "project.godot").is_file():
+        print(
+            f"[module-tests] StringName orphan guard skipped: probe project "
+            f"not found at '{project}'."
+        )
+        _emit_stringname_orphan_lifetime_line(
+            passed=True,
+            delta=-1,
+            threshold=threshold,
+            fail_reason="project_missing",
+        )
+        return None
+
+    command = [
+        invocation_binary,
+        "--path",
+        str(project),
+        "--headless",
+        "--verbose",
+        "--quit",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=STRINGNAME_ORPHAN_GUARD_TIMEOUT_SEC,
+        )
+    except (FileNotFoundError, PermissionError, OSError, subprocess.TimeoutExpired) as exc:
+        print(
+            f"[module-tests] StringName orphan guard failed to run: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        _emit_stringname_orphan_lifetime_line(
+            passed=False,
+            delta=-1,
+            threshold=threshold,
+            fail_reason=f"subprocess_error:{type(exc).__name__}",
+        )
+        return 1
+
+    combined_output = (result.stdout or "") + (result.stderr or "")
+    orphan_count, orphan_names = _count_stringname_orphans(combined_output)
+
+    print(
+        f"[module-tests] StringName orphan guard: count={orphan_count} "
+        f"threshold={threshold} project={project.name} exit={result.returncode}."
+    )
+    if orphan_count > 0:
+        sample = ", ".join(sorted(set(orphan_names))[:10])
+        print(f"[module-tests]   orphan StringNames (deduped, first 10): {sample}")
+
+    # A crashed/failed Godot invocation must not be reported as a passing
+    # guard just because the orphan parse stayed under threshold (the
+    # teardown path we are validating may not even have executed). Emit a
+    # failing [GS-LIFETIME] line so PR 7's manifest parser consumes it
+    # uniformly as a failure.
+    if result.returncode != 0:
+        fail_reason = f"probe_exit:{result.returncode}"
+        _emit_stringname_orphan_lifetime_line(
+            passed=False,
+            delta=orphan_count,
+            threshold=threshold,
+            fail_reason=fail_reason,
+        )
+        print(
+            f"[module-tests] StringName orphan guard FAILED: probe exited with "
+            f"code {result.returncode}."
+        )
+        return 1
+
+    if orphan_count > threshold:
+        fail_reason = (
+            f"orphan_count_above_threshold:{orphan_count}>{threshold}"
+        )
+        _emit_stringname_orphan_lifetime_line(
+            passed=False,
+            delta=orphan_count,
+            threshold=threshold,
+            fail_reason=fail_reason,
+        )
+        print(
+            f"[module-tests] StringName orphan guard FAILED: "
+            f"{orphan_count} orphans exceeds threshold {threshold}."
+        )
+        return 1
+
+    _emit_stringname_orphan_lifetime_line(
+        passed=True,
+        delta=orphan_count,
+        threshold=threshold,
+        fail_reason="",
+    )
+    return None
+
+
 def _run_static_guard_step() -> int | None:
     guards_ok, guard_failures = _run_static_format_guards()
     if not guards_ok:
@@ -952,6 +1186,7 @@ def _run_ci_guard_steps(cli_args: argparse.Namespace) -> int | None:
             lambda: _run_history_artifact_guard_step(history_guard_mode),
             lambda: _run_optional_message_guards(cli_args),
             lambda: _run_configured_render_and_static_guards(cli_args),
+            lambda: _run_stringname_orphan_guard_step(cli_args.godot_binary),
         )
     )
 

@@ -115,6 +115,85 @@ evidence:
 The current public performance dashboard remains a non-authoritative snapshot
 until a complete candidate evidence bundle exists.
 
+## Lifetime Accounting Proof
+
+The `lifetime_accounting_proof` manifest section gates the renderer-lifetime
+hazards tracked by #352. It consumes structured `[GS-LIFETIME]` JSON lines
+written to stdout by the renderer lifetime-proof fixture (PR #386) and the
+orphan-`StringName` CI guard (PR #389). Each scenario emits one self-contained
+JSON object after the marker prefix declared in the manifest
+(`stdout_marker`, currently `"[GS-LIFETIME] "`).
+
+A passing run reports every required scenario exactly once with `passed=true`,
+its scenario-specific byte counter below the manifest threshold, and either a
+real orphan-`StringName` delta below the count threshold or the
+`advisory_sentinel_value` (`-1`, "not measured this run").
+
+### Required scenarios
+
+| Scenario | Source | Metric (`scenario_metric_fields`) | Byte threshold |
+| --- | --- | --- | --- |
+| `renderer_instance` | PR #386 fixture | `rd_bytes_leaked` | 4194304 |
+| `failed_init` | PR #386 fixture | `rd_bytes_leaked` | 4194304 |
+| `scene_director_reload` | PR #386 fixture | `rd_bytes_leaked` (growth) | 262144 |
+| `asset_attach_detach` | PR #386 fixture | `rd_bytes_leaked` (growth) | 65536 |
+| `stringname_orphans` | PR #389 guard | `stringname_orphan_delta` (advisory) | `stringname_orphans_max=5` |
+
+The advisory counter `stringname_orphan_delta` is reported by every PR #386
+scenario as the sentinel `-1` ("not measured this run") and only carries a real
+number from the PR #389 scenario. The gate skips the count check when the
+sentinel is present, then enforces `stringname_orphans_max` when the
+`stringname_orphans` scenario supplies the real delta.
+
+The manifest also declares `advisory_fields_strict_for` — a map from scenario
+name to the list of advisory fields that scenario MUST report (even if the
+value is the sentinel). This closes a hole where a strict scenario could drop
+the advisory field entirely and silently bypass its count threshold; the
+`stringname_orphans` scenario is the canonical strict consumer of
+`stringname_orphan_delta`.
+
+### Example stdout line
+
+```text
+[GS-LIFETIME] {"scenario":"renderer_instance","passed":true,"rd_bytes_leaked":131072,
+"rdm_owned_leaked":0,"rdm_tracked_leaked":0,"teardown_sync":true,
+"threshold_bytes":4194304,"stringname_orphan_delta":-1,"fail_reason":""}
+```
+
+### Running the check
+
+`--mode contract` only validates that the manifest section exists and is
+well-formed:
+
+```bash
+python3 tests/ci/check_renderer_release_gates.py --mode contract
+```
+
+`--mode lifetime` consumes a captured stdout artifact and runs the full
+scenario-by-scenario check:
+
+```bash
+python3 tests/ci/check_renderer_release_gates.py \
+  --mode lifetime \
+  --lifetime-stdout artifacts/lifetime_stdout.log
+```
+
+### Adding a new scenario
+
+1. Add the scenario name to `required_scenarios` in the manifest section.
+2. If the scenario reports a byte counter, register the field name in
+   `scenario_metric_fields` and the threshold in `thresholds_bytes`.
+3. If the scenario reports a new advisory counter, add the field name to
+   `advisory_fields` and the corresponding cap in `thresholds_counts`. The
+   validator's advisory-mapping currently routes `stringname_orphan_delta` to
+   `stringname_orphans_max`; new advisory fields look up their cap by their own
+   name in `thresholds_counts`. If the scenario is the canonical producer of
+   that advisory counter (so the field MUST always appear in its entry), also
+   list the scenario -> [field] pair under `advisory_fields_strict_for`.
+4. Have the producing fixture/guard print `[GS-LIFETIME] {...}` lines that
+   include `scenario`, `passed`, `fail_reason`, and the metric/advisory fields
+   referenced above.
+
 ## CI Hook
 
 Run the direct contract check locally:

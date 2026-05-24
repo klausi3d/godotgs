@@ -1639,9 +1639,10 @@ void GaussianSplatNode3D::process_gaussian_render() {
 
     _update_visibility();
 
-    // PR #352: skip the per-frame render path when the streaming pipeline has
-    // no usable RenderingDevice (e.g. headless module tests with no engine
-    // RenderingServer + failed local-device fallback). update_splats() ->
+    // PR #352: skip the per-frame render path when no RenderingDevice is
+    // reachable through either the manager OR the RenderingServer
+    // (e.g. headless module tests with no engine RenderingServer + failed
+    // local-device fallback). update_splats() ->
     // streaming_system->update_streaming() would otherwise reenter the
     // failed-init runtime every tick and (pre-fix) produce a 602-event SEH
     // crash cascade in run_module_tests.py. The streaming layer also has
@@ -1650,10 +1651,23 @@ void GaussianSplatNode3D::process_gaussian_render() {
     // RS::instance_set_visible is still honored if a render_instance was
     // set up before the device dropped, so editor previews don't go dark
     // on a transient device loss.
+    //
+    // When the GaussianSplatManager singleton is absent we are running the
+    // manager-unavailable fallback path (see _notification_enter_tree and
+    // _notification_process: node-driven set_process(true) instead of
+    // manager-driven frame_pre_draw). In that mode probing the manager
+    // would always fail and starve update_splats() of every frame, so we
+    // fall back to RenderingServer::get_rendering_device() and only skip
+    // when BOTH probes report no device.
     GaussianSplatManager *gs_manager_no_device_probe = GaussianSplatManager::get_singleton();
-    const bool streaming_device_available = gs_manager_no_device_probe != nullptr
+    bool device_available = gs_manager_no_device_probe != nullptr
             && gs_manager_no_device_probe->get_primary_rendering_device() != nullptr;
-    if (!streaming_device_available) {
+    if (!device_available) {
+        if (RenderingServer *rs_device_probe = RS::get_singleton()) {
+            device_available = rs_device_probe->get_rendering_device() != nullptr;
+        }
+    }
+    if (!device_available) {
         RenderingServer *rs_no_device = RS::get_singleton();
         if (rs_no_device && render_instance.is_valid()) {
             rs_no_device->instance_set_visible(render_instance,

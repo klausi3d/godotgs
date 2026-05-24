@@ -183,7 +183,7 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] World submission entryp
 	}
 }
 
-TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Same-owner resubmit preserves the original renderer restore point") {
+TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission][SceneTree] Same-owner resubmit preserves the original renderer restore point") {
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
 	const bool owns_director = (director == nullptr);
 	if (!director) {
@@ -286,7 +286,7 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Same-owner resubm
 	}
 }
 
-TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Same-owner resubmit defaults omitted overrides from the preserved baseline") {
+TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission][SceneTree] Same-owner resubmit defaults omitted overrides from the preserved baseline") {
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
 	const bool owns_director = (director == nullptr);
 	if (!director) {
@@ -607,7 +607,7 @@ TEST_CASE("[GaussianSplatting][World][SceneTree] strict identity transform rejec
 	}
 }
 
-TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Zero-splat submissions do not surface residency authority") {
+TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission][SceneTree] Zero-splat submissions do not surface residency authority") {
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
 	const bool owns_director = (director == nullptr);
 	if (!director) {
@@ -682,7 +682,7 @@ TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Zero-splat submis
 	}
 }
 
-TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission] Staged world submissions mark streaming path ownership in the backend plan") {
+TEST_CASE("[GaussianSplatting][SceneDirector][WorldSubmission][SceneTree] Staged world submissions mark streaming path ownership in the backend plan") {
 	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
 	const bool owns_director = (director == nullptr);
 	if (!director) {

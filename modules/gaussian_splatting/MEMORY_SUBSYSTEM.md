@@ -116,6 +116,8 @@ User-facing summary of these settings and metrics:
 - **Stream usage**: `GaussianMemoryStream::get_allocated_memory_mb()`, `get_used_memory_mb()`, `get_memory_efficiency()`
 - **Resident usage**: `GPUBufferManager::get_memory_usage_mb()`
 
+For the per-owner lifetime contract of each buffer in this subsystem (who creates, who destroys, idempotency, threading), see [`docs/architecture/renderer-lifetime-ownership.md`](../../docs/architecture/renderer-lifetime-ownership.md).
+
 ## Notes for Future Refactors
 
 - Avoid moving budget logic into `GPUBufferManager` or `GaussianMemoryStream`; the regulator in `core/gaussian_streaming.*` is the single source of truth.

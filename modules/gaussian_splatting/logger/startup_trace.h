@@ -41,6 +41,14 @@ public:
 
 	void reset();
 
+	// Releases all StringNames cached in the phase totals/insertion-order
+	// containers. Called at module unregister so phase names recorded via
+	// GS_STARTUP_SCOPE (manager_construct, module_register,
+	// device_request_primary, device_request_shared, ...) do not show up
+	// in the engine's exit-time orphan StringName report. Differs from
+	// reset() only in intent — the underlying clears are the same.
+	void release_module_strings();
+
 	void begin_scope(const StringName &p_phase);
 	void end_scope(const StringName &p_phase, uint64_t p_start_usec);
 
