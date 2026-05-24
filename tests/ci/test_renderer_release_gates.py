@@ -1744,6 +1744,117 @@ class LifetimeAccountingProofTests(unittest.TestCase):
             f"expected runtime defense-in-depth error citing the missing threshold, got: {reasons!r}",
         )
 
+    def test_main_lifetime_mode_validates_schema_before_runtime(self) -> None:
+        """Codex P2 review on PR #390 (comment #3294976919).
+
+        main()'s --mode lifetime branch must run schema validation BEFORE
+        calling validate_lifetime_accounting_proof, so a manifest missing
+        advisory_fields_strict_for cannot silently pass standalone lifetime
+        runs. Pre-fix, the runtime treated stringname_orphan_delta as
+        optional and returned passed=True for such manifests, disabling
+        the orphan-count guard while still exiting 0.
+
+        Strict interpretation: there is no opt-out flag -- any workflow
+        that invokes --mode lifetime must satisfy the same schema
+        invariants that --mode contract enforces.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # main() computes root = manifest_path.parents[2], so place
+            # the manifest two directories deep so the resolved root points
+            # at the tempdir. The lifetime path does not read other files
+            # from root, so the tempdir itself can stay empty.
+            manifest_path = root / "docs" / "reference" / "renderer_release_gate_manifest.json"
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            section = _lifetime_manifest_section()
+            # Drop advisory_fields_strict_for entirely while leaving
+            # advisory_fields listing stringname_orphan_delta. Pre-fix,
+            # the schema check did not run in lifetime mode and the
+            # runtime accepted the manifest because the missing strict
+            # map silently disabled the bound enforcement.
+            section.pop("advisory_fields_strict_for", None)
+            manifest = {"lifetime_accounting_proof": section}
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            stdout_path = root / "lifetime.log"
+            stdout_path.write_text(_lifetime_stdout_all_pass() + "\n", encoding="utf-8")
+
+            from contextlib import redirect_stdout
+            import io
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                exit_code = checker.main(
+                    [
+                        "--mode",
+                        "lifetime",
+                        "--manifest",
+                        str(manifest_path),
+                        "--lifetime-stdout",
+                        str(stdout_path),
+                    ]
+                )
+            output = buf.getvalue()
+            self.assertNotEqual(
+                exit_code,
+                0,
+                f"lifetime mode must reject a manifest missing advisory_fields_strict_for; "
+                f"got exit_code={exit_code} output={output!r}",
+            )
+            self.assertIn(
+                "lifetime schema check failed",
+                output,
+                f"expected schema-failure header in lifetime mode output, got: {output!r}",
+            )
+            self.assertIn(
+                "advisory_fields_strict_for",
+                output,
+                f"expected error to name the missing schema field, got: {output!r}",
+            )
+            self.assertIn(
+                "stringname_orphan_delta",
+                output,
+                f"expected error to name the bound advisory field, got: {output!r}",
+            )
+
+    def test_main_lifetime_mode_passes_on_valid_manifest(self) -> None:
+        """Positive control for the new schema-first guard: a structurally
+        valid manifest with a passing stdout artifact must still exit 0
+        under --mode lifetime. Without this control, a regression that
+        accidentally rejects all manifests would go undetected.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest_path = root / "docs" / "reference" / "renderer_release_gate_manifest.json"
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            manifest = {"lifetime_accounting_proof": _lifetime_manifest_section()}
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            stdout_path = root / "lifetime.log"
+            stdout_path.write_text(_lifetime_stdout_all_pass() + "\n", encoding="utf-8")
+
+            from contextlib import redirect_stdout
+            import io
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                exit_code = checker.main(
+                    [
+                        "--mode",
+                        "lifetime",
+                        "--manifest",
+                        str(manifest_path),
+                        "--lifetime-stdout",
+                        str(stdout_path),
+                    ]
+                )
+            self.assertEqual(
+                exit_code,
+                0,
+                f"valid lifetime manifest must still pass; got exit_code={exit_code} "
+                f"output={buf.getvalue()!r}",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

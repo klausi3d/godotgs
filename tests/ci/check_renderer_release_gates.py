@@ -1624,6 +1624,22 @@ def main(argv: list[str] | None = None) -> int:
         if not args.lifetime_stdout:
             print("--lifetime-stdout is required in lifetime mode", file=sys.stderr)
             return 2
+        # Codex P2 review on PR #390 (comment #3294976919): run the schema
+        # validator BEFORE invoking validate_lifetime_accounting_proof so
+        # standalone lifetime runs cannot silently accept a malformed
+        # manifest. Without this, e.g. removing advisory_fields_strict_for
+        # or thresholds_counts.stringname_orphans_max would slip past the
+        # lifetime gate because the runtime treats the bound advisory
+        # field as optional. The strictest interpretation -- no opt-out
+        # flag -- is intentional: any workflow that invokes lifetime mode
+        # by itself (local checks, CI lifetime jobs) must satisfy the
+        # same schema invariants that contract mode enforces.
+        schema_failures = _validate_lifetime_accounting_proof_schema(manifest)
+        if schema_failures:
+            print("Renderer release gate lifetime schema check failed:")
+            for failure in schema_failures:
+                print(f" - {failure}")
+            return 1
         section = manifest.get("lifetime_accounting_proof")
         if not isinstance(section, dict):
             print("manifest is missing lifetime_accounting_proof section", file=sys.stderr)
