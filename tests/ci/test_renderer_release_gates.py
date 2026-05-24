@@ -1817,6 +1817,148 @@ class LifetimeAccountingProofTests(unittest.TestCase):
                 f"expected error to name the bound advisory field, got: {output!r}",
             )
 
+    def test_schema_requires_bytes_threshold_for_metric_scenario(self) -> None:
+        """Codex P2 review on PR #390 (schema side, byte thresholds).
+
+        The bot's exploit recipe: remove asset_attach_detach from
+        thresholds_bytes while still listing it in required_scenarios and
+        scenario_metric_fields, then feed a huge rd_bytes_leaked value --
+        validate_lifetime_accounting_proof returned success because the
+        runtime check at `if byte_threshold is not None` silently fell
+        through, disabling the byte-leak guard for that scenario.
+
+        The schema validator must reject such a manifest at contract time:
+        every required scenario that declares a metric field MUST also
+        declare a thresholds_bytes entry. Mirrors the orphan-count
+        threshold enforcement added in 54fab045a8 but for byte thresholds.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            # Precondition: base manifest binds asset_attach_detach to
+            # a metric field AND a byte threshold.
+            self.assertIn("asset_attach_detach", section["required_scenarios"])
+            self.assertIn("asset_attach_detach", section["scenario_metric_fields"])
+            self.assertIn("asset_attach_detach", section["thresholds_bytes"])
+            # The bot's exploit: drop the threshold while keeping the
+            # metric-field binding and required-scenario membership.
+            del section["thresholds_bytes"]["asset_attach_detach"]
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "thresholds_bytes" in failure
+                    and "asset_attach_detach" in failure
+                    and "scenario_metric_fields" in failure
+                    and "byte threshold not declared" in failure
+                    for failure in failures
+                ),
+                f"expected missing-byte-threshold-despite-metric-field to be rejected, got: {failures!r}",
+            )
+
+    def test_lifetime_mode_rejects_metric_scenario_without_byte_threshold(self) -> None:
+        """Codex P2 review on PR #390 (schema side, byte thresholds) via the
+        --mode lifetime entrypoint added in f6932de597.
+
+        Same exploit as test_schema_requires_bytes_threshold_for_metric_scenario,
+        but routed through the lifetime-mode CLI. The schema-first guard
+        added in f6932de597 means standalone lifetime runs must satisfy the
+        same invariants -- removing a required byte threshold must fail
+        with exit_code != 0 before validate_lifetime_accounting_proof is
+        even invoked.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest_path = root / "docs" / "reference" / "renderer_release_gate_manifest.json"
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            section = _lifetime_manifest_section()
+            # Bot's exploit: drop asset_attach_detach from thresholds_bytes
+            # while keeping it in required_scenarios + scenario_metric_fields.
+            del section["thresholds_bytes"]["asset_attach_detach"]
+            manifest = {"lifetime_accounting_proof": section}
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            # Use a huge leak value, matching the bot's verification recipe.
+            stdout_path = root / "lifetime.log"
+            stdout_text = _lifetime_stdout_all_pass().replace(
+                '"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":32768',
+                '"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":999999999',
+            )
+            stdout_path.write_text(stdout_text + "\n", encoding="utf-8")
+
+            from contextlib import redirect_stdout
+            import io
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                exit_code = checker.main(
+                    [
+                        "--mode",
+                        "lifetime",
+                        "--manifest",
+                        str(manifest_path),
+                        "--lifetime-stdout",
+                        str(stdout_path),
+                    ]
+                )
+            output = buf.getvalue()
+            self.assertNotEqual(
+                exit_code,
+                0,
+                f"--mode lifetime must reject a manifest missing a required byte "
+                f"threshold; got exit_code={exit_code} output={output!r}",
+            )
+            self.assertIn(
+                "lifetime schema check failed",
+                output,
+                f"expected schema-failure header in lifetime mode output, got: {output!r}",
+            )
+            self.assertIn(
+                "thresholds_bytes",
+                output,
+                f"expected error to name the missing threshold map, got: {output!r}",
+            )
+            self.assertIn(
+                "asset_attach_detach",
+                output,
+                f"expected error to name the offending scenario, got: {output!r}",
+            )
+
+    def test_runtime_rejects_real_bytes_without_threshold(self) -> None:
+        """Codex P2 review on PR #390 (runtime defense-in-depth, byte side).
+
+        Even if someone edits the schema check out, the runtime must refuse
+        to silently skip byte-threshold enforcement when no threshold is
+        declared but the entry reports a real numeric rd_bytes_leaked
+        value. Without this, the bot's exploit -- huge leak value with no
+        threshold -- passes the gate.
+        """
+        section = _lifetime_manifest_section()
+        # Bot's exploit: drop the threshold while keeping the metric-field
+        # binding so the scenario still attempts byte enforcement.
+        del section["thresholds_bytes"]["asset_attach_detach"]
+        # Feed a huge non-sentinel leak value -- the exact recipe the bot
+        # verified experimentally.
+        stdout = _lifetime_stdout_all_pass().replace(
+            '"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":32768',
+            '"scenario":"asset_attach_detach","passed":true,"rd_bytes_leaked":999999999',
+        )
+        passed, reasons = checker.validate_lifetime_accounting_proof(section, stdout)
+        self.assertFalse(
+            passed,
+            "runtime must refuse to silently skip byte enforcement when threshold is missing",
+        )
+        self.assertTrue(
+            any(
+                "asset_attach_detach" in reason
+                and "rd_bytes_leaked=999999999" in reason
+                and "thresholds_bytes.asset_attach_detach" in reason
+                and "not declared" in reason
+                for reason in reasons
+            ),
+            f"expected runtime defense-in-depth error citing the missing byte threshold, got: {reasons!r}",
+        )
+
     def test_main_lifetime_mode_passes_on_valid_manifest(self) -> None:
         """Positive control for the new schema-first guard: a structurally
         valid manifest with a passing stdout artifact must still exit 0

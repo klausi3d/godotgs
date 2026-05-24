@@ -632,6 +632,44 @@ def _validate_lifetime_accounting_proof_schema(manifest: dict[str, Any]) -> list
                 f"disablable by omitting the field from the entry"
             )
 
+    # Cross-field invariant: every required scenario that declares a metric
+    # field (i.e., appears in scenario_metric_fields) MUST also have a
+    # thresholds_bytes entry. Otherwise the runtime byte-threshold check
+    # silently no-ops (the `if byte_threshold is not None` branch in
+    # validate_lifetime_accounting_proof falls through), and a manifest
+    # typo or accidental key removal can disable the byte guard while still
+    # passing the lifetime gate with arbitrarily large rd_bytes_leaked
+    # values (Codex P2 review on PR #390; bot verified the exploit by
+    # removing asset_attach_detach from thresholds_bytes and feeding a
+    # huge leak value -- validate_lifetime_accounting_proof returned
+    # success).
+    required_scenarios_list: list[str] = []
+    if isinstance(required_scenarios, list):
+        required_scenarios_list = [
+            name for name in required_scenarios if isinstance(name, str) and name
+        ]
+    metric_fields_dict: dict[str, Any] = (
+        metric_fields if isinstance(metric_fields, dict) else {}
+    )
+    thresholds_bytes_dict: dict[str, Any] = (
+        thresholds_bytes if isinstance(thresholds_bytes, dict) else {}
+    )
+    for scenario in required_scenarios_list:
+        if scenario not in metric_fields_dict:
+            # Scenarios without a declared metric field (e.g.
+            # stringname_orphans, which is count-only) do not participate
+            # in byte-threshold enforcement and so do not require an
+            # entry in thresholds_bytes.
+            continue
+        if scenario not in thresholds_bytes_dict:
+            failures.append(
+                f"lifetime_accounting_proof.thresholds_bytes must declare an entry for "
+                f"required scenario {scenario!r} because scenario_metric_fields binds it "
+                f"to metric {metric_fields_dict[scenario]!r}; otherwise the byte-leak "
+                f"guard is silently disabled by a manifest typo or accidental key removal "
+                f"(byte threshold not declared (manifest invariant))"
+            )
+
     for field in ("test_binary_lane", "gpu_harness_batch"):
         value = section.get(field)
         if value is not None and (not isinstance(value, str) or not value):
@@ -1514,8 +1552,8 @@ def validate_lifetime_accounting_proof(
 
             # Byte-threshold check using the scenario-specific metric field.
             byte_threshold = thresholds_bytes.get(scenario)
+            metric_field = metric_fields.get(scenario)
             if byte_threshold is not None:
-                metric_field = metric_fields.get(scenario)
                 if not metric_field:
                     reasons.append(
                         f"lifetime scenario {scenario} has bytes threshold but no scenario_metric_fields entry"
@@ -1534,6 +1572,27 @@ def validate_lifetime_accounting_proof(
                         reasons.append(
                             f"lifetime scenario {scenario} {metric_field}={metric_value} exceeds threshold {byte_threshold}"
                         )
+            elif metric_field:
+                # Codex P2 review on PR #390: defense-in-depth. When the
+                # scenario declares a metric field (via
+                # scenario_metric_fields) but no corresponding
+                # thresholds_bytes entry, the original code silently
+                # skipped the byte check entirely -- a manifest typo or
+                # accidental key removal could disable the byte guard
+                # while still letting the runtime pass arbitrarily large
+                # rd_bytes_leaked values. The schema validator normally
+                # rejects this at contract time, but if someone edits the
+                # schema check out the runtime must still refuse to
+                # silently accept entries that report a real numeric
+                # value in the metric field with no threshold.
+                metric_value = entry.get(metric_field)
+                if metric_value is not None and _is_json_number(metric_value):
+                    reasons.append(
+                        f"lifetime scenario {scenario} {metric_field}={metric_value} "
+                        f"cannot be enforced because thresholds_bytes.{scenario} is not "
+                        f"declared (byte threshold not declared (manifest invariant); the "
+                        f"schema check should have rejected this)"
+                    )
 
             # Strict-required advisory fields: scenarios listed in
             # advisory_fields_strict_for MUST report each named field, even if
