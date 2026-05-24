@@ -609,11 +609,18 @@ TEST_CASE("[GaussianSplatting][OutputCompositor][RequiresGPU] framebuffer valida
 	CHECK(compositor->get_framebuffer_validation_cache_count() == cap);
 	CHECK(state.framebuffer_validation_cache.has(stale_key));
 
-	// Secondary assertion: the refreshed key is MRU. Drive `cap` additional
+	// Secondary assertion: the refreshed key is MRU. Drive `cap - 1` additional
 	// distinct synthetic inserts via the test helper; the stale_key entry must
 	// survive because it was most recently touched, while the other 7 original
-	// entries are the LRU victims.
-	for (uint64_t i = 0xF000ull; i < 0xF000ull + cap; ++i) {
+	// entries are the LRU victims. NOTE: we deliberately use `cap - 1`, not
+	// `cap`. At cap, each insert triggers exactly one eviction; we want to
+	// evict the 7 other originals only. A `cap`-th insert would then evict the
+	// new oldest entry (stale_key, since the 7 original co-tenants are gone),
+	// silently invalidating the MRU claim. The off-by-one in the original
+	// version of this test produced the very failure mode it was meant to
+	// detect, and the disk-exhaustion CI crash for PR #388's prior run had
+	// masked it.
+	for (uint64_t i = 0xF000ull; i < 0xF000ull + (cap - 1); ++i) {
 		compositor->test_force_insert_framebuffer_validation(i);
 	}
 	CHECK(compositor->get_framebuffer_validation_cache_count() == cap);
