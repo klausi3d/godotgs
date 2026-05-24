@@ -1921,4 +1921,146 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree][RequiresGPU] Resident p
 	tree->process(0.0);
 }
 
+// Regression test for Codex review comment #3294053937 on PR #387.
+//
+// Before the fix, GaussianSplatWorld3D::NOTIFICATION_PREDELETE
+// unconditionally called teardown_world_for_scenario(last_known_scenario).
+// When a non-owner duplicate world node (whose submit_world_submission
+// was rejected because another live owner held the scenario) was deleted,
+// that scenario-wide teardown wiped the SharedWorld entry for the active
+// owner, dropping renderer/submission state for the still-live peer.
+//
+// The fix routes per-instance world node PREDELETE through the existing
+// ownership-aware release_world_submission(owner_id) path (mirroring
+// _unregister_shared_renderer / EXIT_TREE). Non-owners become a no-op
+// and the active owner's SharedWorld is preserved.
+TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] Deleting a non-owner world node preserves the active owner's SharedWorld") {
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE_MESSAGE(tree != nullptr, "SceneTree singleton required");
+
+	Window *root = tree->get_root();
+	REQUIRE_MESSAGE(root != nullptr, "SceneTree root window required");
+
+	Ref<World3D> world = root->get_world_3d();
+	REQUIRE(world.is_valid());
+	const RID scenario = world->get_scenario();
+	REQUIRE(scenario.is_valid());
+
+	GaussianSplatSceneDirector *director = GaussianSplatSceneDirector::get_singleton();
+	const bool owns_director = (director == nullptr);
+	if (!director) {
+		director = memnew(GaussianSplatSceneDirector);
+	}
+	REQUIRE(director != nullptr);
+
+	Ref<GaussianSplatWorld> world_resource_a;
+	world_resource_a.instantiate();
+	world_resource_a->set_gaussian_data(stage1a_make_submission_test_data(8, 1.0f));
+	Vector<GaussianSplatRenderer::StaticChunk> chunks_a;
+	chunks_a.push_back(stage1a_make_submission_test_chunk(0));
+	world_resource_a->set_static_chunks(chunks_a);
+
+	Ref<GaussianSplatWorld> world_resource_b;
+	world_resource_b.instantiate();
+	world_resource_b->set_gaussian_data(stage1a_make_submission_test_data(4, 50.0f));
+	Vector<GaussianSplatRenderer::StaticChunk> chunks_b;
+	chunks_b.push_back(stage1a_make_submission_test_chunk(1));
+	world_resource_b->set_static_chunks(chunks_b);
+
+	// First world node: registers, wins ownership of the scenario's
+	// world-submission slot. submit_world_submission's ownership
+	// arbitration runs without needing a real GPU renderer (the contract
+	// apply is a no-op when the shared renderer is null), so this test
+	// validates the PREDELETE ownership gate even on headless / no-GPU
+	// environments.
+	GaussianSplatWorld3D *world_node_a = memnew(GaussianSplatWorld3D);
+	REQUIRE(world_node_a != nullptr);
+	world_node_a->set_auto_apply_on_ready(false);
+	world_node_a->set_world(world_resource_a);
+	root->add_child(world_node_a);
+	tree->process(0.0);
+	world_node_a->apply_world();
+
+	// Confirm A is the active world-submission owner of the scenario.
+	// Query via the director (not via world_node_a->get_renderer(), which
+	// may be null when no GPU is available -- ownership is independent
+	// of renderer availability).
+	GaussianSplatSceneDirector::WorldSubmission queried_submission;
+	const ObjectID owner_a_id = world_node_a->get_instance_id();
+	REQUIRE_MESSAGE(director->get_world_submission_for_scenario(scenario, &queried_submission),
+			"world_node_a should have submitted to the director on apply_world().");
+	REQUIRE(queried_submission.owner_id == owner_a_id);
+	REQUIRE_MESSAGE(director->get_world_submission(owner_a_id, &queried_submission),
+			"Director should have an active world-submission keyed by owner_a_id.");
+
+	// Snapshot the renderer Ref if one exists; pure-CPU environments may
+	// return null but that's fine for the ownership-gate assertion below.
+	Ref<GaussianSplatRenderer> renderer_a_before = director->get_shared_renderer(world.ptr());
+
+	// Second world node bound to the SAME scenario: its submit must be
+	// rejected by ownership arbitration since A is still live (see
+	// gaussian_splat_scene_director.cpp::submit_world_submission and
+	// _is_world_submission_owner_live).
+	GaussianSplatWorld3D *world_node_b = memnew(GaussianSplatWorld3D);
+	REQUIRE(world_node_b != nullptr);
+	world_node_b->set_auto_apply_on_ready(false);
+	world_node_b->set_world(world_resource_b);
+	root->add_child(world_node_b);
+	tree->process(0.0);
+	world_node_b->apply_world();
+
+	// B is a non-owner: the scenario's world-submission must still point at A.
+	CHECK_MESSAGE(director->get_world_submission_for_scenario(scenario, &queried_submission),
+			"Active owner's world-submission must still exist after a non-owner peer applies.");
+	CHECK_MESSAGE(queried_submission.owner_id == owner_a_id,
+			"Expected the second GaussianSplatWorld3D to be rejected by ownership arbitration; "
+			"active owner of the scenario must still be world_node_a.");
+	// B's own world-submission must NOT exist (it was rejected).
+	GaussianSplatSceneDirector::WorldSubmission rejected_query;
+	CHECK_FALSE_MESSAGE(director->get_world_submission(world_node_b->get_instance_id(), &rejected_query),
+			"Non-owner world_node_b should not have an active world-submission record.");
+
+	// The bug under test: memdelete(B) triggers NOTIFICATION_PREDELETE on a
+	// non-owner. Pre-fix, this called teardown_world_for_scenario(scenario),
+	// erasing the SharedWorld for A.
+	root->remove_child(world_node_b);
+	memdelete(world_node_b);
+	tree->process(0.0);
+
+	// Post-fix expectations: A's SharedWorld entry and active world-submission
+	// must be intact. The director's world-submission record for A must still
+	// be queryable both by scenario and by owner id.
+	CHECK_MESSAGE(director->get_world_submission_for_scenario(scenario, &queried_submission),
+			"Scenario's world-submission record must survive a non-owner peer's PREDELETE.");
+	CHECK_MESSAGE(queried_submission.owner_id == owner_a_id,
+			"Active owner of the scenario must still be world_node_a after non-owner PREDELETE.");
+	CHECK_MESSAGE(director->get_world_submission(owner_a_id, &queried_submission),
+			"Active owner's world-submission must survive a non-owner peer's PREDELETE.");
+	// If a renderer was created, it must be the same Ref (the SharedWorld
+	// entry must not have been torn down and recreated). Pre-fix this also
+	// became null because the entry was erased.
+	if (renderer_a_before.is_valid()) {
+		Ref<GaussianSplatRenderer> renderer_a_after = director->get_shared_renderer(world.ptr());
+		CHECK_MESSAGE(renderer_a_after == renderer_a_before,
+				"Active owner's shared renderer must be the same instance after a non-owner peer's PREDELETE.");
+		CHECK_MESSAGE(director->has_world_submission_for_renderer(renderer_a_before.ptr()),
+				"Active owner's world-submission must still resolve from its renderer.");
+	}
+
+	// Cleanup: removing A IS the owner-path, this exercises the
+	// release_world_submission + _prune_world_if_unused tail.
+	world_node_a->clear_world();
+	root->remove_child(world_node_a);
+	memdelete(world_node_a);
+	tree->process(0.0);
+
+	// After the owner leaves, the world-submission must be gone.
+	CHECK_FALSE_MESSAGE(director->get_world_submission_for_scenario(scenario, &queried_submission),
+			"Owner's PREDELETE must release the world-submission record.");
+
+	if (owns_director) {
+		memdelete(director);
+	}
+}
+
 #endif // TESTS_ENABLED || TOOLS_ENABLED
