@@ -553,13 +553,14 @@ def _validate_lifetime_accounting_proof_schema(manifest: dict[str, Any]) -> list
     if sentinel is not None and not _is_json_number(sentinel):
         failures.append("lifetime_accounting_proof.advisory_sentinel_value must be numeric or omitted")
 
-    strict_for = section.get("advisory_fields_strict_for", {})
-    if not isinstance(strict_for, dict):
+    strict_for_raw = section.get("advisory_fields_strict_for", {})
+    strict_for_valid: dict[str, list[str]] = {}
+    if not isinstance(strict_for_raw, dict):
         failures.append(
             "lifetime_accounting_proof.advisory_fields_strict_for must be a JSON object mapping scenario -> [field, ...]"
         )
     else:
-        for scenario, fields in strict_for.items():
+        for scenario, fields in strict_for_raw.items():
             if not isinstance(scenario, str) or not scenario:
                 failures.append(
                     "lifetime_accounting_proof.advisory_fields_strict_for keys must be non-empty strings"
@@ -570,11 +571,48 @@ def _validate_lifetime_accounting_proof_schema(manifest: dict[str, Any]) -> list
                     f"lifetime_accounting_proof.advisory_fields_strict_for[{scenario!r}] must be a non-empty list of field names"
                 )
                 continue
+            valid_fields: list[str] = []
             for index, field_name in enumerate(fields):
                 if not isinstance(field_name, str) or not field_name:
                     failures.append(
                         f"lifetime_accounting_proof.advisory_fields_strict_for[{scenario!r}][{index}] must be a non-empty string"
                     )
+                    continue
+                valid_fields.append(field_name)
+            if valid_fields:
+                strict_for_valid[scenario] = valid_fields
+
+    # Cross-field invariant: any advisory field that is bounded by a
+    # thresholds_counts entry at runtime MUST appear in
+    # advisory_fields_strict_for under the threshold's scenario; otherwise a
+    # manifest can silently drop the field from the entry and the count
+    # threshold goes unenforced (Codex P2 review on PR #390). The current
+    # runtime mapping in validate_lifetime_accounting_proof hardcodes
+    # stringname_orphan_delta -> stringname_orphans_max, owned by the
+    # stringname_orphans scenario; declare that binding here.
+    ADVISORY_FIELD_STRICT_BINDINGS: dict[str, tuple[str, str]] = {
+        # advisory_field -> (required strict scenario, count threshold key)
+        "stringname_orphan_delta": ("stringname_orphans", "stringname_orphans_max"),
+    }
+    advisory_fields_set: set[str] = set()
+    if isinstance(advisory_fields, list):
+        advisory_fields_set = {name for name in advisory_fields if isinstance(name, str) and name}
+    for advisory_field, (required_scenario, count_threshold_key) in ADVISORY_FIELD_STRICT_BINDINGS.items():
+        if advisory_field not in advisory_fields_set:
+            continue
+        # Only enforce when the count threshold is actually declared; otherwise
+        # there is no threshold to silently disable.
+        if not isinstance(thresholds_counts, dict) or count_threshold_key not in thresholds_counts:
+            continue
+        strict_fields_for_scenario = strict_for_valid.get(required_scenario, [])
+        if advisory_field not in strict_fields_for_scenario:
+            failures.append(
+                f"lifetime_accounting_proof.advisory_fields_strict_for must require "
+                f"{advisory_field!r} under scenario {required_scenario!r} when "
+                f"advisory_fields lists {advisory_field!r} and thresholds_counts declares "
+                f"{count_threshold_key!r}; otherwise the count threshold is silently "
+                f"disablable by omitting the field from the entry"
+            )
 
     for field in ("test_binary_lane", "gpu_harness_batch"):
         value = section.get(field)

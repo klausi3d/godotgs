@@ -1527,6 +1527,99 @@ class LifetimeAccountingProofTests(unittest.TestCase):
                 f"expected non-object to be rejected, got: {failures!r}",
             )
 
+    def test_lifetime_accounting_proof_strict_binding_required_when_advisory_listed(self) -> None:
+        """Cross-field schema invariant (Codex P2 review on PR #390).
+
+        When advisory_fields lists stringname_orphan_delta and
+        thresholds_counts declares stringname_orphans_max, the schema MUST
+        require advisory_fields_strict_for to map
+        stringname_orphans -> [stringname_orphan_delta]. Otherwise the
+        manifest can silently drop the field from the entry at runtime and
+        the orphan-count threshold is never enforced (the runtime fix in
+        commit c3ec582e14 only catches it when the map is actually present).
+
+        Covers both failure modes:
+          (a) advisory_fields_strict_for missing entirely.
+          (b) advisory_fields_strict_for exists but does not list
+              stringname_orphans -> [stringname_orphan_delta].
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            # (a) advisory_fields_strict_for missing entirely.
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            self.assertIn(
+                "stringname_orphan_delta",
+                section["advisory_fields"],
+                "test precondition: base manifest lists the advisory field",
+            )
+            self.assertIn(
+                "stringname_orphans_max",
+                section["thresholds_counts"],
+                "test precondition: base manifest declares the count threshold",
+            )
+            del section["advisory_fields_strict_for"]
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "advisory_fields_strict_for" in failure
+                    and "stringname_orphan_delta" in failure
+                    and "stringname_orphans" in failure
+                    and "silently disablable" in failure
+                    for failure in failures
+                ),
+                f"expected missing strict map to be rejected, got: {failures!r}",
+            )
+
+            # (b) advisory_fields_strict_for exists but does not list
+            # stringname_orphans -> [stringname_orphan_delta]. Use a different
+            # (placeholder) scenario so the map is structurally valid.
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            section["advisory_fields_strict_for"] = {
+                "renderer_instance": ["stringname_orphan_delta"],
+            }
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "advisory_fields_strict_for" in failure
+                    and "stringname_orphan_delta" in failure
+                    and "stringname_orphans" in failure
+                    and "silently disablable" in failure
+                    for failure in failures
+                ),
+                f"expected wrong-scenario strict map to be rejected, got: {failures!r}",
+            )
+
+            # (b') strict map lists the right scenario but the wrong field.
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            section["advisory_fields_strict_for"] = {
+                "stringname_orphans": ["some_other_advisory_field"],
+            }
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "advisory_fields_strict_for" in failure
+                    and "stringname_orphan_delta" in failure
+                    and "stringname_orphans" in failure
+                    and "silently disablable" in failure
+                    for failure in failures
+                ),
+                f"expected wrong-field strict map to be rejected, got: {failures!r}",
+            )
+
+            # Positive control: the base manifest (which DOES bind the field
+            # correctly) must still pass cleanly.
+            manifest = _base_manifest(root)
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertEqual(
+                failures,
+                [],
+                f"base manifest must satisfy the new cross-field invariant, got: {failures!r}",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
