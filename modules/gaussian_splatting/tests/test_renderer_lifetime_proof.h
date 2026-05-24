@@ -36,7 +36,18 @@
  *   [GS-LIFETIME] {"scenario":"renderer_instance","passed":true,
  *     "rd_bytes_leaked":131072,"rdm_owned_leaked":0,"rdm_tracked_leaked":0,
  *     "teardown_sync":true,"threshold_bytes":4194304,
- *     "stringname_orphan_delta":-1,"fail_reason":""}
+ *     "stringname_orphan_delta":-1,"monotonicity_ok":true,"fail_reason":""}
+ *
+ * monotonicity_ok defaults true for absolute-threshold scenarios (A, B);
+ * monotonicity-style scenarios (C, D) MUST call set_monotonicity_ok(false,
+ * reason) BEFORE finalize() when their cycle-to-cycle delta-of-deltas
+ * exceeds the configured threshold. finalize() folds monotonicity_ok into
+ * the final pass verdict so the emitted "passed" field always reflects the
+ * full pass rule. (Codex PR #386 review #3294763666 P1: previously the
+ * monotonicity result was only folded into the local CHECK_MESSAGE bool,
+ * not into the JSON contract — downstream gates consuming only the
+ * [GS-LIFETIME] line would mis-classify a monotonicity regression as a
+ * pass.)
  *
  * Line prefix [GS-LIFETIME] mirrors the [GS-GPU] convention used by
  * gs_gpu_test_runner.cpp so PR 7's manifest parser can grep it trivially.
@@ -87,6 +98,13 @@ struct LifetimeResult {
 	uint64_t threshold_bytes = 4ull << 20; // 4 MiB — matches GsGpuRidLeakListener.
 	bool teardown_was_synchronous = false;
 	bool crashed_or_aborted = false;
+	// True unless a monotonicity-style scenario (C, D) recorded a
+	// delta-of-deltas excursion via set_monotonicity_ok(false, reason).
+	// Folded into `passed` by _compute_pass(). Always emitted in the JSON
+	// so downstream gates can distinguish a real lifetime regression in a
+	// monotonicity scenario from an absolute-byte-threshold breach.
+	// (Codex PR #386 review #3294763666 P1.)
+	bool monotonicity_ok = true;
 	bool passed = false;
 	String fail_reason;
 
@@ -100,6 +118,7 @@ struct LifetimeResult {
 		d["teardown_sync"] = teardown_was_synchronous;
 		d["threshold_bytes"] = int64_t(threshold_bytes);
 		d["stringname_orphan_delta"] = int64_t(after.stringname_orphan_delta);
+		d["monotonicity_ok"] = monotonicity_ok;
 		d["fail_reason"] = fail_reason;
 		return d;
 	}
@@ -201,6 +220,30 @@ public:
 		}
 	}
 
+	// Monotonicity-style scenarios (C, D) record their delta-of-deltas
+	// verdict here BEFORE finalize(). The fixture folds monotonicity_ok
+	// into both the local `passed` bool AND the emitted [GS-LIFETIME] JSON
+	// line so downstream gates that consume only the JSON cannot
+	// mis-classify a monotonicity regression as a pass. When monotonicity
+	// fails, `p_reason` is appended to `fail_reason` and
+	// `monotonicity_regression` is prepended so the failure mode is
+	// self-describing in the JSON. (Codex PR #386 review #3294763666 P1.)
+	void set_monotonicity_ok(bool p_ok, const String &p_reason = String()) {
+		result_.monotonicity_ok = p_ok;
+		if (!p_ok) {
+			const String tag = "monotonicity_regression";
+			String detail = tag;
+			if (!p_reason.is_empty()) {
+				detail += String(": ") + p_reason;
+			}
+			if (result_.fail_reason.is_empty()) {
+				result_.fail_reason = detail;
+			} else if (result_.fail_reason.find(tag) < 0) {
+				result_.fail_reason = detail + String("; ") + result_.fail_reason;
+			}
+		}
+	}
+
 	void set_teardown_was_synchronous(bool p_sync) {
 		result_.teardown_was_synchronous = p_sync;
 	}
@@ -249,10 +292,16 @@ private:
 			result_.rdm_tracked_leaked = 0;
 		}
 
-		// Pass rule: AND of both signals. They catch different bugs.
+		// Pass rule: AND of all signals. They catch different bugs.
+		// monotonicity_ok is folded in here so the [GS-LIFETIME] JSON
+		// line that finalize() emits AFTER this call reflects the full
+		// verdict — a monotonicity-style scenario (asset_attach_detach,
+		// scene_director_reload) that breaches its cycle-to-cycle delta
+		// threshold cannot publish "passed":true to downstream gates.
+		// (Codex PR #386 review #3294763666 P1.)
 		const bool rdm_ok = (result_.rdm_owned_leaked == 0);
 		const bool rd_bytes_ok = (result_.rd_memory_leaked_bytes < result_.threshold_bytes);
-		result_.passed = rdm_ok && rd_bytes_ok && !result_.crashed_or_aborted;
+		result_.passed = rdm_ok && rd_bytes_ok && result_.monotonicity_ok && !result_.crashed_or_aborted;
 		if (!result_.passed && result_.fail_reason.is_empty()) {
 			if (!rdm_ok) {
 				result_.fail_reason = vformat("rdm_owned_leaked=%d > 0", int64_t(result_.rdm_owned_leaked));
@@ -261,6 +310,13 @@ private:
 						"rd_bytes_leaked=%d >= threshold=%d",
 						int64_t(result_.rd_memory_leaked_bytes),
 						int64_t(result_.threshold_bytes));
+			} else if (!result_.monotonicity_ok) {
+				// set_monotonicity_ok(false, ...) populates fail_reason
+				// directly, so this branch is only reached when a caller
+				// flipped result_.monotonicity_ok via some other path
+				// without supplying a reason. Keep the JSON
+				// self-describing.
+				result_.fail_reason = "monotonicity_regression";
 			}
 		}
 	}
@@ -565,16 +621,76 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 
 	(void)cycle_growth_beyond_cycle1;
 
-	if (!monotonicity_ok) {
-		fixture.set_fail_reason(monotonicity_reason);
-	}
+	// Fold the monotonicity verdict into the fixture BEFORE finalize() so
+	// the emitted [GS-LIFETIME] JSON line's "passed" field reflects the
+	// final verdict and the JSON includes a self-describing
+	// "monotonicity_regression" fail_reason. Previously the JSON was
+	// emitted BEFORE monotonicity was folded into the local pass bool,
+	// which meant a real asset_attach_detach regression that breached the
+	// monotonicity threshold (but not the absolute rd-byte threshold)
+	// would fail the local CHECK_MESSAGE yet still publish "passed":true
+	// to PR #390's --mode lifetime gate. (Codex PR #386 review
+	// #3294763666 P1.)
+	fixture.set_monotonicity_ok(monotonicity_ok, monotonicity_reason);
 
 	// For monotonicity scenarios, the absolute rd_memory_leaked vs threshold
 	// in finalize() is the cycle-1 vs after baseline. The monotonicity
-	// signal above is what's actually load-bearing, surfaced via fail_reason.
-	const bool finalize_passed = fixture.finalize();
-	const bool scenario_passed = monotonicity_ok && finalize_passed;
+	// signal above is what's actually load-bearing, surfaced via
+	// monotonicity_ok and fail_reason in the JSON line.
+	const bool scenario_passed = fixture.finalize();
 	CHECK_MESSAGE(scenario_passed, fixture.result().fail_reason);
+}
+
+// ---------------------------------------------------------------------------
+// Regression: monotonicity failure must publish "passed":false in JSON.
+//
+// Codex PR #386 review #3294763666 (P1): the asset_attach_detach scenario
+// previously computed monotonicity_ok in the test body, then called
+// fixture.finalize() (which emitted the [GS-LIFETIME] JSON line) BEFORE
+// folding monotonicity_ok into the local pass bool. When RD/RDM thresholds
+// passed but monotonicity failed, the local CHECK_MESSAGE correctly failed,
+// but the JSON contract that downstream gates (PR #390's --mode lifetime)
+// consume still claimed "passed":true. This test constructs that exact
+// situation — RD/RDM clean, monotonicity flagged false — and asserts the
+// JSON now publishes passed=false AND a self-describing fail_reason
+// containing "monotonicity_regression".
+//
+// No [RequiresGPU] tag: this exercises the fixture's pure pass-rule
+// arithmetic and JSON emission; no GPU device is needed. (rd_=nullptr is
+// the same path the failed_init scenario uses.)
+// ---------------------------------------------------------------------------
+TEST_CASE("[GaussianSplatting][Renderer][Lifetime] monotonicity failure surfaces in emitted JSON") {
+	RendererLifetimeFixture fixture("monotonicity_regression_probe", nullptr);
+	fixture.capture_baseline();
+
+	// Simulate the asset_attach_detach failure mode: RD/RDM thresholds
+	// pass (nothing allocated against rd_=nullptr; no RDM shutdown counts
+	// recorded), but the scenario detected a cycle-to-cycle delta-of-deltas
+	// excursion. The reason string mirrors the format
+	// asset_attach_detach emits.
+	const String synthetic_reason =
+			"cycle 3 delta 131072 B grew 65537 B beyond cycle-1 delta 65535 B (threshold 65536 B)";
+	fixture.set_monotonicity_ok(false, synthetic_reason);
+
+	const bool passed = fixture.finalize();
+
+	// Final verdict — local pass bool must reflect monotonicity.
+	CHECK_FALSE(passed);
+	CHECK_FALSE(fixture.result().passed);
+	// Sibling signals must still be clean — proves the monotonicity
+	// signal alone flipped the verdict and would otherwise have shipped
+	// as a silent pass.
+	CHECK(fixture.result().rdm_owned_leaked == 0);
+	CHECK(fixture.result().rd_memory_leaked_bytes < fixture.result().threshold_bytes);
+
+	// JSON contract — the [GS-LIFETIME] line emitted by finalize() comes
+	// from to_dict(); validate the fields a downstream gate would parse.
+	const Dictionary emitted = fixture.result().to_dict();
+	CHECK(bool(emitted["passed"]) == false);
+	CHECK(bool(emitted["monotonicity_ok"]) == false);
+	const String emitted_reason = emitted["fail_reason"];
+	CHECK(emitted_reason.find("monotonicity_regression") >= 0);
+	CHECK(emitted_reason.find(synthetic_reason) >= 0);
 }
 
 } // namespace TestGaussianSplatting
