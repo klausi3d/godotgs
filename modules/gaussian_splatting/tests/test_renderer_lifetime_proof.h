@@ -34,15 +34,31 @@
  *     PR 6's subprocess emitter will feed the same JSON shape from a
  *     different path so PR 7's manifest gate consumes one contract.
  *
- * Pass rule: rdm_owned_leaked == 0 AND rd_memory_leaked_bytes < threshold.
- * AND, not OR — they catch different bugs.
+ * Pass rule: (rdm_owned_leaked == 0 OR RDM unmeasured) AND
+ * rd_memory_leaked_bytes < threshold AND monotonicity_ok.
+ * AND, not OR — they catch different bugs. The RDM clause is OR-with-
+ * unmeasured because scenarios that do not call record_rdm_shutdown_counts()
+ * surface the sentinel rather than silently advertising a measured zero.
  *
  * JSON contract (PR 7 will consume — do not change after merge):
  *   [GS-LIFETIME] {"scenario":"renderer_instance","passed":true,
- *     "rd_bytes_leaked":131072,"rdm_owned_leaked":0,"rdm_tracked_leaked":0,
+ *     "rd_bytes_leaked":131072,"rdm_owned_leaked":-1,"rdm_tracked_leaked":-1,
  *     "teardown_sync":true,"threshold_bytes":4194304,
  *     "monotonicity_threshold_bytes":262144,
  *     "stringname_orphan_delta":-1,"monotonicity_ok":true,"fail_reason":""}
+ *
+ * Sentinel semantics: rdm_owned_leaked == -1 (and rdm_tracked_leaked == -1)
+ * means the scenario never measured RDM counters via
+ * record_rdm_shutdown_counts(); a non-negative value is the measured
+ * post-shutdown delta. This mirrors the stringname_orphan_delta:-1
+ * pattern. Downstream gates (PR #390) treat -1 as advisory and the gate
+ * skips the RDM clause; a measured non-negative value enforces the
+ * "leaked == 0" clause as part of the pass rule. (Codex PR #386 review
+ * #3295073296 P1: previously _snapshot() hard-set RDM to 0, none of the
+ * four lifetime scenarios called record_rdm_shutdown_counts(), and the
+ * gate silently passed real RDM-owned RID leaks whenever the RD byte
+ * threshold also stayed clean — and the emitted JSON falsely reported
+ * "rdm_owned_leaked":0 as if measured.)
  *
  * monotonicity_ok defaults true for absolute-threshold scenarios (A, B);
  * monotonicity-style scenarios (C, D) MUST call set_monotonicity_ok(false,
@@ -80,14 +96,41 @@
 
 namespace TestGaussianSplatting {
 
+// Sentinel for "RDM resource counters were not measured for this scenario."
+// Distinct from a measured zero. _snapshot() initializes the RDM fields to
+// this value; record_rdm_shutdown_counts() clears the sentinel on the
+// after-snapshot before accumulating real counts. _compute_pass() treats a
+// surviving sentinel as "unmeasured" — skips the RDM gate and surfaces -1
+// in the emitted JSON, mirroring the stringname_orphan_delta:-1 pattern.
+//
+// Why a sentinel and not "always zero":
+//   The four lifetime scenarios that ship in this fixture do NOT plumb
+//   record_rdm_shutdown_counts(), so before this fix _snapshot() hard-set
+//   the RDM fields to 0 and _compute_pass() always treated the RDM signal
+//   as "measured clean." A real RDM-owned RID leak that stayed under the
+//   4 MiB RD byte threshold would have passed the gate while the emitted
+//   JSON falsely advertised "rdm_owned_leaked":0 as a measured result.
+//   Downstream gates (PR #390's --mode lifetime) would have no way to
+//   distinguish "the scenario doesn't measure RDM" from "the scenario
+//   measured RDM and it was clean." (Codex PR #386 review #3295073296 P1.)
+//
+// Why UINT32_MAX and not -1: the underlying field is uint32_t (RDM exposes
+// uint32_t counters). -1 cast to uint32_t IS UINT32_MAX, so this is the
+// same value the stringname_orphan_delta:-1 sentinel uses, just typed for
+// the field. to_dict() emits int64_t(-1) for downstream consumers.
+static constexpr uint32_t RDM_UNMEASURED = std::numeric_limits<uint32_t>::max();
+
 // ---------------------------------------------------------------------------
 // LifetimeBaseline — snapshot of every accounting surface at a single point.
 // stringname_orphan_delta sentinel -1 = not measured (deferred to PR 6).
+// rdm_tracked_resources / rdm_owned_resources sentinel RDM_UNMEASURED =
+// not measured (no record_rdm_shutdown_counts() call in this scenario);
+// see RDM_UNMEASURED rationale above.
 // ---------------------------------------------------------------------------
 struct LifetimeBaseline {
 	uint64_t rd_memory_usage_bytes = 0;
-	uint32_t rdm_tracked_resources = 0;
-	uint32_t rdm_owned_resources = 0;
+	uint32_t rdm_tracked_resources = RDM_UNMEASURED;
+	uint32_t rdm_owned_resources = RDM_UNMEASURED;
 	int64_t stringname_orphan_delta = -1;
 };
 
@@ -99,8 +142,14 @@ struct LifetimeResult {
 	LifetimeBaseline before;
 	LifetimeBaseline after;
 	uint64_t rd_memory_leaked_bytes = 0;
-	uint32_t rdm_owned_leaked = 0;
-	uint32_t rdm_tracked_leaked = 0;
+	// RDM leak counters: hold a measured non-negative delta when the
+	// scenario called record_rdm_shutdown_counts(); otherwise hold the
+	// RDM_UNMEASURED sentinel (UINT32_MAX), which to_dict() emits as -1
+	// and _compute_pass() treats as "skip the RDM gate." Mirrors the
+	// stringname_orphan_delta:-1 advisory pattern. (Codex PR #386
+	// review #3295073296 P1.)
+	uint32_t rdm_owned_leaked = RDM_UNMEASURED;
+	uint32_t rdm_tracked_leaked = RDM_UNMEASURED;
 	// Absolute leak gate: rd_memory_leaked_bytes < threshold_bytes. Default
 	// matches the 4 MiB noise floor that the existing [GS-GPU][RID-LEAK?]
 	// listener trusts in tests/gs_gpu_test_runner.cpp:248.
@@ -130,8 +179,17 @@ struct LifetimeResult {
 		d["scenario"] = scenario_id;
 		d["passed"] = passed;
 		d["rd_bytes_leaked"] = int64_t(rd_memory_leaked_bytes);
-		d["rdm_owned_leaked"] = int64_t(rdm_owned_leaked);
-		d["rdm_tracked_leaked"] = int64_t(rdm_tracked_leaked);
+		// Surface the unmeasured sentinel as int64_t(-1) (the same value
+		// stringname_orphan_delta uses) so downstream gates can
+		// distinguish "scenario never measured RDM" from "scenario
+		// measured RDM and it was clean (zero leaked)." (Codex PR #386
+		// review #3295073296 P1.)
+		d["rdm_owned_leaked"] = (rdm_owned_leaked == RDM_UNMEASURED)
+				? int64_t(-1)
+				: int64_t(rdm_owned_leaked);
+		d["rdm_tracked_leaked"] = (rdm_tracked_leaked == RDM_UNMEASURED)
+				? int64_t(-1)
+				: int64_t(rdm_tracked_leaked);
 		d["teardown_sync"] = teardown_was_synchronous;
 		d["threshold_bytes"] = int64_t(threshold_bytes);
 		// Emit the monotonicity threshold separately so PR #390's --mode
@@ -309,10 +367,18 @@ private:
 		r_out.rd_memory_usage_bytes = (rd_ != nullptr)
 				? rd_->get_memory_usage(RenderingDevice::MEMORY_TOTAL)
 				: 0ull;
-		// PR 6 will populate these via the subprocess emitter path. For
-		// now the sentinel propagates through.
-		r_out.rdm_tracked_resources = 0;
-		r_out.rdm_owned_resources = 0;
+		// RDM counters: initialize to the RDM_UNMEASURED sentinel rather
+		// than a measured zero. Scenarios that own an RDM and want the
+		// pass rule to enforce its post-shutdown counters MUST call
+		// record_rdm_shutdown_counts() (which clears the sentinel on the
+		// after-snapshot before accumulating); scenarios that don't get
+		// the sentinel surfaced as -1 in the JSON and the RDM gate
+		// skipped, instead of silently passing as if measured-clean.
+		// (Codex PR #386 review #3295073296 P1.)
+		r_out.rdm_tracked_resources = RDM_UNMEASURED;
+		r_out.rdm_owned_resources = RDM_UNMEASURED;
+		// PR 6 will populate stringname_orphan_delta via the subprocess
+		// emitter path. For now the sentinel propagates through.
 		r_out.stringname_orphan_delta = -1;
 	}
 
@@ -326,18 +392,34 @@ private:
 		}
 		// RDM owned/tracked deltas are only meaningful when an RDM shutdown
 		// was invoked during the scenario and its post-shutdown counters
-		// were folded in by the caller via record_rdm_shutdown_*.
-		if (result_.after.rdm_owned_resources > result_.before.rdm_owned_resources) {
-			result_.rdm_owned_leaked =
-					result_.after.rdm_owned_resources - result_.before.rdm_owned_resources;
+		// were folded in by the caller via record_rdm_shutdown_*. When the
+		// after-snapshot still holds the RDM_UNMEASURED sentinel, the
+		// scenario never called record_rdm_shutdown_counts(); surface that
+		// upstream as RDM_UNMEASURED in the *_leaked field (to_dict()
+		// translates to -1) and skip the RDM gate entirely. The pre-fix
+		// behaviour was to compute the delta against an initial zero in
+		// both baselines, which silently published "rdm_owned_leaked":0 to
+		// downstream consumers and let real RDM-owned RID leaks pass the
+		// gate whenever the RD-byte threshold also stayed clean. (Codex
+		// PR #386 review #3295073296 P1.)
+		const bool rdm_measured = (result_.after.rdm_owned_resources != RDM_UNMEASURED) &&
+				(result_.after.rdm_tracked_resources != RDM_UNMEASURED);
+		if (!rdm_measured) {
+			result_.rdm_owned_leaked = RDM_UNMEASURED;
+			result_.rdm_tracked_leaked = RDM_UNMEASURED;
 		} else {
-			result_.rdm_owned_leaked = 0;
-		}
-		if (result_.after.rdm_tracked_resources > result_.before.rdm_tracked_resources) {
-			result_.rdm_tracked_leaked =
-					result_.after.rdm_tracked_resources - result_.before.rdm_tracked_resources;
-		} else {
-			result_.rdm_tracked_leaked = 0;
+			if (result_.after.rdm_owned_resources > result_.before.rdm_owned_resources) {
+				result_.rdm_owned_leaked =
+						result_.after.rdm_owned_resources - result_.before.rdm_owned_resources;
+			} else {
+				result_.rdm_owned_leaked = 0;
+			}
+			if (result_.after.rdm_tracked_resources > result_.before.rdm_tracked_resources) {
+				result_.rdm_tracked_leaked =
+						result_.after.rdm_tracked_resources - result_.before.rdm_tracked_resources;
+			} else {
+				result_.rdm_tracked_leaked = 0;
+			}
 		}
 
 		// Pass rule: AND of all signals. They catch different bugs.
@@ -347,7 +429,15 @@ private:
 		// scene_director_reload) that breaches its cycle-to-cycle delta
 		// threshold cannot publish "passed":true to downstream gates.
 		// (Codex PR #386 review #3294763666 P1.)
-		const bool rdm_ok = (result_.rdm_owned_leaked == 0);
+		//
+		// rdm_ok: when unmeasured, skip the gate (Option B per Codex
+		// PR #386 review #3295073296 P1). The sentinel surfaced in the
+		// JSON is the downstream gate's signal to either enforce a
+		// stricter "must measure" policy or accept advisory semantics.
+		// PR #390 follow-up may extend its advisory_fields to require
+		// scenarios that DO measure to declare a threshold, mirroring
+		// the stringname_orphan_delta advisory pattern.
+		const bool rdm_ok = !rdm_measured || (result_.rdm_owned_leaked == 0);
 		const bool rd_bytes_ok = (result_.rd_memory_leaked_bytes < result_.threshold_bytes);
 		result_.passed = rdm_ok && rd_bytes_ok && result_.monotonicity_ok && !result_.crashed_or_aborted;
 		if (!result_.passed && result_.fail_reason.is_empty()) {
@@ -372,8 +462,27 @@ private:
 public:
 	// Fold a manager-shutdown counter pair into the after-snapshot so the
 	// pass rule includes the RDM signal. Callers use this when they own a
-	// manager they shut down explicitly inside the scenario.
+	// manager they shut down explicitly inside the scenario. The first
+	// call also clears the RDM_UNMEASURED sentinel on BOTH baselines so
+	// _compute_pass() knows this scenario actually measured RDM — the
+	// before-snapshot is treated as a measured zero (the cycle had not
+	// started, so no RDMs were shutdown yet) and the after-snapshot
+	// accumulates the post-shutdown counts. Without clearing the sentinel
+	// in after, `+= p_owned` would overflow the UINT32_MAX initial value.
+	// (Codex PR #386 review #3295073296 P1.)
 	void record_rdm_shutdown_counts(uint32_t p_owned, uint32_t p_tracked) {
+		if (result_.after.rdm_owned_resources == RDM_UNMEASURED) {
+			result_.after.rdm_owned_resources = 0;
+		}
+		if (result_.after.rdm_tracked_resources == RDM_UNMEASURED) {
+			result_.after.rdm_tracked_resources = 0;
+		}
+		if (result_.before.rdm_owned_resources == RDM_UNMEASURED) {
+			result_.before.rdm_owned_resources = 0;
+		}
+		if (result_.before.rdm_tracked_resources == RDM_UNMEASURED) {
+			result_.before.rdm_tracked_resources = 0;
+		}
 		// Add to the after-snapshot so multiple managers (one per cycle)
 		// accumulate. Before-snapshot stays at 0 so the leak == counter.
 		result_.after.rdm_owned_resources += p_owned;
@@ -832,8 +941,11 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime] monotonicity failure surfaces
 	CHECK_FALSE(fixture.result().passed);
 	// Sibling signals must still be clean — proves the monotonicity
 	// signal alone flipped the verdict and would otherwise have shipped
-	// as a silent pass.
-	CHECK(fixture.result().rdm_owned_leaked == 0);
+	// as a silent pass. RDM is unmeasured here (no
+	// record_rdm_shutdown_counts() call), so the field holds the
+	// RDM_UNMEASURED sentinel rather than a measured zero. (Codex PR
+	// #386 review #3295073296 P1.)
+	CHECK(fixture.result().rdm_owned_leaked == RDM_UNMEASURED);
 	CHECK(fixture.result().rd_memory_leaked_bytes < fixture.result().threshold_bytes);
 
 	// JSON contract — the [GS-LIFETIME] line emitted by finalize() comes
@@ -927,6 +1039,131 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime] monotonicity threshold decoup
 	CHECK(int64_t(emitted["threshold_bytes"]) == int64_t(expected_default_absolute));
 	CHECK(int64_t(emitted["monotonicity_threshold_bytes"]) == int64_t(64ull * 1024ull));
 	CHECK(bool(emitted["passed"]) == true);
+}
+
+// ---------------------------------------------------------------------------
+// Regression: RDM counters must surface an "unmeasured" sentinel rather than
+// silently advertising a measured zero.
+//
+// Codex PR #386 review #3295073296 (P1): _snapshot() hard-set
+// rdm_tracked_resources and rdm_owned_resources to 0, and none of the four
+// lifetime scenarios called record_rdm_shutdown_counts(), so _compute_pass()
+// always treated the RDM signal as "measured clean." A real RDM-owned RID
+// leak that stayed under the 4 MiB RD byte threshold would have passed the
+// gate while the emitted JSON falsely reported "rdm_owned_leaked":0 as if
+// measured. Downstream gates (PR #390's --mode lifetime) would have no way
+// to distinguish "scenario never measured RDM" from "scenario measured RDM
+// clean."
+//
+// The fix introduces the RDM_UNMEASURED sentinel. _snapshot() initializes
+// the RDM fields to the sentinel; _compute_pass() preserves the sentinel
+// in rdm_*_leaked when the after-snapshot is unmeasured, and
+// _compute_pass() then SKIPS the RDM clause of the pass rule (Option B
+// from the review: advisory rather than fail-loud, mirroring the existing
+// stringname_orphan_delta:-1 advisory-field pattern). to_dict() emits -1
+// in that case so downstream JSON consumers can grep for it the same way
+// they already grep for stringname_orphan_delta.
+//
+// This test pins three contracts:
+//   1. A scenario that does NOT call record_rdm_shutdown_counts() MUST
+//      surface RDM_UNMEASURED in the field and -1 in the JSON.
+//   2. A scenario that calls record_rdm_shutdown_counts(5, 10) MUST
+//      surface 5 / 10 in the field and 5 / 10 in the JSON.
+//   3. The pass-rule arithmetic MUST treat sentinel-RDM as "skip the gate"
+//      (not as "leaked == 0"); the RD-byte and monotonicity clauses
+//      continue to apply unchanged.
+//
+// No [RequiresGPU] tag: this exercises pure pass-rule arithmetic and JSON
+// emission; rd_=nullptr matches the failed_init / monotonicity probe
+// pattern.
+// ---------------------------------------------------------------------------
+TEST_CASE("[GaussianSplatting][Renderer][Lifetime] rdm counters surface unmeasured sentinel instead of silent zero") {
+	// --- Case 1: scenario does NOT measure RDM ----------------------------
+	{
+		RendererLifetimeFixture fixture("rdm_unmeasured_probe", nullptr);
+		fixture.capture_baseline();
+
+		// No record_rdm_shutdown_counts() call. After finalize(), the
+		// RDM fields MUST hold the sentinel, the JSON MUST emit -1, and
+		// the absolute / monotonicity clauses MUST control the verdict
+		// (here they pass — nothing was allocated against rd_=nullptr).
+		const bool passed = fixture.finalize();
+
+		// The pass-rule should not be silently gated on RDM=0 anymore;
+		// since RD-bytes and monotonicity are clean and RDM is
+		// unmeasured (skip), the scenario passes.
+		CHECK_MESSAGE(passed,
+				vformat("Expected pass with unmeasured RDM + clean RD/monotonicity. "
+						"fail_reason=%s",
+						fixture.result().fail_reason));
+
+		// Field-level: sentinel preserved through _compute_pass.
+		CHECK(fixture.result().rdm_owned_leaked == RDM_UNMEASURED);
+		CHECK(fixture.result().rdm_tracked_leaked == RDM_UNMEASURED);
+
+		// JSON contract: emitted as int64_t(-1), matching the existing
+		// stringname_orphan_delta:-1 advisory pattern.
+		const Dictionary emitted = fixture.result().to_dict();
+		CHECK_MESSAGE(int64_t(emitted["rdm_owned_leaked"]) == int64_t(-1),
+				"Unmeasured RDM must emit -1 in JSON, not a silent 0 that "
+				"masquerades as a measured-clean result (Codex PR #386 review "
+				"#3295073296 P1).");
+		CHECK(int64_t(emitted["rdm_tracked_leaked"]) == int64_t(-1));
+		// stringname_orphan_delta is also -1 here (always, until PR 6) —
+		// pinning this asserts the two advisory sentinels share their
+		// downstream-consumer contract.
+		CHECK(int64_t(emitted["stringname_orphan_delta"]) == int64_t(-1));
+	}
+
+	// --- Case 2: scenario DOES measure RDM, no leak -----------------------
+	{
+		RendererLifetimeFixture fixture("rdm_measured_clean_probe", nullptr);
+		fixture.capture_baseline();
+
+		// Record a clean post-shutdown: 0 owned, 0 tracked. This is the
+		// "measured zero" case the sentinel disambiguates from "never
+		// measured." After finalize(), the field MUST hold 0 (not the
+		// sentinel) and JSON MUST emit 0.
+		fixture.record_rdm_shutdown_counts(0, 0);
+		const bool passed = fixture.finalize();
+		CHECK_MESSAGE(passed,
+				vformat("Expected pass with measured-clean RDM. fail_reason=%s",
+						fixture.result().fail_reason));
+
+		CHECK(fixture.result().rdm_owned_leaked == 0);
+		CHECK(fixture.result().rdm_tracked_leaked == 0);
+
+		const Dictionary emitted = fixture.result().to_dict();
+		CHECK_MESSAGE(int64_t(emitted["rdm_owned_leaked"]) == int64_t(0),
+				"Measured-clean RDM must emit 0 in JSON (distinct from -1 "
+				"unmeasured sentinel).");
+		CHECK(int64_t(emitted["rdm_tracked_leaked"]) == int64_t(0));
+	}
+
+	// --- Case 3: scenario DOES measure RDM, real leak ---------------------
+	{
+		RendererLifetimeFixture fixture("rdm_measured_leak_probe", nullptr);
+		fixture.capture_baseline();
+
+		// Record a non-zero post-shutdown: 5 owned, 10 tracked. The
+		// pass-rule MUST trip on rdm_owned_leaked > 0; JSON MUST emit
+		// the literal counts.
+		fixture.record_rdm_shutdown_counts(5, 10);
+		const bool passed = fixture.finalize();
+
+		CHECK_FALSE_MESSAGE(passed,
+				"Expected pass-rule failure for measured RDM-owned leak; "
+				"the gate must enforce the RDM clause when measured.");
+		CHECK(fixture.result().rdm_owned_leaked == 5);
+		CHECK(fixture.result().rdm_tracked_leaked == 10);
+		// fail_reason should be self-describing about the RDM leak.
+		CHECK(fixture.result().fail_reason.find("rdm_owned_leaked") >= 0);
+
+		const Dictionary emitted = fixture.result().to_dict();
+		CHECK(int64_t(emitted["rdm_owned_leaked"]) == int64_t(5));
+		CHECK(int64_t(emitted["rdm_tracked_leaked"]) == int64_t(10));
+		CHECK(bool(emitted["passed"]) == false);
+	}
 }
 
 } // namespace TestGaussianSplatting
