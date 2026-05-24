@@ -23,7 +23,12 @@
  *     OutputCompositor framebuffer LRU, etc.). Reuses the SAME 4 MiB noise
  *     floor that the existing [GS-GPU][RID-LEAK?] listener trusts in
  *     tests/gs_gpu_test_runner.cpp:248. For monotonicity checks (C, D) we
- *     use delta-of-deltas so allocator-pool noise cancels out.
+ *     use delta-of-deltas so allocator-pool noise cancels out, gated by a
+ *     SEPARATE monotonicity_threshold_bytes field — see set_*_threshold_bytes
+ *     setters below. Conflating the two thresholds (Codex PR #386 review
+ *     #3294999198 P1) would tighten the absolute leak gate to the (much
+ *     smaller) per-cycle monotonicity budget and let normal allocator jitter
+ *     fail an otherwise healthy run.
  *
  *   - StringName orphans: DEFERRED to PR 6. Emit sentinel -1 in the JSON;
  *     PR 6's subprocess emitter will feed the same JSON shape from a
@@ -36,6 +41,7 @@
  *   [GS-LIFETIME] {"scenario":"renderer_instance","passed":true,
  *     "rd_bytes_leaked":131072,"rdm_owned_leaked":0,"rdm_tracked_leaked":0,
  *     "teardown_sync":true,"threshold_bytes":4194304,
+ *     "monotonicity_threshold_bytes":262144,
  *     "stringname_orphan_delta":-1,"monotonicity_ok":true,"fail_reason":""}
  *
  * monotonicity_ok defaults true for absolute-threshold scenarios (A, B);
@@ -95,7 +101,18 @@ struct LifetimeResult {
 	uint64_t rd_memory_leaked_bytes = 0;
 	uint32_t rdm_owned_leaked = 0;
 	uint32_t rdm_tracked_leaked = 0;
+	// Absolute leak gate: rd_memory_leaked_bytes < threshold_bytes. Default
+	// matches the 4 MiB noise floor that the existing [GS-GPU][RID-LEAK?]
+	// listener trusts in tests/gs_gpu_test_runner.cpp:248.
 	uint64_t threshold_bytes = 4ull << 20; // 4 MiB — matches GsGpuRidLeakListener.
+	// Per-cycle monotonicity gate: separate from `threshold_bytes` so tuning
+	// a monotonicity-style scenario's growth budget (C, D — typically 64–256
+	// KiB) does not silently tighten the absolute leak gate. Default 256 KiB
+	// is the existing scene_director_reload value; scenarios override via
+	// set_monotonicity_threshold_bytes(). Scenarios that do not check
+	// monotonicity (A, B) ignore this field entirely. (Codex PR #386 review
+	// #3294999198 P1.)
+	uint64_t monotonicity_threshold_bytes = 256ull * 1024ull;
 	bool teardown_was_synchronous = false;
 	bool crashed_or_aborted = false;
 	// True unless a monotonicity-style scenario (C, D) recorded a
@@ -117,6 +134,10 @@ struct LifetimeResult {
 		d["rdm_tracked_leaked"] = int64_t(rdm_tracked_leaked);
 		d["teardown_sync"] = teardown_was_synchronous;
 		d["threshold_bytes"] = int64_t(threshold_bytes);
+		// Emit the monotonicity threshold separately so PR #390's --mode
+		// lifetime gate can see both criteria explicitly without re-deriving
+		// either from the other. (Codex PR #386 review #3294999198 P1.)
+		d["monotonicity_threshold_bytes"] = int64_t(monotonicity_threshold_bytes);
 		d["stringname_orphan_delta"] = int64_t(after.stringname_orphan_delta);
 		d["monotonicity_ok"] = monotonicity_ok;
 		d["fail_reason"] = fail_reason;
@@ -185,6 +206,13 @@ public:
 		_snapshot(result_.after);
 		result_.after.rdm_owned_resources = saved_rdm_owned;
 		result_.after.rdm_tracked_resources = saved_rdm_tracked;
+		// Regression-test injection: overlay a synthetic after-bytes value so
+		// pass-rule tests can construct exact arithmetic scenarios without a
+		// live device. No-op outside tests that opted in via
+		// test_inject_after_rd_bytes().
+		if (rd_bytes_override_active_) {
+			result_.after.rd_memory_usage_bytes = rd_bytes_override_value_;
+		}
 		_compute_pass();
 		result_.emit_to_stdout();
 		finalized_ = true;
@@ -206,10 +234,25 @@ public:
 		finalized_ = true;
 	}
 
-	// Override the noise-floor threshold for monotonicity-style scenarios
-	// (C, D) where the absolute number isn't meaningful — only the
-	// cycle-to-cycle delta matters.
+	// Override the ABSOLUTE rd_memory_leaked_bytes leak gate. Default 4 MiB
+	// matches the GsGpuRidLeakListener noise floor; scenarios should leave
+	// this alone unless they have a documented reason to relax or tighten
+	// the absolute gate. Monotonicity-style scenarios MUST NOT abuse this
+	// setter to configure their per-cycle growth budget — use
+	// set_monotonicity_threshold_bytes() instead. (Codex PR #386 review
+	// #3294999198 P1: previously scenarios C/D set this to their per-cycle
+	// monotonicity budget, silently tightening the absolute gate from 4 MiB
+	// to 256/64 KiB and letting normal allocator jitter fail healthy runs.)
 	void set_threshold_bytes(uint64_t p_bytes) { result_.threshold_bytes = p_bytes; }
+
+	// Override the per-cycle MONOTONICITY growth budget. Independent of
+	// `threshold_bytes` (the absolute leak gate) — scenarios C and D use this
+	// for their delta-of-deltas check while `threshold_bytes` continues to
+	// gate `rd_memory_leaked_bytes` at the 4 MiB noise floor. (Codex PR #386
+	// review #3294999198 P1.)
+	void set_monotonicity_threshold_bytes(uint64_t p_bytes) {
+		result_.monotonicity_threshold_bytes = p_bytes;
+	}
 
 	// Record an extra fail reason without changing pass-rule arithmetic.
 	void set_fail_reason(const String &p_reason) {
@@ -256,6 +299,11 @@ private:
 	LifetimeResult result_;
 	bool baselined_ = false;
 	bool finalized_ = false;
+	// Regression-test injection: when active, finalize() uses this value as
+	// the after-snapshot's rd_memory_usage_bytes instead of querying the
+	// device. See test_inject_after_rd_bytes().
+	bool rd_bytes_override_active_ = false;
+	uint64_t rd_bytes_override_value_ = 0;
 
 	void _snapshot(LifetimeBaseline &r_out) const {
 		r_out.rd_memory_usage_bytes = (rd_ != nullptr)
@@ -330,6 +378,20 @@ public:
 		// accumulate. Before-snapshot stays at 0 so the leak == counter.
 		result_.after.rdm_owned_resources += p_owned;
 		result_.after.rdm_tracked_resources += p_tracked;
+	}
+
+	// Test-only injection: synthesize an rd_memory_usage_bytes delta so
+	// regression tests can construct exact pass-rule arithmetic scenarios
+	// (e.g., 1 MiB jitter sitting between the monotonicity threshold and the
+	// absolute leak gate) without needing a live RenderingDevice. finalize()
+	// snapshots after the call and overlays this into the leaked-bytes
+	// computation. Use ONLY from regression tests, never from a real
+	// scenario. (Codex PR #386 review #3294999198 P1 — needed to prove the
+	// threshold decoupling at the pass-rule layer, not just the field-level
+	// independence.)
+	void test_inject_after_rd_bytes(uint64_t p_synthetic_after_bytes) {
+		rd_bytes_override_active_ = true;
+		rd_bytes_override_value_ = p_synthetic_after_bytes;
 	}
 };
 
@@ -524,7 +586,10 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] scene_director_r
 
 	RendererLifetimeFixture fixture("scene_director_reload", rd);
 	// Monotonicity threshold: cycle 3 may not exceed cycle 1 by >256 KiB.
-	fixture.set_threshold_bytes(256ull * 1024ull);
+	// Configured via the dedicated monotonicity setter — `threshold_bytes`
+	// stays at the 4 MiB noise-floor default for the absolute leak gate.
+	// (Codex PR #386 review #3294999198 P1.)
+	fixture.set_monotonicity_threshold_bytes(256ull * 1024ull);
 	fixture.capture_baseline();
 
 	uint64_t cycle1_after_bytes = 0;
@@ -556,8 +621,12 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 	REQUIRE_GPU_DEVICE();
 
 	RendererLifetimeFixture fixture("asset_attach_detach", rd);
-	// Monotonicity threshold for the asset cycle delta-of-deltas.
-	fixture.set_threshold_bytes(64ull * 1024ull);
+	// Monotonicity threshold for the asset cycle delta-of-deltas. Configured
+	// via the dedicated monotonicity setter — `threshold_bytes` stays at the
+	// 4 MiB noise-floor default for the absolute leak gate, otherwise normal
+	// allocator jitter could fail an otherwise healthy run. (Codex PR #386
+	// review #3294999198 P1.)
+	fixture.set_monotonicity_threshold_bytes(64ull * 1024ull);
 	fixture.capture_baseline();
 
 	uint64_t cycle1_delta_bytes = 0;
@@ -601,7 +670,7 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 				if (growth > cycle_growth_beyond_cycle1) {
 					cycle_growth_beyond_cycle1 = growth;
 				}
-				if (growth > fixture.result().threshold_bytes) {
+				if (growth > fixture.result().monotonicity_threshold_bytes) {
 					monotonicity_ok = false;
 					monotonicity_reason = vformat(
 							"cycle %d delta %d B grew %d B beyond cycle-1 delta %d B (threshold %d B)",
@@ -609,7 +678,7 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 							int64_t(cycle_delta),
 							int64_t(growth),
 							int64_t(cycle1_delta_bytes),
-							int64_t(fixture.result().threshold_bytes));
+							int64_t(fixture.result().monotonicity_threshold_bytes));
 				}
 			}
 		}
@@ -691,6 +760,89 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime] monotonicity failure surfaces
 	const String emitted_reason = emitted["fail_reason"];
 	CHECK(emitted_reason.find("monotonicity_regression") >= 0);
 	CHECK(emitted_reason.find(synthetic_reason) >= 0);
+}
+
+// ---------------------------------------------------------------------------
+// Regression: monotonicity threshold must not alias the absolute leak gate.
+//
+// Codex PR #386 review #3294999198 (P1): scenarios C and D previously called
+// set_threshold_bytes(256 KiB / 64 KiB) to configure their per-cycle
+// monotonicity growth budget, but _compute_pass() ALSO uses `threshold_bytes`
+// for the absolute rd_memory_leaked_bytes < threshold check. The monotonicity
+// tuning therefore unintentionally tightened the absolute leak gate from the
+// documented 4 MiB noise floor to 256/64 KiB, so normal allocator jitter
+// could fail an otherwise healthy run.
+//
+// The fix introduces a separate `monotonicity_threshold_bytes` field +
+// setter. This test pins the contract:
+//
+//   1. set_monotonicity_threshold_bytes() MUST NOT change threshold_bytes.
+//   2. A scenario whose rd_memory_leaked_bytes sits between the monotonicity
+//      threshold (256 KiB) and the absolute threshold (4 MiB) — e.g., 1 MiB
+//      of allocator jitter — MUST pass the absolute gate, not be silently
+//      tripped by the (smaller) monotonicity budget the way the pre-fix
+//      conflation would have done.
+//   3. The emitted JSON contract MUST surface both thresholds as distinct
+//      fields so PR #390's downstream gate can see the full pass rule.
+//
+// No [RequiresGPU] tag: this exercises pure pass-rule arithmetic; rd_=nullptr
+// matches the failed_init / monotonicity_regression_probe pattern.
+// ---------------------------------------------------------------------------
+TEST_CASE("[GaussianSplatting][Renderer][Lifetime] monotonicity threshold decoupled from absolute leak threshold") {
+	RendererLifetimeFixture fixture("monotonicity_threshold_decoupling_probe", nullptr);
+
+	// 1. Default state — the documented 4 MiB absolute noise floor.
+	const uint64_t expected_default_absolute = 4ull << 20;
+	CHECK(fixture.result().threshold_bytes == expected_default_absolute);
+
+	// 2. Setting the monotonicity budget MUST leave the absolute gate alone.
+	//    This is the load-bearing assertion that catches the original
+	//    conflation regression.
+	fixture.set_monotonicity_threshold_bytes(64ull * 1024ull);
+	CHECK_MESSAGE(fixture.result().threshold_bytes == expected_default_absolute,
+			"set_monotonicity_threshold_bytes must NOT mutate threshold_bytes; "
+			"otherwise the absolute leak gate silently tightens to the per-cycle "
+			"monotonicity budget (the original conflation bug).");
+	CHECK(fixture.result().monotonicity_threshold_bytes == 64ull * 1024ull);
+
+	// 3. Construct the exact failure mode the conflation would have hit:
+	//    simulate 1 MiB of allocator jitter — well under the 4 MiB absolute
+	//    gate, well over the 64 KiB monotonicity budget. Pre-fix this would
+	//    have tripped the absolute check (because threshold_bytes had been
+	//    overwritten to 64 KiB). Post-fix the absolute check must pass and
+	//    only monotonicity_ok controls the verdict.
+	fixture.capture_baseline();
+	const uint64_t synthetic_jitter_bytes = 1ull << 20; // 1 MiB
+	// Inject the synthetic leak directly into the after-snapshot the way the
+	// asset_attach_detach scenario would observe it; the rd_=nullptr path
+	// leaves before.rd_memory_usage_bytes at 0 so this becomes the leaked
+	// delta verbatim.
+	fixture.test_inject_after_rd_bytes(synthetic_jitter_bytes);
+
+	// Monotonicity is fine (this scenario only exercises the absolute gate
+	// decoupling). The synthetic_jitter_bytes sits strictly between the two
+	// thresholds, so pre-fix the conflated absolute check would fail and
+	// post-fix it must pass.
+	const bool passed = fixture.finalize();
+	CHECK_MESSAGE(passed,
+			vformat("rd_memory_leaked_bytes=%d B is below the 4 MiB absolute "
+					"noise floor; the absolute leak gate must pass even though "
+					"it exceeds the per-cycle monotonicity budget. "
+					"fail_reason=%s",
+					int64_t(fixture.result().rd_memory_leaked_bytes),
+					fixture.result().fail_reason));
+	CHECK(fixture.result().rd_memory_leaked_bytes == synthetic_jitter_bytes);
+	CHECK(fixture.result().threshold_bytes == expected_default_absolute);
+	CHECK(fixture.result().monotonicity_threshold_bytes == 64ull * 1024ull);
+
+	// 4. JSON contract — both thresholds surface as distinct fields so
+	//    PR #390's downstream gate can see the full pass rule.
+	const Dictionary emitted = fixture.result().to_dict();
+	CHECK(emitted.has("threshold_bytes"));
+	CHECK(emitted.has("monotonicity_threshold_bytes"));
+	CHECK(int64_t(emitted["threshold_bytes"]) == int64_t(expected_default_absolute));
+	CHECK(int64_t(emitted["monotonicity_threshold_bytes"]) == int64_t(64ull * 1024ull));
+	CHECK(bool(emitted["passed"]) == true);
 }
 
 } // namespace TestGaussianSplatting
