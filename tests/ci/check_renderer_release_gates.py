@@ -606,8 +606,35 @@ def _validate_lifetime_accounting_proof_schema(manifest: dict[str, Any]) -> list
     advisory_fields_set: set[str] = set()
     if isinstance(advisory_fields, list):
         advisory_fields_set = {name for name in advisory_fields if isinstance(name, str) and name}
+    required_scenarios_set: set[str] = set()
+    if isinstance(required_scenarios, list):
+        required_scenarios_set = {
+            name for name in required_scenarios if isinstance(name, str) and name
+        }
     for advisory_field, (required_scenario, count_threshold_key) in ADVISORY_FIELD_STRICT_BINDINGS.items():
         if advisory_field not in advisory_fields_set:
+            continue
+        # Codex P2 review on PR #390 (round 6, comment #3295080072): the
+        # bound scenario must appear in required_scenarios whenever the
+        # advisory field is listed. Otherwise removing the scenario from
+        # required_scenarios silently disables orphan-threshold
+        # enforcement even though advisory_fields_strict_for and
+        # thresholds_counts still validate: the runtime only walks
+        # advisory fields for scenarios that actually appear, so dropping
+        # the scenario from required_scenarios means the entry is never
+        # required to exist and the count threshold is never compared.
+        # Reject at contract-check time, parallel to the round-3/4/5
+        # invariants and reusing the same ADVISORY_FIELD_STRICT_BINDINGS
+        # source of truth.
+        if required_scenario not in required_scenarios_set:
+            failures.append(
+                f"lifetime_accounting_proof.required_scenarios must include "
+                f"{required_scenario!r} when advisory_fields lists "
+                f"{advisory_field!r}; otherwise the orphan-threshold "
+                f"enforcement is silently disabled by a manifest typo or "
+                f"accidental scenario removal (bound scenario not required "
+                f"(manifest invariant))"
+            )
             continue
         # Codex P2 review on PR #390: the count threshold must be declared
         # whenever the advisory field is listed. A missing threshold would

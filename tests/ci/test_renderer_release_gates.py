@@ -1817,6 +1817,126 @@ class LifetimeAccountingProofTests(unittest.TestCase):
                 f"expected error to name the bound advisory field, got: {output!r}",
             )
 
+    def test_schema_requires_strict_scenario_in_required_scenarios(self) -> None:
+        """Codex P2 review on PR #390 (round 6, comment #3295080072).
+
+        Rounds 3, 4, and 5 added schema invariants for the strict map and
+        the count threshold, but none of them required the bound scenario
+        itself to appear in required_scenarios. Removing
+        stringname_orphans from required_scenarios silently disables
+        orphan-threshold enforcement even when advisory_fields_strict_for
+        still maps it and thresholds_counts still declares the bound
+        threshold: the runtime only walks scenarios that actually appear
+        in required_scenarios, so dropping it means the entry is never
+        required to exist and the count threshold is never compared.
+
+        Schema must reject at contract time, reusing the same
+        ADVISORY_FIELD_STRICT_BINDINGS source of truth as the round-3/4/5
+        invariants.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            section = manifest["lifetime_accounting_proof"]
+            # Preconditions: every other invariant is satisfied. The
+            # exploit is specifically removing the scenario from
+            # required_scenarios while keeping the rest intact.
+            self.assertIn("stringname_orphan_delta", section["advisory_fields"])
+            self.assertEqual(
+                section["advisory_fields_strict_for"].get("stringname_orphans"),
+                ["stringname_orphan_delta"],
+                "test precondition: strict map binds the field to the scenario",
+            )
+            self.assertIn("stringname_orphans_max", section["thresholds_counts"])
+            self.assertIn("stringname_orphans", section["required_scenarios"])
+            # Drop only the scenario from required_scenarios.
+            section["required_scenarios"] = [
+                name for name in section["required_scenarios"] if name != "stringname_orphans"
+            ]
+            failures = checker._validate_lifetime_accounting_proof_schema(manifest)
+            self.assertTrue(
+                any(
+                    "required_scenarios" in failure
+                    and "stringname_orphans" in failure
+                    and "stringname_orphan_delta" in failure
+                    and "bound scenario not required" in failure
+                    for failure in failures
+                ),
+                f"expected missing-scenario-despite-advisory to be rejected, got: {failures!r}",
+            )
+
+    def test_lifetime_mode_rejects_missing_strict_scenario_in_required_scenarios(self) -> None:
+        """Round-6 schema invariant must trip --mode lifetime too.
+
+        Round 4 wired schema checks into the lifetime entrypoint so
+        standalone lifetime runs cannot bypass invariants. The round-6
+        invariant must therefore also fail lifetime mode when the bound
+        scenario is missing from required_scenarios, with exit_code != 0
+        before validate_lifetime_accounting_proof is even invoked.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest_path = root / "docs" / "reference" / "renderer_release_gate_manifest.json"
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            section = _lifetime_manifest_section()
+            # Drop stringname_orphans from required_scenarios while keeping
+            # everything else intact (strict map + count threshold + advisory
+            # field listed). Pre-fix, this would slip past the lifetime
+            # gate because the runtime never walks the absent scenario.
+            section["required_scenarios"] = [
+                name for name in section["required_scenarios"] if name != "stringname_orphans"
+            ]
+            manifest = {"lifetime_accounting_proof": section}
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            stdout_path = root / "lifetime.log"
+            # Use a stdout artifact that also omits the scenario, matching
+            # the manifest. Without the new invariant, the gate would
+            # silently pass.
+            stdout_lines = [
+                line for line in _lifetime_stdout_all_pass().splitlines() if "stringname_orphans" not in line
+            ]
+            stdout_path.write_text("\n".join(stdout_lines) + "\n", encoding="utf-8")
+
+            from contextlib import redirect_stdout
+            import io
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                exit_code = checker.main(
+                    [
+                        "--mode",
+                        "lifetime",
+                        "--manifest",
+                        str(manifest_path),
+                        "--lifetime-stdout",
+                        str(stdout_path),
+                    ]
+                )
+            output = buf.getvalue()
+            self.assertNotEqual(
+                exit_code,
+                0,
+                f"--mode lifetime must reject a manifest whose required_scenarios "
+                f"omits the bound strict scenario; got exit_code={exit_code} "
+                f"output={output!r}",
+            )
+            self.assertIn(
+                "lifetime schema check failed",
+                output,
+                f"expected schema-failure header in lifetime mode output, got: {output!r}",
+            )
+            self.assertIn(
+                "required_scenarios",
+                output,
+                f"expected error to name the missing scenarios field, got: {output!r}",
+            )
+            self.assertIn(
+                "stringname_orphans",
+                output,
+                f"expected error to name the missing bound scenario, got: {output!r}",
+            )
+
     def test_schema_requires_bytes_threshold_for_metric_scenario(self) -> None:
         """Codex P2 review on PR #390 (schema side, byte thresholds).
 
