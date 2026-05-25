@@ -10,6 +10,7 @@
 #include "tests/test_macros.h"
 
 // Additional test utilities specific to Gaussian Splatting
+#include "core/object/worker_thread_pool.h"
 #include "core/os/os.h"
 #include "servers/rendering_server.h"
 #include "servers/rendering/rendering_device.h"
@@ -139,6 +140,37 @@ public:
             MESSAGE("Skipping test - streaming unavailable");                \
             return;                                                          \
         }                                                                    \
+    } while (0)
+
+// Issue #392: helper for tests that exercise renderer/manager paths which
+// transitively dispatch work through WorkerThreadPool (e.g. the Lifetime
+// scenarios A/D in test_renderer_lifetime_proof.h, which call into
+// GaussianSplatManager::register_gaussian_buffer /
+// _request_primary_local_device). The `--gs-gpu-test` runner
+// (gs_gpu_test_runner.cpp) provisions a RenderingDevice via Main::test_setup()
+// but does NOT call WorkerThreadPool::get_singleton()->init(), so the pool's
+// `TightLocalVector<ThreadData> threads` is empty (size 0). Any code path that
+// indexes that vector (`threads[i]`) by a thread index derived from
+// thread-local state therefore OOBs the LocalVector — STATUS_STACK_BUFFER_OVERRUN
+// (#392 scenarios A/D crash signature).
+//
+// The probe is `get_singleton()` non-null AND `get_thread_count() > 0`. The
+// singleton itself is created by register_core_types() (which test_setup()
+// calls) so the null check is a belt-and-braces guard — the load-bearing
+// gate is the thread-count check. In a normally bootstrapped runner
+// (tests/test_main.cpp:242 calls `init()`) this passes cleanly; in the
+// `--gs-gpu-test` runner it skips with a clear reason instead of crashing.
+//
+// Use this AFTER REQUIRE_GPU_DEVICE() in scenarios that need both a device
+// and a usable pool: device first (so headless lanes skip first with the
+// existing "RenderingDevice unavailable" reason), pool second.
+#define REQUIRE_WORKER_THREAD_POOL()                                          \
+    do {                                                                      \
+        WorkerThreadPool *_gs_wtp_probe = WorkerThreadPool::get_singleton();  \
+        if (_gs_wtp_probe == nullptr || _gs_wtp_probe->get_thread_count() <= 0) { \
+            MESSAGE("Skipping test - worker thread pool unavailable");        \
+            return;                                                           \
+        }                                                                     \
     } while (0)
 
 // Performance baseline checking

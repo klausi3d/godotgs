@@ -539,6 +539,17 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] renderer_instanc
 	REQUIRE_GPU_DEVICE();
 	// `rd` is published by the macro above; reuse it as the
 	// authoritative device the renderer was constructed against.
+	// Issue #392: renderer.instantiate(rd) -> GaussianSplatRenderer ctor
+	// transitively calls into GaussianSplatManager::register_gaussian_buffer
+	// / _request_primary_local_device, both of which index into
+	// WorkerThreadPool::ThreadData via a derived thread index. The
+	// `--gs-gpu-test` runner provisions an RD but not the pool (see
+	// gs_gpu_test_runner.cpp's Main::test_setup() invocation, which does
+	// not call WorkerThreadPool::get_singleton()->init() the way
+	// tests/test_main.cpp:242 does), so the pool's threads LocalVector is
+	// empty (size 0) and the indexed access OOBs → STATUS_STACK_BUFFER_OVERRUN.
+	// Skip cleanly here if the pool isn't usable instead of crashing.
+	REQUIRE_WORKER_THREAD_POOL();
 
 	RendererLifetimeFixture fixture("renderer_instance", rd);
 	fixture.capture_baseline();
@@ -812,6 +823,13 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] scene_director_r
 // ---------------------------------------------------------------------------
 TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_detach lifetime proof") {
 	REQUIRE_GPU_DEVICE();
+	// Issue #392: same WorkerThreadPool dependency as scenario A
+	// (renderer.instantiate(rd) inside the cycle loop transitively indexes
+	// the empty ThreadData LocalVector). Skip cleanly when the pool isn't
+	// usable instead of crashing with STATUS_STACK_BUFFER_OVERRUN under
+	// `--gs-gpu-test`. See REQUIRE_WORKER_THREAD_POOL() comment in
+	// test_macros.h for the full rationale.
+	REQUIRE_WORKER_THREAD_POOL();
 
 	RendererLifetimeFixture fixture("asset_attach_detach", rd);
 	// Monotonicity threshold for the asset cycle delta-of-deltas. Configured
