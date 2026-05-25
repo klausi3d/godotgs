@@ -19,7 +19,7 @@
     },
     "release-ci": {
       "description": "Canonical release-ready runtime validation lane used by baseline QA CI.",
-      "gd_mode": "non-headless",
+      "gd_mode": "windows-vulkan",
       "cpp_tests": [
         "Runtime Modifications",
         "Animation Persistence"
