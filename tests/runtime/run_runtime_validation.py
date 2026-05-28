@@ -553,6 +553,24 @@ def _resolve_mode_args(mode: str) -> List[str]:
         return ["--headless"]
     if mode == "windows-vulkan":
         return ["--render-thread", "safe", "--display-driver", "windows", "--rendering-driver", "vulkan"]
+    if mode == "non-headless":
+        # Resolve "non-headless" per host platform so the default release-ci
+        # profile stays portable across Windows/Linux/macOS while still picking
+        # an explicit vulkan driver. Without a driver flag, Godot 4.5 falls
+        # back to OpenGL Compatibility on Windows, which has no RenderingDevice
+        # singleton and silently fails any test that needs one (driver-roulette
+        # observed in #382: 9/12 vs 5/12 pass rates on the same machine).
+        import platform as _platform
+        system = _platform.system()
+        if system == "Windows":
+            return ["--render-thread", "safe", "--display-driver", "windows", "--rendering-driver", "vulkan"]
+        if system == "Linux":
+            return ["--render-thread", "safe", "--display-driver", "x11", "--rendering-driver", "vulkan"]
+        if system == "Darwin":
+            return ["--render-thread", "safe", "--display-driver", "macos", "--rendering-driver", "vulkan"]
+        # Unknown platform: leave the driver flag off rather than guess; CI
+        # for unsupported platforms can fall back to the prior behavior.
+        return []
     return []
 
 
