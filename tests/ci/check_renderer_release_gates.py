@@ -1494,13 +1494,30 @@ def _coerce_lifetime_stdout_lines(stdout_artifact_or_path: Any) -> list[str]:
         except OSError as exc:
             raise RuntimeError(f"lifetime stdout artifact unreadable: {stdout_artifact_or_path} ({exc})") from exc
     if isinstance(stdout_artifact_or_path, str):
-        candidate = Path(stdout_artifact_or_path)
-        # If it points at an existing file, treat as a path; otherwise treat as raw content.
-        if candidate.exists() and candidate.is_file():
+        # A file path cannot contain newlines and cannot have a component
+        # longer than NAME_MAX (255 on Linux); strings that violate either
+        # are definitely raw content. Skip the path probe in those cases so
+        # we don't trip OSError [Errno 36] ENAMETOOLONG on Linux, which is
+        # what Path.exists() does when the argument is too long to stat
+        # (Windows tolerates this silently, masking the bug locally).
+        looks_like_path = (
+            "\n" not in stdout_artifact_or_path
+            and all(len(part) <= 255 for part in stdout_artifact_or_path.split("/"))
+            and all(len(part) <= 255 for part in stdout_artifact_or_path.split("\\"))
+        )
+        if looks_like_path:
             try:
-                return candidate.read_text(encoding="utf-8", errors="ignore").splitlines()
-            except OSError as exc:
-                raise RuntimeError(f"lifetime stdout artifact unreadable: {candidate} ({exc})") from exc
+                candidate = Path(stdout_artifact_or_path)
+                if candidate.exists() and candidate.is_file():
+                    try:
+                        return candidate.read_text(encoding="utf-8", errors="ignore").splitlines()
+                    except OSError as exc:
+                        raise RuntimeError(f"lifetime stdout artifact unreadable: {candidate} ({exc})") from exc
+            except OSError:
+                # Defensive: any other path-probe error (permissions,
+                # weird filesystem state) — treat as content rather than
+                # surfacing a confusing path-related error for raw stdout.
+                pass
         return stdout_artifact_or_path.splitlines()
     raise RuntimeError(f"lifetime stdout artifact has unsupported type: {type(stdout_artifact_or_path).__name__}")
 
