@@ -9,7 +9,7 @@ static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
     if (presets.is_empty()) {
         GaussianImportPresetDefinition mobile;
         mobile.id = "mobile";
-        mobile.display_name = TTR("Mobile");
+        mobile.display_name = RTR("Mobile");
         mobile.max_splats = 250000;
         mobile.density_multiplier = 0.4;
         mobile.enable_lod = true;
@@ -28,7 +28,7 @@ static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
 
         GaussianImportPresetDefinition desktop;
         desktop.id = "desktop";
-        desktop.display_name = TTR("Desktop");
+        desktop.display_name = RTR("Desktop");
         desktop.max_splats = 750000;
         desktop.density_multiplier = 0.7;
         desktop.enable_lod = true;
@@ -47,7 +47,7 @@ static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
 
         GaussianImportPresetDefinition high;
         high.id = "high";
-        high.display_name = TTR("High Quality");
+        high.display_name = RTR("High Quality");
         high.max_splats = 1000000;
         high.density_multiplier = 1.0;
         high.enable_lod = true;
@@ -66,7 +66,7 @@ static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
 
         GaussianImportPresetDefinition ultra;
         ultra.id = "ultra";
-        ultra.display_name = TTR("Ultra Quality");
+        ultra.display_name = RTR("Ultra Quality");
         ultra.max_splats = 0;
         ultra.density_multiplier = 1.0;
         ultra.enable_lod = true;
@@ -85,7 +85,7 @@ static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
 
         GaussianImportPresetDefinition development;
         development.id = "development";
-        development.display_name = TTR("Development");
+        development.display_name = RTR("Development");
         development.max_splats = 0;
         development.density_multiplier = 1.0;
         development.enable_lod = false;
