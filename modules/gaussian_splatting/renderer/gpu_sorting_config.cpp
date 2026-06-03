@@ -63,6 +63,22 @@ void GPUSortingConfig::load_from_project_settings() {
             validate_sorted_output = ps->get_setting(VALIDATE_SORTED_OUTPUT_PATH, validate_sorted_output);
             enable_stage_timestamps = ps->get_setting(ENABLE_STAGE_TIMESTAMPS_PATH, enable_stage_timestamps);
             subgroup_prefix_mode = static_cast<uint8_t>(ps->get_setting(SUBGROUP_PREFIX_MODE_PATH, int(subgroup_prefix_mode)));
+            // Honor an EXPLICITLY-overridden project max_overlap_records even
+            // under a named preset. The preset supplies the per-tile overlap-sort
+            // budget as a DEFAULT, but a value the project author set on purpose
+            // is intentional and must win — otherwise the preset silently
+            // over-sizes the overlap sort buffers (the "high" default of 100M
+            // records is ~0.76 GB of keys alone, ~2 GB across keys/values/radix
+            // scratch). max_overlap_records is GLOBAL_DEF'd (default 100M, see
+            // register_project_settings), so has_setting() is always true;
+            // detect an explicit project override by comparing against that
+            // default so preset users who do NOT set the key keep their preset's
+            // budget unchanged.
+            const int64_t max_overlap_global_default = 100000000;
+            const int64_t project_overlap = ps->get_setting(MAX_OVERLAP_RECORDS_PATH, max_overlap_global_default);
+            if (project_overlap != max_overlap_global_default && project_overlap > 0) {
+                max_overlap_records = ps->get_setting(MAX_OVERLAP_RECORDS_PATH, max_overlap_records);
+            }
             if (enable_performance_logging) {
                 print_config_summary();
             }
