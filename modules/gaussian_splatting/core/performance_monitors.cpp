@@ -546,18 +546,25 @@ float GaussianSplattingPerformanceMonitors::_get_gpu_cull_time_ms() const {
 }
 
 float GaussianSplattingPerformanceMonitors::_get_gpu_sort_time_ms() const {
+    // Prefer the REAL GPU overlap-sort timestamp (timing_state.last_overlap_sort_gpu_ms, resolved
+    // from the dedicated sort timestamp via resolve_gpu_timestamps_async). The streaming snapshot's
+    // stage/frame_sort_time_ms is the CPU command-SUBMIT time (sub-0.1ms), which massively
+    // under-reports: the overlap sort is the dominant GPU pass (measured ~7.8ms at 1.7M splats),
+    // and surfacing the submit time here was the metric-aliasing bug.
+    // Gate the direct GPU value on its validity flag (per codex review): on a frame with no sort
+    // dispatch (empty view, early-exit), last_overlap_sort_gpu_ms keeps its previous value, so an
+    // un-gated read could let a stale ~7.8ms win over the current fallback. When invalid, fall back.
+    const float direct = (active_renderer && active_renderer->is_last_gpu_overlap_sort_time_valid())
+            ? active_renderer->get_last_gpu_overlap_sort_time_ms()
+            : 0.0f;
     GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
     if (!renderer) {
-        return 0.0f;
+        return _sanitize_ms(direct);
     }
-
     const GaussianSplatRenderer::MonitorStreamingSnapshot snapshot =
             _streaming_snapshot_for_monitors(renderer);
-    if (snapshot.stage_metrics_valid) {
-        return _sanitize_ms(snapshot.stage_sort_time_ms);
-    }
-
-    return _sanitize_ms(snapshot.frame_sort_time_ms);
+    const float fallback = snapshot.stage_metrics_valid ? snapshot.stage_sort_time_ms : snapshot.frame_sort_time_ms;
+    return _prefer_direct_or_fallback(direct, fallback);
 }
 
 float GaussianSplattingPerformanceMonitors::_get_gpu_overlap_count_time_ms() const {
