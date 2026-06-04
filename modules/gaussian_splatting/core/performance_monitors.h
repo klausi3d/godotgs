@@ -104,6 +104,7 @@ private:
     float _get_gpu_frame_time_ms() const;
     float _get_gpu_cull_time_ms() const;
     float _get_gpu_sort_time_ms() const;
+    float _get_gpu_overlap_count_time_ms() const; // real, pre-flush COUNT pass (de-aliased from binning/emit)
     float _get_gpu_binning_time_ms() const;
     float _get_gpu_prefix_time_ms() const;
     float _get_gpu_raster_time_ms() const;
@@ -132,6 +133,12 @@ private:
     int _get_aggregated_count() const;
 
     int _get_tile_count() const;
+
+    // Honest device-level VRAM (RenderingDevice::get_memory_usage) — full GPU allocation, not just
+    // the streaming atlas estimate that vram_current_usage_mb reports.
+    float _get_vram_device_total_mb() const;
+    float _get_vram_device_buffers_mb() const;
+    float _get_vram_device_textures_mb() const;
 
     // VRAM Budget Regulation Monitors (Phase 1)
     float _get_vram_current_usage_mb() const;
