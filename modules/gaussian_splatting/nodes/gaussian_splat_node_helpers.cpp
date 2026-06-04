@@ -1402,19 +1402,39 @@ void GaussianSplatNodeRendererHelper::apply_renderer_settings() {
     {
         GaussianStreamingSystem::ConfigOverrides overrides;
 
+        // Item 1 (perf): VRAMBudgetConfig/LODConfig::load_from_project_settings() each do ~19 string-keyed
+        // ProjectSettings lookups. They were called every frame PER NODE (~19 x active-nodes/frame), a
+        // measured CPU-bound hotspot. These read GLOBAL project settings (identical for every node), so we
+        // cache the project-settings-derived base and refresh it at most once per REFRESH_FRAMES frames,
+        // then layer the per-node overrides on top. Staleness for live project-setting edits is therefore
+        // bounded to REFRESH_FRAMES frames REGARDLESS of node count (a frame-based gate, not a call counter
+        // — relevant only in-editor; gameplay project settings are fixed).
+        static thread_local VRAMBudgetConfig cached_vram_base;
+        static thread_local LODConfig cached_lod_base;
+        static thread_local uint64_t cached_settings_frame = 0;
+        static thread_local bool cached_settings_valid = false;
+        constexpr uint64_t REFRESH_FRAMES = 30;
+        const uint64_t now_frame = Engine::get_singleton()->get_process_frames();
+        if (!cached_settings_valid || (now_frame - cached_settings_frame) >= REFRESH_FRAMES) {
+            cached_vram_base = VRAMBudgetConfig::load_from_project_settings();
+            cached_lod_base = LODConfig();
+            cached_lod_base.load_from_project_settings();
+            cached_settings_frame = now_frame;
+            cached_settings_valid = true;
+        }
+
         overrides.override_prefetch = true;
         overrides.predictive_prefetch_enabled = owner.streaming_config.enable_predictive_loading;
         overrides.prefetch_lookahead_distance = owner.streaming_config.load_ahead_distance;
 
-        VRAMBudgetConfig vram_config = VRAMBudgetConfig::load_from_project_settings();
+        VRAMBudgetConfig vram_config = cached_vram_base;
         uint32_t budget_mb = uint32_t(owner.streaming_config.max_gpu_memory / (1024 * 1024));
         vram_config.budget_mb = MAX(64u, budget_mb);
         vram_config.min_chunks = MIN(vram_config.min_chunks, vram_config.max_chunks);
         overrides.override_vram_budget = true;
         overrides.vram_budget_config = vram_config;
 
-        LODConfig lod_override;
-        lod_override.load_from_project_settings();
+        LODConfig lod_override = cached_lod_base;
         lod_override.enabled = owner.streaming_config.enable_adaptive_quality;
         lod_override.num_levels = CLAMP((int)owner.streaming_config.num_lod_levels, 2, 8);
         lod_override.base_threshold = MAX(1.0f, owner.lod_config.lod0_distance);
