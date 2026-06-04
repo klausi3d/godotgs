@@ -1494,13 +1494,11 @@ void GaussianSplatNode3D::_sync_renderer_splat_counts(int asset_splat_count, int
     const int expected_total = asset_splat_count > 0 ? asset_splat_count : procedural_splat_count;
     total_splat_count = expected_total > 0 ? (uint32_t)expected_total : 0;
 
-    Dictionary stats = renderer->get_render_stats();
-    uint32_t renderer_visible = 0;
-    if (stats.has("visible_splats")) {
-        renderer_visible = (uint32_t)(int64_t)stats["visible_splats"];
-    } else {
-        renderer_visible = renderer->get_visible_splat_count();
-    }
+    // Item 1 (perf): do NOT build the full multi-subsystem render-stats Dictionary every frame
+    // per node just to read one integer. get_render_stats() allocated a large Dictionary x active
+    // nodes/frame (a measured CPU-bound hotspot). The atomic visible-splat counter is the
+    // authoritative, allocation-free source (it was already the fallback path here).
+    uint32_t renderer_visible = renderer->get_visible_splat_count();
 
     if (total_splat_count == 0) {
         visible_splat_count = 0;
