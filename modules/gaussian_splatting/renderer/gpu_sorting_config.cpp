@@ -280,10 +280,14 @@ void GPUSortingConfig::print_config_summary() const {
     GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Active Preset: %s", get_current_preset_name()));
     GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Performance Target: %.1f ms per sort (instance/depth max %d elements)",
             target_sort_time_ms, max_sort_elements));
-    // Calculate VRAM usage for overlap record buffers: keys (8 bytes each for 64-bit) + values (4 bytes each)
-    const float overlap_vram_mb = float(max_overlap_records) * 12.0f / (1024.0f * 1024.0f);
-    GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Overlap Budget: %d records (~%.0f MB VRAM for key+value buffers)",
-            max_overlap_records, overlap_vram_mb));
+    // VRAM for overlap record buffers. Per record we allocate BOTH the primary key+value AND an
+    // equal-sized radix ping-pong temp (temp_keys + temp_values, see gpu_sorter.cpp). 64-bit keys
+    // store an 8-byte key (uvec2), 32-bit keys a 4-byte key; values are always 4 bytes.
+    const uint32_t key_bytes = (key_bits > 32) ? 8u : 4u;
+    const uint32_t bytes_per_record = (key_bytes + 4u) * 2u; // primary + radix temp
+    const float overlap_vram_mb = float(max_overlap_records) * float(bytes_per_record) / (1024.0f * 1024.0f);
+    GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Overlap Budget: %d records (~%.0f MB VRAM, %d B/record incl. radix ping-pong temp)",
+            max_overlap_records, overlap_vram_mb, bytes_per_record));
     GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Raster Tile Cap: %d splats/tile", max_raster_splats_per_tile));
     GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Radix Configuration: %d-bit radix, workgroup size %d",
             radix_bits, workgroup_size));
