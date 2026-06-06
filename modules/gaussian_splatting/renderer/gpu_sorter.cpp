@@ -1655,8 +1655,11 @@ void main() {
     uint gid = gl_GlobalInvocationID.x;
     uint num_keys = indirect.element_count;
 
-    if (tid < RADIX_SIZE) {
-        local_histogram[tid] = 0;
+    // Strided over all RADIX_SIZE bins: a single `tid < RADIX_SIZE` guard only covers the first
+    // WORKGROUP_SIZE bins, which silently corrupts the histogram when WORKGROUP_SIZE < RADIX_SIZE
+    // (e.g. 8-bit radix = 256 bins with workgroup_size 64/128). This loop is correct for any size.
+    for (uint b = tid; b < RADIX_SIZE; b += WORKGROUP_SIZE) {
+        local_histogram[b] = 0;
     }
     barrier();
 
@@ -1674,9 +1677,9 @@ void main() {
     }
     barrier();
 
-    if (tid < RADIX_SIZE) {
-        uint base = params.histogram_offset + gl_WorkGroupID.x * params.workgroup_stride;
-        hist.histogram[base + tid] = local_histogram[tid];
+    uint base = params.histogram_offset + gl_WorkGroupID.x * params.workgroup_stride;
+    for (uint b = tid; b < RADIX_SIZE; b += WORKGROUP_SIZE) {
+        hist.histogram[base + b] = local_histogram[b];
     }
 }
         )",
@@ -1875,11 +1878,12 @@ void main() {
     uint threads = gl_NumWorkGroups.x * WORKGROUP_SIZE;
     uint keys_per_thread = (num_keys + threads - 1) / threads;
 
-    if (lid < RADIX_SIZE) {
-        local_offsets[lid] = 0u;
-        uint base_idx = params.wg_prefix_offset + gl_WorkGroupID.x * params.workgroup_stride + lid;
-        uint bin_idx = params.bin_offset + lid;
-        local_bases[lid] = wg_prefix_buf.wg_prefix[base_idx] + bin_prefix_buf.bin_prefix[bin_idx];
+    // Strided over all RADIX_SIZE bins (see histogram note): correct for WORKGROUP_SIZE < RADIX_SIZE.
+    for (uint b = lid; b < RADIX_SIZE; b += WORKGROUP_SIZE) {
+        local_offsets[b] = 0u;
+        uint base_idx = params.wg_prefix_offset + gl_WorkGroupID.x * params.workgroup_stride + b;
+        uint bin_idx = params.bin_offset + b;
+        local_bases[b] = wg_prefix_buf.wg_prefix[base_idx] + bin_prefix_buf.bin_prefix[bin_idx];
     }
     barrier();
 
@@ -1913,13 +1917,14 @@ void main() {
         }
         barrier();
 
-        if (lid < RADIX_SIZE) {
-            uint base = lid * MASK_WORDS;
+        // Strided over all RADIX_SIZE bins (see histogram note): correct for WORKGROUP_SIZE < RADIX_SIZE.
+        for (uint b = lid; b < RADIX_SIZE; b += WORKGROUP_SIZE) {
+            uint mask_base = b * MASK_WORDS;
             uint count = 0u;
             for (uint w = 0u; w < MASK_WORDS; ++w) {
-                count += bitCount(bin_masks[base + w]);
+                count += bitCount(bin_masks[mask_base + w]);
             }
-            local_offsets[lid] += count;
+            local_offsets[b] += count;
         }
         barrier();
     }
@@ -3366,7 +3371,16 @@ SorterCapabilities BitonicSort::get_capabilities() {
 bool RadixSort::is_supported(RenderingDevice *p_rd) {
     const GPUSortingConfig &config = g_gpu_sorting_config;
     uint32_t required_workgroup_size = config.workgroup_size > 0 ? config.workgroup_size : GPUSortingConstants::DEFAULT_WORKGROUP_SIZE;
-    const uint32_t required_shared_memory = GPUSortingConstants::RADIX_SIZE * sizeof(uint32_t);
+    // The scatter kernel is the shared-memory peak: local_bases[radix_size] + local_offsets[radix_size]
+    // + bin_masks[radix_size * mask_words], where radix_size = 1<<radix_bits and mask_words = ceil(wg/32).
+    // The old probe checked only the OneSweep RADIX_SIZE (256) words and ignored bin_masks entirely, so an
+    // 8-bit radix with a large workgroup (e.g. 512 → ~18 KB) could pass the probe and then fail pipeline
+    // creation on GPUs with a 16 KB shared-memory limit. Size it from the ACTUAL radix config.
+    const uint32_t actual_radix_bits = config.radix_bits > 0 ? config.radix_bits : GPUSortingConstants::DEFAULT_RADIX_BITS;
+    const uint32_t actual_radix_size = 1u << actual_radix_bits;
+    const uint32_t mask_words = (required_workgroup_size + 31u) / 32u;
+    const uint32_t scatter_shared_uints = actual_radix_size * (2u + mask_words);
+    const uint32_t required_shared_memory = scatter_shared_uints * uint32_t(sizeof(uint32_t));
     const ComputeCapabilityProbe probe = _probe_compute_capabilities(p_rd);
     return _supports_compute_profile(probe, required_workgroup_size, MIN_STORAGE_BUFFERS_PER_SET, required_shared_memory);
 }
