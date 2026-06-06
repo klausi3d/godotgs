@@ -845,6 +845,10 @@ private:
 				if (adaptive_overlap_budget_suggested > 0u) {
 					overlap_capacity_request = MAX(overlap_capacity_request, adaptive_overlap_budget_suggested);
 				}
+				// Record the measured overlap demand so the next frame's bounded-shrink
+				// hysteresis is gated on real demand, not just the low pre-count estimate
+				// (prevents premature shrink + expensive re-grow on zoomed-in views).
+				renderer.global_sort_resources.last_observed_demand = overlap_capacity_request;
 			if (overlap_capacity_request > renderer.global_sort_resources.capacity) {
 				const uint64_t gen_before = renderer.descriptor_generation;
 				renderer._ensure_global_sort_resources(overlap_capacity_request);
