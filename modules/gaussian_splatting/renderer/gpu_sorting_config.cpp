@@ -10,6 +10,7 @@ const String GPUSortingConfig::TARGET_TIME_PATH = "rendering/gaussian_splatting/
 const String GPUSortingConfig::LEGACY_TARGET_TIME_PATH = SECTION_PATH + "target_sort_time_ms";
 const String GPUSortingConfig::MAX_ELEMENTS_PATH = SECTION_PATH + "max_sort_elements";
 const String GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH = SECTION_PATH + "max_overlap_records";
+const String GPUSortingConfig::BOUNDED_BUFFER_SHRINK_PATH = SECTION_PATH + "bounded_buffer_shrink_enabled";
 const String GPUSortingConfig::MAX_RASTER_SPLATS_PER_TILE_PATH = SECTION_PATH + "max_raster_splats_per_tile";
 const String GPUSortingConfig::RADIX_BITS_PATH = SECTION_PATH + "radix_bits";
 const String GPUSortingConfig::WORKGROUP_SIZE_PATH = SECTION_PATH + "workgroup_size";
@@ -94,6 +95,7 @@ void GPUSortingConfig::load_from_project_settings() {
     max_sort_elements = ps->get_setting(MAX_ELEMENTS_PATH, 50000000);
     max_overlap_records = ps->get_setting(MAX_OVERLAP_RECORDS_PATH, 100000000);
     max_raster_splats_per_tile = ps->get_setting(MAX_RASTER_SPLATS_PER_TILE_PATH, 65536);
+    bounded_buffer_shrink_enabled = ps->get_setting(BOUNDED_BUFFER_SHRINK_PATH, false);
     GS_LOG_GPU_SORT_INFO(vformat("[GPUSortingConfig] LOADED: max_sort_elements=%d max_overlap_records=%d (has_elements=%d has_overlap=%d)",
             max_sort_elements, max_overlap_records, int(has_elements), int(has_overlap)));
 
@@ -133,6 +135,7 @@ void GPUSortingConfig::save_to_project_settings() const {
     }
     ps->set_setting(MAX_ELEMENTS_PATH, max_sort_elements);
     ps->set_setting(MAX_OVERLAP_RECORDS_PATH, max_overlap_records);
+    ps->set_setting(BOUNDED_BUFFER_SHRINK_PATH, bounded_buffer_shrink_enabled);
     ps->set_setting(MAX_RASTER_SPLATS_PER_TILE_PATH, max_raster_splats_per_tile);
 
     ps->set_setting(RADIX_BITS_PATH, radix_bits);
@@ -546,6 +549,7 @@ void initialize_gpu_sorting_config() {
 	gs::sorting_settings::register_canonical_target_sort_time_setting(ps, 2.0f);
 	GLOBAL_DEF(GPUSortingConfig::MAX_ELEMENTS_PATH, 50000000);
     GLOBAL_DEF(GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH, 100000000);
+    GLOBAL_DEF(GPUSortingConfig::BOUNDED_BUFFER_SHRINK_PATH, false);
     GLOBAL_DEF(GPUSortingConfig::MAX_RASTER_SPLATS_PER_TILE_PATH, 65536);
     GLOBAL_DEF(GPUSortingConfig::RADIX_BITS_PATH, GPUSortingConstants::DEFAULT_RADIX_BITS);
     GLOBAL_DEF(GPUSortingConfig::WORKGROUP_SIZE_PATH, GPUSortingConstants::DEFAULT_WORKGROUP_SIZE);

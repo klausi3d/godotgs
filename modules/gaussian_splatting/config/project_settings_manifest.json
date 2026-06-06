@@ -668,6 +668,11 @@
       "test_coverage": "covered"
     },
     {
+      "effective_state": "g_gpu_sorting_config.bounded_buffer_shrink_enabled",
+      "key": "rendering/gaussian_splatting/gpu_sorting/bounded_buffer_shrink_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
       "effective_state": "g_gpu_sorting_config.debug_validate_prefix",
       "key": "rendering/gaussian_splatting/gpu_sorting/debug_validate_prefix",
       "test_coverage": "inventory_only"

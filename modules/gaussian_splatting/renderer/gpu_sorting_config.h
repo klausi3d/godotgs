@@ -31,6 +31,13 @@ struct GPUSortingConfig {
     uint32_t max_overlap_records_adaptive_min = 100000;
     // Enables adaptive overlap budget feedback loop in TileRenderer.
     bool adaptive_overlap_budget_enabled = false;
+    // Enables bounded shrink of only-grow GPU scratch buffers so a single zoom-in
+    // spike no longer pins peak VRAM for the rest of the session. Currently gates the
+    // global projection buffer (the largest such buffer); the global/instance sort
+    // buffers are a planned follow-up behind this same flag. Opt-in (default off):
+    // trades an occasional buffer realloc for lower steady-state VRAM, primarily to
+    // help low-end GPUs fit large scenes. See tile_render_resources.
+    bool bounded_buffer_shrink_enabled = false;
 
     // Soft cap for per-tile raster iterations in fragment/compute rasterizers.
     // Alpha saturation provides natural early termination (typically ~100-500
@@ -123,6 +130,7 @@ struct GPUSortingConfig {
     static const String LEGACY_TARGET_TIME_PATH;
     static const String MAX_ELEMENTS_PATH;
     static const String MAX_OVERLAP_RECORDS_PATH;
+    static const String BOUNDED_BUFFER_SHRINK_PATH;
     static const String MAX_RASTER_SPLATS_PER_TILE_PATH;
     static const String RADIX_BITS_PATH;
     static const String WORKGROUP_SIZE_PATH;
