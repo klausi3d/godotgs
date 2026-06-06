@@ -38,6 +38,13 @@ inline void safe_free_buffer_rid(RenderingDevice *p_device, RID &p_rid) {
 	p_rid = RID();
 }
 
+// Words (uint32) per sort key for the global composite sort: 64-bit keys use two
+// words, everything else one. Single source of truth for both the keys-buffer
+// allocation and the bounded-shrink byte estimate, so they cannot drift apart.
+inline uint32_t global_sort_key_stride_words(const SortKeyConfig &p_key_config) {
+	return (p_key_config.key_bits > 32) ? 2u : 1u;
+}
+
 } // namespace
 
 namespace GaussianSplatting {
@@ -671,7 +678,7 @@ void TileProjectionBuffers::ensure_projection_buffer(uint32_t p_visible_count) {
 	// When `bounded_buffer_shrink_enabled` is set (opt-in, primarily for low-end
 	// GPUs that cannot afford to pin peak VRAM for the whole session), we instead
 	// use the shared wide-hysteresis resize plan: it reclaims the buffer only after
-	// demand stays at/below half capacity for TILE_PROJECTION_SHRINK_HYSTERESIS_FRAMES
+	// demand stays at/below half capacity for TILE_SCRATCH_SHRINK_HYSTERESIS_FRAMES
 	// consecutive frames — far wider than the streak that caused the old cycling.
 	bool needs_resize;
 	uint32_t target_bytes;
@@ -679,8 +686,8 @@ void TileProjectionBuffers::ensure_projection_buffer(uint32_t p_visible_count) {
 		const TileBufferShrinkPolicy policy{
 			0u, // growth slack: the power-of-two element rounding already provides headroom
 			0u,
-			TILE_PROJECTION_SHRINK_TRIGGER_PERCENT,
-			TILE_PROJECTION_SHRINK_HYSTERESIS_FRAMES,
+			TILE_SCRATCH_SHRINK_TRIGGER_PERCENT,
+			TILE_SCRATCH_SHRINK_HYSTERESIS_FRAMES,
 		};
 		const TileBufferResizePlan plan = tile_compute_buffer_resize_plan(
 				required_bytes, projection_buffer_size, shrink_candidate_frames, policy);
@@ -1077,6 +1084,8 @@ void TileGlobalSortResources::reset_state(bool p_clear_sorter) {
 	sorter_missing_logged = false;
 	sorter_device_id = 0;
 	capacity = 0;
+	shrink_candidate_frames = 0;
+	last_observed_demand = 0;
 	key_config = SortKeyConfig();
 	keys_buffer = RID();
 	values_buffer = RID();
@@ -1211,6 +1220,44 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 				desired_key_config.depth_bits != key_config.depth_bits ||
 				desired_key_config.enable_tie_breaker != key_config.enable_tie_breaker;
 
+		// Bounded shrink (opt-in): when overlap demand stays well below the reserved
+		// sort capacity for a wide hysteresis window, recreate the sorter at the lower
+		// demand so the (up to >1 GB) key/value buffers are reclaimed. The hysteresis is
+		// wide and resets on any demand recovery, so this fires only when the camera
+		// settles on a low-overlap view — never mid-sweep. Growth and key-config changes
+		// keep their existing dedicated triggers below; this only adds a shrink trigger.
+		//
+		// CRITICAL: the frame-start argument (p_visible_count) is only a coarse PRE-count
+		// estimate; the true per-frame overlap demand is measured after the count/prefix
+		// pass and stored in last_observed_demand. The estimate is systematically LOW for
+		// zoomed-in views (close splats cover 100+ tiles each), so driving the streak off
+		// the estimate alone would shrink while real demand is still high and then
+		// immediately re-grow (with an expensive re-count). We therefore gate shrink on
+		// MAX(estimate, last measured demand): the streak advances only when BOTH agree
+		// demand is low, and any measured-high frame in the 240-frame window resets it.
+		// Residual edge (accepted): a demand spike on the exact trigger frame shrinks off
+		// the prior frame's low measurement, then the post-count grow path re-grows the
+		// same frame — a single, self-correcting re-count, not sustained thrash. A pending-
+		// shrink state machine would remove even that, at a complexity cost not worth it
+		// for a default-off knob.
+		const uint32_t effective_demand = MAX<uint32_t>(attempt_elements, last_observed_demand);
+		bool wants_shrink = false;
+		if (g_gpu_sorting_config.bounded_buffer_shrink_enabled && sorter_available && sorter.is_valid() &&
+				!key_config_changed && capacity > effective_demand) {
+			// keys (1-2 words) + values (1 word), matching the real allocation below.
+			const uint32_t bytes_per_element = (global_sort_key_stride_words(key_config) + 1u) * uint32_t(sizeof(uint32_t));
+			const uint32_t current_bytes = uint32_t(MIN<uint64_t>(uint64_t(capacity) * bytes_per_element, uint64_t(UINT32_MAX)));
+			const uint32_t required_bytes = uint32_t(MIN<uint64_t>(uint64_t(effective_demand) * bytes_per_element, uint64_t(UINT32_MAX)));
+			const TileBufferShrinkPolicy policy{ 0u, 0u,
+				TILE_SCRATCH_SHRINK_TRIGGER_PERCENT, TILE_SCRATCH_SHRINK_HYSTERESIS_FRAMES };
+			const TileBufferResizePlan plan = tile_compute_buffer_resize_plan(
+					required_bytes, current_bytes, shrink_candidate_frames, policy);
+			shrink_candidate_frames = plan.next_shrink_candidate_frames;
+			wants_shrink = plan.should_resize && plan.target_bytes < current_bytes;
+		} else {
+			shrink_candidate_frames = 0;
+		}
+
 		auto disable_sorter = [&](const char *p_reason) {
 			if (sorter.is_valid()) {
 				sorter->shutdown();
@@ -1232,7 +1279,7 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 				capacity = MAX<uint32_t>(attempt_elements, 1u);
 				sorter_recreated = true;
 			}
-		} else if (!sorter.is_valid() || capacity < attempt_elements || key_config_changed) {
+		} else if (!sorter.is_valid() || capacity < attempt_elements || key_config_changed || wants_shrink) {
 			if (sorter.is_valid()) {
 				sorter->shutdown();
 				sorter.unref();
@@ -1240,12 +1287,20 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 
 			SortKeyConfig config_to_use = desired_key_config;
 
+			// On a shrink, recreate at the MEASURED demand (effective_demand), not the
+			// low pre-count estimate — otherwise the freshly shrunk capacity would be
+			// below real demand and the very next count pass would re-grow (thrash).
+			// Growth/key-config recreation keeps the estimate, which it must reserve
+			// ahead of the count. wants_shrink is mutually exclusive with the grow
+			// triggers (it requires capacity > effective_demand >= attempt_elements).
+			const uint32_t resize_elements = wants_shrink ? effective_demand : attempt_elements;
+
 			// Global composite sort requires indirect support for GPU-driven element count.
 			if (!GPUSorterFactory::probe_supports_indirect(GPUSorterFactory::ALGORITHM_RADIX, device)) {
 				disable_sorter("[TileRenderer] Global composite sort requires RadixSort indirect support; rendering unsorted tiles");
 			} else {
 				Ref<IGPUSorter> created_sorter = GPUSorterFactory::create_sorter(
-						GPUSorterFactory::ALGORITHM_RADIX, device, attempt_elements, config_to_use);
+						GPUSorterFactory::ALGORITHM_RADIX, device, resize_elements, config_to_use);
 				if (!created_sorter.is_valid()) {
 					disable_sorter("[TileRenderer] Failed to create global composite GPU sorter; rendering unsorted tiles");
 				} else if (!created_sorter->supports_indirect()) {
@@ -1258,9 +1313,9 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 					sorter_available = true;
 					GS_LOG_INFO_DEFAULT(vformat("[TileRenderer] Global sort capacity initialized: %d (config max_overlap_records=%d)",
 						int(capacity), int(g_gpu_sorting_config.max_overlap_records)));
-					if (capacity < attempt_elements) {
+					if (capacity < resize_elements) {
 						WARN_PRINT_ONCE(vformat("[TileRenderer] Global sort capacity capped (requested=%d, actual=%d)",
-							int(attempt_elements), int(capacity)));
+							int(resize_elements), int(capacity)));
 					}
 					sorter_recreated = true;
 				}
@@ -1290,7 +1345,7 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 			buffers_recreated = true;
 		}
 
-		const uint32_t key_stride_words = (key_config.key_bits > 32) ? 2u : 1u;
+		const uint32_t key_stride_words = global_sort_key_stride_words(key_config);
 		const uint64_t keys_bytes64 = uint64_t(capacity) * sizeof(uint32_t) * key_stride_words;
 		const uint64_t values_bytes64 = uint64_t(capacity) * sizeof(uint32_t);
 		if (keys_bytes64 > UINT32_MAX || values_bytes64 > UINT32_MAX) {

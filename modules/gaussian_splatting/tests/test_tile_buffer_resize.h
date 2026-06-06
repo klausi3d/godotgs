@@ -22,8 +22,8 @@ inline GaussianSplatting::TileBufferShrinkPolicy projection_policy() {
 	GaussianSplatting::TileBufferShrinkPolicy policy;
 	policy.growth_slack_percent = 0u;
 	policy.min_growth_slack_bytes = 0u;
-	policy.shrink_trigger_percent = GaussianSplatting::TILE_PROJECTION_SHRINK_TRIGGER_PERCENT;
-	policy.shrink_hysteresis_frames = GaussianSplatting::TILE_PROJECTION_SHRINK_HYSTERESIS_FRAMES;
+	policy.shrink_trigger_percent = GaussianSplatting::TILE_SCRATCH_SHRINK_TRIGGER_PERCENT;
+	policy.shrink_hysteresis_frames = GaussianSplatting::TILE_SCRATCH_SHRINK_HYSTERESIS_FRAMES;
 	return policy;
 }
 
@@ -108,7 +108,7 @@ TEST_CASE("[GaussianSplatting][TileBufferResize] Buffer resize plan defers proje
 
 	const GaussianSplatting::TileBufferResizePlan trigger =
 			GaussianSplatting::tile_compute_buffer_resize_plan(required_bytes, current_bytes,
-					GaussianSplatting::TILE_PROJECTION_SHRINK_HYSTERESIS_FRAMES - 1u,
+					GaussianSplatting::TILE_SCRATCH_SHRINK_HYSTERESIS_FRAMES - 1u,
 					TestTileBufferResize::projection_policy());
 	CHECK(trigger.should_resize);
 	CHECK(trigger.target_bytes == required_bytes); // no slack on shrink either

@@ -49,14 +49,17 @@ constexpr uint32_t TILE_SH_CACHE_MIN_GROWTH_SLACK_BYTES = 4096u;
 constexpr uint32_t TILE_SH_CACHE_SHRINK_TRIGGER_PERCENT = 50u;
 constexpr uint32_t TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES = 120u;
 
-// Global projection-buffer policy (opt-in shrink; large >1 GB buffer). The element
-// count is already rounded up to a power of two before the byte size is computed,
-// so the growth slack is 0 (the rounding is the slack) and a 50% shrink trigger
-// means "demand dropped at least one power-of-two octave". The hysteresis is wider
-// than the SH cache's because the visible-splat count oscillates by ~15x across a
-// single camera sweep.
-constexpr uint32_t TILE_PROJECTION_SHRINK_TRIGGER_PERCENT = 50u;
-constexpr uint32_t TILE_PROJECTION_SHRINK_HYSTERESIS_FRAMES = 240u;
+// Shared opt-in policy for the large demand-driven scratch buffers (the global
+// projection buffer + the global sort key/value buffers; the separate instance/
+// depth sort buffers are a future extension). Both grow with per-frame demand and
+// oscillate by ~15x across a single camera sweep, so the
+// hysteresis is wide (4s at 60 fps) and resets on any demand recovery — a shrink
+// only fires when the camera settles on a low-demand view, never mid-sweep. A 50%
+// trigger means "demand dropped at least one power-of-two octave" (the projection
+// byte size is power-of-two rounded). Growth slack is 0 for both: the projection
+// rounding already provides headroom, and the sorter picks its own capacity.
+constexpr uint32_t TILE_SCRATCH_SHRINK_TRIGGER_PERCENT = 50u;
+constexpr uint32_t TILE_SCRATCH_SHRINK_HYSTERESIS_FRAMES = 240u;
 
 // Backwards-compatible alias + thin wrapper used by the SH cache call site and tests.
 typedef TileBufferResizePlan TileSHCacheResizePlan;
@@ -195,6 +198,8 @@ struct TileGlobalSortResources {
 	bool sorter_missing_logged = false;
 	uint64_t sorter_device_id = 0;
 	uint32_t capacity = 0;
+	uint32_t shrink_candidate_frames = 0; // consecutive low-demand frames, for bounded shrink hysteresis
+	uint32_t last_observed_demand = 0; // last frame's MEASURED overlap demand (post-count), drives shrink hysteresis
 	SortKeyConfig key_config;
 	RID keys_buffer;
 	RID values_buffer;
