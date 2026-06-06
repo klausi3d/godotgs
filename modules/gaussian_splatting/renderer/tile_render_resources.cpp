@@ -42,34 +42,41 @@ inline void safe_free_buffer_rid(RenderingDevice *p_device, RID &p_rid) {
 
 namespace GaussianSplatting {
 
-TileSHCacheResizePlan tile_compute_sh_cache_resize_plan(uint32_t p_required_bytes, uint32_t p_current_bytes,
-		uint32_t p_shrink_candidate_frames) {
-	TileSHCacheResizePlan plan;
+TileBufferResizePlan tile_compute_buffer_resize_plan(uint32_t p_required_bytes, uint32_t p_current_bytes,
+		uint32_t p_shrink_candidate_frames, const TileBufferShrinkPolicy &p_policy) {
+	TileBufferResizePlan plan;
 
-	auto compute_target_with_slack = [](uint32_t p_base_bytes) -> uint32_t {
+	auto compute_target_with_slack = [&p_policy](uint32_t p_base_bytes) -> uint32_t {
 		if (p_base_bytes == 0u) {
 			return 0u;
 		}
 
-		const uint64_t percent_slack = (uint64_t(p_base_bytes) * uint64_t(TILE_SH_CACHE_GROWTH_SLACK_PERCENT) + 99u) / 100u;
-		const uint64_t slack_bytes = MAX<uint64_t>(percent_slack, uint64_t(TILE_SH_CACHE_MIN_GROWTH_SLACK_BYTES));
+		const uint64_t percent_slack = (uint64_t(p_base_bytes) * uint64_t(p_policy.growth_slack_percent) + 99u) / 100u;
+		const uint64_t slack_bytes = MAX<uint64_t>(percent_slack, uint64_t(p_policy.min_growth_slack_bytes));
 		const uint64_t target_bytes64 = uint64_t(p_base_bytes) + slack_bytes;
 		return uint32_t(MIN<uint64_t>(target_bytes64, uint64_t(UINT32_MAX)));
 	};
 
+	// Grow immediately when demand exceeds the current capacity.
 	if (p_required_bytes > p_current_bytes) {
 		plan.should_resize = true;
 		plan.target_bytes = compute_target_with_slack(p_required_bytes);
 		return plan;
 	}
 
+	// Nothing allocated yet and no demand: nothing to do.
 	if (p_current_bytes == 0u) {
 		return plan;
 	}
 
+	// Hysteresis of 0 would mean "shrink instantly", which is exactly the cycling
+	// we are guarding against; clamp to at least one frame so the counter logic holds.
+	const uint32_t hysteresis_frames = MAX<uint32_t>(p_policy.shrink_hysteresis_frames, 1u);
+
+	// Demand fell to zero: free the buffer once the low streak is long enough.
 	if (p_required_bytes == 0u) {
-		const uint32_t next_frames = MIN<uint32_t>(p_shrink_candidate_frames + 1u, TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES);
-		if (next_frames >= TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES) {
+		const uint32_t next_frames = MIN<uint32_t>(p_shrink_candidate_frames + 1u, hysteresis_frames);
+		if (next_frames >= hysteresis_frames) {
 			plan.should_resize = true;
 			plan.target_bytes = 0u;
 			return plan;
@@ -78,10 +85,11 @@ TileSHCacheResizePlan tile_compute_sh_cache_resize_plan(uint32_t p_required_byte
 		return plan;
 	}
 
-	const uint64_t shrink_trigger_bytes = (uint64_t(p_current_bytes) * uint64_t(TILE_SH_CACHE_SHRINK_TRIGGER_PERCENT)) / 100u;
+	// Demand dropped well below capacity: shrink once the low streak is long enough.
+	const uint64_t shrink_trigger_bytes = (uint64_t(p_current_bytes) * uint64_t(p_policy.shrink_trigger_percent)) / 100u;
 	if (uint64_t(p_required_bytes) <= shrink_trigger_bytes) {
-		const uint32_t next_frames = MIN<uint32_t>(p_shrink_candidate_frames + 1u, TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES);
-		if (next_frames >= TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES) {
+		const uint32_t next_frames = MIN<uint32_t>(p_shrink_candidate_frames + 1u, hysteresis_frames);
+		if (next_frames >= hysteresis_frames) {
 			plan.should_resize = true;
 			plan.target_bytes = compute_target_with_slack(p_required_bytes);
 			return plan;
@@ -90,7 +98,19 @@ TileSHCacheResizePlan tile_compute_sh_cache_resize_plan(uint32_t p_required_byte
 		return plan;
 	}
 
+	// Demand is within the keep band: hold capacity, reset the low streak.
 	return plan;
+}
+
+TileSHCacheResizePlan tile_compute_sh_cache_resize_plan(uint32_t p_required_bytes, uint32_t p_current_bytes,
+		uint32_t p_shrink_candidate_frames) {
+	const TileBufferShrinkPolicy policy{
+		TILE_SH_CACHE_GROWTH_SLACK_PERCENT,
+		TILE_SH_CACHE_MIN_GROWTH_SLACK_BYTES,
+		TILE_SH_CACHE_SHRINK_TRIGGER_PERCENT,
+		TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES,
+	};
+	return tile_compute_buffer_resize_plan(p_required_bytes, p_current_bytes, p_shrink_candidate_frames, policy);
 }
 
 void TileResourceController::set_contract_main_device(RenderingDevice *p_main_device) {
@@ -613,6 +633,7 @@ void TileProjectionBuffers::reset_state() {
 	projection_buffer = RID();
 	projection_buffer_owner.clear();
 	projection_buffer_size = 0;
+	shrink_candidate_frames = 0;
 }
 
 void TileProjectionBuffers::ensure_projection_buffer(uint32_t p_visible_count) {
@@ -640,15 +661,37 @@ void TileProjectionBuffers::ensure_projection_buffer(uint32_t p_visible_count) {
 	}
 	const uint32_t required_bytes = uint32_t(required_bytes64);
 
-	// Only-grow policy: never shrink the projection buffer within a renderer's
-	// lifetime. The visible-splat count oscillates by ~15x as the camera sweeps
-	// (e.g. 250K..3.74M), and an 8x shrink hysteresis was not wide enough to
-	// prevent grow/shrink cycling — it caused this >1 GB buffer to be freed and
-	// recreated hundreds of times per session, stalling the driver (stutter) and
-	// transiently double-allocating during the realloc. Growing to the session
-	// high-water mark and holding converges after the first full-scene frame.
-	// The buffer is released wholesale on renderer teardown / scene change.
-	const bool needs_resize = !projection_buffer.is_valid() || projection_buffer_size < required_bytes;
+	// Resize policy. The visible-splat count oscillates by ~15x as the camera
+	// sweeps (e.g. 250K..3.74M), so this >1 GB buffer must never grow/shrink-cycle:
+	// an earlier 8x instantaneous shrink hysteresis was not wide enough and freed +
+	// recreated the buffer hundreds of times per session, stalling the driver and
+	// transiently double-allocating. We therefore default to ONLY-GROW (hold the
+	// session high-water mark; release wholesale on teardown / scene change).
+	//
+	// When `bounded_buffer_shrink_enabled` is set (opt-in, primarily for low-end
+	// GPUs that cannot afford to pin peak VRAM for the whole session), we instead
+	// use the shared wide-hysteresis resize plan: it reclaims the buffer only after
+	// demand stays at/below half capacity for TILE_PROJECTION_SHRINK_HYSTERESIS_FRAMES
+	// consecutive frames — far wider than the streak that caused the old cycling.
+	bool needs_resize;
+	uint32_t target_bytes;
+	if (g_gpu_sorting_config.bounded_buffer_shrink_enabled) {
+		const TileBufferShrinkPolicy policy{
+			0u, // growth slack: the power-of-two element rounding already provides headroom
+			0u,
+			TILE_PROJECTION_SHRINK_TRIGGER_PERCENT,
+			TILE_PROJECTION_SHRINK_HYSTERESIS_FRAMES,
+		};
+		const TileBufferResizePlan plan = tile_compute_buffer_resize_plan(
+				required_bytes, projection_buffer_size, shrink_candidate_frames, policy);
+		shrink_candidate_frames = plan.next_shrink_candidate_frames;
+		needs_resize = plan.should_resize;
+		target_bytes = plan.should_resize ? plan.target_bytes : required_bytes;
+	} else {
+		shrink_candidate_frames = 0;
+		needs_resize = !projection_buffer.is_valid() || projection_buffer_size < required_bytes;
+		target_bytes = required_bytes;
+	}
 
 	if (!needs_resize) {
 #ifdef DEV_ENABLED
@@ -665,8 +708,8 @@ void TileProjectionBuffers::ensure_projection_buffer(uint32_t p_visible_count) {
 		projection_buffer_owner.clear();
 	}
 
-	projection_buffer = device->storage_buffer_create(required_bytes);
-	projection_buffer_size = projection_buffer.is_valid() ? required_bytes : 0;
+	projection_buffer = device->storage_buffer_create(target_bytes);
+	projection_buffer_size = projection_buffer.is_valid() ? target_bytes : 0;
 	if (!projection_buffer.is_valid()) {
 		GS_LOG_ERROR_DEFAULT("[TileRenderer] Failed to allocate global projection buffer");
 		projection_buffer_owner.clear();

@@ -18,17 +18,48 @@ class RenderDeviceManager;
 
 namespace GaussianSplatting {
 
-constexpr uint32_t TILE_SH_CACHE_GROWTH_SLACK_PERCENT = 25u;
-constexpr uint32_t TILE_SH_CACHE_MIN_GROWTH_SLACK_BYTES = 4096u;
-constexpr uint32_t TILE_SH_CACHE_SHRINK_TRIGGER_PERCENT = 50u;
-constexpr uint32_t TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES = 120u;
+// Growth/shrink policy for an only-grow GPU scratch buffer. The buffer grows
+// immediately to demand (plus optional slack); it shrinks back only after demand
+// stays at or below `shrink_trigger_percent` of the current capacity for
+// `shrink_hysteresis_frames` consecutive frames. The wide hysteresis is what
+// prevents a single demand spike from causing grow/shrink cycling (which stalls
+// the driver and transiently double-allocates). See tile_compute_buffer_resize_plan.
+struct TileBufferShrinkPolicy {
+	uint32_t growth_slack_percent = 0u; // extra headroom added on growth, as a % of demand
+	uint32_t min_growth_slack_bytes = 0u; // absolute floor for the growth headroom
+	uint32_t shrink_trigger_percent = 50u; // shrink only if required <= capacity * pct/100
+	uint32_t shrink_hysteresis_frames = 120u; // frames demand must stay low before shrinking
+};
 
-struct TileSHCacheResizePlan {
+struct TileBufferResizePlan {
 	bool should_resize = false;
 	uint32_t target_bytes = 0;
 	uint32_t next_shrink_candidate_frames = 0;
 };
 
+// Pure, deterministic resize-policy decision shared by every only-grow GPU scratch
+// buffer (SH color cache, global projection buffer, ...). Keeping the policy in one
+// unit-tested function lets the buffer-management call sites stay thin and identical.
+TileBufferResizePlan tile_compute_buffer_resize_plan(uint32_t p_required_bytes, uint32_t p_current_bytes,
+		uint32_t p_shrink_candidate_frames, const TileBufferShrinkPolicy &p_policy);
+
+// SH color-cache policy (shrink always on; small buffer, proven stable in production).
+constexpr uint32_t TILE_SH_CACHE_GROWTH_SLACK_PERCENT = 25u;
+constexpr uint32_t TILE_SH_CACHE_MIN_GROWTH_SLACK_BYTES = 4096u;
+constexpr uint32_t TILE_SH_CACHE_SHRINK_TRIGGER_PERCENT = 50u;
+constexpr uint32_t TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES = 120u;
+
+// Global projection-buffer policy (opt-in shrink; large >1 GB buffer). The element
+// count is already rounded up to a power of two before the byte size is computed,
+// so the growth slack is 0 (the rounding is the slack) and a 50% shrink trigger
+// means "demand dropped at least one power-of-two octave". The hysteresis is wider
+// than the SH cache's because the visible-splat count oscillates by ~15x across a
+// single camera sweep.
+constexpr uint32_t TILE_PROJECTION_SHRINK_TRIGGER_PERCENT = 50u;
+constexpr uint32_t TILE_PROJECTION_SHRINK_HYSTERESIS_FRAMES = 240u;
+
+// Backwards-compatible alias + thin wrapper used by the SH cache call site and tests.
+typedef TileBufferResizePlan TileSHCacheResizePlan;
 TileSHCacheResizePlan tile_compute_sh_cache_resize_plan(uint32_t p_required_bytes, uint32_t p_current_bytes,
 		uint32_t p_shrink_candidate_frames);
 
@@ -226,6 +257,7 @@ struct TileProjectionBuffers {
 	RID projection_buffer;
 	BufferOwnership projection_buffer_owner;
 	uint32_t projection_buffer_size = 0;
+	uint32_t shrink_candidate_frames = 0; // consecutive low-demand frames, for bounded shrink hysteresis
 	uint64_t sorter_device_id = 0;
 	bool sorter_available = true;
 	bool sorter_missing_logged = false;

@@ -87,46 +87,10 @@ TEST_CASE("[TileRenderer] Compute raster shared-memory contract matches formula 
     CHECK(required_bytes == 40980u);
 }
 
-TEST_CASE("[TileRenderer] SH cache resize plan adds growth slack") {
-    const uint32_t required_bytes = 16u * 1024u;
-    const uint32_t current_bytes = 8u * 1024u;
-
-    const GaussianSplatting::TileSHCacheResizePlan plan =
-            GaussianSplatting::tile_compute_sh_cache_resize_plan(required_bytes, current_bytes, 0u);
-
-    CHECK(plan.should_resize);
-    CHECK(plan.target_bytes > required_bytes);
-    CHECK(plan.target_bytes >= required_bytes + GaussianSplatting::TILE_SH_CACHE_MIN_GROWTH_SLACK_BYTES);
-    CHECK(plan.next_shrink_candidate_frames == 0u);
-}
-
-TEST_CASE("[TileRenderer] SH cache shrink hysteresis defers resize until threshold") {
-    const uint32_t required_bytes = 1024u;
-    const uint32_t current_bytes = 16u * 1024u;
-
-    const GaussianSplatting::TileSHCacheResizePlan pending =
-            GaussianSplatting::tile_compute_sh_cache_resize_plan(required_bytes, current_bytes, 0u);
-    CHECK(!pending.should_resize);
-    CHECK(pending.next_shrink_candidate_frames == 1u);
-
-    const GaussianSplatting::TileSHCacheResizePlan trigger =
-            GaussianSplatting::tile_compute_sh_cache_resize_plan(required_bytes, current_bytes,
-                    GaussianSplatting::TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES - 1u);
-    CHECK(trigger.should_resize);
-    CHECK(trigger.target_bytes > required_bytes);
-    CHECK(trigger.next_shrink_candidate_frames == 0u);
-}
-
-TEST_CASE("[TileRenderer] SH cache shrink hysteresis resets when usage recovers") {
-    const uint32_t required_bytes = 9u * 1024u;
-    const uint32_t current_bytes = 16u * 1024u;
-
-    const GaussianSplatting::TileSHCacheResizePlan plan =
-            GaussianSplatting::tile_compute_sh_cache_resize_plan(required_bytes, current_bytes, 57u);
-
-    CHECK(!plan.should_resize);
-    CHECK(plan.next_shrink_candidate_frames == 0u);
-}
+// NOTE: the pure resize-policy unit tests (SH cache + projection buffer) live in
+// test_tile_buffer_resize.h so they are aggregated by test_gaussian_splatting.cpp
+// and actually registered — standalone tests/*.cpp doctest cases in this module are
+// dropped by static-lib dead-stripping at link time and never run.
 
 TEST_CASE("[TileRenderer] Compute raster shared-memory requirement equals expected absolute byte count") {
     const uint64_t required_bytes = TileRasterizer::get_compute_raster_shared_memory_requirement_bytes();

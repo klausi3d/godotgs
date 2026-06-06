@@ -49,6 +49,7 @@
     "rendering/gaussian_splatting/effects/sphere_effector_radius",
     "rendering/gaussian_splatting/effects/sphere_effector_strength",
     "rendering/gaussian_splatting/effects/sphere_effector_target_opacity",
+    "rendering/gaussian_splatting/gpu_sorting/bounded_buffer_shrink_enabled",
     "rendering/gaussian_splatting/gpu_sorting/debug_validate_prefix",
     "rendering/gaussian_splatting/gpu_sorting/depth_bits",
     "rendering/gaussian_splatting/gpu_sorting/enable_bandwidth_monitoring",
