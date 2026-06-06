@@ -199,7 +199,7 @@ bool GPUSortingConfig::validate() const {
            max_overlap_records <= MAX_OVERLAP_RECORDS_LIMIT &&
            max_raster_splats_per_tile >= MIN_RASTER_SPLATS_PER_TILE &&
            max_raster_splats_per_tile <= MAX_RASTER_SPLATS_PER_TILE &&
-           (radix_bits == GPUSortingConstants::DEFAULT_RADIX_BITS || radix_bits == GPUSortingConstants::RADIX_BITS) &&
+           (radix_bits == 4 || radix_bits == 8) && // both supported; 4-bit is the default (8-bit measured slower, see gpu_sorting_constants.h); matches get_validation_errors
            (workgroup_size == 64 || workgroup_size == 128 || workgroup_size == 256 || workgroup_size == 512) &&
            (key_bits == 32 || key_bits == 64) &&
            (tile_bits + depth_bits > 0) &&
@@ -330,7 +330,7 @@ GPUSortingConfig GPUSortingConfig::preset_low() {
     config.max_raster_splats_per_tile = 4096;
 
     // Radix parameters - smaller workgroups for better occupancy
-    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // Standard 4-bit radix
+    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // 4-bit radix (DEFAULT_RADIX_BITS); 8-bit measured slower for our workload
     config.workgroup_size = 128;             // Smaller workgroups for limited compute units
 
     // Key layout - 32-bit keys to reduce memory bandwidth
@@ -364,7 +364,7 @@ GPUSortingConfig GPUSortingConfig::preset_medium() {
     config.max_raster_splats_per_tile = 8192;
 
     // Radix parameters - standard configuration
-    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // Standard 4-bit radix
+    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // 4-bit radix (DEFAULT_RADIX_BITS); 8-bit measured slower for our workload
     config.workgroup_size = GPUSortingConstants::DEFAULT_WORKGROUP_SIZE; // Standard workgroup size
 
     // Key layout - 64-bit for precision
@@ -398,7 +398,7 @@ GPUSortingConfig GPUSortingConfig::preset_high() {
     config.max_raster_splats_per_tile = 12288;
 
     // Radix parameters - optimized for throughput
-    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // 4-bit radix (8-bit has higher memory pressure)
+    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // 4-bit radix (DEFAULT_RADIX_BITS); 8-bit measured slower (larger histograms, lower occupancy)
     config.workgroup_size = GPUSortingConstants::DEFAULT_WORKGROUP_SIZE; // Standard workgroup size
 
     // Key layout - full precision
@@ -432,7 +432,7 @@ GPUSortingConfig GPUSortingConfig::preset_ultra() {
     config.max_raster_splats_per_tile = 16384;
 
     // Radix parameters - maximum throughput
-    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // 4-bit radix for consistent performance
+    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // 4-bit radix (DEFAULT_RADIX_BITS); 8-bit measured slower for our workload
     config.workgroup_size = GPUSortingConstants::DEFAULT_WORKGROUP_SIZE; // Can try 512 on very high-end GPUs
 
     // Key layout - maximum precision with tie-breaker
