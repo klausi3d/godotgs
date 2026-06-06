@@ -32,11 +32,16 @@ struct GPUSortingConfig {
     // Enables adaptive overlap budget feedback loop in TileRenderer.
     bool adaptive_overlap_budget_enabled = false;
     // Enables bounded shrink of only-grow GPU scratch buffers so a single zoom-in
-    // spike no longer pins peak VRAM for the rest of the session. Currently gates the
-    // global projection buffer (the largest such buffer); the global/instance sort
-    // buffers are a planned follow-up behind this same flag. Opt-in (default off):
-    // trades an occasional buffer realloc for lower steady-state VRAM, primarily to
-    // help low-end GPUs fit large scenes. See tile_render_resources.
+    // spike no longer pins peak VRAM for the rest of the session. Gates the global
+    // projection buffer AND the global composite-sort key/value buffers; the separate
+    // instance/depth sort buffers are a future extension behind this same flag.
+    // Opt-in (default off): trades an occasional buffer realloc for lower steady-state
+    // VRAM, primarily to help low-end GPUs fit large scenes. See tile_render_resources.
+    // NOTE (measured 2026-06-07): on the default config the global-sort capacity is
+    // pinned at the visible*50 pre-count ESTIMATE (only-grow), not measured demand, so
+    // this shrink reclaims only when the visible count drops — it does NOT reclaim the
+    // ~2.5-4x over-reservation at steady visible. Reclaiming that needs measured-driven
+    // sizing (adaptive_overlap_budget) feeding this shrink; the two are complementary.
     bool bounded_buffer_shrink_enabled = false;
 
     // Soft cap for per-tile raster iterations in fragment/compute rasterizers.
