@@ -164,8 +164,13 @@ void RenderResourceOrchestrator::create_gpu_resources_safe() {
 	if (resource_state.buffer_manager.is_valid() && (!resource_state.buffer_manager_initialized || needs_buffer_resize)) {
 		GS_STARTUP_SCOPE("gpu_buffer_manager_init");
 		int max_splats_for_buffer = local_performance_settings.max_splats;
+		// Skip the dead gaussian_buffer (144 B x max_splats x2, the largest allocation):
+		// the instance pipeline binds the instance atlas, never this buffer, and
+		// upload_gaussian_data has no production caller. The live sort_key/sorted_indices
+		// buffers are still allocated. (Legacy painterly / tests use the default-true 2-arg
+		// initialize and keep allocating it.)
 		Error err = resource_state.buffer_manager->initialize(
-				device_state->rd, max_splats_for_buffer);
+				device_state->rd, max_splats_for_buffer, /*p_allocate_gaussian_buffer=*/ false);
 		if (err == OK) {
 			resource_state.buffer_manager_initialized = true;
 		} else {
@@ -176,9 +181,14 @@ void RenderResourceOrchestrator::create_gpu_resources_safe() {
 	}
 
 	if (resource_state.buffer_manager.is_valid() && resource_state.buffer_manager_initialized) {
-		RID test_buffer = resource_state.buffer_manager->get_current_read_buffer();
-		if (!test_buffer.is_valid()) {
-			GS_LOG_WARN_DEFAULT("[GPU Buffer] GPU buffer manager initialized without a readable buffer RID");
+		// Validate readiness on the LIVE sort buffers (sort_key + sorted_indices) — NOT on
+		// get_current_read_buffer(), which returns the now-skipped gaussian_buffer. With the
+		// gaussian_buffer gone, keying off it would wrongly mark the (otherwise ready) manager
+		// uninitialized; the manager IS ready as long as its sort buffers exist.
+		const RID sort_key_rid = resource_state.buffer_manager->get_sort_key_buffer();
+		const RID sorted_indices_rid = resource_state.buffer_manager->get_sorted_indices_buffer();
+		if (!sort_key_rid.is_valid() || !sorted_indices_rid.is_valid()) {
+			GS_LOG_WARN_DEFAULT("[GPU Buffer] GPU buffer manager initialized without sort buffers");
 			buffer_manager_ready = false;
 			resource_state.buffer_manager_initialized = false;
 		}

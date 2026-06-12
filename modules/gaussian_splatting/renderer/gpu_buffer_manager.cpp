@@ -44,7 +44,7 @@ GPUBufferManager::~GPUBufferManager() {
 }
 
 void GPUBufferManager::_bind_methods() {
-    ClassDB::bind_method(D_METHOD("initialize", "rendering_device", "max_gaussians"), &GPUBufferManager::initialize, DEFVAL(2000000));
+    ClassDB::bind_method(D_METHOD("initialize", "rendering_device", "max_gaussians", "allocate_gaussian_buffer"), &GPUBufferManager::initialize, DEFVAL(2000000), DEFVAL(true));
     ClassDB::bind_method(D_METHOD("upload_gaussian_data", "data"), &GPUBufferManager::upload_gaussian_data);
     ClassDB::bind_method(D_METHOD("begin_frame"), &GPUBufferManager::begin_frame);
     ClassDB::bind_method(D_METHOD("end_frame"), &GPUBufferManager::end_frame);
@@ -103,7 +103,7 @@ void GPUBufferManager::_reset_state(bool p_reset_handles) {
     }
 }
 
-Error GPUBufferManager::initialize(RenderingDevice *p_rd, uint32_t p_max_gaussians) {
+Error GPUBufferManager::initialize(RenderingDevice *p_rd, uint32_t p_max_gaussians, bool p_allocate_gaussian_buffer) {
     ERR_FAIL_NULL_V(p_rd, ERR_INVALID_PARAMETER);
 
     if (buffers_created) {
@@ -112,6 +112,7 @@ Error GPUBufferManager::initialize(RenderingDevice *p_rd, uint32_t p_max_gaussia
 
     rd = p_rd;
     max_gaussians = p_max_gaussians;
+    allocate_gaussian_buffer = p_allocate_gaussian_buffer;
 
     return create_buffers();
 }
@@ -143,13 +144,21 @@ Error GPUBufferManager::_create_buffer_set(BufferSet &r_set, uint32_t p_gaussian
         r_set.reset();
     };
 
-    empty_data.resize(p_gaussian_size);
-    r_set.gaussian_buffer = device->storage_buffer_create(p_gaussian_size, empty_data);
-    if (!r_set.gaussian_buffer.is_valid()) {
-        rollback_set();
-        return ERR_CANT_CREATE;
+    // The gaussian_buffer is the largest allocation (144 B x max_gaussians) and is
+    // DEAD on the instance pipeline (the render path binds the instance atlas, not
+    // this buffer; upload_gaussian_data has no production caller). Skip it unless the
+    // legacy painterly/manual-upload path needs it (allocate_gaussian_buffer=true).
+    // A null gaussian_buffer is handled everywhere via is_valid() guards; the live
+    // sort_key/sorted_indices buffers below are always allocated.
+    if (allocate_gaussian_buffer) {
+        empty_data.resize(p_gaussian_size);
+        r_set.gaussian_buffer = device->storage_buffer_create(p_gaussian_size, empty_data);
+        if (!r_set.gaussian_buffer.is_valid()) {
+            rollback_set();
+            return ERR_CANT_CREATE;
+        }
+        device->set_resource_name(r_set.gaussian_buffer, "GS_GPUBufferManager_GaussianBuffer");
     }
-    device->set_resource_name(r_set.gaussian_buffer, "GS_GPUBufferManager_GaussianBuffer");
 
     empty_data.resize(p_sort_key_size);
     r_set.sort_key_buffer = device->storage_buffer_create(p_sort_key_size, empty_data);
@@ -625,6 +634,11 @@ RID GPUBufferManager::get_current_write_buffer() const {
 Error GPUBufferManager::upload_gaussian_data(const Ref<::GaussianData> &p_data) {
     ERR_FAIL_COND_V(!p_data.is_valid(), ERR_INVALID_PARAMETER);
     ERR_FAIL_COND_V(!buffers_created, ERR_UNCONFIGURED);
+    // The manual-upload path needs the gaussian_buffer; it is skipped when the
+    // instance pipeline initialized with allocate_gaussian_buffer=false. Fail loudly
+    // rather than issue a buffer_update on a null RID.
+    ERR_FAIL_COND_V_MSG(!allocate_gaussian_buffer, ERR_UNCONFIGURED,
+            "upload_gaussian_data requires the gaussian_buffer; initialize with allocate_gaussian_buffer=true.");
 
     bool frame_was_active = frame_active;
     GS_LOG_GPU_MEMORY_DEBUG(vformat("[BUFFER-DBG] upload_gaussian_data: frame_active=%d read_idx=%d write_idx=%d count=%d",
@@ -721,6 +735,8 @@ void GPUBufferManager::clear_gaussian_data() {
 }
 
 RID GPUBufferManager::get_gaussian_buffer() const {
+    // Returns a null RID when initialized with allocate_gaussian_buffer=false (the
+    // instance pipeline never samples this buffer). Callers must check is_valid().
     return get_current_read_buffer();
 }
 
@@ -815,9 +831,11 @@ float GPUBufferManager::get_memory_usage_mb() const {
     }
 
     uint64_t total_bytes = 0;
-    total_bytes += sizeof(PackedGaussian) * max_gaussians * BUFFER_COUNT;
-    total_bytes += sizeof(SortKey) * max_gaussians * BUFFER_COUNT;
-    total_bytes += sizeof(uint32_t) * max_gaussians * BUFFER_COUNT;
+    if (allocate_gaussian_buffer) {
+        total_bytes += uint64_t(sizeof(PackedGaussian)) * max_gaussians * BUFFER_COUNT;
+    }
+    total_bytes += uint64_t(sizeof(SortKey)) * max_gaussians * BUFFER_COUNT;
+    total_bytes += uint64_t(sizeof(uint32_t)) * max_gaussians * BUFFER_COUNT;
     total_bytes += 256; // Uniform buffer
 
     return total_bytes / (1024.0f * 1024.0f);
