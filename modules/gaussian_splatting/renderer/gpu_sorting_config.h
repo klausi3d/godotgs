@@ -29,7 +29,15 @@ struct GPUSortingConfig {
     // Optional lower bound used by adaptive overlap budgeting.
     // Kept <= max_overlap_records via accessor clamp.
     uint32_t max_overlap_records_adaptive_min = 100000;
-    // Enables adaptive overlap budget feedback loop in TileRenderer.
+    // Enables the adaptive overlap-budget feedback loop in TileRenderer: the global
+    // composite-sort capacity is sized from MEASURED overlap demand (peak + 20% headroom)
+    // instead of the loose visible*50 pre-count estimate (~2.5-4x over-reservation).
+    // Opt-in (default off). REQUIRES bounded_buffer_shrink_enabled to actually reclaim:
+    // adaptive lowers the estimate, but the only-grow capacity stays pinned at its
+    // high-water until the shrink path frees it; conversely the shrink is floored by the
+    // visible*50 estimate unless adaptive lowers it. Both flags must be on together.
+    // Sizing never drops tiles: a same-frame post-count auto-grow covers any spike, and
+    // max_overlap_records_adaptive_min bounds the floor. See tile_renderer.cpp:742-768.
     bool adaptive_overlap_budget_enabled = false;
     // Enables bounded shrink of only-grow GPU scratch buffers so a single zoom-in
     // spike no longer pins peak VRAM for the rest of the session. Gates the global
@@ -136,6 +144,8 @@ struct GPUSortingConfig {
     static const String MAX_ELEMENTS_PATH;
     static const String MAX_OVERLAP_RECORDS_PATH;
     static const String BOUNDED_BUFFER_SHRINK_PATH;
+    static const String ADAPTIVE_OVERLAP_BUDGET_PATH;
+    static const String MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH;
     static const String MAX_RASTER_SPLATS_PER_TILE_PATH;
     static const String RADIX_BITS_PATH;
     static const String WORKGROUP_SIZE_PATH;
