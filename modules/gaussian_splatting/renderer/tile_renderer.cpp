@@ -823,7 +823,19 @@ private:
 				GS_LOG_ERROR_DEFAULT("[TileRenderer] Failed to build global tile ranges for rasterization");
 				return false;
 			}
-			const uint32_t adaptive_overlap_budget_suggested = _update_adaptive_overlap_budget(&renderer, raw_overlap_record_count);
+			// Feed the adaptive budget only REAL overlap measurements. On the default
+			// async path the first frames report raw_overlap_record_count = effective
+			// capacity (a sizing fallback, not a measurement) until the one-frame-late
+			// readback lands; folding that spike into the budget peak would inflate it
+			// and, because the budget only decays ~10%/120 frames, the shrink could not
+			// converge for ~1-2k frames. Sync readback always yields a real value; in
+			// async, wait for the first completed readback. Until then keep the existing
+			// suggestion (frame-start estimate stays on the coarse visible*50 bootstrap).
+			const bool have_real_overlap_measurement =
+					allow_sync_readback || renderer.async_readback.overflow_state.first_frame_complete;
+			const uint32_t adaptive_overlap_budget_suggested = have_real_overlap_measurement
+					? _update_adaptive_overlap_budget(&renderer, raw_overlap_record_count)
+					: _get_adaptive_overlap_budget_suggestion(&renderer);
 #ifdef DEV_ENABLED
 			if (renderer.diagnostics.debug_tile_pipeline_logs_enabled) {
 				static int overlap_debug_log_counter = 0;
