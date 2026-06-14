@@ -845,10 +845,20 @@ private:
 				if (adaptive_overlap_budget_suggested > 0u) {
 					overlap_capacity_request = MAX(overlap_capacity_request, adaptive_overlap_budget_suggested);
 				}
-				// Record the measured overlap demand so the next frame's bounded-shrink
-				// hysteresis is gated on real demand, not just the low pre-count estimate
-				// (prevents premature shrink + expensive re-grow on zoomed-in views).
-				renderer.global_sort_resources.last_observed_demand = overlap_capacity_request;
+				// Record the MEASURED overlap demand for the next frame's bounded-shrink
+				// hysteresis. Use raw_overlap_record_count (the unclamped overlap total —
+				// the real prefix sum in the sync path, the async last_unclamped_total
+				// otherwise) plus any adaptive suggestion, but NOT overlap_record_count:
+				// on the default async path that field is the effective CAPACITY (a sizing
+				// value), so folding it in here would pin last_observed_demand >= capacity
+				// and the shrink gate (capacity > effective_demand) could never open. Until
+				// the first real measurement lands, raw falls back to capacity, which keeps
+				// the shrink correctly disabled rather than firing on a guess.
+				uint32_t measured_overlap_demand = raw_overlap_record_count;
+				if (adaptive_overlap_budget_suggested > 0u) {
+					measured_overlap_demand = MAX(measured_overlap_demand, adaptive_overlap_budget_suggested);
+				}
+				renderer.global_sort_resources.last_observed_demand = measured_overlap_demand;
 			if (overlap_capacity_request > renderer.global_sort_resources.capacity) {
 				const uint64_t gen_before = renderer.descriptor_generation;
 				renderer._ensure_global_sort_resources(overlap_capacity_request);
