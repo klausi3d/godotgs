@@ -469,7 +469,13 @@ bool TileRenderer::TilePrefixScanStage::update_global_tile_ranges(const RID &p_g
 		const uint32_t effective_capacity = owner._get_effective_overlap_capacity();
 		total_records = effective_capacity > 0 ? effective_capacity : 1u;
 		uint32_t fallback_unclamped = owner.async_readback.overflow_state.last_unclamped_total;
-		if (fallback_unclamped == 0) {
+		if (fallback_unclamped == 0 && !owner.async_readback.overflow_state.first_frame_complete) {
+			// Warm-up only: no async readback has completed yet, so 0 means "unknown" —
+			// fall back to capacity so the bounded shrink stays disabled until a real
+			// sample lands. Once a readback HAS completed, a 0 is a genuine measurement
+			// (an empty view / camera pointed away from all splats) and must drive the
+			// adaptive budget and last_observed_demand down so the buffers can reclaim
+			// instead of being pinned at the prior peak by a phantom capacity-sized raw.
 			fallback_unclamped = total_records;
 		}
 
