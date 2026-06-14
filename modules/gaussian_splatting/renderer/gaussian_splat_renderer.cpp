@@ -1436,10 +1436,12 @@ void GaussianSplatRenderer::_notification(int p_what) {
 }
 
 void GaussianSplatRenderer::_mark_streaming_route_policy_dirty() {
+    MutexLock lock(route_policy_cache_mutex);
     cached_streaming_route_policy_dirty = true;
 }
 
-void GaussianSplatRenderer::_refresh_streaming_route_policy_cache() {
+void GaussianSplatRenderer::_refresh_streaming_route_policy_cache_locked() {
+    // Caller holds route_policy_cache_mutex.
     if (!cached_streaming_route_policy_dirty) {
         return;
     }
@@ -1449,22 +1451,42 @@ void GaussianSplatRenderer::_refresh_streaming_route_policy_cache() {
     cached_streaming_route_policy_dirty = false;
 }
 
-int GaussianSplatRenderer::get_cached_streaming_route_policy() {
-    _refresh_streaming_route_policy_cache();
-    return cached_streaming_route_policy;
+void GaussianSplatRenderer::_refresh_streaming_route_policy_cache() {
+    MutexLock lock(route_policy_cache_mutex);
+    _refresh_streaming_route_policy_cache_locked();
 }
 
-const String &GaussianSplatRenderer::get_cached_streaming_route_policy_source() {
-    _refresh_streaming_route_policy_cache();
-    return cached_streaming_route_policy_source;
+void GaussianSplatRenderer::_snapshot_streaming_route_policy(int &r_policy, String &r_source) {
+    // Refresh-if-dirty and copy the cache out atomically so a concurrent refresh on
+    // another thread cannot tear the policy/source pair (the String especially).
+    MutexLock lock(route_policy_cache_mutex);
+    _refresh_streaming_route_policy_cache_locked();
+    r_policy = cached_streaming_route_policy;
+    r_source = cached_streaming_route_policy_source;
+}
+
+int GaussianSplatRenderer::get_cached_streaming_route_policy() {
+    int policy = gs::settings::GS_ROUTE_STREAMING;
+    String source;
+    _snapshot_streaming_route_policy(policy, source);
+    return policy;
+}
+
+String GaussianSplatRenderer::get_cached_streaming_route_policy_source() {
+    int policy = gs::settings::GS_ROUTE_STREAMING;
+    String source;
+    _snapshot_streaming_route_policy(policy, source);
+    return source;
 }
 
 GaussianSplatRenderer::RuntimeFidelityPolicy GaussianSplatRenderer::build_runtime_fidelity_policy(
         const SceneState &p_scene_state, const PerformanceSettings &p_performance_settings) const {
     RuntimeFidelityPolicy policy;
-    const_cast<GaussianSplatRenderer *>(this)->_refresh_streaming_route_policy_cache();
-    policy.requested_route_policy = cached_streaming_route_policy;
-    policy.requested_route_policy_source = cached_streaming_route_policy_source;
+    int route_policy = gs::settings::GS_ROUTE_STREAMING;
+    String route_source;
+    const_cast<GaussianSplatRenderer *>(this)->_snapshot_streaming_route_policy(route_policy, route_source);
+    policy.requested_route_policy = route_policy;
+    policy.requested_route_policy_source = route_source;
     policy.prefer_resident_backend =
             should_prefer_resident_backend(policy.requested_route_policy, &policy.backend_preference_reason);
     policy.preserve_source_fidelity =
