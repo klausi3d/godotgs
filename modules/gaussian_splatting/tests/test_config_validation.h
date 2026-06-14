@@ -345,9 +345,18 @@ TEST_CASE("[GaussianSplatting][Config] Adaptive overlap-budget knobs round-trip 
 	}
 
 	SUBCASE("save_to_project_settings writes keys that reload into a fresh config") {
-		// Exercises the save + GLOBAL_DEF wiring (not just load): round-trips
-		// through ProjectSettings so a missing save_to_project_settings entry
-		// would fail here even though the load-only subcases above would pass.
+		// Exercises the save wiring (not just load): round-trips through
+		// ProjectSettings so a missing save_to_project_settings entry would fail
+		// here even though the load-only subcases above would pass.
+		//
+		// save_to_project_settings() writes EVERY GPU-sorting key and calls
+		// ProjectSettings::save() (persists to disk), and only five paths are guarded
+		// at TEST_CASE scope. Snapshot the full pre-test config and re-save it at the
+		// end so the unguarded keys (and project.godot on disk) are left untouched for
+		// later tests.
+		GPUSortingConfig restore_snapshot;
+		restore_snapshot.load_from_project_settings();
+
 		GPUSortingConfig saver;
 		saver.reset_to_defaults();
 		saver.adaptive_overlap_budget_enabled = true;
@@ -363,6 +372,10 @@ TEST_CASE("[GaussianSplatting][Config] Adaptive overlap-budget knobs round-trip 
 		CHECK(loader.adaptive_overlap_budget_enabled == true);
 		CHECK(loader.bounded_buffer_shrink_enabled == true);
 		CHECK(loader.max_overlap_records_adaptive_min == 350000u);
+
+		// Restore everything save_to_project_settings() overwrote (the five guarded
+		// paths are additionally restored by their TEST_CASE-scope guards).
+		restore_snapshot.save_to_project_settings();
 	}
 }
 
