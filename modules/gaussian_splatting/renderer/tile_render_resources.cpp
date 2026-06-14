@@ -1300,7 +1300,17 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 			// Growth/key-config recreation keeps the estimate, which it must reserve
 			// ahead of the count. wants_shrink is mutually exclusive with the grow
 			// triggers (it requires capacity > effective_demand >= attempt_elements).
-			const uint32_t resize_elements = wants_shrink ? effective_demand : attempt_elements;
+			// Clamp the shrink target to the configured overlap cap: the prefix path
+			// clamps effective capacity to max_overlap_records, so recreating above it
+			// (possible when the cap is lowered at runtime below the measured demand)
+			// would allocate dead key/value/scratch VRAM and defeat the cap.
+			uint32_t resize_elements = wants_shrink ? effective_demand : attempt_elements;
+			if (wants_shrink) {
+				const uint32_t overlap_hard_cap = g_gpu_sorting_config.get_overlap_records_hard_cap();
+				if (overlap_hard_cap > 0u) {
+					resize_elements = MIN(resize_elements, overlap_hard_cap);
+				}
+			}
 
 			// Global composite sort requires indirect support for GPU-driven element count.
 			if (!GPUSorterFactory::probe_supports_indirect(GPUSorterFactory::ALGORITHM_RADIX, device)) {
