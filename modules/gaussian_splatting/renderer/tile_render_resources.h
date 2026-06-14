@@ -53,8 +53,9 @@ constexpr uint32_t TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES = 120u;
 // projection buffer + the global sort key/value buffers; the separate instance/
 // depth sort buffers are a future extension). Both grow with per-frame demand and
 // oscillate by ~15x across a single camera sweep, so the
-// hysteresis is wide (4s at 60 fps) and resets on any demand recovery — a shrink
-// only fires when the camera settles on a low-demand view, never mid-sweep. A 50%
+// hysteresis is wide (4s at 60 fps) and resets on any demand recovery — a shrink is
+// bounded to views that hold low demand for the full window (a slow sweep staying below
+// the trigger for >240 frames can still shrink then re-grow — bounded, not impossible). A 50%
 // trigger means "demand dropped at least one power-of-two octave" (the projection
 // byte size is power-of-two rounded). Growth slack is 0 for both: the projection
 // rounding already provides headroom, and the sorter picks its own capacity.
