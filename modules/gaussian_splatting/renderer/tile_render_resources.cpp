@@ -720,6 +720,10 @@ void TileProjectionBuffers::ensure_projection_buffer(uint32_t p_visible_count) {
 	if (!projection_buffer.is_valid()) {
 		GS_LOG_ERROR_DEFAULT("[TileRenderer] Failed to allocate global projection buffer");
 		projection_buffer_owner.clear();
+		// The old buffer was already freed above; any descriptor set still caching it
+		// now dangles. Invalidate here too (success path invalidates below) so a failed
+		// realloc cannot leave the cache pointing at a freed RID.
+		owner._invalidate_descriptor_cache();
 		return;
 	}
 	device->set_resource_name(projection_buffer, "GS_TileRenderer_ProjectionBuffer");
@@ -1223,9 +1227,12 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 		// Bounded shrink (opt-in): when overlap demand stays well below the reserved
 		// sort capacity for a wide hysteresis window, recreate the sorter at the lower
 		// demand so the (up to >1 GB) key/value buffers are reclaimed. The hysteresis is
-		// wide and resets on any demand recovery, so this fires only when the camera
-		// settles on a low-overlap view — never mid-sweep. Growth and key-config changes
-		// keep their existing dedicated triggers below; this only adds a shrink trigger.
+		// wide and resets on any demand recovery, so a shrink is bounded to views that hold
+		// low overlap for the full window: a slow sweep that stays below the trigger for
+		// >240 frames between high-demand views can still shrink and later re-grow — bounded,
+		// not impossible (default-off makes the occasional realloc acceptable). Growth and
+		// key-config changes keep their existing dedicated triggers below; this only adds a
+		// shrink trigger.
 		//
 		// CRITICAL: the frame-start argument (p_visible_count) is only a coarse PRE-count
 		// estimate; the true per-frame overlap demand is measured after the count/prefix
@@ -1495,6 +1502,12 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 					attempt_elements = reduced;
 					continue;
 				}
+			}
+			if (buffers_recreated) {
+				// Buffers were freed during recreate but the new allocation failed; drop any
+				// cached descriptor sets that still reference the now-freed sort buffers so a
+				// later frame cannot bind a dangling RID (the success path invalidates below).
+				owner._invalidate_descriptor_cache();
 			}
 			return;
 		}
