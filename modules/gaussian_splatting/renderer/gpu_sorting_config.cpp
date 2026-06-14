@@ -64,6 +64,12 @@ void GPUSortingConfig::load_from_project_settings() {
             validate_sorted_output = ps->get_setting(VALIDATE_SORTED_OUTPUT_PATH, validate_sorted_output);
             enable_stage_timestamps = ps->get_setting(ENABLE_STAGE_TIMESTAMPS_PATH, enable_stage_timestamps);
             subgroup_prefix_mode = static_cast<uint8_t>(ps->get_setting(SUBGROUP_PREFIX_MODE_PATH, int(subgroup_prefix_mode)));
+            // bounded_buffer_shrink governs scratch-buffer reclaim, NOT the sort layout,
+            // so an explicit project override must win under a named preset too — otherwise
+            // the opt-in shrink looks configurable but is ineffective unless the user also
+            // switches gpu_preset to "custom". No preset turns it on (apply_preset copies
+            // the off default), so reading with the current value as default is safe.
+            bounded_buffer_shrink_enabled = ps->get_setting(BOUNDED_BUFFER_SHRINK_PATH, bounded_buffer_shrink_enabled);
             // Honor an EXPLICITLY-overridden project max_overlap_records even
             // under a named preset. The preset supplies the per-tile overlap-sort
             // budget as a DEFAULT, but a value the project author set on purpose
@@ -187,6 +193,7 @@ void GPUSortingConfig::reset_to_defaults() {
     validate_sorted_output = false;
     enable_stage_timestamps = true;
     subgroup_prefix_mode = SUBGROUP_PREFIX_AUTO;
+    bounded_buffer_shrink_enabled = false;
 
     GS_LOG_GPU_SORT_INFO("[GPU Sorting Config] Reset to default configuration");
 }
@@ -505,6 +512,9 @@ bool GPUSortingConfig::apply_preset(const String &p_preset_name) {
         validate_sorted_output = new_config.validate_sorted_output;
         enable_stage_timestamps = new_config.enable_stage_timestamps;
         subgroup_prefix_mode = new_config.subgroup_prefix_mode;
+        // Part of the preset's complete state: copy so switching presets on a reused
+        // config cannot leave a stale custom 'true' enabled (no preset turns it on).
+        bounded_buffer_shrink_enabled = new_config.bounded_buffer_shrink_enabled;
 
         GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Applied '%s' preset (max %d elements, %d-bit keys, workgroup %d)",
                 preset_lower, max_sort_elements, key_bits, workgroup_size));
