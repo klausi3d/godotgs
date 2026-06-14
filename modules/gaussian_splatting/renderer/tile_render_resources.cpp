@@ -1359,6 +1359,11 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 			GS_LOG_ERROR_DEFAULT(vformat("[TileRenderer] Global composite sort buffers exceed RD limits (keys=%s bytes, values=%s bytes)",
 					String::num_uint64(keys_bytes64),
 					String::num_uint64(values_bytes64)));
+			if (buffers_recreated) {
+				// Buffers were freed above but we bail before recreating; drop cached
+				// descriptor sets that still reference the freed RIDs.
+				owner._invalidate_descriptor_cache();
+			}
 			return;
 		}
 		const uint32_t keys_bytes = uint32_t(keys_bytes64);
@@ -1422,6 +1427,9 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 				GS_LOG_ERROR_DEFAULT(vformat("[TileRenderer] Global tile buffers exceed RD limits (counts=%s bytes, ranges=%s bytes)",
 						String::num_uint64(counts_bytes64),
 						String::num_uint64(ranges_bytes64)));
+				// The tile buffers were just freed above; invalidate so no cached descriptor
+				// set keeps a dangling reference to them when we bail here.
+				owner._invalidate_descriptor_cache();
 				return;
 			}
 
