@@ -240,8 +240,9 @@ TEST_CASE("[GaussianSplatting][Config] Adaptive overlap-budget knobs round-trip 
 	ProjectSettingGuard adaptive_min_guard(project_settings, adaptive_min_path);
 	ProjectSettingGuard max_overlap_guard(project_settings, max_overlap_path);
 
-	// These knobs are only honoured on the manual ("custom") config path; named
-	// presets keep their own (off) defaults. Force custom so project settings win.
+	// Default to the manual ("custom") config path for the load/save subcases; the
+	// preset subcases below override this to prove the knobs are ALSO honoured under a
+	// named preset (they are orthogonal to the sort layout).
 	project_settings->set_setting(preset_path, "custom");
 
 	SUBCASE("Both flags default OFF and adaptive_min defaults to 100000 when unset") {
@@ -274,6 +275,36 @@ TEST_CASE("[GaussianSplatting][Config] Adaptive overlap-budget knobs round-trip 
 		CHECK(config.max_overlap_records == 200000u);
 		CHECK(config.max_overlap_records_adaptive_min == 5000000u); // raw stored value is preserved
 		CHECK(config.get_overlap_records_adaptive_min() == 200000u); // accessor clamps to the cap
+	}
+
+	SUBCASE("Negative/zero adaptive_min is clamped to a safe lower bound, not wrapped huge") {
+		// A negative project value must not wrap through uint32_t and (via the accessor's
+		// upper clamp) pin the floor at the hard cap — that would silently disable shrink.
+		project_settings->set_setting(max_overlap_path, 1000000);
+		project_settings->set_setting(adaptive_min_path, -1);
+		GPUSortingConfig config;
+		config.load_from_project_settings();
+		CHECK(config.max_overlap_records_adaptive_min == 1u); // -1 clamped to >=1, NOT 4294967295
+		CHECK(config.get_overlap_records_adaptive_min() == 1u);
+		CHECK(config.get_overlap_records_adaptive_min() < config.max_overlap_records);
+
+		// Zero is clamped to the same >=1 floor (the title's other half).
+		project_settings->set_setting(adaptive_min_path, 0);
+		config.load_from_project_settings();
+		CHECK(config.max_overlap_records_adaptive_min == 1u);
+	}
+
+	SUBCASE("GLOBAL_DEF registers the new keys with their defaults") {
+		// Round-trips the GLOBAL_DEF wiring (not just save_to_project_settings, which
+		// creates the keys itself): clear the keys, re-run registration, and confirm
+		// they reappear with the documented defaults.
+		project_settings->clear(adaptive_path);
+		project_settings->clear(adaptive_min_path);
+		initialize_gpu_sorting_config();
+		CHECK(project_settings->has_setting(adaptive_path));
+		CHECK(project_settings->has_setting(adaptive_min_path));
+		CHECK(bool(project_settings->get_setting(adaptive_path)) == false);
+		CHECK(int64_t(project_settings->get_setting(adaptive_min_path)) == 100000);
 	}
 
 	SUBCASE("reset_to_defaults restores both flags OFF and adaptive_min to 100000") {

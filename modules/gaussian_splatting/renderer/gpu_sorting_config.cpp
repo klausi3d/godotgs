@@ -4,6 +4,18 @@
 #include "core/os/os.h"
 #include "../logger/gs_logger.h"
 
+namespace {
+// Read max_overlap_records_adaptive_min defensively. The setting feeds an unsigned
+// field, so a negative project value would wrap to a huge number and — via the
+// accessor's upper clamp to max_overlap_records — pin the adaptive floor at the hard
+// cap, silently disabling the shrink it is meant to bound. Read as signed and clamp to
+// a sane lower bound (>=1) before narrowing.
+uint32_t _load_adaptive_min(ProjectSettings *p_ps, const String &p_path, int64_t p_default) {
+    const int64_t raw = int64_t(p_ps->get_setting(p_path, p_default));
+    return uint32_t(CLAMP(raw, int64_t(1), int64_t(UINT32_MAX)));
+}
+} // namespace
+
 // Project settings paths
 const String GPUSortingConfig::SECTION_PATH = "rendering/gaussian_splatting/gpu_sorting/";
 const String GPUSortingConfig::TARGET_TIME_PATH = "rendering/gaussian_splatting/sorting/target_sort_time_ms";
@@ -75,7 +87,7 @@ void GPUSortingConfig::load_from_project_settings() {
             // setting without promoting a preset's intentional layout choice.
             bounded_buffer_shrink_enabled = ps->get_setting(BOUNDED_BUFFER_SHRINK_PATH, bounded_buffer_shrink_enabled);
             adaptive_overlap_budget_enabled = ps->get_setting(ADAPTIVE_OVERLAP_BUDGET_PATH, adaptive_overlap_budget_enabled);
-            max_overlap_records_adaptive_min = ps->get_setting(MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH, max_overlap_records_adaptive_min);
+            max_overlap_records_adaptive_min = _load_adaptive_min(ps, MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH, max_overlap_records_adaptive_min);
             // Honor an EXPLICITLY-overridden project max_overlap_records even
             // under a named preset. The preset supplies the per-tile overlap-sort
             // budget as a DEFAULT, but a value the project author set on purpose
@@ -109,7 +121,7 @@ void GPUSortingConfig::load_from_project_settings() {
     max_raster_splats_per_tile = ps->get_setting(MAX_RASTER_SPLATS_PER_TILE_PATH, 65536);
     bounded_buffer_shrink_enabled = ps->get_setting(BOUNDED_BUFFER_SHRINK_PATH, false);
     adaptive_overlap_budget_enabled = ps->get_setting(ADAPTIVE_OVERLAP_BUDGET_PATH, false);
-    max_overlap_records_adaptive_min = ps->get_setting(MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH, 100000);
+    max_overlap_records_adaptive_min = _load_adaptive_min(ps, MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH, 100000);
     GS_LOG_GPU_SORT_INFO(vformat("[GPUSortingConfig] LOADED: max_sort_elements=%d max_overlap_records=%d (has_elements=%d has_overlap=%d)",
             max_sort_elements, max_overlap_records, int(has_elements), int(has_overlap)));
 
