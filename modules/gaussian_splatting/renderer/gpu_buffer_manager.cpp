@@ -146,9 +146,11 @@ Error GPUBufferManager::_create_buffer_set(BufferSet &r_set, uint32_t p_gaussian
 
     // The gaussian_buffer is the largest allocation (144 B x max_gaussians) and is
     // DEAD on the instance pipeline (the render path binds the instance atlas, not
-    // this buffer; upload_gaussian_data has no production caller). Skip it unless the
-    // legacy painterly/manual-upload path needs it (allocate_gaussian_buffer=true).
-    // A null gaussian_buffer is handled everywhere via is_valid() guards; the live
+    // this buffer; upload_gaussian_data has no production caller). Skip it unless a
+    // caller explicitly opts into the manual-upload path (allocate_gaussian_buffer=true).
+    // A null gaussian_buffer is handled everywhere via is_valid() guards — even the
+    // painterly renderer probes get_gaussian_handle() defensively and falls through to
+    // instance/stream data — so this is a reclaim, not a behavior change. The live
     // sort_key/sorted_indices buffers below are always allocated.
     if (allocate_gaussian_buffer) {
         empty_data.resize(p_gaussian_size);

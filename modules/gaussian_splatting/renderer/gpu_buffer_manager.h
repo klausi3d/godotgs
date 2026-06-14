@@ -148,7 +148,8 @@ private:
     // largest allocation) is NOT allocated. The instance pipeline never samples it
     // (it binds the instance atlas), so production passes false and reclaims it; the
     // live sort_key/sorted_indices buffers are always allocated. Default true keeps
-    // the legacy painterly/manual-upload path and existing tests unchanged.
+    // explicit manual-upload callers and existing tests unchanged (the painterly
+    // renderer tolerates a null gaussian_buffer and falls through to instance/stream).
     bool allocate_gaussian_buffer = true;
     LocalVector<uint32_t> sequential_index_cache;
 

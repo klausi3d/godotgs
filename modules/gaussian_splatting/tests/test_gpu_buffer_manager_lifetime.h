@@ -42,6 +42,15 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] GPUBufferManager cleanup frees parti
 // reclaim it (~144 B x max_splats x BUFFER_COUNT). The live sort_key/sorted_indices buffers
 // must always remain allocated (the sort pipeline adopts them as external buffers). The
 // default (2-arg initialize) keeps the gaussian_buffer for the legacy painterly + test paths.
+//
+// This case locks the CONTRACT that RenderResourceOrchestrator::create_gpu_resources_safe()
+// depends on: after a flag=false init the readiness check there keys off get_sort_key_buffer()
+// + get_sorted_indices_buffer() (NOT get_current_read_buffer(), which now returns the skipped
+// gaussian_buffer). The assertions below mirror exactly that getter set, so a regression that
+// stopped allocating the sort buffers under flag=false would fail here. The orchestrator-level
+// wiring itself is exercised by the real-game render gate (no sort fallback, byte-identical
+// output); it is not unit-tested because create_gpu_resources_safe() needs the full device/
+// shader/pipeline Dependencies and would only run under [RequiresGPU] anyway.
 TEST_CASE("[GaussianSplatting][RequiresGPU] GPUBufferManager allocate_gaussian_buffer flag gates the dead buffer + memory") {
 	RenderingServer *rs = RenderingServer::get_singleton();
 	if (!rs) {
