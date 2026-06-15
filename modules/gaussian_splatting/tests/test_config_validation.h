@@ -370,10 +370,15 @@ TEST_CASE("[GaussianSplatting][Config] Adaptive overlap-budget knobs round-trip 
 		};
 		Vector<bool> was_present;
 		Vector<Variant> prev_value;
+		Vector<int> prev_order;
 		for (const String &p : saved_paths) {
 			const bool present = project_settings->has_setting(p);
 			was_present.push_back(present);
 			prev_value.push_back(present ? project_settings->get_setting(p) : Variant());
+			// set_setting() re-orders built-in keys, so snapshot the order too and restore
+			// it (matching ProjectSettingGuard) — otherwise a project that already had these
+			// keys is left with a reordered project.godot even though the values match.
+			prev_order.push_back(present ? project_settings->get_order(p) : -1);
 		}
 
 		GPUSortingConfig saver;
@@ -392,10 +397,11 @@ TEST_CASE("[GaussianSplatting][Config] Adaptive overlap-budget knobs round-trip 
 		CHECK(loader.bounded_buffer_shrink_enabled == true);
 		CHECK(loader.max_overlap_records_adaptive_min == 350000u);
 
-		// Restore: present-before keys to their value, originally-absent keys cleared.
+		// Restore: present-before keys to their value AND order, originally-absent keys cleared.
 		for (int i = 0; i < saved_paths.size(); i++) {
 			if (was_present[i]) {
 				project_settings->set_setting(saved_paths[i], prev_value[i]);
+				project_settings->set_order(saved_paths[i], prev_order[i]);
 			} else if (project_settings->has_setting(saved_paths[i])) {
 				project_settings->clear(saved_paths[i]);
 			}
