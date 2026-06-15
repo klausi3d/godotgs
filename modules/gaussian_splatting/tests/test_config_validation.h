@@ -350,12 +350,31 @@ TEST_CASE("[GaussianSplatting][Config] Adaptive overlap-budget knobs round-trip 
 		// here even though the load-only subcases above would pass.
 		//
 		// save_to_project_settings() writes EVERY GPU-sorting key and calls
-		// ProjectSettings::save() (persists to disk), and only five paths are guarded
-		// at TEST_CASE scope. Snapshot the full pre-test config and re-save it at the
-		// end so the unguarded keys (and project.godot on disk) are left untouched for
-		// later tests.
-		GPUSortingConfig restore_snapshot;
-		restore_snapshot.load_from_project_settings();
+		// ProjectSettings::save() (persists to disk). Snapshot each written key's
+		// presence + value up front so the cleanup restores present keys to their value
+		// and CLEARS keys that were originally ABSENT — re-saving a loaded snapshot would
+		// instead materialize defaults for absent keys and leave project.godot modified.
+		const Vector<String> saved_paths = {
+			GPUSortingConfig::TARGET_TIME_PATH, GPUSortingConfig::LEGACY_TARGET_TIME_PATH,
+			GPUSortingConfig::MAX_ELEMENTS_PATH, GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH,
+			GPUSortingConfig::BOUNDED_BUFFER_SHRINK_PATH, GPUSortingConfig::ADAPTIVE_OVERLAP_BUDGET_PATH,
+			GPUSortingConfig::MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH, GPUSortingConfig::MAX_RASTER_SPLATS_PER_TILE_PATH,
+			GPUSortingConfig::RADIX_BITS_PATH, GPUSortingConfig::WORKGROUP_SIZE_PATH,
+			GPUSortingConfig::KEY_BITS_PATH, GPUSortingConfig::TILE_BITS_PATH, GPUSortingConfig::DEPTH_BITS_PATH,
+			GPUSortingConfig::ENABLE_TIE_BREAKER_PATH, GPUSortingConfig::PERFORMANCE_LOGGING_PATH,
+			GPUSortingConfig::LOG_INTERVAL_PATH, GPUSortingConfig::BANDWIDTH_MONITORING_PATH,
+			GPUSortingConfig::DEBUG_VALIDATE_PREFIX_PATH, GPUSortingConfig::ENABLE_PREFIX_READBACK_PATH,
+			GPUSortingConfig::PROFILING_PRESERVE_TIMESTAMPS_PATH, GPUSortingConfig::ENABLE_COMPUTE_RASTER_PATH,
+			GPUSortingConfig::STRICT_GLOBAL_SORT_PATH, GPUSortingConfig::VALIDATE_SORTED_OUTPUT_PATH,
+			GPUSortingConfig::ENABLE_STAGE_TIMESTAMPS_PATH, GPUSortingConfig::SUBGROUP_PREFIX_MODE_PATH,
+		};
+		Vector<bool> was_present;
+		Vector<Variant> prev_value;
+		for (const String &p : saved_paths) {
+			const bool present = project_settings->has_setting(p);
+			was_present.push_back(present);
+			prev_value.push_back(present ? project_settings->get_setting(p) : Variant());
+		}
 
 		GPUSortingConfig saver;
 		saver.reset_to_defaults();
@@ -373,9 +392,15 @@ TEST_CASE("[GaussianSplatting][Config] Adaptive overlap-budget knobs round-trip 
 		CHECK(loader.bounded_buffer_shrink_enabled == true);
 		CHECK(loader.max_overlap_records_adaptive_min == 350000u);
 
-		// Restore everything save_to_project_settings() overwrote (the five guarded
-		// paths are additionally restored by their TEST_CASE-scope guards).
-		restore_snapshot.save_to_project_settings();
+		// Restore: present-before keys to their value, originally-absent keys cleared.
+		for (int i = 0; i < saved_paths.size(); i++) {
+			if (was_present[i]) {
+				project_settings->set_setting(saved_paths[i], prev_value[i]);
+			} else if (project_settings->has_setting(saved_paths[i])) {
+				project_settings->clear(saved_paths[i]);
+			}
+		}
+		project_settings->save();
 	}
 }
 
