@@ -1247,7 +1247,19 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 		// same frame — a single, self-correcting re-count, not sustained thrash. A pending-
 		// shrink state machine would remove even that, at a complexity cost not worth it
 		// for a default-off knob.
-		const uint32_t effective_demand = MAX<uint32_t>(attempt_elements, last_observed_demand);
+		uint32_t effective_demand = MAX<uint32_t>(attempt_elements, last_observed_demand);
+		// Never need — or keep — more than the configured overlap cap: the prefix path
+		// clamps usable records to max_overlap_records. Capping the demand HERE (not just
+		// the later resize size) means that lowering the cap below the current allocation
+		// while raw demand still sits above the OLD capacity makes the shrink gate below
+		// (capacity > effective_demand) fire instead of leaving the buffers pinned above
+		// the new cap.
+		{
+			const uint32_t overlap_hard_cap = g_gpu_sorting_config.get_overlap_records_hard_cap();
+			if (overlap_hard_cap > 0u) {
+				effective_demand = MIN(effective_demand, overlap_hard_cap);
+			}
+		}
 		bool wants_shrink = false;
 		if (g_gpu_sorting_config.bounded_buffer_shrink_enabled && sorter_available && sorter.is_valid() &&
 				!key_config_changed && capacity > effective_demand) {
@@ -1300,17 +1312,9 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 			// Growth/key-config recreation keeps the estimate, which it must reserve
 			// ahead of the count. wants_shrink is mutually exclusive with the grow
 			// triggers (it requires capacity > effective_demand >= attempt_elements).
-			// Clamp the shrink target to the configured overlap cap: the prefix path
-			// clamps effective capacity to max_overlap_records, so recreating above it
-			// (possible when the cap is lowered at runtime below the measured demand)
-			// would allocate dead key/value/scratch VRAM and defeat the cap.
-			uint32_t resize_elements = wants_shrink ? effective_demand : attempt_elements;
-			if (wants_shrink) {
-				const uint32_t overlap_hard_cap = g_gpu_sorting_config.get_overlap_records_hard_cap();
-				if (overlap_hard_cap > 0u) {
-					resize_elements = MIN(resize_elements, overlap_hard_cap);
-				}
-			}
+			// effective_demand is already clamped to the overlap cap above, so the
+			// shrink target never recreates above max_overlap_records.
+			const uint32_t resize_elements = wants_shrink ? effective_demand : attempt_elements;
 
 			// Global composite sort requires indirect support for GPU-driven element count.
 			if (!GPUSorterFactory::probe_supports_indirect(GPUSorterFactory::ALGORITHM_RADIX, device)) {
