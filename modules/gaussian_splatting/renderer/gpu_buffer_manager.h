@@ -144,6 +144,13 @@ private:
     uint32_t current_count = 0;
     uint32_t current_visible_count = 0;
     bool buffers_created = false;
+    // When false, the per-buffer-set `gaussian_buffer` (144 B x max_gaussians, the
+    // largest allocation) is NOT allocated. The instance pipeline never samples it
+    // (it binds the instance atlas), so production passes false and reclaims it; the
+    // live sort_key/sorted_indices buffers are always allocated. Default true keeps
+    // explicit manual-upload callers and existing tests unchanged (the painterly
+    // renderer tolerates a null gaussian_buffer and falls through to instance/stream).
+    bool allocate_gaussian_buffer = true;
     LocalVector<uint32_t> sequential_index_cache;
 
     // Submission batching (Issue #142)
@@ -176,7 +183,7 @@ public:
     GPUBufferManager();
     ~GPUBufferManager();
 
-    Error initialize(RenderingDevice *p_rd, uint32_t p_max_gaussians = 2000000);
+    Error initialize(RenderingDevice *p_rd, uint32_t p_max_gaussians = 2000000, bool p_allocate_gaussian_buffer = true);
     Error upload_gaussian_data(const Ref<::GaussianData> &p_data);
     void clear_gaussian_data();
 
