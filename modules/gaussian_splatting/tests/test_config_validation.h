@@ -351,9 +351,12 @@ TEST_CASE("[GaussianSplatting][Config] Adaptive overlap-budget knobs round-trip 
 		//
 		// save_to_project_settings() writes EVERY GPU-sorting key and calls
 		// ProjectSettings::save() (persists to disk). Snapshot each written key's
-		// presence + value up front so the cleanup restores present keys to their value
-		// and CLEARS keys that were originally ABSENT — re-saving a loaded snapshot would
-		// instead materialize defaults for absent keys and leave project.godot modified.
+		// presence, value AND order up front and restore via an RAII guard (so cleanup
+		// runs even if a REQUIRE below aborts the subcase): present keys are restored to
+		// their value+order, originally-ABSENT keys are cleared. Re-saving a loaded
+		// snapshot would instead materialize defaults for absent keys and reorder present
+		// ones, leaving project.godot modified.
+		// Keep saved_paths in sync with the keys save_to_project_settings() writes.
 		const Vector<String> saved_paths = {
 			GPUSortingConfig::TARGET_TIME_PATH, GPUSortingConfig::LEGACY_TARGET_TIME_PATH,
 			GPUSortingConfig::MAX_ELEMENTS_PATH, GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH,
@@ -380,6 +383,25 @@ TEST_CASE("[GaussianSplatting][Config] Adaptive overlap-budget knobs round-trip 
 			// keys is left with a reordered project.godot even though the values match.
 			prev_order.push_back(present ? project_settings->get_order(p) : -1);
 		}
+		// RAII restore: runs on every scope exit, including a REQUIRE abort below.
+		struct SaveRoundtripRestore {
+			ProjectSettings *ps;
+			const Vector<String> &paths;
+			const Vector<bool> &present;
+			const Vector<Variant> &values;
+			const Vector<int> &orders;
+			~SaveRoundtripRestore() {
+				for (int i = 0; i < paths.size(); i++) {
+					if (present[i]) {
+						ps->set_setting(paths[i], values[i]);
+						ps->set_order(paths[i], orders[i]);
+					} else if (ps->has_setting(paths[i])) {
+						ps->clear(paths[i]);
+					}
+				}
+				ps->save();
+			}
+		} restore_on_exit{ project_settings, saved_paths, was_present, prev_value, prev_order };
 
 		GPUSortingConfig saver;
 		saver.reset_to_defaults();
@@ -396,17 +418,7 @@ TEST_CASE("[GaussianSplatting][Config] Adaptive overlap-budget knobs round-trip 
 		CHECK(loader.adaptive_overlap_budget_enabled == true);
 		CHECK(loader.bounded_buffer_shrink_enabled == true);
 		CHECK(loader.max_overlap_records_adaptive_min == 350000u);
-
-		// Restore: present-before keys to their value AND order, originally-absent keys cleared.
-		for (int i = 0; i < saved_paths.size(); i++) {
-			if (was_present[i]) {
-				project_settings->set_setting(saved_paths[i], prev_value[i]);
-				project_settings->set_order(saved_paths[i], prev_order[i]);
-			} else if (project_settings->has_setting(saved_paths[i])) {
-				project_settings->clear(saved_paths[i]);
-			}
-		}
-		project_settings->save();
+		// restore_on_exit (above) restores values + order / clears absent keys on scope exit.
 	}
 }
 
