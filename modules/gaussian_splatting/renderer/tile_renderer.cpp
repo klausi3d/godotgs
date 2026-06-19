@@ -703,14 +703,15 @@ private:
 					renderer.diagnostics.last_overlap_record_count = 0;
 					renderer.diagnostics.last_overlap_record_budget_effective = renderer._get_effective_overlap_capacity();
 					renderer.diagnostics.last_overlap_keep_ratio = 1.0f;
-					// No visible work this frame: the real overlap demand is zero. Record it and
-					// drive the resize path with a low target so the bounded-shrink hysteresis
-					// keeps advancing — otherwise pointing the camera at empty space leaves
-					// last_observed_demand pinned at the prior peak and the global sort buffers
-					// never reclaim until visible work resumes. The 240-frame hysteresis still
-					// ignores brief look-aways; sustained empty views shrink toward the recent
-					// measured floor (adaptive) or the minimum, and re-grow on the next visible
-					// frame. Only runs when the opt-in shrink is enabled and buffers exist.
+					// No dispatch work this frame — the scene has no splats to render (e.g. all
+					// GS content was unloaded), so the real overlap demand is zero. The normal
+					// per-frame resize path below only runs when there IS work, so record zero
+					// demand and drive the resize here too; otherwise the global sort buffers
+					// stay pinned at the prior peak until content returns. (A camera merely
+					// pointed away from still-loaded splats keeps splat_count > 0 and takes the
+					// work path, where a measured-zero overlap reclaims via the prefix scan.)
+					// The 240-frame hysteresis ignores brief gaps and the next frame with work
+					// re-grows. Only when the opt-in shrink is enabled and buffers exist.
 					if (g_gpu_sorting_config.bounded_buffer_shrink_enabled &&
 							renderer.global_sort_resources.capacity > 0u) {
 						renderer.global_sort_resources.last_observed_demand = 0u;
