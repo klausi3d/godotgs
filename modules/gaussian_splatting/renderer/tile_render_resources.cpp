@@ -1248,12 +1248,15 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 		// shrink state machine would remove even that, at a complexity cost not worth it
 		// for a default-off knob.
 		uint32_t effective_demand = MAX<uint32_t>(attempt_elements, last_observed_demand);
-		// Never need — or keep — more than the configured overlap cap: the prefix path
-		// clamps usable records to max_overlap_records. Capping the demand HERE (not just
-		// the later resize size) means that lowering the cap below the current allocation
-		// while raw demand still sits above the OLD capacity makes the shrink gate below
-		// (capacity > effective_demand) fire instead of leaving the buffers pinned above
-		// the new cap.
+		// Cap the demand to max_overlap_records: the prefix path clamps usable records to
+		// it, so a buffer larger than the cap holds records that are never used. Capping
+		// HERE (not just the resize size) lets the shrink GATE below (capacity >
+		// effective_demand) fire when the cap is lowered below the current allocation while
+		// raw demand still sits above the OLD capacity. The actual shrink still follows the
+		// bounded-shrink policy's trigger (demand below ~50% of capacity), so the buffer
+		// trends toward the cap over the hysteresis window rather than snapping to it the
+		// frame the cap changes — the cap is a budget the allocation converges on, not a
+		// hard per-frame ceiling.
 		{
 			const uint32_t overlap_hard_cap = g_gpu_sorting_config.get_overlap_records_hard_cap();
 			if (overlap_hard_cap > 0u) {
