@@ -1248,20 +1248,13 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 		// shrink state machine would remove even that, at a complexity cost not worth it
 		// for a default-off knob.
 		uint32_t effective_demand = MAX<uint32_t>(attempt_elements, last_observed_demand);
-		// Cap the demand to max_overlap_records: the prefix path clamps usable records to
-		// it, so a buffer larger than the cap holds records that are never used. Capping
-		// HERE (not just the resize size) lets the shrink GATE below (capacity >
-		// effective_demand) fire when the cap is lowered below the current allocation while
-		// raw demand still sits above the OLD capacity. The actual shrink still follows the
-		// bounded-shrink policy's trigger (demand below ~50% of capacity), so the buffer
-		// trends toward the cap over the hysteresis window rather than snapping to it the
-		// frame the cap changes — the cap is a budget the allocation converges on, not a
-		// hard per-frame ceiling.
-		{
-			const uint32_t overlap_hard_cap = g_gpu_sorting_config.get_overlap_records_hard_cap();
-			if (overlap_hard_cap > 0u) {
-				effective_demand = MIN(effective_demand, overlap_hard_cap);
-			}
+		// Cap the demand to max_overlap_records: the prefix path clamps usable records to it,
+		// so any capacity above the cap is dead VRAM. Clamping the demand here (together with
+		// the forced cap-reduction shrink below) lets the shrink GATE fire AND the buffers
+		// actually reclaim when the cap is lowered below the current allocation.
+		const uint32_t overlap_hard_cap = g_gpu_sorting_config.get_overlap_records_hard_cap();
+		if (overlap_hard_cap > 0u) {
+			effective_demand = MIN(effective_demand, overlap_hard_cap);
 		}
 		bool wants_shrink = false;
 		// The shrink is gated on a live sorter because it reclaims by RECREATING the sorter
@@ -1283,6 +1276,14 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 					required_bytes, current_bytes, shrink_candidate_frames, policy);
 			shrink_candidate_frames = plan.next_shrink_candidate_frames;
 			wants_shrink = plan.should_resize && plan.target_bytes < current_bytes;
+			// A capacity above the configured cap is always unused (the prefix clamps records
+			// to the cap), so a cap LOWERED below the allocation must reclaim even when measured
+			// demand still sits above the policy's ~50% trigger. effective_demand is already
+			// clamped to the cap, so forcing the shrink here targets the cap (or lower). This
+			// is thrash-free: once capacity == cap the condition no longer holds.
+			if (overlap_hard_cap > 0u && capacity > overlap_hard_cap) {
+				wants_shrink = true;
+			}
 		} else {
 			shrink_candidate_frames = 0;
 		}
