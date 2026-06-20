@@ -37,7 +37,8 @@ struct GPUSortingConfig {
     // high-water until the shrink path frees it; conversely the shrink is floored by the
     // visible*50 estimate unless adaptive lowers it. Both flags must be on together.
     // Sizing never drops tiles: a same-frame post-count auto-grow covers any spike, and
-    // max_overlap_records_adaptive_min bounds the floor. See tile_renderer.cpp:742-768.
+    // max_overlap_records_adaptive_min bounds the floor. See the overlap-estimate /
+    // adaptive-floor logic in TileRenderer::RenderFrameExecutor::_execute_global_sort_pipeline.
     bool adaptive_overlap_budget_enabled = false;
     // Enables bounded shrink of only-grow GPU scratch buffers so a single zoom-in
     // spike no longer pins peak VRAM for the rest of the session. Gates the global
