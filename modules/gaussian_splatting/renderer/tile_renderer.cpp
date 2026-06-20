@@ -706,16 +706,20 @@ private:
 					// No dispatch work this frame — the scene has no splats to render (e.g. all
 					// GS content was unloaded), so the real overlap demand is zero. The normal
 					// per-frame resize path below only runs when there IS work, so record zero
-					// demand and drive the resize here too; otherwise the global sort buffers
-					// stay pinned at the prior peak until content returns. (A camera merely
-					// pointed away from still-loaded splats keeps splat_count > 0 and takes the
-					// work path, where a measured-zero overlap reclaims via the prefix scan.)
+					// demand and drive the resize toward the configured adaptive MINIMUM here;
+					// otherwise the global sort buffers stay pinned at the prior peak until
+					// content returns. Use the minimum, NOT _get_adaptive_overlap_budget_floor()
+					// (the last loaded demand): that floor is stale while content is unloaded —
+					// the adaptive budget is not updated on no-work frames — so it would become
+					// attempt_elements and pin the shrink there instead of converging. (A camera
+					// merely pointed away from still-loaded splats keeps splat_count > 0 and takes
+					// the work path, where a measured-zero overlap reclaims via the prefix scan.)
 					// The 240-frame hysteresis ignores brief gaps and the next frame with work
 					// re-grows. Only when the opt-in shrink is enabled and buffers exist.
 					if (g_gpu_sorting_config.bounded_buffer_shrink_enabled &&
 							renderer.global_sort_resources.capacity > 0u) {
 						renderer.global_sort_resources.last_observed_demand = 0u;
-						renderer._ensure_global_sort_resources(_get_adaptive_overlap_budget_floor(&renderer));
+						renderer._ensure_global_sort_resources(_get_adaptive_overlap_budget_min());
 					}
 					finish_assignment_metrics();
 					return true;
