@@ -1264,6 +1264,13 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 			}
 		}
 		bool wants_shrink = false;
+		// The shrink is gated on a live sorter because it reclaims by RECREATING the sorter
+		// at the lower capacity. On a GPU that lacks RadixSort indirect support the sorter is
+		// disabled and the global sort degrades to unsorted tiles; the key/value buffers then
+		// stay at their high-water capacity and are not reclaimed by this path. That is an
+		// accepted limitation of the opt-in shrink on an already-degraded (unsorted) fallback —
+		// reclaiming there would need a separate sorter-less buffer-resize path, which is not
+		// worth the added complexity for that narrow, low-capability-GPU case.
 		if (g_gpu_sorting_config.bounded_buffer_shrink_enabled && sorter_available && sorter.is_valid() &&
 				!key_config_changed && capacity > effective_demand) {
 			// keys (1-2 words) + values (1 word), matching the real allocation below.

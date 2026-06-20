@@ -720,6 +720,13 @@ private:
 							renderer.global_sort_resources.capacity > 0u) {
 						renderer.global_sort_resources.last_observed_demand = 0u;
 						renderer._ensure_global_sort_resources(_get_adaptive_overlap_budget_min());
+						// Cancel any overflow readback still armed by a prior high-overlap frame:
+						// once we accept zero demand here, a stale callback reporting overflow
+						// would otherwise trip the async auto-resize on the next frame with work
+						// and grow the buffers back to the old peak, undoing this reclaim.
+						renderer.async_readback.overflow_state.pending_readback = false;
+						renderer.async_readback.overflow_state.requested_frame_serial = 0;
+						renderer.async_readback.overflow_state.overflow_detected = false;
 					}
 					finish_assignment_metrics();
 					return true;
