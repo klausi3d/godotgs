@@ -849,8 +849,6 @@ public:
     // Upload the per-instance color grading SSBO. Called alongside update_instance_buffer
     // from both the resident and streaming contract-publish paths.
     bool update_instance_grading_buffer(const LocalVector<InstanceGradingGPU> &p_gradings);
-    int get_cached_streaming_route_policy();
-    String get_cached_streaming_route_policy_source(); // by value: the cache may mutate on another thread
 
     bool ensure_rendering_device(const char *p_context) { return _ensure_rendering_device(p_context); }
     bool ensure_submission_device(const char *p_context) { return _ensure_submission_device(p_context); }

@@ -1465,20 +1465,6 @@ void GaussianSplatRenderer::_snapshot_streaming_route_policy(int &r_policy, Stri
     r_source = cached_streaming_route_policy_source;
 }
 
-int GaussianSplatRenderer::get_cached_streaming_route_policy() {
-    int policy = gs::settings::GS_ROUTE_STREAMING;
-    String source;
-    _snapshot_streaming_route_policy(policy, source);
-    return policy;
-}
-
-String GaussianSplatRenderer::get_cached_streaming_route_policy_source() {
-    int policy = gs::settings::GS_ROUTE_STREAMING;
-    String source;
-    _snapshot_streaming_route_policy(policy, source);
-    return source;
-}
-
 GaussianSplatRenderer::RuntimeFidelityPolicy GaussianSplatRenderer::build_runtime_fidelity_policy(
         const SceneState &p_scene_state, const PerformanceSettings &p_performance_settings) const {
     RuntimeFidelityPolicy policy;
