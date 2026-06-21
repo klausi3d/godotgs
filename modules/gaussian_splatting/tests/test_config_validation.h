@@ -221,6 +221,130 @@ TEST_CASE("[GaussianSplatting][Config] Sorting target_sort_time_ms follows the c
 	}
 }
 
+TEST_CASE("[GaussianSplatting][Config] Adaptive overlap-budget knobs round-trip through project settings") {
+	// Guards the S2 measured-sort-sizing wiring: adaptive_overlap_budget_enabled and
+	// max_overlap_records_adaptive_min must be readable from ProjectSettings (both
+	// default OFF / 100000), and the adaptive-min accessor must never report a floor
+	// above the max_overlap_records hard cap. See gpu_sorting_config.cpp:100-102.
+	ProjectSettings *project_settings = ProjectSettings::get_singleton();
+	REQUIRE(project_settings != nullptr);
+
+	const String preset_path = GPUSortingConfig::GPU_PRESET_PATH;
+	const String adaptive_path = GPUSortingConfig::ADAPTIVE_OVERLAP_BUDGET_PATH;
+	const String shrink_path = GPUSortingConfig::BOUNDED_BUFFER_SHRINK_PATH;
+	const String adaptive_min_path = GPUSortingConfig::MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH;
+	const String max_overlap_path = GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH;
+	ProjectSettingGuard preset_guard(project_settings, preset_path);
+	ProjectSettingGuard adaptive_guard(project_settings, adaptive_path);
+	ProjectSettingGuard shrink_guard(project_settings, shrink_path);
+	ProjectSettingGuard adaptive_min_guard(project_settings, adaptive_min_path);
+	ProjectSettingGuard max_overlap_guard(project_settings, max_overlap_path);
+
+	// Default to the manual ("custom") config path for the load/save subcases; the
+	// preset subcases below override this to prove the knobs are ALSO honoured under a
+	// named preset (they are orthogonal to the sort layout).
+	project_settings->set_setting(preset_path, "custom");
+
+	SUBCASE("Both flags default OFF and adaptive_min defaults to 100000 when unset") {
+		project_settings->clear(adaptive_path);
+		project_settings->clear(shrink_path);
+		project_settings->clear(adaptive_min_path);
+		GPUSortingConfig config;
+		config.load_from_project_settings();
+		CHECK(config.adaptive_overlap_budget_enabled == false);
+		CHECK(config.bounded_buffer_shrink_enabled == false);
+		CHECK(config.max_overlap_records_adaptive_min == 100000u);
+	}
+
+	SUBCASE("Enabling both flags + a custom adaptive_min is reflected in the loaded config") {
+		project_settings->set_setting(adaptive_path, true);
+		project_settings->set_setting(shrink_path, true);
+		project_settings->set_setting(adaptive_min_path, 250000);
+		GPUSortingConfig config;
+		config.load_from_project_settings();
+		CHECK(config.adaptive_overlap_budget_enabled == true);
+		CHECK(config.bounded_buffer_shrink_enabled == true);
+		CHECK(config.max_overlap_records_adaptive_min == 250000u);
+	}
+
+	SUBCASE("adaptive_min accessor is clamped to the max_overlap_records hard cap") {
+		project_settings->set_setting(max_overlap_path, 200000);
+		project_settings->set_setting(adaptive_min_path, 5000000); // deliberately above the cap
+		GPUSortingConfig config;
+		config.load_from_project_settings();
+		CHECK(config.max_overlap_records == 200000u);
+		CHECK(config.max_overlap_records_adaptive_min == 5000000u); // raw stored value is preserved
+		CHECK(config.get_overlap_records_adaptive_min() == 200000u); // accessor clamps to the cap
+	}
+
+	SUBCASE("Negative/zero adaptive_min is clamped to a safe lower bound, not wrapped huge") {
+		// A negative project value must not wrap through uint32_t and (via the accessor's
+		// upper clamp) pin the floor at the hard cap — that would silently disable shrink.
+		project_settings->set_setting(max_overlap_path, 1000000);
+		project_settings->set_setting(adaptive_min_path, -1);
+		GPUSortingConfig config;
+		config.load_from_project_settings();
+		CHECK(config.max_overlap_records_adaptive_min == 1u); // -1 clamped to >=1, NOT 4294967295
+		CHECK(config.get_overlap_records_adaptive_min() == 1u);
+		CHECK(config.get_overlap_records_adaptive_min() < config.max_overlap_records);
+
+		// Zero is clamped to the same >=1 floor (the title's other half).
+		project_settings->set_setting(adaptive_min_path, 0);
+		config.load_from_project_settings();
+		CHECK(config.max_overlap_records_adaptive_min == 1u);
+	}
+
+	SUBCASE("GLOBAL_DEF registers the new keys with their defaults") {
+		// Round-trips the GLOBAL_DEF wiring (not just save_to_project_settings, which
+		// creates the keys itself): clear the keys, re-run registration, and confirm
+		// they reappear with the documented defaults.
+		project_settings->clear(adaptive_path);
+		project_settings->clear(adaptive_min_path);
+		initialize_gpu_sorting_config();
+		CHECK(project_settings->has_setting(adaptive_path));
+		CHECK(project_settings->has_setting(adaptive_min_path));
+		CHECK(bool(project_settings->get_setting(adaptive_path)) == false);
+		CHECK(int64_t(project_settings->get_setting(adaptive_min_path)) == 100000);
+	}
+
+	SUBCASE("reset_to_defaults restores both flags OFF and adaptive_min to 100000") {
+		GPUSortingConfig config;
+		config.adaptive_overlap_budget_enabled = true;
+		config.bounded_buffer_shrink_enabled = true;
+		config.max_overlap_records_adaptive_min = 777000;
+		config.reset_to_defaults();
+		CHECK(config.adaptive_overlap_budget_enabled == false);
+		CHECK(config.bounded_buffer_shrink_enabled == false);
+		CHECK(config.max_overlap_records_adaptive_min == 100000u);
+	}
+
+	SUBCASE("Flags are honored under a named preset, not only custom") {
+		// The reclaim knobs are orthogonal to the sort layout, so they must be
+		// reachable on the default "high" preset — otherwise the VRAM wins are
+		// unavailable to anyone who has not switched to gpu_preset="custom".
+		project_settings->set_setting(preset_path, "high");
+		project_settings->set_setting(adaptive_path, true);
+		project_settings->set_setting(shrink_path, true);
+		project_settings->set_setting(adaptive_min_path, 300000);
+		GPUSortingConfig config;
+		config.load_from_project_settings();
+		CHECK(config.adaptive_overlap_budget_enabled == true);
+		CHECK(config.bounded_buffer_shrink_enabled == true);
+		CHECK(config.max_overlap_records_adaptive_min == 300000u);
+	}
+
+	SUBCASE("apply_preset establishes the off baseline, clearing stale custom state") {
+		GPUSortingConfig config;
+		config.adaptive_overlap_budget_enabled = true;
+		config.bounded_buffer_shrink_enabled = true;
+		config.max_overlap_records_adaptive_min = 999000;
+		REQUIRE(config.apply_preset("high"));
+		CHECK(config.adaptive_overlap_budget_enabled == false);
+		CHECK(config.bounded_buffer_shrink_enabled == false);
+		CHECK(config.max_overlap_records_adaptive_min == 100000u);
+	}
+}
+
 TEST_CASE("[GaussianSplatting][Config] GPUSortingConfig rejects invalid max_sort_elements") {
 	GPUSortingConfig config;
 	config.reset_to_defaults();
