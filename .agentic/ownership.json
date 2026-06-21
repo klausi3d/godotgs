@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "description": "Agent ownership domains bound to real paths. Parallel implementer work is only allowed across non-overlapping domains. No domain grants a global change-everything mandate; engine-integration paths are highest risk and require CODEOWNER review.",
+  "domains": {
+    "core-data-io": {
+      "description": "Core gaussian data types, loaders/importers, and on-disk serialization.",
+      "paths": [
+        "modules/gaussian_splatting/core/**",
+        "modules/gaussian_splatting/io/**",
+        "modules/gaussian_splatting/persistence/**"
+      ]
+    },
+    "renderer-resources": {
+      "description": "GPU resources and the render pipeline.",
+      "paths": [
+        "modules/gaussian_splatting/renderer/**",
+        "modules/gaussian_splatting/compute/**"
+      ]
+    },
+    "shaders-contracts": {
+      "description": "GLSL/compute shaders and the host/shader layout contract.",
+      "paths": [
+        "modules/gaussian_splatting/shaders/**"
+      ]
+    },
+    "streaming-lod": {
+      "description": "Streaming, residency, and level-of-detail.",
+      "paths": [
+        "modules/gaussian_splatting/lod/**",
+        "modules/gaussian_splatting/asset_management/**"
+      ]
+    },
+    "editor-import": {
+      "description": "Editor integration and import UX for the module.",
+      "paths": [
+        "modules/gaussian_splatting/editor/**",
+        "modules/gaussian_splatting/nodes/**"
+      ]
+    },
+    "tests-ci": {
+      "description": "Test harness, CI scripts, and agentic tooling.",
+      "paths": [
+        "tests/**",
+        "scripts/**",
+        ".github/**"
+      ]
+    },
+    "engine-integration": {
+      "description": "Godot engine delta outside the module (highest risk, CODEOWNER review required).",
+      "paths": [
+        "servers/**",
+        "scene/**",
+        "core/**",
+        "editor/**",
+        "platform/**"
+      ]
+    }
+  }
+}

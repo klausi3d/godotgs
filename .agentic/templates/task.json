@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "task_id": "GS-000",
+  "github_issue": "#0",
+  "title": "Short imperative summary of the task",
+  "baseline_sha": "0000000000000000000000000000000000000000",
+  "risk_class": "R1",
+  "owned_paths": [
+    "modules/gaussian_splatting/<subsystem>/**"
+  ],
+  "forbidden_paths": [
+    "servers/**",
+    "scene/**",
+    "modules/gaussian_splatting/persistence/**"
+  ],
+  "dependencies": [],
+  "problem_statement": "What is wrong or missing today, stated concretely and verifiably.",
+  "non_goals": [
+    "Explicitly list what this task will NOT do, to keep scope fixed."
+  ],
+  "invariants": [
+    "Properties that must remain true (e.g. no resource leak on failure paths)."
+  ],
+  "acceptance_criteria": [
+    "Observable, checkable conditions that define done."
+  ],
+  "validation_commands": [
+    "python tests/ci/run_module_tests.py --guard-only"
+  ],
+  "evidence_requirements": [
+    "Executed commands and results recorded in the PR; for R2+ add runtime/GPU evidence."
+  ],
+  "rollback_plan": "How to revert safely if this change regresses (e.g. revert the single commit; no migration needed)."
+}
