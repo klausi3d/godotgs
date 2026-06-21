@@ -508,6 +508,15 @@ node_modules/
 /measure_*.gd
 /measure_*.gd.uid
 
+# Agentic local / ephemeral runtime state.
+# NOTE: the canonical .agentic/ control-plane files (policy, schemas, roles,
+# templates) ARE tracked; only local instances and scratch are ignored here.
+.agentic-local/
+.worktrees/
+/agentic_task_*.local.json
+/agentic_review_*.local.json
+*.agent-session.json
+
 # Misc local outputs
 /addons/*/bin/
 *.wasm

@@ -1,0 +1,32 @@
+# Code owners for GodotGS.
+#
+# Listed paths require review from @klausi3D before merge. There is intentionally
+# no global owner so that unlisted, low-risk paths are not blocked; the sensitive
+# surfaces below — CI/security, agent governance, the GPU render path, on-disk
+# formats, the Godot engine delta, and tests — always need maintainer review.
+#
+# See docs/governance/github-settings.md for the branch-protection settings that
+# make CODEOWNER review enforceable.
+
+/.github/                                    @klausi3D
+/.agentic/                                   @klausi3D
+/AGENTS.md                                   @klausi3D
+/docs/governance/                            @klausi3D
+
+# GPU render path and host/shader contracts (risk class R2).
+/modules/gaussian_splatting/renderer/        @klausi3D
+/modules/gaussian_splatting/shaders/         @klausi3D
+
+# On-disk / serialization formats (risk class R3).
+/modules/gaussian_splatting/persistence/     @klausi3D
+/modules/gaussian_splatting/io/              @klausi3D
+
+# Godot engine delta (risk class R3).
+/servers/                                    @klausi3D
+/scene/                                      @klausi3D
+/editor/                                     @klausi3D
+/platform/                                   @klausi3D
+/core/                                       @klausi3D
+
+# Test and CI harness.
+/tests/                                      @klausi3D

@@ -1,0 +1,98 @@
+name: Agent Task
+description: Define a scoped task contract for an AI coding agent (or human) to implement.
+title: "[task]: "
+labels: ["agent-task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One task → one branch → one worktree. See `docs/governance/agentic-engineering.md`.
+        The risk class is re-derived from the diff in CI and the higher value wins, so do
+        not under-declare it.
+  - type: input
+    id: task_id
+    attributes:
+      label: Task ID
+      description: Stable identifier, e.g. GS-298.
+    validations:
+      required: true
+  - type: input
+    id: baseline_sha
+    attributes:
+      label: Baseline SHA
+      description: Immutable base commit the work starts from.
+    validations:
+      required: true
+  - type: dropdown
+    id: risk_class
+    attributes:
+      label: Risk class
+      options:
+        - R0 (docs / agentic governance)
+        - R1 (local module / test change)
+        - R2 (renderer / shaders / streaming / performance)
+        - R3 (engine delta / persistence / release / security)
+    validations:
+      required: true
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: Problem statement
+      description: What is wrong or missing today, stated concretely and verifiably.
+    validations:
+      required: true
+  - type: textarea
+    id: owned_paths
+    attributes:
+      label: Owned paths
+      description: Paths this task may modify (one per line).
+    validations:
+      required: true
+  - type: textarea
+    id: forbidden_paths
+    attributes:
+      label: Forbidden paths
+      description: Paths this task must not touch (one per line).
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: What this task will explicitly NOT do.
+  - type: textarea
+    id: invariants
+    attributes:
+      label: Invariants
+      description: Properties that must remain true (e.g. no resource leak on failure paths).
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: Observable, checkable conditions that define done.
+    validations:
+      required: true
+  - type: textarea
+    id: validation_commands
+    attributes:
+      label: Validation commands
+      description: Exact commands a verifier will run.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence_requirements
+    attributes:
+      label: Evidence requirements
+      description: For R2+, the runtime/GPU/benchmark evidence required.
+  - type: input
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Other task IDs / PRs this depends on (or "none").
+  - type: textarea
+    id: rollback_plan
+    attributes:
+      label: Rollback plan
+      description: How to revert safely if this regresses.
+    validations:
+      required: true

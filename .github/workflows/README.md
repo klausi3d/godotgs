@@ -1,6 +1,6 @@
 # GitHub Actions Workflows
 
-This directory contains 5 active workflow files.
+This directory contains 6 active workflow files.
 
 GitHub's Actions tab can also show historical workflow names from past runs, disabled files, or workflow files that are no longer present in this directory. This README tracks the workflow files currently checked into `.github/workflows/`.
 
@@ -13,6 +13,24 @@ GitHub's Actions tab can also show historical workflow names from past runs, dis
 | Gaussian Production Gates | `gaussian_production_gates.yml` | Enforces guard checks, pipeline smoke, runtime validation, the blocking streaming gate, and optional non-blocking benchmark evidence surfaces. | Owns the single Windows build for validation workflows. `streaming-gpu-ci` is the canonical blocking GPU-backed streaming runtime gate; `openworld-proof-dev` and `openworld-proof-weekly` are evidence-only benchmark surfaces. |
 | Gaussian Shader Validation | `gaussian_shader_validation.yml` | Validates shader compile matrix and host/shader contract checks. | Focused shader CI gate. |
 | Release Builds | `release_builds.yml` | Builds Linux and Windows editors for CI artifacts, nightly prereleases, and optional stable-tag publishes. | Publishes Linux tarballs and Windows zips on the nightly schedule and on `v*` tag pushes. |
+| Agentic PR Gate | `agentic_pr_gate.yml` | Fork-safe, always-on gate: validates the agentic control plane, runs the agentic tests, the agentic/governance link check, and the GPU-free `--guard-only` lane. | GitHub-hosted (`ubuntu-latest`); runs on every PR and the merge queue. Required check name: `Agentic PR Gate / required`. |
+
+## Required Checks
+
+`Agentic PR Gate / required` is the fork-safe, always-on blocking check intended for
+`master` branch protection (see `docs/governance/github-settings.md`). It runs only
+on GitHub-hosted runners, so external fork PRs always receive a status without
+touching the self-hosted lanes. It runs:
+
+- `python scripts/agentic/validate_repo_contract.py`
+- the `scripts/agentic` contract validators against the shipped templates
+- `python -m unittest discover -s tests/agentic`
+- `python scripts/docs/check_links.py docs/governance README.md CONTRIBUTING.md AGENTS.md`
+- `python tests/ci/run_module_tests.py --guard-only` (GPU-free; the StringName guard
+  self-skips when no Godot binary is present)
+
+The link check here is scoped to the agentic/governance surface; the full-tree link
+check remains a contributor step (`docs/governance/contribution-standards.md`).
 
 ## Manual Dispatch Inputs
 

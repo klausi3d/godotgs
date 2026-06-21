@@ -1,0 +1,60 @@
+name: Agentic PR Gate
+
+# Fork-safe, always-on required gate. Runs on every pull request (no path filter)
+# and on the merge queue, entirely on a GitHub-hosted runner, so external fork PRs
+# always get a blocking signal without touching the persistent self-hosted runners.
+# Required check name: "Agentic PR Gate / required".
+
+on:
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentic-pr-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"
+
+jobs:
+  required:
+    name: required
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate agentic control plane
+        run: python scripts/agentic/validate_repo_contract.py
+
+      - name: Exercise contract validators on shipped templates
+        run: |
+          python scripts/agentic/validate_review.py --review .agentic/templates/review.json
+          python scripts/agentic/check_pr_contract.py \
+            --contract .agentic/templates/task.json \
+            --paths modules/gaussian_splatting/logger/example.cpp
+          python scripts/agentic/classify_change.py \
+            --paths modules/gaussian_splatting/renderer/example.cpp
+
+      - name: Run agentic unit tests
+        run: python -m unittest discover -s tests/agentic -v
+
+      - name: Check documentation links (agentic/governance surface)
+        # Scoped to the agentic-governance surface so the required gate stays green;
+        # the full-tree link check is a contributor step (see contribution-standards.md).
+        run: python scripts/docs/check_links.py docs/governance README.md CONTRIBUTING.md AGENTS.md
+
+      - name: Run guard-only checks (GPU-free, portable)
+        run: python tests/ci/run_module_tests.py --guard-only
