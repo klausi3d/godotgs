@@ -1612,7 +1612,6 @@ void TileRenderer::cleanup() {
 	clear_output_resource_tracking();
 	clear_adaptive_overlap_budget_runtime_state();
     RenderingDevice *device = _get_resource_device();
-    RenderingDevice *pipeline_owner = shader_resources.shader_device ? shader_resources.shader_device : device;
     if (device) {
         projection_buffers.release(device);
         sh_cache_buffers.release(device);
@@ -1621,7 +1620,6 @@ void TileRenderer::cleanup() {
         debug_stats.free_buffers(device);
         global_sort_resources.release(device);
         render_settings.global_sort_enabled = false;
-        shader_resources.release(device, pipeline_owner);
         if (render_targets.tile_framebuffer.is_valid() &&
                 device->framebuffer_is_valid(render_targets.tile_framebuffer)) {
             device->free(render_targets.tile_framebuffer);
@@ -1655,13 +1653,20 @@ void TileRenderer::cleanup() {
         uniform_buffers.reset_state();
     }
 
+    // Free the compiled shaders/pipelines on their own (shader_device) owner,
+    // independent of the resource device. Gating this on `device` (resource_rd)
+    // and then unconditionally reset_state()'ing the RIDs would drop the handles
+    // without freeing whenever resource_rd is gone but shader_device is still
+    // valid -- the same leak class the recompile path closes. release() resets
+    // the RID state, so no separate reset is needed below.
+    _release_compiled_shaders();
+
     _invalidate_descriptor_cache();
 
 	projection_buffers.reset_state();
 	sh_cache_buffers.reset_state();
 	subpixel_history_buffers.reset_state();
 	subpixel_visibility_buffers.reset_state();
-    shader_resources.reset_state();
 	render_settings.global_sort_enabled = true;
     render_settings.enable_sh_amortization = false;
     render_settings.sh_amortization_divisor = 1;
@@ -2885,16 +2890,27 @@ RenderingDevice *TileRenderer::_acquire_submission_device() {
 }
 
 void TileRenderer::_release_compiled_shaders() {
-    // Resolve the devices that own the compiled shaders/pipelines. Shaders are
-    // freed on the resource device (matching cleanup() semantics); pipelines on
-    // the device that created them (shader_device). Fall back across both so a
-    // null resource device at recompile time still frees rather than orphans.
-    RenderingDevice *resource = _get_resource_device();
-    RenderingDevice *pipeline_owner = shader_resources.shader_device ? shader_resources.shader_device : resource;
-    RenderingDevice *shader_owner = resource ? resource : pipeline_owner;
+    // Thread-safety invariant: every caller runs on the render/submission thread
+    // during render setup -- the config-change path (~line 485) and the
+    // debug/perf toggles, which are only ever reached when render params are
+    // synced to the tile renderer (tile_renderer.cpp:399 and
+    // render_debug_state_orchestrator.cpp:767) -- or during teardown, never
+    // concurrently with an in-flight render. The GaussianSplatRenderer-level
+    // setters merely store flags in debug_config; they do not reach this method
+    // off the render thread. So freeing the GPU objects synchronously here
+    // cannot race a command list that still references them.
+    //
+    // Free shaders AND pipelines on the device that created them: compile stamps
+    // shader_device with the submission device it used (shader_compilation_helper),
+    // so that is the correct owner for both -- this also covers a split
+    // resource/submission device. Fall back to the resource device only when
+    // nothing is compiled, in which case release() is a no-op anyway.
+    RenderingDevice *owner = shader_resources.shader_device
+            ? shader_resources.shader_device
+            : _get_resource_device();
     // release() frees the pipelines + shaders and then resets the RID state, so
     // it fully replaces the previous bare reset_state() while closing the leak.
-    shader_resources.release(shader_owner, pipeline_owner);
+    shader_resources.release(owner, owner);
 }
 
 void TileRenderer::_invalidate_descriptor_cache() {
