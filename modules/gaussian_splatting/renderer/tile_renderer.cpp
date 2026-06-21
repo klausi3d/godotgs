@@ -482,7 +482,7 @@ private:
 		}
 
 		if (packed_stage_changed || tighter_bounds_changed || sh_amortization_changed) {
-			renderer.shader_resources.reset_state();
+			renderer._release_compiled_shaders();
 			if (packed_stage_changed) {
 				if (resource_device) {
 					renderer.projection_buffers.release(resource_device);
@@ -1348,7 +1348,7 @@ void TileRenderer::set_debug_binning_counters_enabled(bool p_enabled) {
 		return;
 	}
 	diagnostics.debug_binning_counters_enabled = p_enabled;
-	shader_resources.reset_state();
+	_release_compiled_shaders();
 	_invalidate_descriptor_cache();
 }
 
@@ -1360,7 +1360,7 @@ void TileRenderer::set_perf_capture_raster_shader_counters_enabled(bool p_enable
 	// Recompile raster shaders when this flag flips, since GS_COLLECT_RASTER_STATS
 	// is a compile-time define toggle. Without reset_state(), the cached shader
 	// without the stats path would keep being used.
-	shader_resources.reset_state();
+	_release_compiled_shaders();
 	_invalidate_descriptor_cache();
 }
 
@@ -2882,6 +2882,19 @@ RenderingDevice *TileRenderer::_get_submission_device() {
 
 RenderingDevice *TileRenderer::_acquire_submission_device() {
     return _get_submission_device();
+}
+
+void TileRenderer::_release_compiled_shaders() {
+    // Resolve the devices that own the compiled shaders/pipelines. Shaders are
+    // freed on the resource device (matching cleanup() semantics); pipelines on
+    // the device that created them (shader_device). Fall back across both so a
+    // null resource device at recompile time still frees rather than orphans.
+    RenderingDevice *resource = _get_resource_device();
+    RenderingDevice *pipeline_owner = shader_resources.shader_device ? shader_resources.shader_device : resource;
+    RenderingDevice *shader_owner = resource ? resource : pipeline_owner;
+    // release() frees the pipelines + shaders and then resets the RID state, so
+    // it fully replaces the previous bare reset_state() while closing the leak.
+    shader_resources.release(shader_owner, pipeline_owner);
 }
 
 void TileRenderer::_invalidate_descriptor_cache() {
