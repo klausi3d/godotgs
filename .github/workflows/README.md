@@ -56,6 +56,29 @@ repo does not track a qlty configuration/log contract. If branch protection
 later requires qlty, update the manifest before treating a qlty result as part
 of public-alpha signoff.
 
+## Runner Trust Boundary (fork PRs)
+
+The self-hosted Windows/GPU runners are persistent and must never execute
+untrusted code from a fork pull request. All three workflows that use the
+self-hosted lane apply the same guard so that fork PRs are skipped on the
+self-hosted jobs while same-repo (maintainer) PRs, `push`, `schedule`,
+`workflow_dispatch`, and `merge_group` continue to run:
+
+```yaml
+if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+```
+
+- `baseline_qa.yml` — `gpu-tests`, `gpu-harness` guarded.
+- `release_builds.yml` — `build_windows` guarded.
+- `gaussian_production_gates.yml` — `guards` and `module-validation` guarded.
+
+`pull_request_target` is not used by any workflow, so fork PRs never get a
+privileged checkout. Fork PRs still receive a fork-safe blocking signal from
+GitHub-hosted lanes (e.g. `baseline_qa.yml`'s Linux `cpu-tests`); GPU/Windows
+validation of an external contribution happens only after a maintainer moves the
+change onto a same-repo branch. Any change that relaxes this boundary must be
+documented here and in `docs/governance/review-policy.md`.
+
 ## Scheduled Triggers
 
 | Workflow | Schedule (UTC) | Behavior |
