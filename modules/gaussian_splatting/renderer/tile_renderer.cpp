@@ -2900,17 +2900,24 @@ void TileRenderer::_release_compiled_shaders() {
     // off the render thread. So freeing the GPU objects synchronously here
     // cannot race a command list that still references them.
     //
-    // Free shaders AND pipelines on the device that created them: compile stamps
-    // shader_device with the submission device it used (shader_compilation_helper),
-    // so that is the correct owner for both -- this also covers a split
-    // resource/submission device. Fall back to the resource device only when
-    // nothing is compiled, in which case release() is a no-op anyway.
-    RenderingDevice *owner = shader_resources.shader_device
-            ? shader_resources.shader_device
-            : _get_resource_device();
+    // Device ownership mirrors cleanup()'s long-standing semantics: shaders are
+    // freed on the resource device, pipelines on shader_device (the device the
+    // main set was compiled on). With a single device -- the shipped config and
+    // the one issue #298 reproduces -- these are identical and every RID is freed
+    // on its owner. A split resource/submission device is a PRE-EXISTING
+    // limitation, not introduced here: tile_resolve_shader/tile_resolve_pipeline
+    // are compiled lazily on whichever device dispatch_tile_resolve passed
+    // (tile_render_resolve.cpp:1054 vs :1075), so no single
+    // (p_device, p_pipeline_owner) pair frees a mixed-ownership set correctly.
+    // Keeping the original semantics means this fix changes no device behavior --
+    // only free-before-clear. Closing the split-device case fully needs per-RID
+    // owner tracking in TileShaderResources::release() and is out of scope.
+    RenderingDevice *resource = _get_resource_device();
+    RenderingDevice *pipeline_owner = shader_resources.shader_device ? shader_resources.shader_device : resource;
+    RenderingDevice *shader_owner = resource ? resource : pipeline_owner;
     // release() frees the pipelines + shaders and then resets the RID state, so
     // it fully replaces the previous bare reset_state() while closing the leak.
-    shader_resources.release(owner, owner);
+    shader_resources.release(shader_owner, pipeline_owner);
 }
 
 void TileRenderer::_invalidate_descriptor_cache() {
