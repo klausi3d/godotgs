@@ -482,7 +482,7 @@ private:
 		}
 
 		if (packed_stage_changed || tighter_bounds_changed || sh_amortization_changed) {
-			renderer.shader_resources.reset_state();
+			renderer._release_compiled_shaders();
 			if (packed_stage_changed) {
 				if (resource_device) {
 					renderer.projection_buffers.release(resource_device);
@@ -1348,7 +1348,7 @@ void TileRenderer::set_debug_binning_counters_enabled(bool p_enabled) {
 		return;
 	}
 	diagnostics.debug_binning_counters_enabled = p_enabled;
-	shader_resources.reset_state();
+	_release_compiled_shaders();
 	_invalidate_descriptor_cache();
 }
 
@@ -1360,7 +1360,7 @@ void TileRenderer::set_perf_capture_raster_shader_counters_enabled(bool p_enable
 	// Recompile raster shaders when this flag flips, since GS_COLLECT_RASTER_STATS
 	// is a compile-time define toggle. Without reset_state(), the cached shader
 	// without the stats path would keep being used.
-	shader_resources.reset_state();
+	_release_compiled_shaders();
 	_invalidate_descriptor_cache();
 }
 
@@ -1612,7 +1612,6 @@ void TileRenderer::cleanup() {
 	clear_output_resource_tracking();
 	clear_adaptive_overlap_budget_runtime_state();
     RenderingDevice *device = _get_resource_device();
-    RenderingDevice *pipeline_owner = shader_resources.shader_device ? shader_resources.shader_device : device;
     if (device) {
         projection_buffers.release(device);
         sh_cache_buffers.release(device);
@@ -1621,7 +1620,6 @@ void TileRenderer::cleanup() {
         debug_stats.free_buffers(device);
         global_sort_resources.release(device);
         render_settings.global_sort_enabled = false;
-        shader_resources.release(device, pipeline_owner);
         if (render_targets.tile_framebuffer.is_valid() &&
                 device->framebuffer_is_valid(render_targets.tile_framebuffer)) {
             device->free(render_targets.tile_framebuffer);
@@ -1655,13 +1653,20 @@ void TileRenderer::cleanup() {
         uniform_buffers.reset_state();
     }
 
+    // Free the compiled shaders/pipelines on their own (shader_device) owner,
+    // independent of the resource device. Gating this on `device` (resource_rd)
+    // and then unconditionally reset_state()'ing the RIDs would drop the handles
+    // without freeing whenever resource_rd is gone but shader_device is still
+    // valid -- the same leak class the recompile path closes. release() resets
+    // the RID state, so no separate reset is needed below.
+    _release_compiled_shaders();
+
     _invalidate_descriptor_cache();
 
 	projection_buffers.reset_state();
 	sh_cache_buffers.reset_state();
 	subpixel_history_buffers.reset_state();
 	subpixel_visibility_buffers.reset_state();
-    shader_resources.reset_state();
 	render_settings.global_sort_enabled = true;
     render_settings.enable_sh_amortization = false;
     render_settings.sh_amortization_divisor = 1;
@@ -2882,6 +2887,37 @@ RenderingDevice *TileRenderer::_get_submission_device() {
 
 RenderingDevice *TileRenderer::_acquire_submission_device() {
     return _get_submission_device();
+}
+
+void TileRenderer::_release_compiled_shaders() {
+    // Thread-safety invariant: every caller runs on the render/submission thread
+    // during render setup -- the config-change path (~line 485) and the
+    // debug/perf toggles, which are only ever reached when render params are
+    // synced to the tile renderer (tile_renderer.cpp:399 and
+    // render_debug_state_orchestrator.cpp:767) -- or during teardown, never
+    // concurrently with an in-flight render. The GaussianSplatRenderer-level
+    // setters merely store flags in debug_config; they do not reach this method
+    // off the render thread. So freeing the GPU objects synchronously here
+    // cannot race a command list that still references them.
+    //
+    // Device ownership mirrors cleanup()'s long-standing semantics: shaders are
+    // freed on the resource device, pipelines on shader_device (the device the
+    // main set was compiled on). With a single device -- the shipped config and
+    // the one issue #298 reproduces -- these are identical and every RID is freed
+    // on its owner. A split resource/submission device is a PRE-EXISTING
+    // limitation, not introduced here: tile_resolve_shader/tile_resolve_pipeline
+    // are compiled lazily on whichever device dispatch_tile_resolve passed
+    // (tile_render_resolve.cpp:1054 vs :1075), so no single
+    // (p_device, p_pipeline_owner) pair frees a mixed-ownership set correctly.
+    // Keeping the original semantics means this fix changes no device behavior --
+    // only free-before-clear. Closing the split-device case fully needs per-RID
+    // owner tracking in TileShaderResources::release() and is out of scope.
+    RenderingDevice *resource = _get_resource_device();
+    RenderingDevice *pipeline_owner = shader_resources.shader_device ? shader_resources.shader_device : resource;
+    RenderingDevice *shader_owner = resource ? resource : pipeline_owner;
+    // release() frees the pipelines + shaders and then resets the RID state, so
+    // it fully replaces the previous bare reset_state() while closing the leak.
+    shader_resources.release(shader_owner, pipeline_owner);
 }
 
 void TileRenderer::_invalidate_descriptor_cache() {

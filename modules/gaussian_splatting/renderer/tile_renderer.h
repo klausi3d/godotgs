@@ -361,6 +361,10 @@ private:
 	RenderingDevice *_get_submission_device();
 	RenderingDevice *_acquire_submission_device();
 	void _invalidate_descriptor_cache();
+	// Free the compiled tile shaders/pipelines before clearing their RIDs. Forced
+	// recompiles (config/debug toggles) must not abandon the previous GPU objects;
+	// a bare shader_resources.reset_state() would null the RIDs and leak them.
+	void _release_compiled_shaders();
 	uint64_t descriptor_generation = 0; // Monotonic counter; incremented by _invalidate_descriptor_cache().
 	bool _update_instance_pipeline_bindings(const RenderParams &p_params);
 	bool _ensure_param_uniform_buffer(RenderingDevice *p_device);

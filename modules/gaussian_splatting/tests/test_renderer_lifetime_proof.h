@@ -85,6 +85,7 @@
 #include "../core/gaussian_streaming.h"
 #include "../interfaces/render_device_manager.h"
 #include "../renderer/gaussian_splat_renderer.h"
+#include "../renderer/tile_renderer.h"
 
 #include "core/io/json.h"
 #include "core/math/random_number_generator.h"
@@ -919,6 +920,83 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 	// monotonicity_ok and fail_reason in the JSON line.
 	const bool scenario_passed = fixture.finalize();
 	CHECK_MESSAGE(scenario_passed, fixture.result().fail_reason);
+}
+
+// ---------------------------------------------------------------------------
+// Scenario E: tile_shader_recompile — a forced tile-shader recompile must FREE
+// the previously compiled shaders/pipelines, not orphan them.
+//
+// Regression for issue #298 (resident-node-path RID leak). A runtime recompile
+// trigger — a render-config change (packed-stage / tighter-bounds /
+// SH-amortization toggle) or a debug/perf counter toggle — used to call
+// TileShaderResources::reset_state() directly, which NULLS the shader+pipeline
+// RIDs without freeing the GPU objects. On benchmark_small_baseline that leaked
+// exactly 1 Pipeline + 6 Compute + 7 Shader at process exit. The fix routes
+// those triggers through TileRenderer::_release_compiled_shaders(), which frees
+// before clearing.
+//
+// This scenario is byte-independent: it captures a live compute-pipeline RID,
+// flips a recompile trigger, and asserts the device no longer considers the old
+// RID valid. No render runs between the capture and the check, so the freed RID
+// cannot be reused yet — its validity is a clean leak signal. Pre-fix the
+// orphaned RID stays valid (leak); post-fix it is freed.
+// ---------------------------------------------------------------------------
+TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] tile_shader_recompile frees old shaders") {
+	REQUIRE_GPU_DEVICE();
+
+	RendererLifetimeFixture fixture("tile_shader_recompile", rd);
+	fixture.capture_baseline();
+
+	bool old_pipeline_was_freed = false;
+
+	{
+		Ref<GaussianSplatRenderer> renderer;
+		renderer.instantiate(rd);
+		REQUIRE(renderer.is_valid());
+
+		Ref<::GaussianData> data = _make_lifetime_test_data(64);
+		const Error set_err = renderer->set_gaussian_data(data);
+		CHECK((set_err == OK || set_err == ERR_UNCONFIGURED));
+
+		Transform3D cam_transform;
+		Projection projection;
+		projection.set_perspective(60.0f, 1.0f, 0.1f, 200.0f);
+		renderer->render_for_view(cam_transform, projection, RID(), Size2i(128, 128));
+
+		Ref<TileRenderer> tile = renderer->get_tile_renderer();
+		REQUIRE(tile.is_valid());
+
+		// The binning pipeline is a core compute pipeline on the tile path; use
+		// it as the canary for the recompile free. If the standalone-doctest
+		// harness lacks the full submission-device / RenderingServer wiring the
+		// tile path needs (the #329 [SceneTree]+[RequiresGPU] gap), the shaders
+		// never compile — skip rather than false-fail. The canonical proof for
+		// this fix is the benchmark_small_baseline RID-leak repro (14 -> 0).
+		const RID old_binning_pipeline = tile->get_tile_binning_pipeline();
+		if (!old_binning_pipeline.is_valid() || !rd->compute_pipeline_is_valid(old_binning_pipeline)) {
+			fixture.mark_skipped("tile binning pipeline not compiled in this harness; "
+					"recompile path not exercisable (see #329)");
+			renderer.unref();
+			return;
+		}
+
+		// Flip a recompile trigger directly on the tile renderer. This routes
+		// through _release_compiled_shaders(), which must FREE the old pipeline
+		// before clearing its RID. No render happens in between, so a freed RID
+		// cannot be reused yet — its validity is a clean leak signal.
+		tile->set_perf_capture_raster_shader_counters_enabled(true);
+
+		old_pipeline_was_freed = !rd->compute_pipeline_is_valid(old_binning_pipeline);
+		CHECK_MESSAGE(old_pipeline_was_freed,
+				"recompile trigger left the previous tile binning pipeline alive on the device — "
+				"shaders/pipelines were orphaned instead of freed (issue #298 regression).");
+
+		renderer.unref();
+	}
+
+	const bool passed = fixture.finalize();
+	CHECK_MESSAGE(passed, fixture.result().fail_reason);
+	CHECK(old_pipeline_was_freed);
 }
 
 // ---------------------------------------------------------------------------
