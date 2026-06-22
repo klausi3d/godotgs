@@ -37,8 +37,14 @@ class ClassifyChangeTest(unittest.TestCase):
     def test_local_module_is_r1(self):
         self.assertEqual(self._cls(["modules/gaussian_splatting/logger/logger.cpp"]), "R1")
 
-    def test_tests_path_is_r1(self):
-        self.assertEqual(self._cls(["tests/ci/run_module_tests.py"]), "R1")
+    def test_ordinary_test_path_is_r1(self):
+        self.assertEqual(self._cls(["tests/ci/test_ply_loader_ci.gd"]), "R1")
+
+    def test_ci_gate_machinery_is_r3(self):
+        # The deterministic-check / release-gate runners must not be downgradable at R1.
+        self.assertEqual(self._cls(["tests/ci/run_module_tests.py"]), "R3")
+        self.assertEqual(self._cls(["tests/runtime/run_runtime_validation.py"]), "R3")
+        self.assertEqual(self._cls(["tests/ci/check_renderer_release_gates.py"]), "R3")
 
     def test_docs_is_r0(self):
         self.assertEqual(self._cls(["docs/governance/review-policy.md"]), "R0")
