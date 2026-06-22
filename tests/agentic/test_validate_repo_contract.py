@@ -25,7 +25,7 @@ def _make_valid_root(base: Path) -> Path:
     root = base / "repo"
     root.mkdir()
     shutil.copytree(ROOT / ".agentic", root / ".agentic")
-    for rel in vrc.REQUIRED_FILES:
+    for rel in vrc.CONTROL_PLANE_FILES + vrc.HIERARCHY_FILES:
         path = root / rel
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -43,16 +43,25 @@ class ValidateRepoContractTest(unittest.TestCase):
 
     def test_valid_root_passes(self):
         self.assertEqual(vrc.validate_repo_contract(self.root), [])
+        self.assertEqual(vrc.validate_repo_contract(self.root, strict_hierarchy=True), [])
 
     def test_missing_role_file_fails(self):
         (self.root / ".agentic" / "roles" / "planner.md").unlink()
         errors = vrc.validate_repo_contract(self.root)
         self.assertTrue(any("planner" in e for e in errors))
 
-    def test_missing_required_file_fails(self):
-        (self.root / "AGENTS.md").unlink()
+    def test_missing_control_plane_file_fails_by_default(self):
+        (self.root / "scripts" / "agentic" / "classify_change.py").unlink()
         errors = vrc.validate_repo_contract(self.root)
-        self.assertTrue(any("AGENTS.md" in e for e in errors))
+        self.assertTrue(any("classify_change.py" in e for e in errors))
+
+    def test_missing_hierarchy_passes_default_fails_strict(self):
+        (self.root / "AGENTS.md").unlink()
+        # Default scope ignores the wider hierarchy, so the control plane is still valid.
+        self.assertEqual(vrc.validate_repo_contract(self.root), [])
+        # Strict scope requires it.
+        strict_errors = vrc.validate_repo_contract(self.root, strict_hierarchy=True)
+        self.assertTrue(any("AGENTS.md" in e for e in strict_errors))
 
     def test_invalid_json_fails(self):
         (self.root / ".agentic" / "policy.json").write_text("{ not valid json", encoding="utf-8")

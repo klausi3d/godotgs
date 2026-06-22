@@ -3,14 +3,18 @@
 
 Checks (against ``--root``, default: repository root):
 
-* all required ``.agentic/``, ``scripts/agentic/``, ``AGENTS.md`` and
-  ``docs/governance/`` files exist;
+* all required ``.agentic/`` and ``scripts/agentic/`` control-plane files exist;
 * the JSON files parse;
 * the templates validate against their schemas;
 * every role referenced by ``policy.json`` exists as a role file and is listed in
   ``policy.json``'s ``roles``;
 * the classification rules reference only known classes;
 * no session-id / transcript artifacts have leaked into ``.agentic/``.
+
+By default this validates only the self-contained control plane, so it passes on a
+branch that adds ``.agentic/`` + ``scripts/agentic/`` without the wider AGENTS.md /
+governance-doc hierarchy. Pass ``--strict-hierarchy`` to additionally require the
+``AGENTS.md`` files and ``docs/governance/`` docs (use on a fully merged tree).
 
 Exit code is non-zero if anything is inconsistent.
 """
@@ -27,7 +31,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 
-REQUIRED_FILES = [
+# Self-contained control plane: always required.
+CONTROL_PLANE_FILES = [
     ".agentic/README.md",
     ".agentic/policy.json",
     ".agentic/ownership.json",
@@ -44,6 +49,10 @@ REQUIRED_FILES = [
     "scripts/agentic/check_pr_contract.py",
     "scripts/agentic/validate_review.py",
     "scripts/agentic/validate_repo_contract.py",
+]
+
+# Wider hierarchy: only required under --strict-hierarchy (a fully merged tree).
+HIERARCHY_FILES = [
     "AGENTS.md",
     "modules/gaussian_splatting/AGENTS.md",
     "modules/gaussian_splatting/renderer/AGENTS.md",
@@ -82,11 +91,14 @@ def _load_validate_instance():
 validate_instance = _load_validate_instance()
 
 
-def validate_repo_contract(root: Path) -> list[str]:
+def validate_repo_contract(root: Path, strict_hierarchy: bool = False) -> list[str]:
     errors: list[str] = []
 
-    # 1. Required files exist.
-    for rel in REQUIRED_FILES:
+    # 1. Required files exist (control plane always; hierarchy only when strict).
+    required = list(CONTROL_PLANE_FILES)
+    if strict_hierarchy:
+        required += HIERARCHY_FILES
+    for rel in required:
         if not (root / rel).is_file():
             errors.append(f"missing required file: {rel}")
 
@@ -147,12 +159,17 @@ def validate_repo_contract(root: Path) -> list[str]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", type=Path, default=ROOT, help="Repository root to validate.")
+    parser.add_argument(
+        "--strict-hierarchy",
+        action="store_true",
+        help="Also require the AGENTS.md hierarchy and docs/governance docs (fully merged tree).",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    errors = validate_repo_contract(args.root)
+    errors = validate_repo_contract(args.root, strict_hierarchy=args.strict_hierarchy)
     if errors:
         print("Agentic control plane is INCONSISTENT:")
         for error in errors:
