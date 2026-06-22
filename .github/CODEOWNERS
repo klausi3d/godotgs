@@ -23,12 +23,18 @@
 /modules/gaussian_splatting/persistence/     @klausi3D
 /modules/gaussian_splatting/io/              @klausi3D
 
-# Godot engine delta (risk class R3).
+# Godot engine delta (risk class R3) — must match the R3 engine-delta paths in
+# .agentic/policy.json.
 /servers/                                    @klausi3D
 /scene/                                      @klausi3D
 /editor/                                     @klausi3D
 /platform/                                   @klausi3D
 /core/                                       @klausi3D
+/drivers/                                    @klausi3D
+/main/                                       @klausi3D
+/thirdparty/                                 @klausi3D
+/SConstruct                                  @klausi3D
+/methods.py                                  @klausi3D
 
-# Test and CI harness.
+# Test and CI harness (the deterministic-check / release-gate runners are R3 in policy).
 /tests/                                      @klausi3D
