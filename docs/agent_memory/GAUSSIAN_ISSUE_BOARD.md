@@ -5,8 +5,12 @@
 > This board was a manually maintained snapshot from a past multi-agent
 > orchestration wave (baseline `6dde6a82c3b`). It is **no longer updated** and must
 > **not** be used to determine current project status. Active work is tracked in
-> **GitHub Issues**; durable rules live in `AGENTS.md` and
-> `docs/governance/agentic-engineering.md`.
+> **GitHub Issues** — the always-current source of truth for project status.
+>
+> Durable engineering rules live in `AGENTS.md` and
+> `docs/governance/agentic-engineering.md`, which are added by the
+> agentic-engineering foundation series; once that series is merged, use those for
+> durable rules.
 >
 > Open items below are migrated into GitHub Issues incrementally and then removed
 > from the working tree; the full history remains in git. Do not add a new manual
