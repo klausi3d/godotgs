@@ -15,13 +15,19 @@
 /CLAUDE.md                                   @klausi3D
 /docs/governance/                            @klausi3D
 
-# GPU render path and host/shader contracts (risk class R2).
+# GPU render path, compute, streaming/LOD, and host/shader contracts (risk class R2).
 /modules/gaussian_splatting/renderer/        @klausi3D
 /modules/gaussian_splatting/shaders/         @klausi3D
+/modules/gaussian_splatting/compute/         @klausi3D
+/modules/gaussian_splatting/lod/             @klausi3D
+/modules/gaussian_splatting/asset_management/ @klausi3D
 
 # On-disk / serialization formats (risk class R3).
 /modules/gaussian_splatting/persistence/     @klausi3D
 /modules/gaussian_splatting/io/              @klausi3D
+
+# Release-gate policy manifest (risk class R3).
+/docs/reference/renderer_release_gate_manifest.json @klausi3D
 
 # Godot engine delta (risk class R3) — must match the R3 engine-delta paths in
 # .agentic/policy.json.
