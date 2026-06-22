@@ -44,6 +44,10 @@
     "validation_commands": { "type": "array", "items": { "type": "string" } },
     "evidence_requirements": { "type": "array", "items": { "type": "string" } },
     "rollback_plan": { "type": "string" },
+    "design_record": {
+      "type": "string",
+      "description": "Link to the ADR / design-change issue. Required for risk classes whose policy sets adr_required (R3)."
+    },
     "stacked_on": {
       "type": "object",
       "description": "Optional: present only for stacked work.",

@@ -101,13 +101,21 @@ class CheckPrContractTest(unittest.TestCase):
         self.assertTrue(any("stacked_on.base_pr" in e for e in _hard(errors)))
         self.assertTrue(any("stacked_on.base_sha" in e for e in _hard(errors)))
 
-    def test_r3_emits_adr_note_but_no_hard_error(self):
+    def test_r3_without_design_record_fails(self):
         contract = copy.deepcopy(TEMPLATE)
         contract["risk_class"] = "R3"
         contract["owned_paths"] = ["servers/rendering/foo.cpp"]
         contract["forbidden_paths"] = []
         errors = cpc.check_contract(contract, POLICY, TASK_SCHEMA, ["servers/rendering/foo.cpp"])
-        self.assertTrue(any(e.startswith("note:") and "design record" in e for e in errors))
+        self.assertTrue(any("design_record" in e for e in _hard(errors)))
+
+    def test_r3_with_design_record_passes(self):
+        contract = copy.deepcopy(TEMPLATE)
+        contract["risk_class"] = "R3"
+        contract["owned_paths"] = ["servers/rendering/foo.cpp"]
+        contract["forbidden_paths"] = []
+        contract["design_record"] = "https://github.com/klausi3D/godotGS/issues/123"
+        errors = cpc.check_contract(contract, POLICY, TASK_SCHEMA, ["servers/rendering/foo.cpp"])
         self.assertEqual(_hard(errors), [])
 
 
