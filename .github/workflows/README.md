@@ -76,8 +76,11 @@ if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.re
 `pull_request_target` is not used by any workflow, so fork PRs never get a
 privileged checkout. With the self-hosted lanes skipped on fork PRs, the fork-safe
 GitHub-hosted blocking signal is the `agentic-pr-gate` check
-(`.github/workflows/agentic_pr_gate.yml`), added by this agentic-foundation series.
-Note that `baseline_qa.yml`'s Linux `cpu-tests` job deliberately skips pull requests
+(`.github/workflows/agentic_pr_gate.yml`), added by a sibling PR in this
+agentic-foundation series. **Until that gate workflow is merged, fork PRs touching
+only these guarded workflows have no GitHub-hosted blocking gate** — merge the gate
+before (or with) relying on this boundary. Note also that `baseline_qa.yml`'s Linux
+`cpu-tests` job deliberately skips pull requests
 (`if: github.event_name != 'pull_request'`), so it does **not** gate fork PRs.
 GPU/Windows validation of an external contribution happens only after a maintainer
 moves the change onto a same-repo branch. Any change that relaxes this boundary must
