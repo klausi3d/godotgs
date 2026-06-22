@@ -89,10 +89,14 @@ def check_contract(
 
     # 3b. Enforce scope: changed paths must stay inside owned_paths and never match
     # forbidden_paths (the implementer constraint the contract is meant to enforce).
+    # Only string globs/paths are considered; malformed non-string entries are caught
+    # by the schema check above and must not crash this gate.
     if changed_paths is not None:
-        owned = contract.get("owned_paths") or []
-        forbidden = contract.get("forbidden_paths") or []
+        owned = [g for g in (contract.get("owned_paths") or []) if isinstance(g, str)]
+        forbidden = [g for g in (contract.get("forbidden_paths") or []) if isinstance(g, str)]
         for raw in changed_paths:
+            if not isinstance(raw, str):
+                continue
             norm = classify_change._norm(raw)
             if any(classify_change._matches(norm, classify_change._norm(g)) for g in forbidden):
                 errors.append(f"$.forbidden_paths: changed path '{norm}' matches a forbidden path")

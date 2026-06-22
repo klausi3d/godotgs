@@ -67,6 +67,15 @@ class CheckPrContractTest(unittest.TestCase):
         self.assertTrue(any("outside the declared owned_paths" in e for e in hard))
         self.assertFalse(any("understates" in e for e in hard))
 
+    def test_malformed_path_entries_do_not_crash(self):
+        # Non-string owned/forbidden entries are caught by the schema; the scope
+        # check must skip them rather than raise AttributeError.
+        contract = copy.deepcopy(TEMPLATE)
+        contract["owned_paths"] = [None, "modules/gaussian_splatting/logger/**"]
+        contract["forbidden_paths"] = [123]
+        errors = cpc.check_contract(contract, POLICY, TASK_SCHEMA, ["modules/gaussian_splatting/logger/x.cpp"])
+        self.assertTrue(any("owned_paths" in e or "forbidden_paths" in e for e in errors))
+
     def test_missing_required_field_fails(self):
         contract = copy.deepcopy(TEMPLATE)
         del contract["rollback_plan"]

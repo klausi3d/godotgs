@@ -15,6 +15,7 @@
       "required_roles": ["planner", "implementer", "verifier", "correctness-reviewer"],
       "deterministic_checks": [
         "python scripts/agentic/validate_repo_contract.py",
+        "python -m unittest discover -s tests/agentic",
         "python scripts/docs/check_links.py docs/governance README.md CONTRIBUTING.md AGENTS.md"
       ],
       "evidence_requirements": [],
@@ -106,6 +107,16 @@
           ".github/workflows/**",
           ".github/CODEOWNERS",
           "docs/reference/renderer_release_gate_manifest.json"
+        ]
+      },
+      {
+        "class": "R3",
+        "reason": "CI deterministic-check / release-gate machinery",
+        "path_globs": [
+          "tests/ci/run_module_tests.py",
+          "tests/ci/check_renderer_release_gates.py",
+          "tests/ci/validate_automation.py",
+          "tests/runtime/run_runtime_validation.py"
         ]
       },
       {
