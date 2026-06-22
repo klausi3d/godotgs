@@ -59,7 +59,7 @@ of public-alpha signoff.
 ## Runner Trust Boundary (fork PRs)
 
 The self-hosted Windows/GPU runners are persistent and must never execute
-untrusted code from a fork pull request. All three workflows that use the
+untrusted code from a fork pull request. All four workflows that use the
 self-hosted lane apply the same guard so that fork PRs are skipped on the
 self-hosted jobs while same-repo (maintainer) PRs, `push`, `schedule`,
 `workflow_dispatch`, and `merge_group` continue to run:
@@ -71,6 +71,7 @@ if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.re
 - `baseline_qa.yml` — `gpu-tests`, `gpu-harness` guarded.
 - `release_builds.yml` — `build_windows` guarded.
 - `gaussian_production_gates.yml` — `guards` and `module-validation` guarded.
+- `gaussian_shader_validation.yml` — `shader-validation` guarded.
 
 `pull_request_target` is not used by any workflow, so fork PRs never get a
 privileged checkout. Fork PRs still receive a fork-safe blocking signal from
