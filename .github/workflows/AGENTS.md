@@ -12,7 +12,10 @@ workflow inventory and the runner trust policy.
 - **No untrusted code on persistent self-hosted runners.** Self-hosted Windows/GPU
   jobs must carry the fork guard
   `github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository`
-  so fork PRs are skipped. Fork PRs get their signal from GitHub-hosted lanes.
+  so fork PRs are skipped. This is the required standard; the agentic-foundation
+  series brings all self-hosted workflows under it, so verify a given job actually
+  carries the guard rather than assuming universal coverage. Fork PRs get their
+  blocking signal from the GitHub-hosted `agentic-pr-gate` check.
 - **Never use `pull_request_target` to check out fork code with a privileged
   token or secrets.** If you think you need it, you don't — stop and ask a
   maintainer.
@@ -23,10 +26,10 @@ workflow inventory and the runner trust policy.
 
 - A required gate must **always report a terminal status** (no path filter that
   silently skips it into a missing-required-check state). The fork-safe required
-  gate is `agentic_pr_gate.yml` (`ubuntu-latest`, check name
-  `Agentic PR Gate / required`), added by a sibling PR in this foundation series.
-  Do not mark its check required in branch protection until that workflow is
-  merged (see `docs/governance/github-settings.md`).
+  gate is `agentic_pr_gate.yml` (`ubuntu-latest`); its required status check is the
+  job name `agentic-pr-gate`. It is added by a sibling PR in this foundation series;
+  do not mark its check required in branch protection until that workflow is merged
+  (see `docs/governance/github-settings.md`).
 - Do not weaken or remove an existing guard, runtime gate, or release gate to make
   a PR pass.
 

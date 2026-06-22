@@ -12,14 +12,17 @@ Today `master` has **no required status checks** (documented in
 
 - **Require a pull request before merging** — no direct pushes to `master`.
 - **Require at least one approving review from a human maintainer.**
-- **Require review from Code Owners** (`.github/CODEOWNERS`).
+- **Require review from Code Owners** (`.github/CODEOWNERS`). Enable this only
+  **after** `.github/CODEOWNERS` (added by a sibling PR in this foundation series)
+  has merged; with no owners defined the setting cannot request anyone and the R3
+  escalation below stays unenforced.
 - **Dismiss stale approvals** when new commits are pushed.
 - **Require conversation resolution** — all review threads resolved before merge.
 - **Require status checks to pass**, including:
-  - `Agentic PR Gate / required` (the fork-safe, always-on gate). Mark this check
-    required only **after** the `agentic_pr_gate.yml` workflow has merged to
-    `master` and reported at least once, so PRs are not blocked on a status that
-    cannot report.
+  - `agentic-pr-gate` — the fork-safe, always-on gate's job name (shown in the PR
+    UI as `Agentic PR Gate / agentic-pr-gate`). Mark this check required only
+    **after** the `agentic_pr_gate.yml` workflow has merged to `master` and reported
+    at least once, so PRs are not blocked on a status that cannot report.
 - **Require branches to be up to date** before merging (or use the merge queue).
 - **Block force pushes** and **block branch deletion** for `master`.
 
