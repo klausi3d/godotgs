@@ -51,10 +51,23 @@ jobs:
       - name: Run agentic unit tests
         run: python -m unittest discover -s tests/agentic -v
 
-      - name: Check documentation links (agentic/governance surface)
-        # Scoped to the agentic-governance surface so the required gate stays green;
+      - name: Check documentation links (agentic/governance surface, when present)
+        # Scoped to the agentic/governance surface so the required gate stays green;
         # the full-tree link check is a contributor step (see contribution-standards.md).
-        run: python scripts/docs/check_links.py docs/governance README.md CONTRIBUTING.md AGENTS.md
+        # Only check paths that exist so the gate is robust on trees that don't carry
+        # the whole foundation yet (e.g. before the governance docs land); on master,
+        # where all are present, this checks the full agentic/governance surface.
+        run: |
+          targets=()
+          for p in docs/governance README.md CONTRIBUTING.md AGENTS.md; do
+            [ -e "$p" ] && targets+=("$p")
+          done
+          if [ ${#targets[@]} -eq 0 ]; then
+            echo "No agentic/governance docs present in this tree; skipping link check."
+          else
+            echo "Link-checking: ${targets[*]}"
+            python scripts/docs/check_links.py "${targets[@]}"
+          fi
 
       - name: Run guard-only checks (GPU-free, portable)
         run: python tests/ci/run_module_tests.py --guard-only
