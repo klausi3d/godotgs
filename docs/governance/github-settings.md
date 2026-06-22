@@ -16,7 +16,10 @@ Today `master` has **no required status checks** (documented in
 - **Dismiss stale approvals** when new commits are pushed.
 - **Require conversation resolution** — all review threads resolved before merge.
 - **Require status checks to pass**, including:
-  - `Agentic PR Gate / required` (the fork-safe, always-on gate).
+  - `Agentic PR Gate / required` (the fork-safe, always-on gate). Mark this check
+    required only **after** the `agentic_pr_gate.yml` workflow has merged to
+    `master` and reported at least once, so PRs are not blocked on a status that
+    cannot report.
 - **Require branches to be up to date** before merging (or use the merge queue).
 - **Block force pushes** and **block branch deletion** for `master`.
 

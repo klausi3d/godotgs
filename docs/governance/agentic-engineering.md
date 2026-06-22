@@ -10,6 +10,13 @@ schemas, templates, roles) and is enforced by `scripts/agentic/`. See also
 [`AGENTS.md`](../../AGENTS.md), [contribution standards](contribution-standards.md),
 and the [review policy](review-policy.md).
 
+> **Rollout note.** This foundation is introduced as a coordinated series of pull
+> requests. The machine-readable control plane (`.agentic/`, `scripts/agentic/`)
+> and the always-on required gate (`.github/workflows/agentic_pr_gate.yml`) are
+> added by sibling PRs in the same series. References to those paths below describe
+> the target design and resolve once the series has been merged; until then, follow
+> the parts already present on your branch.
+
 ## Principles
 
 - **Specs over chat.** Work starts from a task contract (a small, explicit
