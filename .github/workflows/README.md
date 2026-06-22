@@ -74,11 +74,14 @@ if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.re
 - `gaussian_shader_validation.yml` — `shader-validation` guarded.
 
 `pull_request_target` is not used by any workflow, so fork PRs never get a
-privileged checkout. Fork PRs still receive a fork-safe blocking signal from
-GitHub-hosted lanes (e.g. `baseline_qa.yml`'s Linux `cpu-tests`); GPU/Windows
-validation of an external contribution happens only after a maintainer moves the
-change onto a same-repo branch. Any change that relaxes this boundary must be
-documented here and in `docs/governance/review-policy.md`.
+privileged checkout. With the self-hosted lanes skipped on fork PRs, the fork-safe
+GitHub-hosted blocking signal is the `agentic-pr-gate` check
+(`.github/workflows/agentic_pr_gate.yml`), added by this agentic-foundation series.
+Note that `baseline_qa.yml`'s Linux `cpu-tests` job deliberately skips pull requests
+(`if: github.event_name != 'pull_request'`), so it does **not** gate fork PRs.
+GPU/Windows validation of an external contribution happens only after a maintainer
+moves the change onto a same-repo branch. Any change that relaxes this boundary must
+be documented here and in `docs/governance/review-policy.md`.
 
 ## Scheduled Triggers
 
