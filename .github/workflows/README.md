@@ -60,18 +60,19 @@ of public-alpha signoff.
 
 The self-hosted Windows/GPU runners are persistent and must never execute
 untrusted code from a fork pull request. All four workflows that use the
-self-hosted lane apply the same guard so that fork PRs are skipped on the
-self-hosted jobs while same-repo (maintainer) PRs, `push`, `schedule`,
-`workflow_dispatch`, and `merge_group` continue to run:
+self-hosted lane carry a fork guard so that fork PRs are skipped on the self-hosted
+jobs. Three of them use the guard below, which still lets **same-repo** (maintainer)
+PRs run the self-hosted job; `push`, `schedule`, `workflow_dispatch`, and
+`merge_group` also run:
 
 ```yaml
 if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
 ```
 
-- `baseline_qa.yml` — `gpu-tests`, `gpu-harness` guarded.
-- `release_builds.yml` — `build_windows` guarded.
-- `gaussian_production_gates.yml` — `guards` and `module-validation` guarded.
-- `gaussian_shader_validation.yml` — `shader-validation` guarded.
+- `baseline_qa.yml` — `gpu-tests`, `gpu-harness` guarded (form above).
+- `gaussian_production_gates.yml` — `guards` and `module-validation` guarded (form above).
+- `gaussian_shader_validation.yml` — `shader-validation` guarded (form above).
+- `release_builds.yml` — `build_windows` uses the **stricter** `if: github.event_name != 'pull_request'`, which skips **all** pull requests (fork *and* same-repo); the Windows release lane runs on `push`/tag/schedule/dispatch only, not on PRs.
 
 `pull_request_target` is not used by any workflow, so fork PRs never get a
 privileged checkout. With the self-hosted lanes skipped on fork PRs, the fork-safe
@@ -84,7 +85,8 @@ before (or with) relying on this boundary. Note also that `baseline_qa.yml`'s Li
 (`if: github.event_name != 'pull_request'`), so it does **not** gate fork PRs.
 GPU/Windows validation of an external contribution happens only after a maintainer
 moves the change onto a same-repo branch. Any change that relaxes this boundary must
-be documented here and in `docs/governance/review-policy.md`.
+be documented here and in the review policy (`docs/governance/review-policy.md`,
+added by a sibling PR in this foundation series).
 
 ## Scheduled Triggers
 
