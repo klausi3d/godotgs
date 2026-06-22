@@ -47,9 +47,12 @@ validated by `scripts/agentic/validate_review.py`). Every review records the
 - The author's self-declared risk class is cross-checked against
   `scripts/agentic/classify_change.py`; the higher class wins and sets the required
   review layers.
-- **Untrusted fork code** is never validated on persistent self-hosted runners;
+- **Untrusted fork code** must never be validated on persistent self-hosted runners;
   GPU/Windows validation happens only after a maintainer moves the change onto a
-  same-repo branch (see `.github/workflows/README.md`). Any change that relaxes a
+  same-repo branch. This is the required standard the agentic-foundation series brings
+  every self-hosted workflow under (via the per-job fork guard); verify a given
+  workflow actually carries the guard rather than assuming the boundary is already
+  closed everywhere (see `.github/workflows/README.md`). Any change that relaxes a
   gate or the runner trust boundary must be documented and human-approved.
 
 ## Repository enforcement
