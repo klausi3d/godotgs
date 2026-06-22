@@ -15,7 +15,7 @@
       "required_roles": ["planner", "implementer", "verifier", "correctness-reviewer"],
       "deterministic_checks": [
         "python scripts/agentic/validate_repo_contract.py",
-        "python scripts/docs/check_links.py docs README.md BUILDING.md CONTRIBUTING.md"
+        "python scripts/docs/check_links.py docs/governance README.md CONTRIBUTING.md AGENTS.md"
       ],
       "evidence_requirements": [],
       "human_approval_required": true,

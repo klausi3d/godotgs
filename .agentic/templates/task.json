@@ -6,7 +6,7 @@
   "baseline_sha": "0000000000000000000000000000000000000000",
   "risk_class": "R1",
   "owned_paths": [
-    "modules/gaussian_splatting/<subsystem>/**"
+    "modules/gaussian_splatting/logger/**"
   ],
   "forbidden_paths": [
     "servers/**",

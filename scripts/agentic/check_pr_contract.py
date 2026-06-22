@@ -87,6 +87,18 @@ def check_contract(
                 )
                 effective = computed
 
+    # 3b. Enforce scope: changed paths must stay inside owned_paths and never match
+    # forbidden_paths (the implementer constraint the contract is meant to enforce).
+    if changed_paths is not None:
+        owned = contract.get("owned_paths") or []
+        forbidden = contract.get("forbidden_paths") or []
+        for raw in changed_paths:
+            norm = classify_change._norm(raw)
+            if any(classify_change._matches(norm, classify_change._norm(g)) for g in forbidden):
+                errors.append(f"$.forbidden_paths: changed path '{norm}' matches a forbidden path")
+            elif owned and not any(classify_change._matches(norm, classify_change._norm(g)) for g in owned):
+                errors.append(f"$.owned_paths: changed path '{norm}' is outside the declared owned_paths")
+
     # 4. Effective-class policy requirements.
     class_policy = policy.get("risk_classes", {}).get(effective)
     if class_policy:
