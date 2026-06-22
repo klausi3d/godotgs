@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Machine-readable risk policy for agentic changes. Human-readable source of truth: docs/governance/agentic-engineering.md. Classification is derived from changed paths by scripts/agentic/classify_change.py and fails closed to the highest class for unrecognized paths.",
+  "description": "Machine-readable risk policy for agentic changes. Human-readable source of truth: docs/governance/agentic-engineering.md. Classification is derived from changed paths by scripts/agentic/classify_change.py and fails closed to the highest class for unrecognized paths. deterministic_checks accumulate along the code-risk axis R1 <= R2 <= R3, so the highest class's checks are a superset of the lower classes' runtime checks.",
   "roles": [
     "planner",
     "implementer",
@@ -60,6 +60,7 @@
       "required_roles": ["planner", "implementer", "verifier", "correctness-reviewer", "gpu-performance-reviewer"],
       "deterministic_checks": [
         "python tests/ci/run_module_tests.py --guard-only",
+        "python tests/runtime/run_runtime_validation.py --profile streaming-gpu-ci --skip-cpp --fail-on-skip",
         "python tests/ci/validate_automation.py --contracts-only"
       ],
       "evidence_requirements": [

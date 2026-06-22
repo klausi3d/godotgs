@@ -110,11 +110,10 @@ def check_contract(
             errors.append(f"$.rollback_plan: required for risk class {effective}")
         if class_policy.get("evidence_requirements") and not contract.get("evidence_requirements"):
             errors.append(f"$.evidence_requirements: required for risk class {effective}")
-        if class_policy.get("adr_required"):
-            # ADR existence is a human-checked process step; surface it explicitly.
+        if class_policy.get("adr_required") and not str(contract.get("design_record", "")).strip():
             errors.append(
-                f"note: risk class {effective} requires a design record (ADR / design-change "
-                f"issue) before implementation - confirm it is linked in the PR"
+                f"$.design_record: risk class {effective} requires a linked design record "
+                f"(ADR / design-change issue) before implementation"
             )
 
     # 5. Stacked PR completeness.
