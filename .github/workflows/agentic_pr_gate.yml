@@ -3,7 +3,10 @@ name: Agentic PR Gate
 # Fork-safe, always-on required gate. Runs on every pull request (no path filter)
 # and on the merge queue, entirely on a GitHub-hosted runner, so external fork PRs
 # always get a blocking signal without touching the persistent self-hosted runners.
-# Required check name: "Agentic PR Gate / required".
+#
+# The branch-protection required status check is the JOB name, "agentic-pr-gate"
+# (unique across workflows, per GitHub's required-checks rules). The PR checks UI
+# displays it as "Agentic PR Gate / agentic-pr-gate".
 
 on:
   pull_request:
@@ -21,8 +24,8 @@ env:
   PYTHONUTF8: "1"
 
 jobs:
-  required:
-    name: required
+  agentic-pr-gate:
+    name: agentic-pr-gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
