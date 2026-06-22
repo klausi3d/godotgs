@@ -45,6 +45,28 @@ class CheckPrContractTest(unittest.TestCase):
         )
         self.assertTrue(any("understates" in e for e in _hard(errors)))
 
+    def test_forbidden_path_change_fails(self):
+        # Template forbids modules/gaussian_splatting/persistence/**.
+        errors = cpc.check_contract(
+            copy.deepcopy(TEMPLATE),
+            POLICY,
+            TASK_SCHEMA,
+            ["modules/gaussian_splatting/persistence/incremental_saver.cpp"],
+        )
+        self.assertTrue(any("forbidden path" in e for e in _hard(errors)))
+
+    def test_out_of_scope_path_fails(self):
+        # Same risk class (R1) but outside the declared owned_paths (logger/**).
+        errors = cpc.check_contract(
+            copy.deepcopy(TEMPLATE),
+            POLICY,
+            TASK_SCHEMA,
+            ["modules/gaussian_splatting/animation/animation_state_machine.cpp"],
+        )
+        hard = _hard(errors)
+        self.assertTrue(any("outside the declared owned_paths" in e for e in hard))
+        self.assertFalse(any("understates" in e for e in hard))
+
     def test_missing_required_field_fails(self):
         contract = copy.deepcopy(TEMPLATE)
         del contract["rollback_plan"]
