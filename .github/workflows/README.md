@@ -62,8 +62,10 @@ The self-hosted Windows/GPU runners are persistent and must never execute
 untrusted code from a fork pull request. All four workflows that use the
 self-hosted lane carry a fork guard so that fork PRs are skipped on the self-hosted
 jobs. Three of them use the guard below, which still lets **same-repo** (maintainer)
-PRs run the self-hosted job; `push`, `schedule`, `workflow_dispatch`, and
-`merge_group` also run:
+PRs run the self-hosted job; `push`, `schedule`, and `workflow_dispatch` also run.
+**`merge_group` is excluded from the self-hosted lanes** — a merge-queue run builds
+a temporary branch containing the queued PR's code, which for a queued fork PR would
+otherwise run on the runner; the GitHub-hosted `agentic-pr-gate` covers `merge_group`:
 
 ```yaml
 if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}

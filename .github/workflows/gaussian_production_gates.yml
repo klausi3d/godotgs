@@ -95,7 +95,10 @@ jobs:
     # persistent runner's scons cache, credential store, and Actions runner
     # token from arbitrary code in `tests/ci/*.py`, `SConstruct`, `methods.py`,
     # or any `SCsub` checked out from a fork.
-    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && (inputs.run_openworld_proof_dev == true || inputs.run_openworld_proof_weekly == true)) }}
+    # merge_group is also skipped: a merge-queue run builds a temporary branch
+    # containing the queued PR's code, which for a queued fork PR would run on the
+    # self-hosted runner; the GitHub-hosted Agentic PR Gate covers merge_group.
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.event_name != 'merge_group' && github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && (inputs.run_openworld_proof_dev == true || inputs.run_openworld_proof_weekly == true)) }}
     runs-on: [self-hosted, Windows, X64, godotgs]
     timeout-minutes: 10
     defaults:
@@ -230,7 +233,8 @@ jobs:
     # fork PR code (SConstruct, methods.py, tests/ci/*.py, SCsub) on the
     # persistent self-hosted Windows + GPU runner. `needs: guards` already
     # cascades the skip, but the explicit guard keeps each job self-describing.
-    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && (inputs.run_openworld_proof_dev == true || inputs.run_openworld_proof_weekly == true)) }}
+    # merge_group is skipped too (a queued fork PR's code would otherwise build here).
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.event_name != 'merge_group' && github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && (inputs.run_openworld_proof_dev == true || inputs.run_openworld_proof_weekly == true)) }}
     runs-on: [self-hosted, Windows, X64, godotgs, gpu]
     needs:
       - guards

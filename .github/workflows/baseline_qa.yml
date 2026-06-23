@@ -67,7 +67,9 @@ jobs:
     # and protects the persistent runner's scons cache, credential store,
     # and Actions runner token from arbitrary code in `tests/ci/*.py`,
     # `SConstruct`, `methods.py`, or any `SCsub` checked out from a fork.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # merge_group is skipped too: a merge-queue run builds the queued PR's code,
+    # which for a queued fork PR would otherwise run on the self-hosted runner.
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.event_name != 'merge_group'
     runs-on: [self-hosted, Windows, X64, godotgs, gpu]
     timeout-minutes: 120
 
@@ -214,9 +216,11 @@ jobs:
     name: GPU Harness + Visual Gate (Windows Self-Hosted)
     # Same fork-PR gate as gpu-tests — never let an untrusted fork PR's
     # workflow files, SConstruct, methods.py, or test code run on the
-    # persistent self-hosted runner.
+    # persistent self-hosted runner. merge_group is skipped too (a queued fork
+    # PR's code would otherwise build here).
     if: |
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      github.event_name != 'merge_group' &&
       !cancelled()
     runs-on: [self-hosted, Windows, X64, godotgs, gpu]
     # Runs after gpu-tests so the two GPU jobs serialize on the shared runner
