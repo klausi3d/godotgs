@@ -89,16 +89,13 @@ jobs:
   guards:
     name: Guards (Render Path + Static Safety)
     # Never run self-hosted Windows on untrusted fork PR code. Same-repo
-    # branches (maintainer PRs) still trigger the gate; fork PRs are routed to
-    # the fork-safe ubuntu-latest "Agentic PR Gate" instead. Mirrors the guard
-    # already used in baseline_qa.yml / release_builds.yml and protects the
-    # persistent runner's scons cache, credential store, and Actions runner
-    # token from arbitrary code in `tests/ci/*.py`, `SConstruct`, `methods.py`,
-    # or any `SCsub` checked out from a fork.
-    # merge_group is also skipped: a merge-queue run builds a temporary branch
-    # containing the queued PR's code, which for a queued fork PR would run on the
-    # self-hosted runner; the GitHub-hosted Agentic PR Gate covers merge_group.
-    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.event_name != 'merge_group' && github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && (inputs.run_openworld_proof_dev == true || inputs.run_openworld_proof_weekly == true)) }}
+    # branches (maintainer PRs) still trigger the gate; fork PRs are skipped.
+    # Mirrors the guard already used in baseline_qa.yml / release_builds.yml and
+    # protects the persistent runner's scons cache, credential store, and Actions
+    # runner token from arbitrary code in `tests/ci/*.py`, `SConstruct`,
+    # `methods.py`, or any `SCsub` checked out from a fork. (merge_group is
+    # maintainer-gated — see the README runner trust boundary.)
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && (inputs.run_openworld_proof_dev == true || inputs.run_openworld_proof_weekly == true)) }}
     runs-on: [self-hosted, Windows, X64, godotgs]
     timeout-minutes: 10
     defaults:
@@ -131,11 +128,7 @@ jobs:
 
   gpu-evidence-requirement:
     name: GPU Evidence Requirement
-    # Skip merge_group explicitly. This job only decides whether the self-hosted GPU
-    # lane is needed; both `guards` and `module-validation` skip merge_group, so the
-    # whole production gate is a consistent no-op on merge-queue runs (rather than
-    # this job being silently skipped because `needs: guards` was skipped).
-    if: ${{ github.event_name != 'merge_group' && github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && (inputs.run_openworld_proof_dev == true || inputs.run_openworld_proof_weekly == true)) }}
+    if: ${{ github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && (inputs.run_openworld_proof_dev == true || inputs.run_openworld_proof_weekly == true)) }}
     runs-on: ubuntu-latest
     needs: guards
     outputs:
@@ -237,8 +230,7 @@ jobs:
     # fork PR code (SConstruct, methods.py, tests/ci/*.py, SCsub) on the
     # persistent self-hosted Windows + GPU runner. `needs: guards` already
     # cascades the skip, but the explicit guard keeps each job self-describing.
-    # merge_group is skipped too (a queued fork PR's code would otherwise build here).
-    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.event_name != 'merge_group' && github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && (inputs.run_openworld_proof_dev == true || inputs.run_openworld_proof_weekly == true)) }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && (inputs.run_openworld_proof_dev == true || inputs.run_openworld_proof_weekly == true)) }}
     runs-on: [self-hosted, Windows, X64, godotgs, gpu]
     needs:
       - guards
