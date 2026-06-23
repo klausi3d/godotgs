@@ -144,9 +144,16 @@
         "reason": "Docs / agentic governance",
         "path_globs": [
           "docs/**",
-          "*.md",
           "**/AGENTS.md",
           "AGENTS.md",
+          "CLAUDE.md",
+          "README.md",
+          "BUILDING.md",
+          "CONTRIBUTING.md",
+          "CHANGELOG.md",
+          "AUTHORS.md",
+          "DONORS.md",
+          "ENGINE_PATCHES.md",
           ".agentic/**",
           "scripts/agentic/**"
         ]
