@@ -29,7 +29,7 @@
     "python -m unittest discover -s tests/agentic"
   ],
   "evidence_requirements": [
-    "Executed commands and results recorded in the PR; for R2+ add runtime/GPU evidence."
+    "Executed test commands and their results recorded in the PR."
   ],
   "rollback_plan": "How to revert safely if this change regresses (e.g. revert the single commit; no migration needed)."
 }

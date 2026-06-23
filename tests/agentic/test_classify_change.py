@@ -34,6 +34,16 @@ class ClassifyChangeTest(unittest.TestCase):
     def test_shaders_path_is_r2(self):
         self.assertEqual(self._cls(["modules/gaussian_splatting/shaders/raster.glsl"]), "R2")
 
+    def test_core_streaming_is_r2(self):
+        # Streaming/VRAM files under core/ are R2, not R1.
+        self.assertEqual(self._cls(["modules/gaussian_splatting/core/gaussian_streaming.cpp"]), "R2")
+        self.assertEqual(self._cls(["modules/gaussian_splatting/core/streaming_vram_regulator.h"]), "R2")
+        self.assertEqual(self._cls(["modules/gaussian_splatting/core/residency_budget_controller.cpp"]), "R2")
+
+    def test_core_nonstreaming_is_r1(self):
+        # Ordinary core data files stay R1.
+        self.assertEqual(self._cls(["modules/gaussian_splatting/core/gaussian_data.cpp"]), "R1")
+
     def test_local_module_is_r1(self):
         self.assertEqual(self._cls(["modules/gaussian_splatting/logger/logger.cpp"]), "R1")
 

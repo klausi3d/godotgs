@@ -108,8 +108,12 @@ def check_contract(
     if class_policy:
         if class_policy.get("rollback_required") and not str(contract.get("rollback_plan", "")).strip():
             errors.append(f"$.rollback_plan: required for risk class {effective}")
-        if class_policy.get("evidence_requirements") and not contract.get("evidence_requirements"):
-            errors.append(f"$.evidence_requirements: required for risk class {effective}")
+        # The contract must carry the class's policy evidence items, not just any
+        # non-empty list (otherwise an R2/R3 task could pass with ['n/a']).
+        declared_evidence = {e for e in (contract.get("evidence_requirements") or []) if isinstance(e, str)}
+        for item in class_policy.get("evidence_requirements", []):
+            if item not in declared_evidence:
+                errors.append(f"$.evidence_requirements: risk class {effective} requires evidence item: '{item}'")
         if class_policy.get("adr_required") and not str(contract.get("design_record", "")).strip():
             errors.append(
                 f"$.design_record: risk class {effective} requires a linked design record "

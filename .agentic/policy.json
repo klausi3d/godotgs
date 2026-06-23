@@ -131,7 +131,10 @@
           "modules/gaussian_splatting/shaders/**",
           "modules/gaussian_splatting/compute/**",
           "modules/gaussian_splatting/lod/**",
-          "modules/gaussian_splatting/asset_management/**"
+          "modules/gaussian_splatting/asset_management/**",
+          "modules/gaussian_splatting/core/*streaming*",
+          "modules/gaussian_splatting/core/*residency*",
+          "modules/gaussian_splatting/core/*vram*"
         ]
       },
       {
