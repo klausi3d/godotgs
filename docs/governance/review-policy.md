@@ -24,9 +24,11 @@ a change advances only when each required layer is satisfied. See
 ## Findings
 
 Reviews are emitted as structured findings (`.agentic/schemas/review.schema.json`,
-validated by `scripts/agentic/validate_review.py`). Every review records the
-`base_sha`/`head_sha` it judged, the tests/evidence it reviewed, and its
-**blind spots**. Each finding has a severity:
+validated by `scripts/agentic/validate_review.py`). Those files are added by a
+sibling PR in this foundation series; until the series is merged, follow the parts
+already present on your branch. Every review records the `base_sha`/`head_sha` it
+judged, the tests/evidence it reviewed, and its **blind spots**. Each finding has a
+severity:
 
 | Severity | Meaning |
 | --- | --- |
