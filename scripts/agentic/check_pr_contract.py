@@ -115,6 +115,15 @@ def check_contract(
                 f"$.design_record: risk class {effective} requires a linked design record "
                 f"(ADR / design-change issue) before implementation"
             )
+        # The contract must commit to actually running the class's deterministic
+        # checks; otherwise a high-risk task could declare validation_commands: ["true"].
+        declared_cmds = {c for c in (contract.get("validation_commands") or []) if isinstance(c, str)}
+        for command in class_policy.get("deterministic_checks", []):
+            if command not in declared_cmds:
+                errors.append(
+                    f"$.validation_commands: risk class {effective} requires the deterministic "
+                    f"check '{command}'"
+                )
 
     # 5. Stacked PR completeness.
     stacked = contract.get("stacked_on")

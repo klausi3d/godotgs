@@ -115,8 +115,25 @@ class CheckPrContractTest(unittest.TestCase):
         contract["owned_paths"] = ["servers/rendering/foo.cpp"]
         contract["forbidden_paths"] = []
         contract["design_record"] = "https://github.com/klausi3D/godotGS/issues/123"
+        # An R3 contract must commit to the full R3 deterministic check set.
+        contract["validation_commands"] = list(POLICY["risk_classes"]["R3"]["deterministic_checks"])
         errors = cpc.check_contract(contract, POLICY, TASK_SCHEMA, ["servers/rendering/foo.cpp"])
         self.assertEqual(_hard(errors), [])
+
+    def test_missing_deterministic_check_fails(self):
+        # A contract that omits its class's deterministic checks must not pass.
+        contract = copy.deepcopy(TEMPLATE)
+        contract["validation_commands"] = ["true"]
+        errors = cpc.check_contract(contract, POLICY, TASK_SCHEMA, ["modules/gaussian_splatting/logger/x.cpp"])
+        self.assertTrue(any("deterministic check" in e for e in _hard(errors)))
+
+    def test_agentic_tests_change_requires_agentic_suite(self):
+        # A change to the agentic test suite (R1 via tests/**) must require running it.
+        contract = copy.deepcopy(TEMPLATE)
+        contract["owned_paths"] = ["tests/agentic/**"]
+        contract["validation_commands"] = ["python tests/ci/run_module_tests.py --guard-only"]
+        errors = cpc.check_contract(contract, POLICY, TASK_SCHEMA, ["tests/agentic/test_classify_change.py"])
+        self.assertTrue(any("unittest discover -s tests/agentic" in e for e in _hard(errors)))
 
 
 if __name__ == "__main__":

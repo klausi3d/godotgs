@@ -25,7 +25,8 @@
     "Observable, checkable conditions that define done."
   ],
   "validation_commands": [
-    "python tests/ci/run_module_tests.py --guard-only"
+    "python tests/ci/run_module_tests.py --guard-only",
+    "python -m unittest discover -s tests/agentic"
   ],
   "evidence_requirements": [
     "Executed commands and results recorded in the PR; for R2+ add runtime/GPU evidence."
