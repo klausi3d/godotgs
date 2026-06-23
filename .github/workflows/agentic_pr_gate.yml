@@ -48,8 +48,12 @@ jobs:
           python scripts/agentic/check_pr_contract.py \
             --contract .agentic/templates/task.json \
             --paths modules/gaussian_splatting/logger/example.cpp
-          python scripts/agentic/classify_change.py \
-            --paths modules/gaussian_splatting/renderer/example.cpp
+
+      - name: Re-derive risk class from this PR's diff
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          echo "Risk class derived from the changed files in this PR:"
+          python scripts/agentic/classify_change.py --base-ref "${{ github.event.pull_request.base.sha }}"
 
       - name: Run agentic unit tests
         run: python -m unittest discover -s tests/agentic -v
