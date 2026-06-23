@@ -16,9 +16,10 @@ assert spec and spec.loader
 cpc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cpc)
 
+TEMPLATE_PATH = ROOT / ".agentic" / "templates" / "task.json"
 POLICY = json.loads((ROOT / ".agentic" / "policy.json").read_text(encoding="utf-8"))
 TASK_SCHEMA = json.loads((ROOT / ".agentic" / "schemas" / "task.schema.json").read_text(encoding="utf-8"))
-TEMPLATE = json.loads((ROOT / ".agentic" / "templates" / "task.json").read_text(encoding="utf-8"))
+TEMPLATE = json.loads(TEMPLATE_PATH.read_text(encoding="utf-8"))
 
 
 def _hard(errors):
@@ -145,6 +146,17 @@ class CheckPrContractTest(unittest.TestCase):
         contract["validation_commands"] = ["python tests/ci/run_module_tests.py --guard-only"]
         errors = cpc.check_contract(contract, POLICY, TASK_SCHEMA, ["tests/agentic/test_classify_change.py"])
         self.assertTrue(any("unittest discover -s tests/agentic" in e for e in _hard(errors)))
+
+
+    def test_main_requires_diff_source(self):
+        # A full PR-gate check must not silently skip the cross-check when no diff is given.
+        rc = cpc.main(["--contract", str(TEMPLATE_PATH)])
+        self.assertEqual(rc, 2)
+
+    def test_main_schema_only_opt_out(self):
+        # The schema-only escape hatch must be explicit and pass on the valid template.
+        rc = cpc.main(["--contract", str(TEMPLATE_PATH), "--schema-only"])
+        self.assertEqual(rc, 0)
 
 
 if __name__ == "__main__":
