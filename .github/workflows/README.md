@@ -68,7 +68,7 @@ a temporary branch containing the queued PR's code, which for a queued fork PR w
 otherwise run on the runner; the GitHub-hosted `agentic-pr-gate` covers `merge_group`:
 
 ```yaml
-if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.event_name != 'merge_group' }}
 ```
 
 - `baseline_qa.yml` — `gpu-tests`, `gpu-harness` guarded (form above).
