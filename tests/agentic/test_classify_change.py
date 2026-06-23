@@ -55,6 +55,7 @@ class ClassifyChangeTest(unittest.TestCase):
         self.assertEqual(self._cls(["tests/ci/run_module_tests.py"]), "R3")
         self.assertEqual(self._cls(["tests/runtime/run_runtime_validation.py"]), "R3")
         self.assertEqual(self._cls(["tests/ci/check_renderer_release_gates.py"]), "R3")
+        self.assertEqual(self._cls(["tests/ci/run_gpu_harness.py"]), "R3")
 
     def test_docs_is_r0(self):
         self.assertEqual(self._cls(["docs/governance/review-policy.md"]), "R0")
