@@ -15,9 +15,9 @@ Examples
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -25,6 +25,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_POLICY = ROOT / ".agentic" / "policy.json"
+
+_GLOB_REGEX_CACHE: dict[str, "re.Pattern[str]"] = {}
 
 
 def load_policy(policy_path: Path) -> dict[str, Any]:
@@ -39,10 +41,33 @@ def _norm(path: str) -> str:
     return text
 
 
+def _glob_to_regex(glob: str) -> "re.Pattern[str]":
+    """Path-aware glob: ``**`` matches across ``/``, ``*`` matches within one path
+    segment, ``?`` matches one non-``/`` char. Case-sensitive."""
+    pattern = _GLOB_REGEX_CACHE.get(glob)
+    if pattern is None:
+        out: list[str] = []
+        i, n = 0, len(glob)
+        while i < n:
+            if glob[i : i + 2] == "**":
+                out.append(".*")
+                i += 2
+            elif glob[i] == "*":
+                out.append("[^/]*")
+                i += 1
+            elif glob[i] == "?":
+                out.append("[^/]")
+                i += 1
+            else:
+                out.append(re.escape(glob[i]))
+                i += 1
+        pattern = re.compile("^" + "".join(out) + r"\Z")
+        _GLOB_REGEX_CACHE[glob] = pattern
+    return pattern
+
+
 def _matches(path: str, glob: str) -> bool:
-    # Case-sensitive matching; fnmatch's ``*`` spans ``/`` which is the behavior
-    # we want for ``**``-style prefixes used in the policy globs.
-    return fnmatch.fnmatchcase(path, glob)
+    return _glob_to_regex(glob).match(path) is not None
 
 
 def classify_paths(paths: list[str], policy: dict[str, Any]) -> tuple[str, list[dict[str, str]]]:

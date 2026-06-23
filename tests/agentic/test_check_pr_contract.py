@@ -147,6 +147,20 @@ class CheckPrContractTest(unittest.TestCase):
         errors = cpc.check_contract(contract, POLICY, TASK_SCHEMA, ["tests/agentic/test_classify_change.py"])
         self.assertTrue(any("unittest discover -s tests/agentic" in e for e in _hard(errors)))
 
+    def test_single_segment_glob_does_not_span_directories(self):
+        # owned_paths with a single-segment '*' must not match a deeper path.
+        contract = copy.deepcopy(TEMPLATE)
+        contract["owned_paths"] = ["modules/gaussian_splatting/logger/*"]
+        errors = cpc.check_contract(
+            contract, POLICY, TASK_SCHEMA,
+            ["modules/gaussian_splatting/logger/private/x.cpp"],
+        )
+        self.assertTrue(any("outside the declared owned_paths" in e for e in _hard(errors)))
+        # ...while a single-segment file directly under it is in scope.
+        ok = cpc.check_contract(
+            contract, POLICY, TASK_SCHEMA, ["modules/gaussian_splatting/logger/x.cpp"],
+        )
+        self.assertFalse(any("outside the declared owned_paths" in e for e in _hard(ok)))
 
     def test_main_requires_diff_source(self):
         # A full PR-gate check must not silently skip the cross-check when no diff is given.
