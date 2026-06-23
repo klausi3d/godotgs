@@ -19,7 +19,8 @@ GitHub's Actions tab can also show historical workflow names from past runs, dis
 
 `agentic-pr-gate` (the job name in `agentic_pr_gate.yml`, shown in the PR checks UI
 as `Agentic PR Gate / agentic-pr-gate`) is the fork-safe, always-on blocking check
-intended for `master` branch protection (see `docs/governance/github-settings.md`).
+intended for `master` branch protection (see `docs/governance/github-settings.md`,
+added by a sibling PR in this foundation series).
 It runs only on GitHub-hosted runners, so external fork PRs always receive a status
 without touching the self-hosted lanes. It runs:
 

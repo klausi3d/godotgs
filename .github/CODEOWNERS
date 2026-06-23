@@ -22,6 +22,9 @@
 /modules/gaussian_splatting/compute/         @klausi3D
 /modules/gaussian_splatting/lod/             @klausi3D
 /modules/gaussian_splatting/asset_management/ @klausi3D
+/modules/gaussian_splatting/core/*streaming* @klausi3D
+/modules/gaussian_splatting/core/*residency* @klausi3D
+/modules/gaussian_splatting/core/*vram*      @klausi3D
 
 # On-disk / serialization formats (risk class R3).
 /modules/gaussian_splatting/persistence/     @klausi3D
