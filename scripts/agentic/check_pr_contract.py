@@ -146,6 +146,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task-schema", type=Path, default=DEFAULT_TASK_SCHEMA, help="Path to task.schema.json.")
     parser.add_argument("--paths", nargs="*", help="Explicit changed paths for the risk cross-check.")
     parser.add_argument("--base-ref", help="Git ref to diff HEAD against for the risk cross-check.")
+    parser.add_argument(
+        "--schema-only",
+        action="store_true",
+        help="Validate the contract document alone, WITHOUT the risk/scope cross-check. "
+        "Not a full PR-gate check; must be requested explicitly.",
+    )
     return parser
 
 
@@ -162,9 +168,17 @@ def main(argv: list[str] | None = None) -> int:
         changed_paths = args.paths
     elif args.base_ref:
         changed_paths = classify_change.git_changed_paths(args.base_ref)
-    else:
+    elif args.schema_only:
+        # Explicit opt-out: validate the document only (no risk/scope enforcement).
         changed_paths = None
-        print("warning: no --paths/--base-ref; skipping risk-class cross-check", file=sys.stderr)
+    else:
+        print(
+            "error: a full PR-gate check needs the diff — pass --paths or --base-ref "
+            "(or --schema-only to validate the contract document without the risk/scope "
+            "cross-check)",
+            file=sys.stderr,
+        )
+        return 2
 
     errors = check_contract(contract, policy, task_schema, changed_paths)
 

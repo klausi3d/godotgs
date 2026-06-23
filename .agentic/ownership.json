@@ -3,7 +3,7 @@
   "description": "Agent ownership domains bound to real paths. Parallel implementer work is only allowed across non-overlapping domains. No domain grants a global change-everything mandate; engine-integration paths are highest risk and require CODEOWNER review.",
   "domains": {
     "core-data-io": {
-      "description": "Core gaussian data types, loaders/importers, and on-disk serialization. The streaming/residency/VRAM files under core/ belong to streaming-lod (more specific) and are R2, not R1 — assign those there.",
+      "description": "Core gaussian data types, loaders/importers, on-disk serialization, and the streaming/residency code that lives under core/. (Those streaming files are risk class R2 in policy.json; ownership domain and risk class are independent axes.)",
       "paths": [
         "modules/gaussian_splatting/core/**",
         "modules/gaussian_splatting/io/**",
@@ -24,13 +24,10 @@
       ]
     },
     "streaming-lod": {
-      "description": "Streaming, residency, VRAM, and level-of-detail (matches the R2 core-streaming paths in policy.json).",
+      "description": "Level-of-detail and asset streaming OUTSIDE core/ (lod/, asset_management/). Streaming code physically under core/ is owned by core-data-io to keep these domains machine-disjoint; risk class for those files is R2 (policy.json).",
       "paths": [
         "modules/gaussian_splatting/lod/**",
-        "modules/gaussian_splatting/asset_management/**",
-        "modules/gaussian_splatting/core/*streaming*",
-        "modules/gaussian_splatting/core/*residency*",
-        "modules/gaussian_splatting/core/*vram*"
+        "modules/gaussian_splatting/asset_management/**"
       ]
     },
     "editor-import": {
