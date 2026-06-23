@@ -49,8 +49,17 @@ class ClassifyChangeTest(unittest.TestCase):
     def test_docs_is_r0(self):
         self.assertEqual(self._cls(["docs/governance/review-policy.md"]), "R0")
 
+    def test_root_doc_is_r0(self):
+        self.assertEqual(self._cls(["README.md"]), "R0")
+        self.assertEqual(self._cls(["CONTRIBUTING.md"]), "R0")
+
     def test_unknown_sensitive_path_fails_closed_to_r3(self):
         self.assertEqual(self._cls(["some/unmapped/path.bin"]), "R3")
+
+    def test_unmapped_markdown_fails_closed_to_r3(self):
+        # A markdown file outside the known doc/root scopes must not slip to R0 via a
+        # blanket *.md rule; unrecognized paths fail closed to R3.
+        self.assertEqual(self._cls(["weird/unmapped/notes.md"]), "R3")
 
     def test_overall_is_max_across_paths(self):
         self.assertEqual(
