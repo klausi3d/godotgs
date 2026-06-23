@@ -115,8 +115,9 @@ class CheckPrContractTest(unittest.TestCase):
         contract["owned_paths"] = ["servers/rendering/foo.cpp"]
         contract["forbidden_paths"] = []
         contract["design_record"] = "https://github.com/klausi3D/godotGS/issues/123"
-        # An R3 contract must commit to the full R3 deterministic check set.
+        # An R3 contract must commit to the full R3 deterministic checks and evidence.
         contract["validation_commands"] = list(POLICY["risk_classes"]["R3"]["deterministic_checks"])
+        contract["evidence_requirements"] = list(POLICY["risk_classes"]["R3"]["evidence_requirements"])
         errors = cpc.check_contract(contract, POLICY, TASK_SCHEMA, ["servers/rendering/foo.cpp"])
         self.assertEqual(_hard(errors), [])
 
@@ -126,6 +127,16 @@ class CheckPrContractTest(unittest.TestCase):
         contract["validation_commands"] = ["true"]
         errors = cpc.check_contract(contract, POLICY, TASK_SCHEMA, ["modules/gaussian_splatting/logger/x.cpp"])
         self.assertTrue(any("deterministic check" in e for e in _hard(errors)))
+
+    def test_missing_evidence_item_fails(self):
+        # An R2 contract must carry the R2 policy evidence items, not a placeholder.
+        contract = copy.deepcopy(TEMPLATE)
+        contract["risk_class"] = "R2"
+        contract["owned_paths"] = ["modules/gaussian_splatting/renderer/**"]
+        contract["validation_commands"] = list(POLICY["risk_classes"]["R2"]["deterministic_checks"])
+        contract["evidence_requirements"] = ["n/a"]
+        errors = cpc.check_contract(contract, POLICY, TASK_SCHEMA, ["modules/gaussian_splatting/renderer/x.cpp"])
+        self.assertTrue(any("evidence item" in e for e in _hard(errors)))
 
     def test_agentic_tests_change_requires_agentic_suite(self):
         # A change to the agentic test suite (R1 via tests/**) must require running it.
