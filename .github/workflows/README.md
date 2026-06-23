@@ -26,12 +26,13 @@ without touching the self-hosted lanes. It runs:
 - `python scripts/agentic/validate_repo_contract.py`
 - the `scripts/agentic` contract validators against the shipped templates
 - `python -m unittest discover -s tests/agentic`
-- `python scripts/docs/check_links.py docs/governance README.md CONTRIBUTING.md AGENTS.md`
+- `python scripts/docs/check_links.py docs README.md BUILDING.md CONTRIBUTING.md AGENTS.md CLAUDE.md`
 - `python tests/ci/run_module_tests.py --guard-only` (GPU-free; the StringName guard
   self-skips when no Godot binary is present)
 
-The link check here is scoped to the agentic/governance surface; the full-tree link
-check remains a contributor step (`docs/governance/contribution-standards.md`).
+The link check covers the full docs tree plus the root governance docs (only paths
+present in the tree are passed, so it is robust on partial trees and is the full-docs
+check on `master`).
 
 ## Manual Dispatch Inputs
 
