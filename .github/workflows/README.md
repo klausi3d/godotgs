@@ -84,8 +84,8 @@ as merging). Restricting `merge_group` to same-repo-only queued PRs via a head-r
 preflight is a possible future hardening; it is out of scope here, which keeps this
 change focused on the fork-`pull_request` boundary.
 
-Any change that relaxes this boundary must be documented here and in the review
-policy (`docs/governance/review-policy.md`).
+Any change that relaxes this boundary must be documented here and approved by a
+maintainer (see the project governance docs under `docs/governance/`).
 
 ## Scheduled Triggers
 
