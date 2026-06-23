@@ -16,7 +16,7 @@
       "deterministic_checks": [
         "python scripts/agentic/validate_repo_contract.py",
         "python -m unittest discover -s tests/agentic",
-        "python scripts/docs/check_links.py docs/governance README.md CONTRIBUTING.md AGENTS.md"
+        "python scripts/docs/check_links.py docs README.md BUILDING.md CONTRIBUTING.md"
       ],
       "evidence_requirements": [],
       "human_approval_required": true,
