@@ -28,7 +28,8 @@
       "description": "Changes within the gaussian_splatting module or tests with no GPU, persistence-format, or engine risk.",
       "required_roles": ["planner", "implementer", "verifier", "correctness-reviewer"],
       "deterministic_checks": [
-        "python tests/ci/run_module_tests.py --guard-only"
+        "python tests/ci/run_module_tests.py --guard-only",
+        "python -m unittest discover -s tests/agentic"
       ],
       "evidence_requirements": [
         "Executed test commands and their results recorded in the PR."
@@ -43,6 +44,7 @@
       "required_roles": ["planner", "implementer", "verifier", "correctness-reviewer", "gpu-performance-reviewer"],
       "deterministic_checks": [
         "python tests/ci/run_module_tests.py --guard-only",
+        "python -m unittest discover -s tests/agentic",
         "python tests/runtime/run_runtime_validation.py --profile streaming-gpu-ci --skip-cpp --fail-on-skip"
       ],
       "evidence_requirements": [
@@ -60,6 +62,7 @@
       "required_roles": ["planner", "implementer", "verifier", "correctness-reviewer", "gpu-performance-reviewer"],
       "deterministic_checks": [
         "python tests/ci/run_module_tests.py --guard-only",
+        "python -m unittest discover -s tests/agentic",
         "python tests/runtime/run_runtime_validation.py --profile streaming-gpu-ci --skip-cpp --fail-on-skip",
         "python tests/ci/validate_automation.py --contracts-only"
       ],

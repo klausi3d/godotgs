@@ -82,15 +82,18 @@ def classify_paths(paths: list[str], policy: dict[str, Any]) -> tuple[str, list[
 
 
 def git_changed_paths(base_ref: str) -> list[str]:
+    # --no-renames so a rename reports BOTH the deleted source and the added
+    # destination; otherwise moving a sensitive R3 path onto an R0 docs path would
+    # hide the high-risk source and defeat the fail-closed classification.
     result = subprocess.run(
-        ["git", "-C", str(ROOT), "diff", "--name-only", f"{base_ref}...HEAD"],
+        ["git", "-C", str(ROOT), "diff", "--name-only", "--no-renames", f"{base_ref}...HEAD"],
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
         # Fall back to a two-dot diff if the merge-base form is unavailable.
         result = subprocess.run(
-            ["git", "-C", str(ROOT), "diff", "--name-only", base_ref],
+            ["git", "-C", str(ROOT), "diff", "--name-only", "--no-renames", base_ref],
             capture_output=True,
             text=True,
         )
