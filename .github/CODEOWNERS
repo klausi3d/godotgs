@@ -10,8 +10,10 @@
 
 /.github/                                    @klausi3D
 /.agentic/                                   @klausi3D
-/scripts/agentic/                            @klausi3D
-/scripts/docs/                               @klausi3D
+# All of /scripts/ — these are CI/tooling helpers executed by the workflows
+# (e.g. scripts/agentic/*, scripts/docs/check_links.py, scripts/build_documentation.py,
+# scripts/stage_public_docs.py), so changing them changes CI behavior.
+/scripts/                                    @klausi3D
 /AGENTS.md                                   @klausi3D
 /CLAUDE.md                                   @klausi3D
 /docs/governance/                            @klausi3D
