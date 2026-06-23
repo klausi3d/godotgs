@@ -27,8 +27,10 @@ Validators live in `scripts/agentic/` (Python 3.11, standard library only):
   risk class against the diff (the higher class wins).
 - `validate_review.py` — validates a review result against the review schema.
 
-These are exercised by the always-on `Agentic PR Gate` and by tests under
-`tests/agentic/`.
+These are exercised by tests under `tests/agentic/` and, once merged, by the
+always-on `Agentic PR Gate` (`.github/workflows/agentic_pr_gate.yml`) — added by a
+sibling PR in this foundation series. Until that workflow lands, run the validators
+locally; do not assume CI invokes them yet.
 
 ## Rules
 
