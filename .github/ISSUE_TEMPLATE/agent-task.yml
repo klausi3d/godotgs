@@ -7,8 +7,9 @@ body:
     attributes:
       value: |
         One task → one branch → one worktree. See `docs/governance/agentic-engineering.md`.
-        The risk class is re-derived from the diff in CI and the higher value wins, so do
-        not under-declare it.
+        The Agentic PR Gate re-derives the risk class from the diff and reports it;
+        reviewers/CODEOWNERS use that to catch under-declaration (and `check_pr_contract`
+        takes the higher of declared vs computed when a task contract is checked).
   - type: input
     id: task_id
     attributes:
