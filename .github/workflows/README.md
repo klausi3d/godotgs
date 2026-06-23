@@ -77,18 +77,14 @@ if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.r
 - `release_builds.yml` — `build_windows` uses the **stricter** `if: github.event_name != 'pull_request'`, which skips **all** pull requests (fork *and* same-repo); the Windows release lane runs on `push`/tag/schedule/dispatch only, not on PRs.
 
 `pull_request_target` is not used by any workflow, so fork PRs never get a
-privileged checkout. With the self-hosted lanes skipped on fork PRs, the fork-safe
-GitHub-hosted blocking signal is the `agentic-pr-gate` check
-(`.github/workflows/agentic_pr_gate.yml`), added by a sibling PR in this
-agentic-foundation series. **Until that gate workflow is merged, fork PRs touching
-only these guarded workflows have no GitHub-hosted blocking gate** — merge the gate
-before (or with) relying on this boundary. Note also that `baseline_qa.yml`'s Linux
-`cpu-tests` job deliberately skips pull requests
-(`if: github.event_name != 'pull_request'`), so it does **not** gate fork PRs.
-GPU/Windows validation of an external contribution happens only after a maintainer
-moves the change onto a same-repo branch. Any change that relaxes this boundary must
-be documented here and in the review policy (`docs/governance/review-policy.md`,
-added by a sibling PR in this foundation series).
+privileged checkout. The security model is simply that **untrusted (fork) code never
+runs on the persistent self-hosted runners**: fork PRs and `merge_group` runs are
+skipped on the self-hosted lanes, and there is no fallback that executes their code
+on the runner (`baseline_qa.yml`'s Linux `cpu-tests` also skips pull requests). Fork
+PRs are therefore not "blocked then run elsewhere" — their GPU/Windows validation
+happens only after a maintainer reviews the change and moves it onto a same-repo
+branch. Any change that relaxes this boundary must be documented here and in the
+review policy (`docs/governance/review-policy.md`).
 
 ## Scheduled Triggers
 
