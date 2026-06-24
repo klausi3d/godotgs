@@ -3310,7 +3310,13 @@ uint64_t GaussianStreamingSystem::_get_total_vram_usage_bytes() const {
     // footprint by the unfilled remainder of the buffer. Count the full
     // allocation (MAX guards against any transient payload > size accounting
     // skew, and degrades to the payload when the buffer is not yet allocated).
-    const uint64_t resident_buffer_bytes = MAX(budget.vram_usage, uint64_t(persistent_buffer_size));
+    // Only count the allocation when the RID is actually live: initialize() and
+    // initialize_empty() set persistent_buffer_size *before* the storage_buffer_create()
+    // that may fail and leave an invalid RID with a stale nonzero size. Without this
+    // gate get_vram_usage()/diagnostics would report a phantom allocation after a failed
+    // init instead of degrading to the payload as documented. (Codex #411)
+    const uint64_t allocated_persistent_bytes = persistent_buffer.is_valid() ? uint64_t(persistent_buffer_size) : 0;
+    const uint64_t resident_buffer_bytes = MAX(budget.vram_usage, allocated_persistent_bytes);
     return resident_buffer_bytes + _get_auxiliary_vram_overhead_bytes();
 }
 
@@ -3792,7 +3798,15 @@ void GaussianStreamingSystem::_update_vram_regulator() {
         return;
     }
 
-    budget.vram_regulator->update(_get_total_vram_usage_bytes(), budget.loaded_chunks_count,
+    // Regulator decisions (eviction trigger, admission gate via can_load_more_chunks,
+    // max-chunk regulation) must run on the *reclaimable* usage. Evicting chunks frees
+    // only budget.vram_usage, never the persistent-buffer allocation. Feeding the
+    // allocation-inclusive total here would pin usage_percent over threshold whenever
+    // the preallocated buffer alone exceeds the budget, so the regulator would keep
+    // denying admissions and ratchet the max chunk count down while no VRAM can actually
+    // be freed. The full allocation is still reported via get_vram_usage() / analytics;
+    // only the decision basis uses the evictable figure. (Codex #411)
+    budget.vram_regulator->update(_get_evictable_vram_usage_bytes(), budget.loaded_chunks_count,
             budget.chunks_loaded_this_frame, eviction_controller.get_chunks_evicted_this_frame(),
             total_frame_count);
 }
