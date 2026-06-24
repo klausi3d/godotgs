@@ -242,13 +242,26 @@ void VRAMBudgetRegulator::initialize(RenderingDevice *p_rd) {
             config.budget_mb, config.auto_regulate_enabled ? "enabled" : "disabled", current_max_chunks));
 }
 
+void VRAMBudgetRegulator::_capture_requested_budget() {
+    // Snapshot the caller's original ask BEFORE any clamp/fallback mutates
+    // config.budget_mb. _apply_config() rewrites budget_mb in place, so it can no
+    // longer recover the pre-clamp request on a second pass — initialize() applies
+    // an already-mutated config a second time. Capturing the request here, at the
+    // genuine config-establishment points, keeps requested_budget_mb stable across
+    // those re-applications (Codex #411).
+    config.requested_budget_mb = config.budget_mb;
+    config.requested_source_budget_mb = config.source_budget_mb;
+}
+
 void VRAMBudgetRegulator::_apply_config() {
     config.min_chunks = MAX(1u, config.min_chunks);
     config.max_chunks = MAX(config.min_chunks, config.max_chunks);
     config.warning_threshold_percent = CLAMP(config.warning_threshold_percent, 50u, 99u);
     config.regulation_step_percent = CLAMP(config.regulation_step_percent, 0.1f, 10.0f);
-    config.requested_budget_mb = config.budget_mb;
-    config.requested_source_budget_mb = config.source_budget_mb;
+    // requested_budget_mb / requested_source_budget_mb are captured by the
+    // config-establishment entry points (reload_config / set_config_override)
+    // before the clamp below runs; do NOT overwrite them here or a second
+    // _apply_config() pass would replace the original ask with the clamped value.
     config.budget_capacity_verified = stats.device_capacity_known;
     config.budget_uses_unknown_capacity_fallback = false;
     config.budget_unverified = false;
@@ -295,6 +308,14 @@ void VRAMBudgetRegulator::reload_config() {
         return;
     }
     config = VRAMBudgetConfig::load_from_project_settings();
+    // Re-derive device capacity from the freshly loaded config. clear_config_override()
+    // reaches here after dropping an override that may have carried a trusted capacity;
+    // without a re-query, stats.device_capacity_* would stay populated from the cleared
+    // override and a now-unknown-capacity project would be falsely capacity-verified or
+    // clamped to the stale capacity instead of following the unknown-capacity path
+    // (Codex #411).
+    _query_device_memory();
+    _capture_requested_budget();
     _apply_config();
 }
 
@@ -312,6 +333,7 @@ void VRAMBudgetRegulator::set_config_override(const VRAMBudgetConfig &p_config) 
     }
     // Pick up any trusted capacity carried on the override before applying.
     _query_device_memory();
+    _capture_requested_budget();
     _apply_config();
 }
 

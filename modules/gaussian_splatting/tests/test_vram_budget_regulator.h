@@ -123,6 +123,54 @@ TEST_CASE("[GaussianSplatting][VRAMBudgetRegulator] Known device capacity verifi
     CHECK_FALSE(bool(stats.get("budget_unverified", true)));
 }
 
+TEST_CASE("[GaussianSplatting][VRAMBudgetRegulator] Clearing a capacity override drops stale device capacity (Codex #411)") {
+    ProjectSettings *project_settings = ProjectSettings::get_singleton();
+    REQUIRE(project_settings != nullptr);
+
+    const String tier_apply_setting = "rendering/gaussian_splatting/quality/tier_apply_streaming_budgets";
+    const String vram_budget_setting = "rendering/gaussian_splatting/streaming/vram_budget_mb";
+    ProjectSettingGuard tier_apply_guard(project_settings, tier_apply_setting);
+    ProjectSettingGuard vram_budget_guard(project_settings, vram_budget_setting);
+
+    // A project that asks for a large budget while true device capacity is unknown.
+    project_settings->set_setting(tier_apply_setting, false);
+    project_settings->set_setting(vram_budget_setting, 12288);
+
+    Ref<VRAMBudgetRegulator> regulator;
+    regulator.instantiate();
+    REQUIRE(regulator.is_valid());
+
+    // First install an override that carries a trusted (small) device capacity.
+    VRAMBudgetConfig override_config;
+    override_config.budget_mb = 12288;
+    override_config.min_chunks = 2;
+    override_config.max_chunks = 16;
+    override_config.auto_regulate_enabled = false;
+    override_config.device_capacity_bytes = uint64_t(4096) * 1024u * 1024u; // 4 GB device.
+    override_config.device_capacity_known = true;
+    regulator->set_config_override(override_config);
+
+    Dictionary override_stats = regulator->get_debug_stats_dictionary();
+    CHECK(bool(override_stats.get("device_capacity_known", false)));
+    CHECK(Math::is_equal_approx(float(override_stats.get("budget_mb", -1.0f)), 4096.0f));
+
+    // Clearing the override must NOT leave the regulator believing the device still
+    // has a known 4 GB capacity. The project config carries no trusted capacity, so
+    // it must follow the unknown-capacity path (not stay verified / clamped to 4 GB).
+    regulator->clear_config_override();
+
+    Dictionary cleared_stats = regulator->get_debug_stats_dictionary();
+    CHECK_FALSE(bool(cleared_stats.get("device_capacity_known", true)));
+    CHECK(uint64_t(cleared_stats.get("device_capacity_bytes", uint64_t(1))) == uint64_t(0));
+    CHECK_FALSE(bool(cleared_stats.get("budget_capacity_verified", true)));
+    CHECK(String(cleared_stats.get("source_budget_mb", String())) != String("detected_capacity_clamp"));
+    // 12288 MB from a project override with unknown capacity is unverified, not
+    // clamped to the cleared override's 4 GB.
+    CHECK(bool(cleared_stats.get("budget_unverified", false)));
+    CHECK(int64_t(cleared_stats.get("requested_budget_mb", int64_t(-1))) == int64_t(12288));
+    CHECK(Math::is_equal_approx(float(cleared_stats.get("budget_mb", -1.0f)), 12288.0f));
+}
+
 TEST_CASE("[GaussianSplatting][VRAMBudgetRegulator] Known device capacity clamps an over-large budget (#321)") {
     Ref<VRAMBudgetRegulator> regulator;
     regulator.instantiate();

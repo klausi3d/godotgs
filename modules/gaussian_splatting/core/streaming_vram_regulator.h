@@ -100,6 +100,7 @@ private:
     void _update_regulation(uint64_t current_usage, uint64_t current_frame);
     bool _detect_thrashing() const;
     void _record_activity(uint32_t loads, uint32_t evictions);
+    void _capture_requested_budget();
     void _apply_config();
 
 protected:
