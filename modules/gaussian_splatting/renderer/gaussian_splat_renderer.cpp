@@ -2795,7 +2795,8 @@ void GaussianSplatRenderer::publish_route_skip_stage_metrics(const String &p_rou
     }
 }
 
-bool GaussianSplatRenderer::update_instance_buffer(LocalVector<InstanceDataGPU> &p_instances, const PublishedInstanceAssetRemap &p_remap) {
+bool GaussianSplatRenderer::update_instance_buffer(LocalVector<InstanceDataGPU> &p_instances, const PublishedInstanceAssetRemap &p_remap,
+        const LocalVector<uint64_t> *p_submission_asset_ids) {
     if (!_ensure_rendering_device("update_instance_buffer")) {
         return false;
     }
@@ -2812,16 +2813,32 @@ bool GaussianSplatRenderer::update_instance_buffer(LocalVector<InstanceDataGPU> 
         return false;
     }
 
+    // The GPU InstanceDataGPU::ids[0] field is only 32 bits, so it cannot carry the
+    // full 64-bit host submission identity once ObjectIDs differ above the low 32 bits.
+    // Prefer the parallel 64-bit submission-id array (collision-free key into the
+    // published remap); fall back to the truncated ids[0] tag only when the caller has
+    // no 64-bit identities to supply (e.g. legacy/test callers with small ids).
+    const bool use_wide_keys = p_submission_asset_ids != nullptr &&
+            p_submission_asset_ids->size() == instance_count;
+    if (p_submission_asset_ids != nullptr && p_submission_asset_ids->size() != instance_count) {
+        WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] submission_asset_ids size (%u) != instance count (%u); "
+                                "falling back to 32-bit ids[0] keys.",
+                p_submission_asset_ids->size(), instance_count));
+    }
+
     const uint32_t published_generation = p_remap.generation == 0
             ? 1u
             : uint32_t(p_remap.generation & uint64_t(UINT32_MAX));
     for (uint32_t i = 0; i < instance_count; i++) {
-        const uint32_t incoming_asset_id = p_instances[i].ids[0];
+        const uint64_t incoming_asset_id = use_wide_keys
+                ? (*p_submission_asset_ids)[i]
+                : uint64_t(p_instances[i].ids[0]);
         uint32_t dense_id = 0u;
         if (const uint32_t *mapped_dense_id = p_remap.asset_to_dense_id.getptr(incoming_asset_id)) {
             dense_id = *mapped_dense_id;
         } else {
-            WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Instance asset_id %u is not published; using primary resident asset.", incoming_asset_id));
+            WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Instance asset_id %s is not published; using primary resident asset.",
+                    String::num_uint64(incoming_asset_id)));
         }
         p_instances[i].ids[0] = dense_id;
         p_instances[i].lod[1] = published_generation;

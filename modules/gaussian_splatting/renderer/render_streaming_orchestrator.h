@@ -20,7 +20,8 @@ struct RenderStreamingOrchestratorDependencies {
 				const Projection &p_cull_projection, const char *p_context) = &GaussianSplatRenderer::validate_cull_projection_contract;
 		void (GaussianSplatRenderer::*clear_instance_pipeline_buffers)() = &GaussianSplatRenderer::clear_instance_pipeline_buffers;
 		bool (GaussianSplatRenderer::*update_instance_buffer)(LocalVector<InstanceDataGPU> &p_instances,
-				const GaussianSplatRenderer::PublishedInstanceAssetRemap &p_remap) = &GaussianSplatRenderer::update_instance_buffer;
+				const GaussianSplatRenderer::PublishedInstanceAssetRemap &p_remap,
+				const LocalVector<uint64_t> *p_submission_asset_ids) = &GaussianSplatRenderer::update_instance_buffer;
 		void (GaussianSplatRenderer::*run_cull_sort_pipeline_frame)(RenderDataRD *p_render_data, const Transform3D &p_world_to_camera_transform,
 				const Projection &p_projection, const Projection &p_render_projection, RenderSceneBuffersRD *p_render_buffers,
 				bool p_has_render_data, const String &p_cull_skip_reason, const String &p_sort_skip_reason,
@@ -54,9 +55,16 @@ public:
 		bool has_instances() const { return !instances.is_empty(); }
 		const LocalVector<InstanceDataGPU> &get_instances() const { return instances; }
 		LocalVector<InstanceDataGPU> &_internal_get_instances() { return instances; }
+		// Parallel to instances: each row's FULL 64-bit submission asset identity (the
+		// collision-free key into PublishedInstanceAssetRemap). Kept here so the
+		// streaming instance upload can resolve dense slots without truncating through
+		// the 32-bit InstanceDataGPU::ids[0] field.
+		const LocalVector<uint64_t> &get_submission_asset_ids() const { return submission_asset_ids; }
+		LocalVector<uint64_t> &_internal_get_submission_asset_ids() { return submission_asset_ids; }
 
 	private:
 		LocalVector<InstanceDataGPU> instances;
+		LocalVector<uint64_t> submission_asset_ids;
 	};
 
 private:
@@ -70,6 +78,9 @@ private:
 	LocalVector<uint32_t> instance_pipeline_assets_to_remove;
 	LocalVector<InstanceAssetRegistration> instance_pipeline_assets_cache;
 	LocalVector<InstanceDataGPU> instance_pipeline_instance_cache;
+	// Parallel to instance_pipeline_instance_cache: 64-bit submission asset ids used as
+	// the collision-free key when resolving dense atlas slots in update_instance_buffer.
+	LocalVector<uint64_t> instance_pipeline_submission_asset_ids_cache;
 	HashMap<uint32_t, uint32_t> instance_pipeline_lod_mask_cache;
 	HashMap<uint32_t, uint32_t> instance_pipeline_asset_versions;
 	uint64_t instance_pipeline_asset_snapshot_generation = 0;

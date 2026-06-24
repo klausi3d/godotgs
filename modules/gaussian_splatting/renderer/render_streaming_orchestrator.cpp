@@ -92,17 +92,17 @@ static uint64_t _compute_instance_asset_remap_fingerprint(const PublishedInstanc
 		return generation;
 	}
 
-	LocalVector<uint32_t> asset_ids;
+	LocalVector<uint64_t> asset_ids;
 	asset_ids.reserve(p_remap.asset_to_dense_id.size());
-	for (const KeyValue<uint32_t, uint32_t> &entry : p_remap.asset_to_dense_id) {
+	for (const KeyValue<uint64_t, uint32_t> &entry : p_remap.asset_to_dense_id) {
 		asset_ids.push_back(entry.key);
 	}
-	uint32_t *asset_ids_ptr = asset_ids.ptr();
+	uint64_t *asset_ids_ptr = asset_ids.ptr();
 	std::sort(asset_ids_ptr, asset_ids_ptr + asset_ids.size());
 	for (uint32_t i = 0; i < asset_ids.size(); i++) {
-		const uint32_t asset_id = asset_ids[i];
+		const uint64_t asset_id = asset_ids[i];
 		const uint32_t *dense_id = p_remap.asset_to_dense_id.getptr(asset_id);
-		generation = _mix_u32_generation(generation, asset_id);
+		generation = _mix_content_generation(generation, asset_id);
 		generation = _mix_u32_generation(generation, dense_id ? *dense_id : UINT32_MAX);
 	}
 	return generation;
@@ -132,35 +132,47 @@ static PublishedInstanceAssetRemap _build_streaming_instance_asset_remap(
 		GaussianStreamingSystem *p_streaming_system,
 		const LocalVector<InstanceAssetRegistration> &p_asset_cache,
 		const LocalVector<InstanceDataGPU> &p_instances,
+		const LocalVector<uint64_t> &p_submission_asset_ids,
 		uint64_t p_generation) {
 	PublishedInstanceAssetRemap remap;
 	if (p_streaming_system == nullptr) {
 		return remap;
 	}
 
+	// The remap KEY is the FULL 64-bit submission identity (collision-free) so it
+	// matches the key update_instance_buffer() resolves against. The streaming dense
+	// registry is itself still 32-bit keyed (a separate, GPU-atlas-coupled follow-up);
+	// its get_dense_asset_id() takes a uint32_t, so we truncate ONLY for that internal
+	// dense lookup while keeping the published key 64-bit.
 	const uint32_t primary_dense_id = p_streaming_system->get_dense_asset_id(kPrimaryStreamingAssetId) !=
 					kInvalidStreamingAssetId
 			? p_streaming_system->get_dense_asset_id(kPrimaryStreamingAssetId)
 			: kPrimaryStreamingAssetId;
-	remap.asset_to_dense_id.insert(kPrimaryStreamingAssetId, primary_dense_id);
+	remap.asset_to_dense_id.insert(uint64_t(kPrimaryStreamingAssetId), primary_dense_id);
 
 	for (const InstanceAssetRegistration &entry : p_asset_cache) {
 		if (entry.asset_id == 0) {
 			continue;
 		}
-		uint32_t dense_id = p_streaming_system->get_dense_asset_id(entry.asset_id);
+		uint32_t dense_id = p_streaming_system->get_dense_asset_id(static_cast<uint32_t>(entry.asset_id));
 		if (dense_id == kInvalidStreamingAssetId) {
 			dense_id = primary_dense_id;
 		}
 		remap.asset_to_dense_id.insert(entry.asset_id, dense_id);
 	}
 
-	for (const InstanceDataGPU &entry : p_instances) {
-		const uint32_t asset_id = entry.ids[0];
+	// Fallback for any instance whose submission id was not covered by the asset cache.
+	// Key on the parallel 64-bit submission id (NOT the truncated ids[0] GPU tag) so the
+	// published key stays collision-free.
+	const bool have_wide_ids = p_submission_asset_ids.size() == p_instances.size();
+	for (uint32_t i = 0; i < p_instances.size(); i++) {
+		const uint64_t asset_id = have_wide_ids
+				? p_submission_asset_ids[i]
+				: uint64_t(p_instances[i].ids[0]);
 		if (remap.asset_to_dense_id.has(asset_id)) {
 			continue;
 		}
-		uint32_t dense_id = p_streaming_system->get_dense_asset_id(asset_id);
+		uint32_t dense_id = p_streaming_system->get_dense_asset_id(static_cast<uint32_t>(asset_id));
 		if (dense_id == kInvalidStreamingAssetId) {
 			dense_id = primary_dense_id;
 		}
@@ -628,6 +640,7 @@ void RenderStreamingOrchestrator::invalidate_instance_pipeline_caches() {
 	instance_pipeline_assets_to_remove.clear();
 	instance_pipeline_assets_cache.clear();
 	instance_pipeline_instance_cache.clear();
+	instance_pipeline_submission_asset_ids_cache.clear();
 	instance_pipeline_asset_versions.clear();
 	instance_pipeline_lod_mask_cache.clear();
 	instance_pipeline_asset_snapshot_generation = 0;
@@ -709,8 +722,9 @@ const RenderStreamingOrchestrator::VisibleLODSelection &RenderStreamingOrchestra
 	}
 
 	visible_lod_selection._internal_get_instances().clear();
+	visible_lod_selection._internal_get_submission_asset_ids().clear();
 	p_director->build_instance_buffer_for_renderer(renderer, visible_lod_selection._internal_get_instances(),
-			shadow_only);
+			shadow_only, &visible_lod_selection._internal_get_submission_asset_ids());
 	visible_lod_selection_generation = instance_generation;
 	visible_lod_selection_shadow_only = shadow_only;
 
@@ -1244,10 +1258,14 @@ void RenderStreamingOrchestrator::sync_instance_pipeline_assets(GaussianStreamin
 		if (entry.asset_id == 0 || entry.data.is_null()) {
 			continue;
 		}
-		if (deterministic_asset_id == UINT32_MAX || entry.asset_id < deterministic_asset_id) {
-			deterministic_asset_id = entry.asset_id;
+		// The streaming registry's identity space is 32-bit (a separate follow-up to
+		// widen). Project the 64-bit submission id into it explicitly here; the
+		// collision-free 64-bit key is preserved in the published remap above.
+		const uint32_t streaming_asset_id = static_cast<uint32_t>(entry.asset_id);
+		if (deterministic_asset_id == UINT32_MAX || streaming_asset_id < deterministic_asset_id) {
+			deterministic_asset_id = streaming_asset_id;
 		}
-		if (entry.asset_id == static_layout_bound_asset_id) {
+		if (streaming_asset_id == static_layout_bound_asset_id) {
 			bound_asset_present = true;
 		}
 	}
@@ -1306,14 +1324,16 @@ void RenderStreamingOrchestrator::sync_instance_pipeline_assets(GaussianStreamin
 			if (entry.asset_id == 0 || entry.data.is_null()) {
 				if (trace_enabled) {
 					GaussianSplatting::debug_trace_record_event("instance_pipeline",
-							vformat("SyncAssets SKIP asset_id=%d data=%s",
-									entry.asset_id, entry.data.is_valid() ? "valid" : "null"),
+							vformat("SyncAssets SKIP asset_id=%s data=%s",
+									String::num_uint64(entry.asset_id), entry.data.is_valid() ? "valid" : "null"),
 							true);
 				}
 				continue;
 			}
-			instance_pipeline_assets_next.insert(entry.asset_id);
-			const uint32_t asset_id = entry.asset_id;
+			// Streaming registry identity is 32-bit (separate follow-up); project the
+			// 64-bit submission id explicitly. The published remap keeps the 64-bit key.
+			const uint32_t asset_id = static_cast<uint32_t>(entry.asset_id);
+			instance_pipeline_assets_next.insert(asset_id);
 			uint32_t *version_ptr = instance_pipeline_asset_versions.getptr(asset_id);
 			const bool version_changed = !version_ptr || *version_ptr != entry.edited_version;
 			const bool layout_rebind_for_asset = static_layout_rebind_required &&
@@ -1332,7 +1352,7 @@ void RenderStreamingOrchestrator::sync_instance_pipeline_assets(GaussianStreamin
 						false);
 			}
 			if (needs_register) {
-				p_streaming_system->register_asset(entry.asset_id, entry.data);
+				p_streaming_system->register_asset(asset_id, entry.data);
 				if (trace_enabled) {
 					GaussianSplatting::debug_trace_record_event("instance_pipeline",
 							vformat("SyncAssets REGISTERED asset_id=%d", asset_id),
@@ -1545,6 +1565,7 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 		return false;
 	}
 	instance_pipeline_instance_cache.clear();
+	instance_pipeline_submission_asset_ids_cache.clear();
 	if (director && streaming_system) {
 		sync_instance_pipeline_assets(streaming_system);
 		const VisibleLODSelection &selection = produce_visible_lod_selection(
@@ -1552,6 +1573,7 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 				streaming_system,
 				p_camera_to_world_transform.origin);
 		instance_pipeline_instance_cache = selection.get_instances();
+		instance_pipeline_submission_asset_ids_cache = selection.get_submission_asset_ids();
 		consume_visible_lod_selection_for_residency(selection, streaming_system, trace_enabled);
 	}
 	const uint32_t registered_assets_with_data = streaming_system->get_registered_asset_count_with_data();
@@ -1858,7 +1880,7 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 		instance_buffers_atlas_required = atlas_buffers_required;
 		const PublishedInstanceAssetRemap published_remap = _build_streaming_instance_asset_remap(
 				streaming_system, instance_pipeline_assets_cache, instance_pipeline_instance_cache,
-				base_content_generation);
+				instance_pipeline_submission_asset_ids_cache, base_content_generation);
 		const bool atlas_ready_preupload = GaussianSplatting::InstancePipelineContract::has_atlas_buffers(buffers);
 		uint64_t contract_fingerprint = _compute_instance_pipeline_resource_fingerprint(resource_state_mut, buffers);
 		const bool contract_changed = previous_contract_generation != contract_generation ||
@@ -1884,7 +1906,8 @@ bool RenderStreamingOrchestrator::render_streaming_frame(RenderDataRD *p_render_
 						"atlas_emulation");
 			}
 			if (upload_changed) {
-				if (!(renderer->*runtime_ports.update_instance_buffer)(instance_pipeline_instance_cache, published_remap)) {
+				if (!(renderer->*runtime_ports.update_instance_buffer)(instance_pipeline_instance_cache, published_remap,
+							&instance_pipeline_submission_asset_ids_cache)) {
 					buffers = renderer->get_instance_pipeline_buffers();
 					renderer->clear_instance_pipeline_buffers();
 				} else {
@@ -2277,6 +2300,7 @@ void RenderStreamingOrchestrator::tick_streaming_only(const Transform3D &p_camer
 				streaming_system,
 				p_camera_to_world_transform.origin);
 		instance_pipeline_instance_cache = selection.get_instances();
+		instance_pipeline_submission_asset_ids_cache = selection.get_submission_asset_ids();
 		const uint32_t registered_assets_with_data = streaming_system->get_registered_asset_count_with_data();
 		if (!instance_pipeline_instance_cache.is_empty() && registered_assets_with_data == 0) {
 			ERR_PRINT("[GaussianSplatRenderer] Streaming tick found instances but no registered streaming assets with data; resetting streaming system.");

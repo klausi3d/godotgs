@@ -963,6 +963,87 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Instance buffer upload uses the publ
     renderer.unref();
 }
 
+TEST_CASE("[GaussianSplatting][RequiresGPU] Instance buffer upload keeps low-32-bit-colliding submission ids on distinct dense slots") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (rs == nullptr) {
+        MESSAGE("Skipping test - Rendering server unavailable");
+        return;
+    }
+
+    ScopedGaussianManagerPipeline manager_scope;
+    GaussianSplatManager *manager = manager_scope.get();
+    if (manager == nullptr) {
+        MESSAGE("Skipping test - GaussianSplatManager unavailable");
+        return;
+    }
+
+    ScopedRenderingDeviceLease device_lease;
+    RenderingDevice *primary_rd = device_lease.acquire(rs, manager);
+    if (primary_rd == nullptr) {
+        MESSAGE("Skipping test - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianSplatRenderer> renderer;
+    renderer.instantiate(primary_rd);
+    CHECK(renderer.is_valid());
+    if (!renderer.is_valid()) {
+        return;
+    }
+    renderer->initialize();
+
+    // Two distinct 64-bit submission ids that collide in the low 32 bits. The GPU
+    // ids[0] field is only 32 bits, so both instances carry the SAME truncated tag;
+    // the collision-free resolution must come from the parallel 64-bit submission
+    // id array threaded into update_instance_buffer().
+    const uint64_t submission_a = 0x0000'0000'1234'5678ULL;
+    const uint64_t submission_b = 0xABCD'0000'1234'5678ULL;
+    REQUIRE(static_cast<uint32_t>(submission_a) == static_cast<uint32_t>(submission_b));
+
+    GaussianRenderPipeline::PublishedInstanceAssetRemap remap;
+    remap.asset_to_dense_id.insert(0ULL, 0u);
+    remap.asset_to_dense_id.insert(submission_a, 11u);
+    remap.asset_to_dense_id.insert(submission_b, 22u);
+    remap.generation = 5u;
+    remap.valid = true;
+    renderer->publish_instance_pipeline_contract(
+            GaussianRenderPipeline::InstancePipelineBuffers(),
+            remap,
+            GaussianRenderPipeline::InstanceBackendPolicy::RESIDENT,
+            remap.generation,
+            "atlas_emulation");
+
+    auto make_instance = [](uint32_t p_truncated_tag) {
+        InstanceDataGPU instance = {};
+        instance.rotation[3] = 1.0f;
+        instance.inv_rotation[3] = 1.0f;
+        instance.translation_scale[3] = 1.0f;
+        instance.params[0] = 1.0f;
+        instance.params[1] = 1.0f;
+        instance.params[2] = 1.0f;
+        instance.wind_params[3] = 1.0f;
+        instance.ids[0] = p_truncated_tag; // intentionally collides for both rows
+        return instance;
+    };
+
+    LocalVector<InstanceDataGPU> instances;
+    instances.push_back(make_instance(static_cast<uint32_t>(submission_a)));
+    instances.push_back(make_instance(static_cast<uint32_t>(submission_b)));
+
+    LocalVector<uint64_t> submission_ids;
+    submission_ids.push_back(submission_a);
+    submission_ids.push_back(submission_b);
+
+    CHECK(renderer->update_instance_buffer(instances, remap, &submission_ids));
+    REQUIRE(instances.size() == 2);
+    // Each instance must resolve to its OWN dense slot despite identical ids[0] tags.
+    CHECK(instances[0].ids[0] == 11u);
+    CHECK(instances[1].ids[0] == 22u);
+    CHECK(instances[0].ids[0] != instances[1].ids[0]);
+
+    renderer.unref();
+}
+
 TEST_CASE("[GaussianSplatting] Clearing the published instance contract also clears the renderer-side remap") {
     Ref<GaussianSplatRenderer> renderer;
     renderer.instantiate();

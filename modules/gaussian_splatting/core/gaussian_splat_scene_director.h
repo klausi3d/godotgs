@@ -136,8 +136,16 @@ public:
     void update_instance_lods_for_renderer(const GaussianSplatRenderer *p_renderer, const Vector3 &p_camera_pos,
             const LODConfig &p_lod_config, float p_hysteresis_zone);
     void build_instance_buffer(LocalVector<InstanceDataGPU> &out) const;
+	// Builds the per-instance GPU rows. When r_submission_asset_ids is non-null it is
+	// filled parallel to `out` with each instance's FULL 64-bit submission asset
+	// identity (the asset_records key). The GPU InstanceDataGPU::ids[0] field is only
+	// 32 bits and therefore cannot carry that identity losslessly once 64-bit ObjectIDs
+	// are in play; update_instance_buffer() uses this parallel array as the collision-
+	// free key into PublishedInstanceAssetRemap before overwriting ids[0] with the
+	// resolved dense slot.
 	void build_instance_buffer_for_renderer(const GaussianSplatRenderer *p_renderer, LocalVector<InstanceDataGPU> &out,
-			bool p_shadow_casters_only = false) const;
+			bool p_shadow_casters_only = false,
+			LocalVector<uint64_t> *r_submission_asset_ids = nullptr) const;
 	// Build the per-instance color grading SSBO for the supplied renderer. Walks the same
 	// instance list as build_instance_buffer_for_renderer; falls back to the renderer's
 	// RenderConfig::color_grading when a record has no per-instance ref. When no director

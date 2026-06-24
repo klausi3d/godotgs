@@ -167,7 +167,12 @@ inline const char *instance_backend_policy_to_string(InstanceBackendPolicy p_pol
 }
 
 struct PublishedInstanceAssetRemap {
-	HashMap<uint32_t, uint32_t> asset_to_dense_id;
+	// Key: full 64-bit host submission asset identity (asset Node3D ObjectID).
+	// Value: sequential dense atlas slot id (collision-free, fits uint32_t and is
+	// what lands in the GPU InstanceDataGPU::ids[0] field). The key must stay
+	// 64-bit so two assets whose ObjectIDs collide in the low 32 bits map to
+	// distinct dense slots instead of aliasing the same rendered asset.
+	HashMap<uint64_t, uint32_t> asset_to_dense_id;
 	uint64_t generation = 0;
 	bool valid = false;
 

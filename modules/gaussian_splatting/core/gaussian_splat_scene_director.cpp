@@ -1597,9 +1597,13 @@ void GaussianSplatSceneDirector::build_instance_buffer(LocalVector<InstanceDataG
 }
 
 void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const GaussianSplatRenderer *p_renderer,
-		LocalVector<InstanceDataGPU> &out, bool p_shadow_casters_only) const {
+		LocalVector<InstanceDataGPU> &out, bool p_shadow_casters_only,
+		LocalVector<uint64_t> *r_submission_asset_ids) const {
 	MutexLock lock(world_mutex);
 	out.clear();
+	if (r_submission_asset_ids) {
+		r_submission_asset_ids->clear();
+	}
 
 	const SharedWorld *world = _find_world_for_renderer(p_renderer);
 	if (!world) {
@@ -1654,6 +1658,10 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 			entry.effect_params[2] = _encode_u32_as_float_bits(world_scope_mask);
 			entry.effect_params[3] = float(scene_payload.size());
 			out.push_back(entry);
+			if (r_submission_asset_ids) {
+				// Primary/world-submission asset id is 0 (kPrimary*AssetId).
+				r_submission_asset_ids->push_back(0ULL);
+			}
 		}
 		return;
 	}
@@ -1717,7 +1725,10 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 		entry.params[2] = record.wind_intensity;
 		entry.params[3] = float(record.wind_mode);
 
-		// 32-bit GPU tag; collision-free identity lives in asset_records (see above).
+		// GPU tag is only 32 bits; it carries a TRANSIENT truncated asset id that
+		// update_instance_buffer() overwrites with the resolved dense slot. The
+		// collision-free 64-bit submission identity is published in parallel via
+		// r_submission_asset_ids below (and lives authoritatively in asset_records).
 		entry.ids[0] = static_cast<uint32_t>(record.asset_id);
 		uint32_t flags = record.flags;
 		if (rotation.is_equal_approx(Quaternion())) {
@@ -1743,6 +1754,9 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 		entry.effect_params[3] = float(scene_payload.size());
 
 		out.push_back(entry);
+		if (r_submission_asset_ids) {
+			r_submission_asset_ids->push_back(record.asset_id);
+		}
 		if (trace_enabled) {
 			const bool rotation_identity = (flags & GS_INSTANCE_FLAG_ROTATION_IDENTITY) != 0u;
 			const bool scale_identity = (flags & GS_INSTANCE_FLAG_SCALE_IDENTITY) != 0u;
@@ -2913,9 +2927,10 @@ void GaussianSplatSceneDirector::collect_instance_assets_for_renderer(const Gaus
 			continue;
 		}
 		InstanceAssetRegistration entry;
-		// InstanceAssetRegistration::asset_id is the 32-bit GPU/dense-id tag;
-		// the dedupe above runs on the collision-free 64-bit key.
-		entry.asset_id = static_cast<uint32_t>(asset_id);
+		// Carry the FULL 64-bit submission identity through to the renderer remap.
+		// This is the collision-free key into PublishedInstanceAssetRemap; truncating
+		// it here would alias two assets whose ObjectIDs share the low 32 bits.
+		entry.asset_id = asset_id;
 		entry.data = record->data;
 		entry.edited_version = record->edited_version;
 		entry.requests_full_fidelity_runtime = _asset_requests_full_fidelity_runtime(record->asset);
@@ -2939,8 +2954,9 @@ void GaussianSplatSceneDirector::collect_registered_assets_for_renderer(const Ga
 			continue;
 		}
 		InstanceAssetRegistration entry;
-		// 32-bit GPU/dense-id tag projected from the 64-bit asset_records key.
-		entry.asset_id = static_cast<uint32_t>(E.key);
+		// Carry the FULL 64-bit asset_records key (host submission identity) through
+		// to the renderer remap so distinct ObjectIDs never alias a dense slot.
+		entry.asset_id = E.key;
 		entry.data = E.value.data;
 		entry.edited_version = E.value.edited_version;
 		entry.requests_full_fidelity_runtime = _asset_requests_full_fidelity_runtime(E.value.asset);

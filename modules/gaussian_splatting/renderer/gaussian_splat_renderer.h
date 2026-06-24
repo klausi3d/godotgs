@@ -99,7 +99,13 @@ class GaussianSplatShaderRD;
 class GsShadowBlitShaderRD;
 
 struct InstanceAssetRegistration {
-    uint32_t asset_id = 0;
+    // Full 64-bit host submission identity (the asset Node3D's ObjectID). This is
+    // the collision-free key into PublishedInstanceAssetRemap::asset_to_dense_id.
+    // It must NOT be truncated to 32 bits: two assets whose ObjectIDs collide in
+    // the low 32 bits would otherwise resolve to the same dense atlas slot and
+    // render as the same asset. The GPU-facing dense id (InstanceDataGPU::ids[0])
+    // stays 32-bit because it is a sequential, collision-free index.
+    uint64_t asset_id = 0;
     Ref<GaussianData> data;
     uint32_t edited_version = 0;
     bool requests_full_fidelity_runtime = false;
@@ -845,7 +851,15 @@ public:
     Error restore_world_submission_runtime_state(const WorldSubmissionRuntimeStateSnapshot &p_snapshot);
     Error apply_world_submission_contract(const WorldSubmissionContract &p_contract);
     void clear_world_submission_contract();
-    bool update_instance_buffer(LocalVector<InstanceDataGPU> &p_instances, const PublishedInstanceAssetRemap &p_remap);
+    // Resolves each instance's published asset identity to its dense atlas slot and
+    // uploads the instance buffer. When p_submission_asset_ids is non-null and sized
+    // 1:1 with p_instances, it supplies the FULL 64-bit submission identity used as
+    // the collision-free key into p_remap.asset_to_dense_id; the resolved 32-bit dense
+    // id is then written into InstanceDataGPU::ids[0]. When null (or size-mismatched),
+    // the lookup falls back to the truncated 32-bit ids[0] tag for backward
+    // compatibility with callers that have no 64-bit identity to thread through.
+    bool update_instance_buffer(LocalVector<InstanceDataGPU> &p_instances, const PublishedInstanceAssetRemap &p_remap,
+            const LocalVector<uint64_t> *p_submission_asset_ids = nullptr);
     // Upload the per-instance color grading SSBO. Called alongside update_instance_buffer
     // from both the resident and streaming contract-publish paths.
     bool update_instance_grading_buffer(const LocalVector<InstanceGradingGPU> &p_gradings);

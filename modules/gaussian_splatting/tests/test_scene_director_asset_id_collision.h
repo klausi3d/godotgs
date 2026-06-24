@@ -15,6 +15,7 @@
 #include "../core/gaussian_data.h"
 #include "../core/gaussian_splat_asset.h"
 #include "../core/gaussian_splat_scene_director.h"
+#include "../renderer/render_types/render_pipeline_io_types.h"
 #include "scene/3d/node_3d.h"
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
@@ -149,6 +150,53 @@ TEST_CASE("[GaussianSplatting][SceneDirector][SceneTree] distinct assets retain 
 	if (owns_director) {
 		memdelete(director);
 	}
+}
+
+// Renderer-boundary invariant (headless): the published asset->dense remap must be
+// keyed on the FULL 64-bit submission identity. Two submission ids that collide in
+// the low 32 bits must resolve to DISTINCT dense atlas slots. This mirrors what
+// GaussianSplatRenderer::update_instance_buffer() does when it looks up each
+// instance's parallel 64-bit submission id (NOT the truncated 32-bit ids[0] GPU tag).
+// The previous "keep the 32-bit GPU tag" remap would alias both ids to one slot, so
+// both instances would render as the SAME asset.
+TEST_CASE("[GaussianSplatting][SceneDirector] published remap keeps low-32-bit-colliding submission ids on distinct dense slots") {
+	using GaussianRenderPipeline::PublishedInstanceAssetRemap;
+
+	// Two distinct 64-bit submission ids sharing the low 32 bits (the regression's
+	// exact precondition).
+	const uint64_t submission_a = 0x0000'0000'1234'5678ULL;
+	const uint64_t submission_b = 0xABCD'0000'1234'5678ULL;
+	REQUIRE(submission_a != submission_b);
+	REQUIRE(static_cast<uint32_t>(submission_a) == static_cast<uint32_t>(submission_b)); // aliasing precondition
+
+	// Build the remap the way the resident/streaming publishers do: 64-bit submission
+	// key -> sequential, collision-free 32-bit dense slot.
+	PublishedInstanceAssetRemap remap;
+	remap.asset_to_dense_id.insert(0ULL, 0u); // primary
+	remap.asset_to_dense_id.insert(submission_a, 1u);
+	remap.asset_to_dense_id.insert(submission_b, 2u);
+
+	// Both colliding ids must survive as independent keys.
+	CHECK_EQ(remap.asset_to_dense_id.size(), 3u);
+
+	const uint32_t *dense_a = remap.asset_to_dense_id.getptr(submission_a);
+	const uint32_t *dense_b = remap.asset_to_dense_id.getptr(submission_b);
+	REQUIRE(dense_a != nullptr);
+	REQUIRE(dense_b != nullptr);
+
+	// The collision-free 64-bit lookup resolves each submission id to its OWN dense slot.
+	CHECK(*dense_a == 1u);
+	CHECK(*dense_b == 2u);
+	CHECK(*dense_a != *dense_b);
+
+	// Sanity: a 32-bit-truncating lookup (the old behavior) would collapse both keys.
+	const uint32_t truncated_a = static_cast<uint32_t>(submission_a);
+	const uint32_t truncated_b = static_cast<uint32_t>(submission_b);
+	CHECK_EQ(truncated_a, truncated_b);
+	// The dense slot is what lands in the GPU InstanceDataGPU::ids[0] field, and it is
+	// 32-bit precisely because dense ids are sequential and collision-free.
+	CHECK(*dense_a <= UINT32_MAX);
+	CHECK(*dense_b <= UINT32_MAX);
 }
 
 #endif // TESTS_ENABLED || TOOLS_ENABLED

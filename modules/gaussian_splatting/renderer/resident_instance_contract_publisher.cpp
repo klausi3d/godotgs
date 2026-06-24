@@ -28,7 +28,10 @@ struct ResidentChunkDescriptor {
 };
 
 struct ResidentAssetDescriptor {
-	uint32_t submission_asset_id = 0;
+	// Full 64-bit host submission identity (asset_records key / ObjectID). Must stay
+	// 64-bit so it remains the collision-free key into the published remap. The dense
+	// atlas slot below stays 32-bit (sequential, collision-free, GPU-facing).
+	uint64_t submission_asset_id = 0;
 	uint32_t dense_asset_id = 0;
 	Ref<GaussianData> data;
 	Vector<GaussianSplatRenderer::StaticChunk> static_chunks;
@@ -296,6 +299,11 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 	}
 
 	LocalVector<InstanceDataGPU> instances;
+	// Parallel to `instances`: each instance's FULL 64-bit submission asset identity,
+	// the collision-free key into the published remap. Threaded into
+	// update_instance_buffer() so two assets whose ObjectIDs collide in the low 32 bits
+	// resolve to distinct dense atlas slots instead of aliasing.
+	LocalVector<uint64_t> instance_submission_asset_ids;
 	// Director "owns" this renderer's instance set when there's a world
 	// submission for it. In that case an empty `instances` result is
 	// intentional — e.g. a shadow-filtered pass that legitimately produced
@@ -309,7 +317,7 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 			director->has_world_submission_for_renderer(p_renderer);
 	if (director != nullptr) {
 		director->build_instance_buffer_for_renderer(p_renderer, instances,
-				p_renderer->is_shadow_instance_filter_enabled());
+				p_renderer->is_shadow_instance_filter_enabled(), &instance_submission_asset_ids);
 	}
 	if (instances.is_empty() && has_primary_data && !director_owns_instance_set) {
 		InstanceDataGPU bootstrap_instance = {};
@@ -327,6 +335,7 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 				GS_INSTANCE_FLAG_SCALE_IDENTITY |
 				GS_INSTANCE_FLAG_TRANSLATION_ZERO;
 		instances.push_back(bootstrap_instance);
+		instance_submission_asset_ids.push_back(uint64_t(kPrimaryResidentAssetId));
 	}
 
 	if (instances.is_empty()) {
@@ -749,7 +758,7 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 	resource_state.instance_pipeline_upload_generation = source_generation;
 	resource_state.instance_pipeline_upload_fingerprint = 0;
 
-	if (!p_renderer->update_instance_buffer(instances, remap)) {
+	if (!p_renderer->update_instance_buffer(instances, remap, &instance_submission_asset_ids)) {
 		if (r_reason) {
 			*r_reason = "resident_instance_upload_failed";
 		}
