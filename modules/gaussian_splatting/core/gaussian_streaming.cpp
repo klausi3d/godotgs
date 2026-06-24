@@ -3301,7 +3301,17 @@ uint64_t GaussianStreamingSystem::_get_auxiliary_vram_overhead_bytes() const {
 }
 
 uint64_t GaussianStreamingSystem::_get_total_vram_usage_bytes() const {
-    return budget.vram_usage + _get_auxiliary_vram_overhead_bytes();
+    // budget.vram_usage tracks the *loaded chunk payload* that currently lives
+    // inside the persistent storage buffer. The persistent buffer itself is the
+    // single largest streaming VRAM allocation (sized for the resident chunk set
+    // plus growth headroom), and chunk payloads are uploaded into it — so the
+    // reserved VRAM is the whole buffer allocation, not just the bytes uploaded
+    // so far. Reporting only the payload under-counts the regulator's true
+    // footprint by the unfilled remainder of the buffer. Count the full
+    // allocation (MAX guards against any transient payload > size accounting
+    // skew, and degrades to the payload when the buffer is not yet allocated).
+    const uint64_t resident_buffer_bytes = MAX(budget.vram_usage, uint64_t(persistent_buffer_size));
+    return resident_buffer_bytes + _get_auxiliary_vram_overhead_bytes();
 }
 
 uint32_t GaussianStreamingSystem::_get_reserved_chunk_count() const {
@@ -4453,12 +4463,15 @@ void GaussianStreamingSystem::end_frame() {
     }
     analytics_snapshot = memory_stream_proxy.is_valid() ? memory_stream_proxy->get_task_debug_state() : Dictionary();
 
-    // Add VRAM usage stats to analytics
+    // Add VRAM usage stats to analytics. vram_mb mirrors the regulator-facing
+    // total (full persistent buffer allocation + auxiliary overhead), so the
+    // reported figure is not under-counted by the unfilled buffer remainder.
     const uint64_t payload_vram_bytes = budget.vram_usage;
     const uint64_t overhead_vram_bytes = _get_auxiliary_vram_overhead_bytes();
-    analytics_snapshot["vram_mb"] = double(payload_vram_bytes + overhead_vram_bytes) / (1024.0 * 1024.0);
+    analytics_snapshot["vram_mb"] = double(_get_total_vram_usage_bytes()) / (1024.0 * 1024.0);
     analytics_snapshot["vram_payload_mb"] = double(payload_vram_bytes) / (1024.0 * 1024.0);
     analytics_snapshot["vram_overhead_mb"] = double(overhead_vram_bytes) / (1024.0 * 1024.0);
+    analytics_snapshot["vram_persistent_buffer_mb"] = double(persistent_buffer_size) / (1024.0 * 1024.0);
     analytics_snapshot["loaded_chunks"] = get_loaded_chunks();
     analytics_snapshot["atlas_published_chunks"] = global_atlas_registry.get_atlas_published_chunks();
     analytics_snapshot["visible_splats"] = get_visible_count();

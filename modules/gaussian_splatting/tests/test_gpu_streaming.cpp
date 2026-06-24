@@ -3677,3 +3677,38 @@ TEST_CASE("[Streaming Pipeline] Combined pressure with in-flight pack jobs valid
     CHECK(summary.reason == String(StreamingQueuePressureController::REASON_QUEUE_AND_CAPS));
     CHECK(StreamingQueuePressureController::validate_summary_invariants(summary, sample));
 }
+
+TEST_CASE("[Streaming VRAM] Reported total folds in the persistent buffer allocation") {
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (!rs) {
+        MESSAGE("Skipping - Rendering server unavailable");
+        return;
+    }
+
+    RenderingDevice *rd = RenderingDevice::get_singleton();
+    if (!rd) {
+        rd = rs->create_local_rendering_device();
+    }
+    if (!rd) {
+        MESSAGE("Skipping - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianStreamingSystem> system;
+    system.instantiate();
+    system->initialize_with_device(create_test_gaussian_data(GaussianStreamingSystem::CHUNK_SIZE), rd);
+    if (!system->is_runtime_ready()) {
+        MESSAGE("Skipping - Streaming runtime not ready");
+        return;
+    }
+
+    // The persistent storage buffer is allocated at init even before any chunk
+    // payload is uploaded. It is the single largest streaming VRAM allocation,
+    // so the reported total must account for the whole allocation, not just the
+    // (currently zero) loaded payload. Regression guard for the under-count:
+    // pre-fix get_vram_usage() returned only the auxiliary overhead here.
+    REQUIRE(system->persistent_buffer_size > 0u);
+    const uint64_t reported = system->get_vram_usage();
+    CHECK(reported >= uint64_t(system->persistent_buffer_size));
+    CHECK(reported > 0u);
+}

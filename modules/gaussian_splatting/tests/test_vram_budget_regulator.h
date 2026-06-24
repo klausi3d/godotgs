@@ -92,3 +92,61 @@ TEST_CASE("[GaussianSplatting][VRAMBudgetRegulator] Unknown capacity preserves p
     CHECK_FALSE(bool(stats.get("budget_uses_unknown_capacity_fallback", true)));
     CHECK(bool(stats.get("budget_unverified", false)));
 }
+
+TEST_CASE("[GaussianSplatting][VRAMBudgetRegulator] Known device capacity verifies budget under capacity (#321)") {
+    Ref<VRAMBudgetRegulator> regulator;
+    regulator.instantiate();
+    REQUIRE(regulator.is_valid());
+
+    VRAMBudgetConfig override_config;
+    override_config.budget_mb = 4096;
+    override_config.min_chunks = 2;
+    override_config.max_chunks = 16;
+    override_config.auto_regulate_enabled = false;
+    // Trusted capacity supplied out-of-band: 8 GB device, budget fits under it.
+    override_config.device_capacity_bytes = uint64_t(8192) * 1024u * 1024u;
+    override_config.device_capacity_known = true;
+
+    regulator->set_config_override(override_config);
+    regulator->initialize(nullptr);
+
+    Dictionary stats = regulator->get_debug_stats_dictionary();
+    // The capacity-known path must be reachable and reported as such (#321):
+    // previously _query_device_memory() unconditionally forced unknown.
+    CHECK(bool(stats.get("device_capacity_known", false)));
+    CHECK(uint64_t(stats.get("device_capacity_bytes", uint64_t(0))) == uint64_t(8192) * 1024u * 1024u);
+    // Budget fits under the real capacity, so it is verified and not clamped or
+    // routed through the conservative unknown-capacity fallback.
+    CHECK(Math::is_equal_approx(float(stats.get("budget_mb", -1.0f)), 4096.0f));
+    CHECK(bool(stats.get("budget_capacity_verified", false)));
+    CHECK_FALSE(bool(stats.get("budget_uses_unknown_capacity_fallback", true)));
+    CHECK_FALSE(bool(stats.get("budget_unverified", true)));
+}
+
+TEST_CASE("[GaussianSplatting][VRAMBudgetRegulator] Known device capacity clamps an over-large budget (#321)") {
+    Ref<VRAMBudgetRegulator> regulator;
+    regulator.instantiate();
+    REQUIRE(regulator.is_valid());
+
+    VRAMBudgetConfig override_config;
+    // Request more than the device actually has; must clamp to real capacity.
+    override_config.budget_mb = 12288;
+    override_config.min_chunks = 2;
+    override_config.max_chunks = 16;
+    override_config.auto_regulate_enabled = false;
+    override_config.device_capacity_bytes = uint64_t(4096) * 1024u * 1024u; // 4 GB device.
+    override_config.device_capacity_known = true;
+
+    regulator->set_config_override(override_config);
+    regulator->initialize(nullptr);
+
+    Dictionary stats = regulator->get_debug_stats_dictionary();
+    CHECK(bool(stats.get("device_capacity_known", false)));
+    // requested_budget_mb preserves the pre-clamp ask; budget_mb is clamped to
+    // the detected device capacity rather than left at the unsafe request.
+    CHECK(int64_t(stats.get("requested_budget_mb", int64_t(-1))) == int64_t(12288));
+    CHECK(Math::is_equal_approx(float(stats.get("budget_mb", -1.0f)), 4096.0f));
+    CHECK(String(stats.get("source_budget_mb", String())) == String("detected_capacity_clamp"));
+    CHECK(bool(stats.get("budget_capacity_verified", false)));
+    CHECK_FALSE(bool(stats.get("budget_uses_unknown_capacity_fallback", true)));
+}

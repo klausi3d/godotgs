@@ -310,6 +310,8 @@ void VRAMBudgetRegulator::set_config_override(const VRAMBudgetConfig &p_config) 
     if (config.source_max_chunks.is_empty() || config.source_max_chunks == "project_default") {
         config.source_max_chunks = "runtime_override";
     }
+    // Pick up any trusted capacity carried on the override before applying.
+    _query_device_memory();
     _apply_config();
 }
 
@@ -322,12 +324,20 @@ void VRAMBudgetRegulator::clear_config_override() {
 }
 
 void VRAMBudgetRegulator::_query_device_memory() {
+    // A trusted device VRAM capacity may be supplied out-of-band (config override
+    // or an explicit project pin resolved in load_from_project_settings()). When
+    // present it is authoritative and must survive a re-query — RenderingDevice
+    // exposes no portable capacity API, so the only way the capacity-known path
+    // (and its precise budget clamp) becomes reachable is to honor that value
+    // instead of unconditionally forcing "unknown".
+    const bool config_capacity_known = config.device_capacity_known && config.device_capacity_bytes > 0;
+
     if (!rd) {
         stats.device_reported_usage_bytes = 0;
-        stats.device_capacity_bytes = 0;
         stats.device_available_bytes = 0;
         stats.device_memory_queryable = false;
-        stats.device_capacity_known = false;
+        stats.device_capacity_bytes = config_capacity_known ? config.device_capacity_bytes : 0;
+        stats.device_capacity_known = config_capacity_known;
         return;
     }
 
@@ -335,13 +345,18 @@ void VRAMBudgetRegulator::_query_device_memory() {
     stats.device_reported_usage_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
     stats.device_memory_queryable = (stats.device_reported_usage_bytes > 0);
 
-    // Capacity query fallback chain placeholder: unknown until platform-specific sources are wired.
-    stats.device_capacity_bytes = 0;
+    // Capacity is known only when a trusted source supplied it; otherwise it
+    // stays unknown until platform-specific query sources are wired.
+    stats.device_capacity_bytes = config_capacity_known ? config.device_capacity_bytes : 0;
     stats.device_available_bytes = 0;
-    stats.device_capacity_known = false;
+    stats.device_capacity_known = config_capacity_known;
 
     if (GaussianSplatting::is_debug_frame_logging_enabled()) {
-        if (stats.device_memory_queryable) {
+        if (stats.device_capacity_known) {
+            GS_LOG_STREAMING_INFO(vformat("[VRAM Regulator] Device capacity known: %d MB (reported usage %d MB)",
+                    stats.device_capacity_bytes / (1024 * 1024),
+                    stats.device_reported_usage_bytes / (1024 * 1024)));
+        } else if (stats.device_memory_queryable) {
             GS_LOG_STREAMING_INFO(vformat("[VRAM Regulator] Device usage queryable: %d MB reported usage (capacity unknown)",
                     stats.device_reported_usage_bytes / (1024 * 1024)));
         } else {

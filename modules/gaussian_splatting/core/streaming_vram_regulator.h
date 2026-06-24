@@ -40,6 +40,12 @@ struct VRAMBudgetConfig {
     bool budget_uses_unknown_capacity_fallback = false;
     bool budget_unverified = false;
 
+    // Real device VRAM capacity, when the caller can supply it from a trusted
+    // source (e.g. a platform query or an explicit project pin). 0 / false means
+    // capacity is genuinely unknown and the conservative fallback path applies.
+    uint64_t device_capacity_bytes = 0;
+    bool device_capacity_known = false;
+
     static VRAMBudgetConfig load_from_project_settings();
 };
 
