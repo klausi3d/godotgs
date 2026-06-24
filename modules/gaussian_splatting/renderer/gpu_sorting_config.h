@@ -64,9 +64,9 @@ struct GPUSortingConfig {
     uint32_t workgroup_size = GPUSortingConstants::DEFAULT_WORKGROUP_SIZE; // GPU workgroup size
 
     // Key layout
-    uint32_t key_bits = 32;                  // Sort key width (32 or 64)
-    uint32_t tile_bits = 16;                 // Bits reserved for tile_id in the key
-    uint32_t depth_bits = 16;                // Bits reserved for depth in the key
+    uint32_t key_bits = 64;                  // Sort key width (32 or 64); 64 is the only shippable default (32-bit flickers on real scans, GS-298)
+    uint32_t tile_bits = 32;                 // Bits reserved for tile_id in the key
+    uint32_t depth_bits = 32;                // Bits reserved for depth in the key
     bool enable_tie_breaker = false;         // Reserve low bits for splat_id tie-breaks
 
     // Performance monitoring and logging

@@ -202,9 +202,13 @@ void GPUSortingConfig::reset_to_defaults() {
     max_raster_splats_per_tile = 65536;
     radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS;
     workgroup_size = GPUSortingConstants::DEFAULT_WORKGROUP_SIZE;
-    key_bits = 32;  // Default 32-bit for 8 passes instead of 16
-    tile_bits = 16;
-    depth_bits = 16;
+    // 64-bit keys (32 tile + 32 depth) are the only shippable layout; 32-bit (16 depth bits)
+    // bands/flickers on real-scan content (GS-298). reset_to_defaults() is also the recovery
+    // path used by initialize_gpu_sorting_config() after a validation failure, so it must NOT
+    // yield the 32-bit layout without an explicit gpu_preset="custom" opt-in.
+    key_bits = 64;
+    tile_bits = 32;
+    depth_bits = 32;
     enable_tie_breaker = false;
     enable_performance_logging = false;
     performance_log_interval = 100;

@@ -573,6 +573,23 @@ TEST_CASE("[GaussianSplatting][Config] No preset or default path silently yields
 		CHECK(GPUSortingConfig::preset_ultra().key_bits == 64u);
 	}
 
+	SUBCASE("struct defaults and reset_to_defaults() (the recovery path) yield 64-bit keys") {
+		// initialize_gpu_sorting_config() falls back to reset_to_defaults() after a validation
+		// failure, so a project with an invalid GPU sorting setting must NOT silently run on the
+		// 32-bit layout. Guards both the struct member default and the explicit reset.
+		GPUSortingConfig fresh_defaults;
+		CHECK(fresh_defaults.key_bits == 64u);
+		CHECK(fresh_defaults.tile_bits == 32u);
+		CHECK(fresh_defaults.depth_bits == 32u);
+
+		GPUSortingConfig recovered;
+		recovered.key_bits = 32; // simulate a bad/legacy value before recovery
+		recovered.reset_to_defaults();
+		CHECK(recovered.key_bits == 64u);
+		CHECK(recovered.tile_bits == 32u);
+		CHECK(recovered.depth_bits == 32u);
+	}
+
 	SUBCASE("apply_preset by name never installs 32-bit keys") {
 		const char *names[] = { "low", "performance", "medium", "balanced",
 				"high", "quality", "ultra", "maximum" };
