@@ -3819,17 +3819,15 @@ void GaussianStreamingSystem::_update_vram_regulator() {
         return;
     }
 
-    // Regulator decisions (eviction trigger, admission gate via can_load_more_chunks,
-    // max-chunk regulation) must run on the *reclaimable* usage. Evicting chunks frees
-    // only budget.vram_usage, never the persistent-buffer allocation. Feeding the
-    // allocation-inclusive total here would pin usage_percent over threshold whenever
-    // the preallocated buffer alone exceeds the budget, so the regulator would keep
-    // denying admissions and ratchet the max chunk count down while no VRAM can actually
-    // be freed. The full allocation is still reported via get_vram_usage() / analytics;
-    // only the decision basis uses the evictable figure. (Codex #411)
-    budget.vram_regulator->update(_get_evictable_vram_usage_bytes(), budget.loaded_chunks_count,
-            budget.chunks_loaded_this_frame, eviction_controller.get_chunks_evicted_this_frame(),
-            total_frame_count);
+    // Feed the regulator BOTH bases: the allocation-inclusive total for reporting (debug
+    // overlay + budget warning, matching get_vram_usage()) and the reclaimable/evictable
+    // figure for decisions (admission gate + auto-regulation). Evicting/regulating frees only
+    // budget.vram_usage, never the persistent-buffer allocation, so decisions must not gate on
+    // the non-reclaimable allocation (it would deny loads / ratchet the cap down while no VRAM
+    // can be freed); but the overlay must still show the true footprint. (Codex #411)
+    budget.vram_regulator->update(_get_total_vram_usage_bytes(), _get_evictable_vram_usage_bytes(),
+            budget.loaded_chunks_count, budget.chunks_loaded_this_frame,
+            eviction_controller.get_chunks_evicted_this_frame(), total_frame_count);
 }
 
 void GaussianStreamingSystem::_log_streaming_frame_stats(uint32_t effective_max) {

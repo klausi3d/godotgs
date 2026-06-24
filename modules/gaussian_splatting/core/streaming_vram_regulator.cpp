@@ -387,24 +387,31 @@ void VRAMBudgetRegulator::_query_device_memory() {
     }
 }
 
-void VRAMBudgetRegulator::update(uint64_t current_vram_usage, uint32_t loaded_chunks,
+void VRAMBudgetRegulator::update(uint64_t p_reported_usage, uint64_t p_decision_usage, uint32_t loaded_chunks,
                                   uint32_t loads_this_frame, uint32_t evictions_this_frame,
                                   uint64_t current_frame) {
-    // Update stats
-    stats.current_usage_bytes = current_vram_usage;
+    // p_reported_usage is the allocation-inclusive footprint (persistent buffer + payload +
+    // auxiliary overhead) — it mirrors get_vram_usage()/end-frame vram_mb and is what the debug
+    // overlay and the budget warning must show. p_decision_usage is the reclaimable/evictable
+    // subset that admission and auto-regulation act on; gating those on the non-reclaimable
+    // allocation would deny loads or ratchet the chunk cap down while no VRAM can be freed.
+    // Keep the two separate so reporting is never under-counted by the decision basis. (Codex #411)
+    stats.current_usage_bytes = p_reported_usage;
     stats.loaded_chunks = loaded_chunks;
     stats.loaded_this_frame = loads_this_frame;
     stats.evicted_this_frame = evictions_this_frame;
     stats.current_max_chunks = current_max_chunks;
 
-    // Calculate usage percentage
+    decision_usage_bytes = p_decision_usage;
     if (stats.budget_bytes > 0) {
-        stats.usage_percent = (float(current_vram_usage) / float(stats.budget_bytes)) * 100.0f;
+        stats.usage_percent = (float(p_reported_usage) / float(stats.budget_bytes)) * 100.0f;
+        decision_usage_percent = (float(p_decision_usage) / float(stats.budget_bytes)) * 100.0f;
     } else {
         stats.usage_percent = 0.0f;
+        decision_usage_percent = 0.0f;
     }
 
-    // Check if we need to warn
+    // Warn on the true footprint approaching budget (reported, not the reclaimable subset).
     bool was_warning = stats.budget_warning_active;
     stats.budget_warning_active = (stats.usage_percent >= config.warning_threshold_percent);
 
@@ -412,15 +419,16 @@ void VRAMBudgetRegulator::update(uint64_t current_vram_usage, uint32_t loaded_ch
     if (stats.budget_warning_active && !was_warning) {
         WARN_PRINT(vformat("[VRAM Budget] Approaching VRAM limit: %.1f%% of %d MB budget used (%d MB)",
                 stats.usage_percent, config.budget_mb,
-                current_vram_usage / (1024 * 1024)));
+                p_reported_usage / (1024 * 1024)));
     }
 
     // Record activity for thrashing detection
     _record_activity(loads_this_frame, evictions_this_frame);
 
-    // Perform regulation if enabled
+    // Auto-regulation chases the budget by raising/lowering the chunk cap; reducing the cap only
+    // frees payload, so it must act on the reclaimable decision usage, not the full allocation.
     if (config.auto_regulate_enabled) {
-        _update_regulation(current_vram_usage, current_frame);
+        _update_regulation(p_decision_usage, current_frame);
     }
 }
 
@@ -429,6 +437,13 @@ void VRAMBudgetRegulator::_update_regulation(uint64_t current_usage, uint64_t cu
     if (current_frame - last_adjustment_frame < MIN_FRAMES_BETWEEN_ADJUSTMENTS) {
         return;
     }
+
+    // Regulate against the reclaimable basis the caller passes (decision usage), NOT
+    // stats.usage_percent which now reflects the full allocation-inclusive footprint:
+    // lowering the chunk cap frees only payload, never the persistent buffer. (Codex #411)
+    const float decision_percent = stats.budget_bytes > 0
+            ? (float(current_usage) / float(stats.budget_bytes)) * 100.0f
+            : 0.0f;
 
     // Check for thrashing - if detected, reduce chunks more aggressively
     if (_detect_thrashing()) {
@@ -453,7 +468,7 @@ void VRAMBudgetRegulator::_update_regulation(uint64_t current_usage, uint64_t cu
     uint32_t step_size = MAX(1u, uint32_t(float(config.max_chunks) * config.regulation_step_percent / 100.0f));
 
     // If over budget, reduce chunks
-    if (stats.usage_percent > float(config.warning_threshold_percent)) {
+    if (decision_percent > float(config.warning_threshold_percent)) {
         uint32_t new_max = MAX(config.min_chunks, current_max_chunks - step_size);
         if (new_max != current_max_chunks) {
             current_max_chunks = new_max;
@@ -461,11 +476,11 @@ void VRAMBudgetRegulator::_update_regulation(uint64_t current_usage, uint64_t cu
             stats.regulation_adjustments++;
 
             GS_LOG_STREAMING_DEBUG(vformat("[VRAM Regulator] Reducing max chunks: %d -> %d (usage: %.1f%%)",
-                    current_max_chunks + step_size, current_max_chunks, stats.usage_percent));
+                    current_max_chunks + step_size, current_max_chunks, decision_percent));
         }
     }
     // If well under budget and not at max, increase chunks
-    else if (stats.usage_percent < float(config.warning_threshold_percent) * 0.7f) {
+    else if (decision_percent < float(config.warning_threshold_percent) * 0.7f) {
         if (current_max_chunks < config.max_chunks) {
             uint32_t new_max = MIN(config.max_chunks, current_max_chunks + step_size);
             if (new_max != current_max_chunks) {
@@ -479,7 +494,7 @@ void VRAMBudgetRegulator::_update_regulation(uint64_t current_usage, uint64_t cu
                 }
 
                 GS_LOG_STREAMING_DEBUG(vformat("[VRAM Regulator] Increasing max chunks: %d -> %d (usage: %.1f%%)",
-                        current_max_chunks - step_size, current_max_chunks, stats.usage_percent));
+                        current_max_chunks - step_size, current_max_chunks, decision_percent));
             }
         }
     }
@@ -514,8 +529,11 @@ bool VRAMBudgetRegulator::can_load_more_chunks(uint32_t current_loaded) const {
         return false;
     }
 
-    // If approaching budget, be more conservative
-    if (stats.usage_percent >= float(config.warning_threshold_percent)) {
+    // If approaching budget, be more conservative. Gate on the reclaimable decision usage,
+    // not the reported allocation-inclusive percentage: loading a chunk into an existing slot
+    // grows payload, not the persistent-buffer allocation, so the non-reclaimable allocation
+    // must not block admission. Buffer growth has its own allocation-inclusive gate. (Codex #411)
+    if (decision_usage_percent >= float(config.warning_threshold_percent)) {
         // Only allow loading if we have significant headroom
         return current_loaded < current_max_chunks / 2;
     }
