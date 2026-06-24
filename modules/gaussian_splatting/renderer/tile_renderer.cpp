@@ -2578,9 +2578,10 @@ TileRenderer::GpuTimestampDurations TileRenderer::_compute_stage_durations(const
 }
 
 void TileRenderer::_update_timing_metrics(const GpuTimestampDurations &p_durations) {
-    if (!p_durations.has_data) {
-        return;
-    }
+	// Runs on EVERY call, including the no-data frames resolve_gpu_timestamps_async() forwards
+	// when a scene stops dispatching: per-pass ingestion self-skips without fresh data (all
+	// *_valid are false), but the staleness pass below MUST still run so sticky timings age out
+	// instead of reporting a previous scene's GPU cost forever.
 
 	// Per-pass GPU timestamps resolve only INTERMITTENTLY: the mid-frame buffer_get_data flush
 	// (prefix stage) wipes the main-submission markers on most frames, so only the sort — captured
@@ -2653,10 +2654,14 @@ void TileRenderer::_update_timing_metrics(const GpuTimestampDurations &p_duratio
 	frame_total += timing_state.resolve_gpu_timing_valid ? timing_state.last_resolve_gpu_ms : 0.0f;
 	timing_state.last_frame_gpu_ms = frame_total;
 	timing_state.frame_gpu_timing_valid = frame_total > 0.0f;
-	timing_state.gpu_timing_frame_serial = p_durations.serial;
-    timing_state.gpu_timing_frames_behind = (frame_state.current_frame_serial > p_durations.serial)
-            ? (frame_state.current_frame_serial - p_durations.serial)
-            : 0;
+	// Only fresh data advances the reported frame serial / frames-behind; a no-data ageing call
+	// must not stamp the default serial (UINT64_MAX) over the last real measurement.
+	if (p_durations.has_data) {
+		timing_state.gpu_timing_frame_serial = p_durations.serial;
+		timing_state.gpu_timing_frames_behind = (frame_state.current_frame_serial > p_durations.serial)
+				? (frame_state.current_frame_serial - p_durations.serial)
+				: 0;
+	}
 }
 
 void TileRenderer::resolve_gpu_timestamps_async() {
@@ -2677,6 +2682,9 @@ void TileRenderer::resolve_gpu_timestamps_async() {
         if (timing_state.gpu_timing_frame_serial > 0 && frame_state.current_frame_serial > timing_state.gpu_timing_frame_serial) {
             timing_state.gpu_timing_frames_behind = frame_state.current_frame_serial - timing_state.gpu_timing_frame_serial;
         }
+        // No fresh timestamps this frame (empty / no-dispatch view): still run the staleness pass
+        // so the sticky per-pass timings age out instead of reporting the last scene's cost forever.
+        _update_timing_metrics(GpuTimestampDurations());
         return;
     }
 
