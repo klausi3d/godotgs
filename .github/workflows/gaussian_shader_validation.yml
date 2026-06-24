@@ -37,6 +37,13 @@ concurrency:
 jobs:
   shader-validation:
     name: Runtime Shader Matrix + Contracts
+    # Never run self-hosted Windows on untrusted fork PR code. Same-repo branches
+    # (maintainer PRs), push, and workflow_dispatch still run; fork PRs are skipped.
+    # Mirrors the guard used in gaussian_production_gates.yml and protects the
+    # persistent runner from arbitrary checked-out repo code (compile_shaders.py and
+    # anything under modules/.../shaders). (merge_group is maintainer-gated — see the
+    # runner trust boundary in .github/workflows/README.md.)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: [self-hosted, Windows, X64, godotgs]
     timeout-minutes: 20
     env:

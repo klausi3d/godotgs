@@ -56,6 +56,37 @@ repo does not track a qlty configuration/log contract. If branch protection
 later requires qlty, update the manifest before treating a qlty result as part
 of public-alpha signoff.
 
+## Runner Trust Boundary (fork PRs)
+
+The self-hosted Windows/GPU runners are persistent and must never execute
+untrusted code from a **fork pull request**. The self-hosted jobs carry a fork guard
+so fork PRs are skipped on those runners, while same-repo (maintainer) PRs, `push`,
+and `workflow_dispatch` still run:
+
+```yaml
+if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+```
+
+- `baseline_qa.yml` — `gpu-tests`, `gpu-harness` (form above).
+- `gaussian_production_gates.yml` — `guards`, `module-validation` (form above).
+- `gaussian_shader_validation.yml` — `shader-validation` (form above).
+- `release_builds.yml` — `build_windows` uses the **stricter** `if: github.event_name != 'pull_request'`, which skips **all** pull requests (fork *and* same-repo); the Windows release lane runs on `push`/tag/schedule/dispatch only.
+
+`pull_request_target` is not used by any workflow, so fork PRs never get a privileged
+checkout. A fork PR's GPU/Windows validation happens only after a maintainer reviews
+the change and moves it onto a same-repo branch.
+
+**Merge queue (`merge_group`).** These workflows also trigger on `merge_group`, where
+the self-hosted jobs run. Only users with write access can add a PR to the merge
+queue, so queued content is **maintainer-gated**: a queued fork PR's code would run on
+the self-hosted runner, which is an accepted maintainer-gated property (the same trust
+as merging). Restricting `merge_group` to same-repo-only queued PRs via a head-repo
+preflight is a possible future hardening; it is out of scope here, which keeps this
+change focused on the fork-`pull_request` boundary.
+
+Any change that relaxes this boundary must be documented here and approved by a
+maintainer (see the project governance docs under `docs/governance/`).
+
 ## Scheduled Triggers
 
 | Workflow | Schedule (UTC) | Behavior |
