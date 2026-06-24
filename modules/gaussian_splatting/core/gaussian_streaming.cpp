@@ -3342,14 +3342,18 @@ uint64_t GaussianStreamingSystem::_get_total_vram_usage_bytes() const {
 }
 
 uint64_t GaussianStreamingSystem::_get_evictable_vram_usage_bytes() const {
-    // Eviction/regulation basis. Only the loaded chunk payload (budget.vram_usage) is
-    // reclaimable by evicting chunks; the persistent buffer ALLOCATION (the resident_buffer
-    // term in _get_total_vram_usage_bytes) is NOT freed by eviction. Gating eviction on the
-    // full allocation would, whenever the preallocated buffer is sized above the budget
-    // (e.g. a small vram_budget_mb with a large initial chunk capacity), keep the loop over
-    // budget forever and evict every loaded/visible chunk each frame without freeing any
-    // VRAM. Reporting (get_vram_usage / analytics) uses the full allocation; eviction uses this.
-    return budget.vram_usage + _get_auxiliary_vram_overhead_bytes();
+    // Eviction/regulation/admission decision basis: ONLY the bytes that evicting chunks can
+    // actually reclaim. Evicting a chunk frees only its slot in the persistent buffer, i.e. it
+    // reduces budget.vram_usage. It does NOT free either non-reclaimable fixed cost:
+    //   - the persistent-buffer ALLOCATION (the resident_buffer term in _get_total_vram_usage_bytes), nor
+    //   - the auxiliary atlas/quantization overhead (_get_auxiliary_vram_overhead_bytes).
+    // Including EITHER here would, whenever that fixed cost is large relative to the budget,
+    // keep the decision basis above threshold even after every chunk is evicted — recreating
+    // the infinite-pressure / evict-every-visible-chunk loop with no VRAM actually freed. The
+    // only quantity that always falls to zero as chunks are evicted is the payload itself, so
+    // that is the reclaimable basis. Reporting (get_vram_usage / analytics / overlay) and the
+    // budget warning use the full allocation-inclusive total; decisions use this. (Codex #411)
+    return budget.vram_usage;
 }
 
 uint32_t GaussianStreamingSystem::_get_reserved_chunk_count() const {
