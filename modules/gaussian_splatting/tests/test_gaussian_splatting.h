@@ -58,6 +58,7 @@
 #include "test_shadow_pass_isolation.h"
 #include "test_shadow_instance_subset.h"
 #include "test_scene_director_submission_scaffolding.h"
+#include "test_scene_director_asset_id_collision.h"
 #include "test_sentinel_tier_defaults.h"
 #include "generate_synthetic_ply_fixtures.h"
 
