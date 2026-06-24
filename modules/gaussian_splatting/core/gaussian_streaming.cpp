@@ -1084,6 +1084,27 @@ bool GaussianStreamingSystem::_try_grow_persistent_buffer_for_atlas_pressure(uin
 
     const uint64_t target64 = MIN<uint64_t>(uint64_t(streaming_current_capacity) * 2u,
             uint64_t(growth_ceiling));
+
+    // Allocation-inclusive growth gate. The regulator is fed the *evictable* usage so
+    // eviction/admission-into-existing-slots ignore the non-reclaimable persistent buffer
+    // (see _update_vram_regulator). Growth is different: it ENLARGES that allocation, so
+    // p_vram_regulator_allows_load (derived from can_load_more_chunks on reclaimable usage)
+    // would stay under threshold and let the buffer grow past budget while get_vram_usage()
+    // is already over. Gate growth on the projected allocation-inclusive total instead, so
+    // we never grow the persistent buffer beyond the configured VRAM budget. (Codex #411)
+    if (p_enforce_vram_regulator_gate && budget.vram_regulator.is_valid()) {
+        const uint64_t budget_bytes = budget.vram_regulator->get_debug_stats().budget_bytes;
+        if (budget_bytes > 0) {
+            const uint64_t chunk_bytes = uint64_t(CHUNK_SIZE) * sizeof(PackedGaussian);
+            const uint64_t projected_persistent_bytes = target64 * chunk_bytes;
+            const uint64_t projected_total_bytes =
+                    MAX(budget.vram_usage, projected_persistent_bytes) + _get_auxiliary_vram_overhead_bytes();
+            if (projected_total_bytes > budget_bytes) {
+                return false;
+            }
+        }
+    }
+
     return _grow_persistent_buffer(static_cast<uint32_t>(target64));
 }
 
