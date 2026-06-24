@@ -1082,7 +1082,7 @@ bool GaussianStreamingSystem::_try_grow_persistent_buffer_for_atlas_pressure(uin
         return false;
     }
 
-    const uint64_t target64 = MIN<uint64_t>(uint64_t(streaming_current_capacity) * 2u,
+    uint64_t target64 = MIN<uint64_t>(uint64_t(streaming_current_capacity) * 2u,
             uint64_t(growth_ceiling));
 
     // Allocation-inclusive growth gate. The regulator is fed the *evictable* usage so
@@ -1090,21 +1090,30 @@ bool GaussianStreamingSystem::_try_grow_persistent_buffer_for_atlas_pressure(uin
     // (see _update_vram_regulator). Growth is different: it ENLARGES that allocation, so
     // p_vram_regulator_allows_load (derived from can_load_more_chunks on reclaimable usage)
     // would stay under threshold and let the buffer grow past budget while get_vram_usage()
-    // is already over. Gate growth on the projected allocation-inclusive total instead, so
-    // we never grow the persistent buffer beyond the configured VRAM budget. (Codex #411)
+    // is already over. Bound the growth target by the budget instead, so we never grow the
+    // persistent buffer beyond the configured VRAM budget. CLAMP the target down to the
+    // largest in-budget slot count rather than refusing growth outright: with room for some
+    // (but not the doubled) slots we should still grow as far as the budget allows, or a
+    // low-budget config would plateau the atlas below its usable capacity. (Codex #411)
     if (p_enforce_vram_regulator_gate && budget.vram_regulator.is_valid()) {
         const uint64_t budget_bytes = budget.vram_regulator->get_debug_stats().budget_bytes;
         if (budget_bytes > 0) {
             const uint64_t chunk_bytes = uint64_t(CHUNK_SIZE) * sizeof(PackedGaussian);
-            const uint64_t projected_persistent_bytes = target64 * chunk_bytes;
-            const uint64_t projected_total_bytes =
-                    MAX(budget.vram_usage, projected_persistent_bytes) + _get_auxiliary_vram_overhead_bytes();
-            if (projected_total_bytes > budget_bytes) {
-                return false;
+            const uint64_t aux_bytes = _get_auxiliary_vram_overhead_bytes();
+            // Largest persistent-buffer slot count whose allocation-inclusive total
+            // (slots*chunk_bytes + aux; the grown buffer dominates the payload) fits the budget.
+            const uint64_t budget_for_persistent = budget_bytes > aux_bytes ? (budget_bytes - aux_bytes) : 0;
+            const uint64_t budget_max_slots = chunk_bytes > 0 ? budget_for_persistent / chunk_bytes : 0;
+            if (budget_max_slots <= uint64_t(streaming_current_capacity)) {
+                return false; // no in-budget headroom to grow into
             }
+            target64 = MIN(target64, budget_max_slots);
         }
     }
 
+    if (target64 <= uint64_t(streaming_current_capacity)) {
+        return false;
+    }
     return _grow_persistent_buffer(static_cast<uint32_t>(target64));
 }
 
