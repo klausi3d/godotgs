@@ -2590,7 +2590,9 @@ void TileRenderer::_update_timing_metrics(const GpuTimestampDurations &p_duratio
 	// resolved per-pass value with 0 on a frame where that pass didn't resolve: keep the last-known
 	// GPU time and a sticky valid flag, so the monitors show stable real values instead of flickering
 	// to 0. (_reset_timestamp_tracking() zeros these when timestamp capture is disabled.)
-	const uint64_t cur_serial = frame_state.current_frame_serial;
+	// Age against a per-resolve counter, not the rasterizer frame serial (which freezes on the
+	// empty/no-dispatch path), so sticky timings expire on an empty view (Codex follow-up on #397).
+	const uint64_t cur_serial = ++timing_state.gpu_timing_age_serial;
 	if (p_durations.count_valid) {
 		timing_state.last_overlap_count_gpu_ms = (float)p_durations.count_ms;
 		timing_state.overlap_count_gpu_timing_valid = true;
