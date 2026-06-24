@@ -1310,7 +1310,15 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 				sorter_recreated = true;
 			}
 		} else if (!sorter.is_valid() || capacity < attempt_elements || key_config_changed || wants_shrink) {
-			if (sorter.is_valid()) {
+			// A pure bounded shrink (entered ONLY via wants_shrink, with a valid sorter
+			// that already satisfies demand and key config) is an OPTIONAL VRAM reclaim:
+			// build the smaller replacement BEFORE retiring the working sorter so a
+			// failed/unsuitable shrink keeps the larger-but-correct sorter instead of
+			// dropping to unsorted tiles. Growth / key-config change / invalid sorter
+			// MUST replace in place — the existing sorter cannot satisfy the new demand,
+			// so unsorted is the only available fallback there.
+			const bool must_recreate = !sorter.is_valid() || capacity < attempt_elements || key_config_changed;
+			if (must_recreate && sorter.is_valid()) {
 				sorter->shutdown();
 				sorter.unref();
 			}
@@ -1327,18 +1335,34 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 			// shrink target never recreates above max_overlap_records.
 			const uint32_t resize_elements = wants_shrink ? effective_demand : attempt_elements;
 
+			// must_recreate failures render unsorted; an optional-shrink failure keeps
+			// the working sorter untouched and simply skips the reclaim this frame.
+			auto handle_recreate_failure = [&](const char *p_reason) {
+				if (must_recreate) {
+					disable_sorter(p_reason);
+				} else {
+					WARN_PRINT_ONCE("[TileRenderer] Bounded overlap shrink could not build a smaller sorter; keeping the current sort capacity");
+				}
+			};
+
 			// Global composite sort requires indirect support for GPU-driven element count.
 			if (!GPUSorterFactory::probe_supports_indirect(GPUSorterFactory::ALGORITHM_RADIX, device)) {
-				disable_sorter("[TileRenderer] Global composite sort requires RadixSort indirect support; rendering unsorted tiles");
+				handle_recreate_failure("[TileRenderer] Global composite sort requires RadixSort indirect support; rendering unsorted tiles");
 			} else {
 				Ref<IGPUSorter> created_sorter = GPUSorterFactory::create_sorter(
 						GPUSorterFactory::ALGORITHM_RADIX, device, resize_elements, config_to_use);
 				if (!created_sorter.is_valid()) {
-					disable_sorter("[TileRenderer] Failed to create global composite GPU sorter; rendering unsorted tiles");
+					handle_recreate_failure("[TileRenderer] Failed to create global composite GPU sorter; rendering unsorted tiles");
 				} else if (!created_sorter->supports_indirect()) {
 					created_sorter->shutdown();
-					disable_sorter("[TileRenderer] Created sorter does not support indirect sorting; rendering unsorted tiles");
+					handle_recreate_failure("[TileRenderer] Created sorter does not support indirect sorting; rendering unsorted tiles");
 				} else {
+					// Replacement is good. For a pure shrink the old sorter is still live;
+					// retire it now that the smaller one is known to initialize.
+					if (!must_recreate && sorter.is_valid()) {
+						sorter->shutdown();
+						sorter.unref();
+					}
 					sorter = created_sorter;
 					key_config = desired_key_config;
 					capacity = sorter->get_max_elements();
