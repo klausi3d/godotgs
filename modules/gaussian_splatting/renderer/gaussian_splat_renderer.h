@@ -186,7 +186,8 @@ private:
     // Phase 15: _push_texture_trace removed (dead code)
     void _push_cross_device_operation(const String &p_context, RenderingDevice *p_source, RenderingDevice *p_target);
     Dictionary _build_device_capability_report() const;
-    void _check_dual_state_sync(const char *p_context) const;
+    // _check_dual_state_sync removed: it was a documented canonical-vs-derived state
+    // guardrail but never validated anything (no-op). See the .cpp deletion note.
 
 public:
     // State types (public for orchestrator access)

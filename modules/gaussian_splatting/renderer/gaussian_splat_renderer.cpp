@@ -2015,19 +2015,13 @@ RID GaussianSplatRenderer::_get_viewport_color_target(RenderSceneBuffersRD *p_re
     return RID();
 }
 
-void GaussianSplatRenderer::_check_dual_state_sync(const char *p_context) const {
-#ifdef DEV_ENABLED
-    if (!debug_state_orchestrator || !get_debug_config().enable_state_guardrails) {
-        return;
-    }
-    if (!config_orchestrator || !data_orchestrator || !instancing_orchestrator || !device_orchestrator || !resource_orchestrator
-            || !sorting_orchestrator || !quality_orchestrator) {
-        return;
-    }
-
-    (void)p_context;
-#endif
-}
+// _check_dual_state_sync was removed: it was advertised as the canonical-vs-derived
+// state guardrail but only null-checked the orchestrators and validated nothing
+// (a (void)p_context no-op). Keeping it gave false confidence in a codebase with a
+// desync-bug history, so the no-op and its call site were deleted outright rather
+// than silently retained. If a real canonical-vs-derived comparison is implemented
+// later, gate it on get_debug_config().enable_state_guardrails (still exposed via
+// set_debug_state_guardrails_enabled) and reintroduce an explicit check here.
 
 void GaussianSplatRenderer::_set_manual_viewport_format(RD::DataFormat p_format, const char *p_context) {
     (void)p_context;
@@ -2183,7 +2177,7 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
     }
 
     get_resource_state().deletion_queue.process_frame();
-    _check_dual_state_sync("render_scene_instance");
+    // Dual-state-sync guardrail removed (was a no-op); see _check_dual_state_sync deletion note.
 
     if (get_subsystem_state().output_compositor.is_valid()) {
         auto &output_cache = get_subsystem_state().output_compositor->get_cache_state();
