@@ -961,7 +961,10 @@ void GaussianImportDialog::configure_for_file(const String &p_source_path, const
     } else if (baseline_options.has(StringName("quality/preset"))) {
         target_preset = String(baseline_options[StringName("quality/preset")]).to_lower();
     } else {
-        target_preset = gaussian_get_import_preset_by_index(1).id; // default to desktop/high
+        // Resolve the manual-dialog default by name, not by list index: the .ply/.spz
+        // importer now seeds "ultra" at index 0 (its Godot default), which shifts every
+        // positional index. "desktop" is the balanced dialog fallback regardless of order.
+        target_preset = gaussian_get_import_preset_by_name("desktop").id;
     }
 
     _apply_preset_defaults(gaussian_get_import_preset_by_name(target_preset));
