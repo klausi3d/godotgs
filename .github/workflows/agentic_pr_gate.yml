@@ -1,0 +1,83 @@
+name: Agentic PR Gate
+
+# Fork-safe, always-on required gate. Runs on every pull request (no path filter)
+# and on the merge queue, entirely on a GitHub-hosted runner, so external fork PRs
+# always get a blocking signal without touching the persistent self-hosted runners.
+#
+# The branch-protection required status check is the JOB name, "agentic-pr-gate"
+# (unique across workflows, per GitHub's required-checks rules). The PR checks UI
+# displays it as "Agentic PR Gate / agentic-pr-gate".
+
+on:
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentic-pr-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"
+
+jobs:
+  agentic-pr-gate:
+    name: agentic-pr-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # This gate checks out fork-PR-controlled code and runs scripts/tests from it.
+          # Do not leave the GITHUB_TOKEN in local git config where an invoked script
+          # could read it; the gate runs no authenticated git commands after checkout.
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate agentic control plane
+        run: python scripts/agentic/validate_repo_contract.py
+
+      - name: Exercise contract validators on shipped templates
+        run: |
+          python scripts/agentic/validate_review.py --review .agentic/templates/review.json
+          python scripts/agentic/check_pr_contract.py \
+            --contract .agentic/templates/task.json \
+            --paths modules/gaussian_splatting/logger/example.cpp
+
+      - name: Re-derive risk class from this PR's diff
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          echo "Risk class derived from the changed files in this PR:"
+          python scripts/agentic/classify_change.py --base-ref "${{ github.event.pull_request.base.sha }}"
+
+      - name: Run agentic unit tests
+        run: python -m unittest discover -s tests/agentic -v
+
+      - name: Check documentation links (full docs surface, present paths)
+        # Checks the full docs tree plus the root governance docs. Only existing paths
+        # are passed so the gate is robust on trees that don't carry the whole
+        # foundation yet (e.g. before the AGENTS.md hierarchy lands); on master, where
+        # all are present, this is the full-docs link check.
+        run: |
+          targets=()
+          for p in docs README.md BUILDING.md CONTRIBUTING.md AGENTS.md CLAUDE.md; do
+            [ -e "$p" ] && targets+=("$p")
+          done
+          if [ ${#targets[@]} -eq 0 ]; then
+            echo "No documentation present in this tree; skipping link check."
+          else
+            echo "Link-checking: ${targets[*]}"
+            python scripts/docs/check_links.py "${targets[@]}"
+          fi
+
+      - name: Run guard-only checks (GPU-free, portable)
+        run: python tests/ci/run_module_tests.py --guard-only

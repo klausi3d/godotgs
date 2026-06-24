@@ -1,0 +1,53 @@
+name: Design Change (R3 / architecture)
+description: Propose a high-risk or architectural change (engine delta, on-disk format, public API, release/security) before implementation.
+title: "[design]: "
+labels: ["design-change", "needs-adr"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for **R3** or architecture-affecting changes. A design record must be
+        agreed before implementation. See `docs/governance/agentic-engineering.md` and
+        `docs/governance/review-policy.md`.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What problem does this solve, and why now?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: The design, including affected subsystems and paths.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches and why they were rejected.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and migration
+      description: Impact on on-disk formats, public APIs, and existing scenes/projects; migration path.
+    validations:
+      required: true
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Rollback
+      description: How the change can be reverted if it regresses.
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk and evidence plan
+      description: Key risks and the evidence (tests, GPU/runtime, benchmarks) that will validate the change.
+    validations:
+      required: true

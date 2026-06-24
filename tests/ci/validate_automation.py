@@ -301,6 +301,7 @@ def check_ci_workflow() -> bool:
         ".github/workflows/baseline_qa.yml",
         ".github/workflows/gaussian_production_gates.yml",
         ".github/workflows/gaussian_shader_validation.yml",
+        ".github/workflows/agentic_pr_gate.yml",
     ]
 
     try:

@@ -1,0 +1,52 @@
+# Code owners for GodotGS.
+#
+# Listed paths require review from @klausi3D before merge. There is intentionally
+# no global owner so that unlisted, low-risk paths are not blocked; the sensitive
+# surfaces below — CI/security, agent governance, the GPU render path, on-disk
+# formats, the Godot engine delta, and tests — always need maintainer review.
+#
+# See docs/governance/github-settings.md for the branch-protection settings that
+# make CODEOWNER review enforceable.
+
+/.github/                                    @klausi3D
+/.agentic/                                   @klausi3D
+# All of /scripts/ — these are CI/tooling helpers executed by the workflows
+# (e.g. scripts/agentic/*, scripts/docs/check_links.py, scripts/build_documentation.py,
+# scripts/stage_public_docs.py), so changing them changes CI behavior.
+/scripts/                                    @klausi3D
+/AGENTS.md                                   @klausi3D
+/CLAUDE.md                                   @klausi3D
+/docs/governance/                            @klausi3D
+
+# GPU render path, compute, streaming/LOD, and host/shader contracts (risk class R2).
+/modules/gaussian_splatting/renderer/        @klausi3D
+/modules/gaussian_splatting/shaders/         @klausi3D
+/modules/gaussian_splatting/compute/         @klausi3D
+/modules/gaussian_splatting/lod/             @klausi3D
+/modules/gaussian_splatting/asset_management/ @klausi3D
+/modules/gaussian_splatting/core/*streaming* @klausi3D
+/modules/gaussian_splatting/core/*residency* @klausi3D
+/modules/gaussian_splatting/core/*vram*      @klausi3D
+
+# On-disk / serialization formats (risk class R3).
+/modules/gaussian_splatting/persistence/     @klausi3D
+/modules/gaussian_splatting/io/              @klausi3D
+
+# Release-gate policy manifest (risk class R3).
+/docs/reference/renderer_release_gate_manifest.json @klausi3D
+
+# Godot engine delta (risk class R3) — must match the R3 engine-delta paths in
+# .agentic/policy.json.
+/servers/                                    @klausi3D
+/scene/                                      @klausi3D
+/editor/                                     @klausi3D
+/platform/                                   @klausi3D
+/core/                                       @klausi3D
+/drivers/                                    @klausi3D
+/main/                                       @klausi3D
+/thirdparty/                                 @klausi3D
+/SConstruct                                  @klausi3D
+/methods.py                                  @klausi3D
+
+# Test and CI harness (the deterministic-check / release-gate runners are R3 in policy).
+/tests/                                      @klausi3D
