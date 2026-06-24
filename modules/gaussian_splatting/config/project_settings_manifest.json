@@ -668,6 +668,17 @@
       "test_coverage": "covered"
     },
     {
+      "effective_state": "g_gpu_sorting_config.adaptive_overlap_budget_enabled",
+      "key": "rendering/gaussian_splatting/gpu_sorting/adaptive_overlap_budget_enabled",
+      "notes": "Sizes the global composite-sort buffer to measured overlap demand instead of the visible*50 estimate. Requires bounded_buffer_shrink_enabled to reclaim. Default off.",
+      "test_coverage": "covered"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.bounded_buffer_shrink_enabled",
+      "key": "rendering/gaussian_splatting/gpu_sorting/bounded_buffer_shrink_enabled",
+      "test_coverage": "inventory_only"
+    },
+    {
       "effective_state": "g_gpu_sorting_config.debug_validate_prefix",
       "key": "rendering/gaussian_splatting/gpu_sorting/debug_validate_prefix",
       "test_coverage": "inventory_only"
@@ -722,6 +733,12 @@
       "effective_state": "g_gpu_sorting_config.max_overlap_records",
       "key": "rendering/gaussian_splatting/gpu_sorting/max_overlap_records",
       "test_coverage": "inventory_only"
+    },
+    {
+      "effective_state": "g_gpu_sorting_config.max_overlap_records_adaptive_min",
+      "key": "rendering/gaussian_splatting/gpu_sorting/max_overlap_records_adaptive_min",
+      "notes": "Lower bound on the adaptive overlap budget (clamped <= max_overlap_records). Only used when adaptive_overlap_budget_enabled.",
+      "test_coverage": "covered"
     },
     {
       "effective_state": "g_gpu_sorting_config.max_raster_splats_per_tile",

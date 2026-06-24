@@ -4,12 +4,27 @@
 #include "core/os/os.h"
 #include "../logger/gs_logger.h"
 
+namespace {
+// Read max_overlap_records_adaptive_min defensively. The setting feeds an unsigned
+// field, so a negative project value would wrap to a huge number and — via the
+// accessor's upper clamp to max_overlap_records — pin the adaptive floor at the hard
+// cap, silently disabling the shrink it is meant to bound. Read as signed and clamp to
+// a sane lower bound (>=1) before narrowing.
+uint32_t _load_adaptive_min(ProjectSettings *p_ps, const String &p_path, int64_t p_default) {
+    const int64_t raw = int64_t(p_ps->get_setting(p_path, p_default));
+    return uint32_t(CLAMP(raw, int64_t(1), int64_t(UINT32_MAX)));
+}
+} // namespace
+
 // Project settings paths
 const String GPUSortingConfig::SECTION_PATH = "rendering/gaussian_splatting/gpu_sorting/";
 const String GPUSortingConfig::TARGET_TIME_PATH = "rendering/gaussian_splatting/sorting/target_sort_time_ms";
 const String GPUSortingConfig::LEGACY_TARGET_TIME_PATH = SECTION_PATH + "target_sort_time_ms";
 const String GPUSortingConfig::MAX_ELEMENTS_PATH = SECTION_PATH + "max_sort_elements";
 const String GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH = SECTION_PATH + "max_overlap_records";
+const String GPUSortingConfig::BOUNDED_BUFFER_SHRINK_PATH = SECTION_PATH + "bounded_buffer_shrink_enabled";
+const String GPUSortingConfig::ADAPTIVE_OVERLAP_BUDGET_PATH = SECTION_PATH + "adaptive_overlap_budget_enabled";
+const String GPUSortingConfig::MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH = SECTION_PATH + "max_overlap_records_adaptive_min";
 const String GPUSortingConfig::MAX_RASTER_SPLATS_PER_TILE_PATH = SECTION_PATH + "max_raster_splats_per_tile";
 const String GPUSortingConfig::RADIX_BITS_PATH = SECTION_PATH + "radix_bits";
 const String GPUSortingConfig::WORKGROUP_SIZE_PATH = SECTION_PATH + "workgroup_size";
@@ -63,6 +78,16 @@ void GPUSortingConfig::load_from_project_settings() {
             validate_sorted_output = ps->get_setting(VALIDATE_SORTED_OUTPUT_PATH, validate_sorted_output);
             enable_stage_timestamps = ps->get_setting(ENABLE_STAGE_TIMESTAMPS_PATH, enable_stage_timestamps);
             subgroup_prefix_mode = static_cast<uint8_t>(ps->get_setting(SUBGROUP_PREFIX_MODE_PATH, int(subgroup_prefix_mode)));
+            // bounded_buffer_shrink / adaptive_overlap_budget / adaptive_min govern
+            // scratch-buffer reclaim, NOT the sort LAYOUT (key/tile/depth bits), so a
+            // project override must win under a named preset too — otherwise the VRAM
+            // wins are unreachable for anyone on the default "high" preset. No preset
+            // customizes them (apply_preset establishes the off/100000 baseline above),
+            // so reading with the current value as default honors an explicit project
+            // setting without promoting a preset's intentional layout choice.
+            bounded_buffer_shrink_enabled = ps->get_setting(BOUNDED_BUFFER_SHRINK_PATH, bounded_buffer_shrink_enabled);
+            adaptive_overlap_budget_enabled = ps->get_setting(ADAPTIVE_OVERLAP_BUDGET_PATH, adaptive_overlap_budget_enabled);
+            max_overlap_records_adaptive_min = _load_adaptive_min(ps, MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH, max_overlap_records_adaptive_min);
             // Honor an EXPLICITLY-overridden project max_overlap_records even
             // under a named preset. The preset supplies the per-tile overlap-sort
             // budget as a DEFAULT, but a value the project author set on purpose
@@ -97,6 +122,9 @@ void GPUSortingConfig::load_from_project_settings() {
     max_sort_elements = ps->get_setting(MAX_ELEMENTS_PATH, 50000000);
     max_overlap_records = has_overlap ? uint32_t(overlap_setting) : 100000000u;
     max_raster_splats_per_tile = ps->get_setting(MAX_RASTER_SPLATS_PER_TILE_PATH, 65536);
+    bounded_buffer_shrink_enabled = ps->get_setting(BOUNDED_BUFFER_SHRINK_PATH, false);
+    adaptive_overlap_budget_enabled = ps->get_setting(ADAPTIVE_OVERLAP_BUDGET_PATH, false);
+    max_overlap_records_adaptive_min = _load_adaptive_min(ps, MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH, 100000);
     GS_LOG_GPU_SORT_INFO(vformat("[GPUSortingConfig] LOADED: max_sort_elements=%d max_overlap_records=%d (has_elements=%d has_overlap=%d)",
             max_sort_elements, max_overlap_records, int(has_elements), int(has_overlap)));
 
@@ -136,6 +164,9 @@ void GPUSortingConfig::save_to_project_settings() const {
     }
     ps->set_setting(MAX_ELEMENTS_PATH, max_sort_elements);
     ps->set_setting(MAX_OVERLAP_RECORDS_PATH, max_overlap_records);
+    ps->set_setting(BOUNDED_BUFFER_SHRINK_PATH, bounded_buffer_shrink_enabled); // GS_CI_ALLOW_RENDER_PATH_SETTING_MUTATION
+    ps->set_setting(ADAPTIVE_OVERLAP_BUDGET_PATH, adaptive_overlap_budget_enabled); // GS_CI_ALLOW_RENDER_PATH_SETTING_MUTATION
+    ps->set_setting(MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH, max_overlap_records_adaptive_min); // GS_CI_ALLOW_RENDER_PATH_SETTING_MUTATION
     ps->set_setting(MAX_RASTER_SPLATS_PER_TILE_PATH, max_raster_splats_per_tile);
 
     ps->set_setting(RADIX_BITS_PATH, radix_bits);
@@ -184,6 +215,9 @@ void GPUSortingConfig::reset_to_defaults() {
     validate_sorted_output = false;
     enable_stage_timestamps = true;
     subgroup_prefix_mode = SUBGROUP_PREFIX_AUTO;
+    bounded_buffer_shrink_enabled = false;
+    adaptive_overlap_budget_enabled = false;
+    max_overlap_records_adaptive_min = 100000;
 
     GS_LOG_GPU_SORT_INFO("[GPU Sorting Config] Reset to default configuration");
 }
@@ -202,7 +236,7 @@ bool GPUSortingConfig::validate() const {
            max_overlap_records <= MAX_OVERLAP_RECORDS_LIMIT &&
            max_raster_splats_per_tile >= MIN_RASTER_SPLATS_PER_TILE &&
            max_raster_splats_per_tile <= MAX_RASTER_SPLATS_PER_TILE &&
-           (radix_bits == GPUSortingConstants::DEFAULT_RADIX_BITS || radix_bits == GPUSortingConstants::RADIX_BITS) &&
+           (radix_bits == 4 || radix_bits == 8) && // both supported; 4-bit is the default (8-bit measured slower, see gpu_sorting_constants.h); matches get_validation_errors
            (workgroup_size == 64 || workgroup_size == 128 || workgroup_size == 256 || workgroup_size == 512) &&
            (key_bits == 32 || key_bits == 64) &&
            (tile_bits + depth_bits > 0) &&
@@ -333,7 +367,7 @@ GPUSortingConfig GPUSortingConfig::preset_low() {
     config.max_raster_splats_per_tile = 4096;
 
     // Radix parameters - smaller workgroups for better occupancy
-    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // Standard 4-bit radix
+    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // 4-bit radix (DEFAULT_RADIX_BITS); 8-bit measured slower for our workload
     config.workgroup_size = 128;             // Smaller workgroups for limited compute units
 
     // Key layout - 32-bit keys to reduce memory bandwidth
@@ -367,7 +401,7 @@ GPUSortingConfig GPUSortingConfig::preset_medium() {
     config.max_raster_splats_per_tile = 8192;
 
     // Radix parameters - standard configuration
-    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // Standard 4-bit radix
+    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // 4-bit radix (DEFAULT_RADIX_BITS); 8-bit measured slower for our workload
     config.workgroup_size = GPUSortingConstants::DEFAULT_WORKGROUP_SIZE; // Standard workgroup size
 
     // Key layout - 64-bit for precision
@@ -401,7 +435,7 @@ GPUSortingConfig GPUSortingConfig::preset_high() {
     config.max_raster_splats_per_tile = 12288;
 
     // Radix parameters - optimized for throughput
-    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // 4-bit radix (8-bit has higher memory pressure)
+    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // 4-bit radix (DEFAULT_RADIX_BITS); 8-bit measured slower (larger histograms, lower occupancy)
     config.workgroup_size = GPUSortingConstants::DEFAULT_WORKGROUP_SIZE; // Standard workgroup size
 
     // Key layout - full precision
@@ -435,7 +469,7 @@ GPUSortingConfig GPUSortingConfig::preset_ultra() {
     config.max_raster_splats_per_tile = 16384;
 
     // Radix parameters - maximum throughput
-    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // 4-bit radix for consistent performance
+    config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // 4-bit radix (DEFAULT_RADIX_BITS); 8-bit measured slower for our workload
     config.workgroup_size = GPUSortingConstants::DEFAULT_WORKGROUP_SIZE; // Can try 512 on very high-end GPUs
 
     // Key layout - maximum precision with tie-breaker
@@ -502,6 +536,13 @@ bool GPUSortingConfig::apply_preset(const String &p_preset_name) {
         validate_sorted_output = new_config.validate_sorted_output;
         enable_stage_timestamps = new_config.enable_stage_timestamps;
         subgroup_prefix_mode = new_config.subgroup_prefix_mode;
+        // Scratch-buffer reclaim knobs are part of the preset's complete state too;
+        // copy them so switching presets on a reused config cannot leave a stale
+        // custom 'true' enabled. No preset turns these on (all keep the struct
+        // defaults), so this establishes the off baseline a project override builds on.
+        bounded_buffer_shrink_enabled = new_config.bounded_buffer_shrink_enabled;
+        adaptive_overlap_budget_enabled = new_config.adaptive_overlap_budget_enabled;
+        max_overlap_records_adaptive_min = new_config.max_overlap_records_adaptive_min;
 
         GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Applied '%s' preset (max %d elements, %d-bit keys, workgroup %d)",
                 preset_lower, max_sort_elements, key_bits, workgroup_size));
@@ -552,6 +593,9 @@ void initialize_gpu_sorting_config() {
     // gpu_preset's overlap budget; any positive value is an explicit project
     // override that wins even under a named preset (see load_from_project_settings).
     GLOBAL_DEF(GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH, 0);
+    GLOBAL_DEF(GPUSortingConfig::BOUNDED_BUFFER_SHRINK_PATH, false);
+    GLOBAL_DEF(GPUSortingConfig::ADAPTIVE_OVERLAP_BUDGET_PATH, false);
+    GLOBAL_DEF(GPUSortingConfig::MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH, 100000);
     GLOBAL_DEF(GPUSortingConfig::MAX_RASTER_SPLATS_PER_TILE_PATH, 65536);
     GLOBAL_DEF(GPUSortingConfig::RADIX_BITS_PATH, GPUSortingConstants::DEFAULT_RADIX_BITS);
     GLOBAL_DEF(GPUSortingConfig::WORKGROUP_SIZE_PATH, GPUSortingConstants::DEFAULT_WORKGROUP_SIZE);

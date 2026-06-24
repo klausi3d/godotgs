@@ -823,7 +823,19 @@ private:
 				GS_LOG_ERROR_DEFAULT("[TileRenderer] Failed to build global tile ranges for rasterization");
 				return false;
 			}
-			const uint32_t adaptive_overlap_budget_suggested = _update_adaptive_overlap_budget(&renderer, raw_overlap_record_count);
+			// Feed the adaptive budget only REAL overlap measurements. On the default
+			// async path the first frames report raw_overlap_record_count = effective
+			// capacity (a sizing fallback, not a measurement) until the one-frame-late
+			// readback lands; folding that spike into the budget peak would inflate it
+			// and, because the budget only decays ~10%/120 frames, the shrink could not
+			// converge for ~1-2k frames. Sync readback always yields a real value; in
+			// async, wait for the first completed readback. Until then keep the existing
+			// suggestion (frame-start estimate stays on the coarse visible*50 bootstrap).
+			const bool have_real_overlap_measurement =
+					allow_sync_readback || renderer.async_readback.overflow_state.first_frame_complete;
+			const uint32_t adaptive_overlap_budget_suggested = have_real_overlap_measurement
+					? _update_adaptive_overlap_budget(&renderer, raw_overlap_record_count)
+					: _get_adaptive_overlap_budget_suggestion(&renderer);
 #ifdef DEV_ENABLED
 			if (renderer.diagnostics.debug_tile_pipeline_logs_enabled) {
 				static int overlap_debug_log_counter = 0;
@@ -845,6 +857,20 @@ private:
 				if (adaptive_overlap_budget_suggested > 0u) {
 					overlap_capacity_request = MAX(overlap_capacity_request, adaptive_overlap_budget_suggested);
 				}
+				// Record the MEASURED overlap demand for the next frame's bounded-shrink
+				// hysteresis. Use raw_overlap_record_count (the unclamped overlap total —
+				// the real prefix sum in the sync path, the async last_unclamped_total
+				// otherwise) plus any adaptive suggestion, but NOT overlap_record_count:
+				// on the default async path that field is the effective CAPACITY (a sizing
+				// value), so folding it in here would pin last_observed_demand >= capacity
+				// and the shrink gate (capacity > effective_demand) could never open. Until
+				// the first real measurement lands, raw falls back to capacity, which keeps
+				// the shrink correctly disabled rather than firing on a guess.
+				uint32_t measured_overlap_demand = raw_overlap_record_count;
+				if (adaptive_overlap_budget_suggested > 0u) {
+					measured_overlap_demand = MAX(measured_overlap_demand, adaptive_overlap_budget_suggested);
+				}
+				renderer.global_sort_resources.last_observed_demand = measured_overlap_demand;
 			if (overlap_capacity_request > renderer.global_sort_resources.capacity) {
 				const uint64_t gen_before = renderer.descriptor_generation;
 				renderer._ensure_global_sort_resources(overlap_capacity_request);

@@ -441,4 +441,119 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] GPU Sorting Performance") {
 	}
 }
 
+// Regression guard for the 8-bit radix path: with 256 histogram/scatter bins, the per-bin shader
+// loops must be STRIDED over WORKGROUP_SIZE. A naive `tid < RADIX_SIZE` guard only covers the first
+// WORKGROUP_SIZE bins, silently corrupting the sort at workgroup_size 64/128. This test sorts keys
+// whose bytes span HIGH digit values (>= 128) so those high bins are exercised, and checks the GPU
+// output against a CPU reference at every allowed workgroup_size.
+TEST_CASE("[GaussianSplatting][RequiresGPU] Radix sort 8-bit is correct at all workgroup sizes") {
+	struct GPUSortingConfigRestore {
+		GPUSortingConfig previous_config;
+		~GPUSortingConfigRestore() { g_gpu_sorting_config = previous_config; }
+	} restore = { g_gpu_sorting_config };
+
+	RenderingDevice *rd = RenderingDevice::get_singleton();
+	bool owns_local_device = false;
+	if (!rd) {
+		RenderingServer *rs = RenderingServer::get_singleton();
+		if (rs) {
+			rd = rs->create_local_rendering_device();
+			owns_local_device = rd != nullptr;
+		}
+	}
+	if (!rd) {
+		MESSAGE("Skipping 8-bit radix sort test - no RenderingDevice available");
+		return;
+	}
+
+	LocalVector<uint32_t> base_keys;
+	base_keys.push_back(0xFF000001u);
+	base_keys.push_back(0x80C04020u);
+	base_keys.push_back(0x000000FFu);
+	base_keys.push_back(0x01FF0080u);
+	base_keys.push_back(0xC0C0C0C0u);
+	base_keys.push_back(0x00018000u);
+	base_keys.push_back(0xFFFFFFFFu);
+	base_keys.push_back(0x00000000u);
+	base_keys.push_back(0x7F80FE01u);
+	base_keys.push_back(0x40404040u);
+	const uint32_t count = base_keys.size();
+
+	LocalVector<uint32_t> expected_keys = base_keys;
+	expected_keys.sort(); // ascending reference order
+
+	const uint32_t workgroup_sizes[] = { 64u, 128u, 256u, 512u };
+	uint32_t verified = 0u;
+	for (uint32_t wg : workgroup_sizes) {
+		g_gpu_sorting_config.reset_to_defaults();
+		g_gpu_sorting_config.radix_bits = 8;
+		g_gpu_sorting_config.workgroup_size = wg;
+
+		SortKeyConfig key_config;
+		key_config.key_bits = 32;
+		key_config.tile_bits = 16;
+		key_config.depth_bits = 16;
+		key_config.enable_tie_breaker = false;
+
+		Ref<IGPUSorter> sorter = GPUSorterFactory::create_sorter(
+				GPUSorterFactory::ALGORITHM_RADIX, rd, count, key_config);
+		if (!sorter.is_valid()) {
+			MESSAGE(vformat("Skipping 8-bit radix at workgroup_size=%d (unsupported on this GPU)", wg));
+			continue;
+		}
+
+		LocalVector<uint32_t> keys = base_keys;
+		LocalVector<uint32_t> values;
+		values.resize(count);
+		for (uint32_t i = 0; i < count; i++) {
+			values[i] = i;
+		}
+
+		RID keys_buffer = create_storage_buffer(rd, keys);
+		RID values_buffer = create_storage_buffer(rd, values);
+
+		Error err = sorter->sort(keys_buffer, values_buffer, count);
+		CHECK(err == OK);
+		if (err == OK) {
+			Vector<uint8_t> keys_result = rd->buffer_get_data(keys_buffer, 0, count * sizeof(uint32_t));
+			Vector<uint8_t> values_result = rd->buffer_get_data(values_buffer, 0, count * sizeof(uint32_t));
+			const uint32_t *sorted_keys = (const uint32_t *)keys_result.ptr();
+			const uint32_t *sorted_values = (const uint32_t *)values_result.ptr();
+			for (uint32_t i = 0; i < count; i++) {
+				// (1) ascending order matches the CPU reference; (2) the carried value still points
+				// back to the original key (proves the scatter moved key+value together).
+				CHECK_MESSAGE(sorted_keys[i] == expected_keys[i],
+						vformat("8-bit radix wg=%d pos %d: got 0x%08X expected 0x%08X", wg, i, sorted_keys[i], expected_keys[i]));
+				// Compute the boolean separately: doctest cannot decompose a compound `a && b` inside CHECK.
+				const bool value_maps_back = sorted_values[i] < count && base_keys[sorted_values[i]] == sorted_keys[i];
+				CHECK_MESSAGE(value_maps_back,
+						vformat("8-bit radix wg=%d pos %d: value %d does not map back to key 0x%08X", wg, i, sorted_values[i], sorted_keys[i]));
+			}
+			verified++;
+		}
+
+		SortingMetrics metrics = sorter->get_metrics();
+		CHECK(metrics.last_radix_bits == 8u);
+		CHECK(metrics.last_pass_count == 4u); // 32-bit key / 8-bit radix = 4 passes
+
+		rd->free(keys_buffer);
+		rd->free(values_buffer);
+		sorter->shutdown();
+		sorter.unref();
+	}
+
+	// If every workgroup size was rejected by the runtime probes (descriptor / shared-
+	// memory / workgroup limits), an invalid sorter is the SUPPORTED production fallback —
+	// the sort path keeps the 4-bit default — so skip rather than fail the RequiresGPU
+	// suite on a low-capability GPU. When at least one variant was supported the per-
+	// iteration CHECKs above already validated correctness.
+	if (verified == 0u) {
+		MESSAGE("Skipping 8-bit radix verification: no workgroup size is supported on this GPU");
+	}
+
+	if (owns_local_device) {
+		memdelete(rd);
+	}
+}
+
 } // namespace TestGaussianSplatting

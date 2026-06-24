@@ -18,17 +18,52 @@ class RenderDeviceManager;
 
 namespace GaussianSplatting {
 
-constexpr uint32_t TILE_SH_CACHE_GROWTH_SLACK_PERCENT = 25u;
-constexpr uint32_t TILE_SH_CACHE_MIN_GROWTH_SLACK_BYTES = 4096u;
-constexpr uint32_t TILE_SH_CACHE_SHRINK_TRIGGER_PERCENT = 50u;
-constexpr uint32_t TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES = 120u;
+// Growth/shrink policy for an only-grow GPU scratch buffer. The buffer grows
+// immediately to demand (plus optional slack); it shrinks back only after demand
+// stays at or below `shrink_trigger_percent` of the current capacity for
+// `shrink_hysteresis_frames` consecutive frames. The wide hysteresis is what
+// prevents a single demand spike from causing grow/shrink cycling (which stalls
+// the driver and transiently double-allocates). See tile_compute_buffer_resize_plan.
+struct TileBufferShrinkPolicy {
+	uint32_t growth_slack_percent = 0u; // extra headroom added on growth, as a % of demand
+	uint32_t min_growth_slack_bytes = 0u; // absolute floor for the growth headroom
+	uint32_t shrink_trigger_percent = 50u; // shrink only if required <= capacity * pct/100
+	uint32_t shrink_hysteresis_frames = 120u; // frames demand must stay low before shrinking
+};
 
-struct TileSHCacheResizePlan {
+struct TileBufferResizePlan {
 	bool should_resize = false;
 	uint32_t target_bytes = 0;
 	uint32_t next_shrink_candidate_frames = 0;
 };
 
+// Pure, deterministic resize-policy decision shared by every only-grow GPU scratch
+// buffer (SH color cache, global projection buffer, ...). Keeping the policy in one
+// unit-tested function lets the buffer-management call sites stay thin and identical.
+TileBufferResizePlan tile_compute_buffer_resize_plan(uint32_t p_required_bytes, uint32_t p_current_bytes,
+		uint32_t p_shrink_candidate_frames, const TileBufferShrinkPolicy &p_policy);
+
+// SH color-cache policy (shrink always on; small buffer, proven stable in production).
+constexpr uint32_t TILE_SH_CACHE_GROWTH_SLACK_PERCENT = 25u;
+constexpr uint32_t TILE_SH_CACHE_MIN_GROWTH_SLACK_BYTES = 4096u;
+constexpr uint32_t TILE_SH_CACHE_SHRINK_TRIGGER_PERCENT = 50u;
+constexpr uint32_t TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES = 120u;
+
+// Shared opt-in policy for the large demand-driven scratch buffers (the global
+// projection buffer + the global sort key/value buffers; the separate instance/
+// depth sort buffers are a future extension). Both grow with per-frame demand and
+// oscillate by ~15x across a single camera sweep, so the
+// hysteresis is wide (4s at 60 fps) and resets on any demand recovery — a shrink is
+// bounded to views that hold low demand for the full window (a slow sweep staying below
+// the trigger for >240 frames can still shrink then re-grow — bounded, not impossible). A 50%
+// trigger means "demand dropped at least one power-of-two octave" (the projection
+// byte size is power-of-two rounded). Growth slack is 0 for both: the projection
+// rounding already provides headroom, and the sorter picks its own capacity.
+constexpr uint32_t TILE_SCRATCH_SHRINK_TRIGGER_PERCENT = 50u;
+constexpr uint32_t TILE_SCRATCH_SHRINK_HYSTERESIS_FRAMES = 240u;
+
+// Backwards-compatible alias + thin wrapper used by the SH cache call site and tests.
+typedef TileBufferResizePlan TileSHCacheResizePlan;
 TileSHCacheResizePlan tile_compute_sh_cache_resize_plan(uint32_t p_required_bytes, uint32_t p_current_bytes,
 		uint32_t p_shrink_candidate_frames);
 
@@ -164,6 +199,8 @@ struct TileGlobalSortResources {
 	bool sorter_missing_logged = false;
 	uint64_t sorter_device_id = 0;
 	uint32_t capacity = 0;
+	uint32_t shrink_candidate_frames = 0; // consecutive low-demand frames, for bounded shrink hysteresis
+	uint32_t last_observed_demand = 0; // last frame's MEASURED overlap demand (post-count), drives shrink hysteresis
 	SortKeyConfig key_config;
 	RID keys_buffer;
 	RID values_buffer;
@@ -226,6 +263,7 @@ struct TileProjectionBuffers {
 	RID projection_buffer;
 	BufferOwnership projection_buffer_owner;
 	uint32_t projection_buffer_size = 0;
+	uint32_t shrink_candidate_frames = 0; // consecutive low-demand frames, for bounded shrink hysteresis
 	uint64_t sorter_device_id = 0;
 	bool sorter_available = true;
 	bool sorter_missing_logged = false;

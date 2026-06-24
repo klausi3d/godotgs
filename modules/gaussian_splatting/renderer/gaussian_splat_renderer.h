@@ -635,6 +635,11 @@ public:
     int cached_streaming_route_policy = gs::settings::GS_ROUTE_STREAMING;
     String cached_streaming_route_policy_source = "default_fallback";
     bool cached_streaming_route_policy_dirty = true;
+    // Guards the route-policy cache fields above: settings_changed marks them dirty on
+    // the main thread while the render/stats paths refresh + read them, so every access
+    // (mark / refresh / snapshot) goes through this mutex. The String must be copied out
+    // under the lock — never returned by reference across threads.
+    mutable Mutex route_policy_cache_mutex;
     PipelineFeatureSet pipeline_features_effective;
     String pipeline_features_warning_cache;
 
@@ -703,6 +708,8 @@ public:
     void _set_route_policy_diagnostics(int p_requested_route_policy, const char *p_policy_source);
     void _mark_streaming_route_policy_dirty();
     void _refresh_streaming_route_policy_cache();
+    void _refresh_streaming_route_policy_cache_locked(); // assumes route_policy_cache_mutex is held
+    void _snapshot_streaming_route_policy(int &r_policy, String &r_source);
     void _set_instance_backend_diagnostics(InstanceBackendPolicy p_backend_policy, const String &p_reason,
             bool p_contract_ready, const String &p_contract_shape = "atlas_emulation");
     bool _publish_resident_direct_data_contract(String *r_reason = nullptr);
@@ -842,8 +849,6 @@ public:
     // Upload the per-instance color grading SSBO. Called alongside update_instance_buffer
     // from both the resident and streaming contract-publish paths.
     bool update_instance_grading_buffer(const LocalVector<InstanceGradingGPU> &p_gradings);
-    int get_cached_streaming_route_policy();
-    const String &get_cached_streaming_route_policy_source();
 
     bool ensure_rendering_device(const char *p_context) { return _ensure_rendering_device(p_context); }
     bool ensure_submission_device(const char *p_context) { return _ensure_submission_device(p_context); }

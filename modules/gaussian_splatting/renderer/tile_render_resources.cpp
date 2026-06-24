@@ -38,38 +38,52 @@ inline void safe_free_buffer_rid(RenderingDevice *p_device, RID &p_rid) {
 	p_rid = RID();
 }
 
+// Words (uint32) per sort key for the global composite sort: 64-bit keys use two
+// words, everything else one. Single source of truth for both the keys-buffer
+// allocation and the bounded-shrink byte estimate, so they cannot drift apart.
+inline uint32_t global_sort_key_stride_words(const SortKeyConfig &p_key_config) {
+	return (p_key_config.key_bits > 32) ? 2u : 1u;
+}
+
 } // namespace
 
 namespace GaussianSplatting {
 
-TileSHCacheResizePlan tile_compute_sh_cache_resize_plan(uint32_t p_required_bytes, uint32_t p_current_bytes,
-		uint32_t p_shrink_candidate_frames) {
-	TileSHCacheResizePlan plan;
+TileBufferResizePlan tile_compute_buffer_resize_plan(uint32_t p_required_bytes, uint32_t p_current_bytes,
+		uint32_t p_shrink_candidate_frames, const TileBufferShrinkPolicy &p_policy) {
+	TileBufferResizePlan plan;
 
-	auto compute_target_with_slack = [](uint32_t p_base_bytes) -> uint32_t {
+	auto compute_target_with_slack = [&p_policy](uint32_t p_base_bytes) -> uint32_t {
 		if (p_base_bytes == 0u) {
 			return 0u;
 		}
 
-		const uint64_t percent_slack = (uint64_t(p_base_bytes) * uint64_t(TILE_SH_CACHE_GROWTH_SLACK_PERCENT) + 99u) / 100u;
-		const uint64_t slack_bytes = MAX<uint64_t>(percent_slack, uint64_t(TILE_SH_CACHE_MIN_GROWTH_SLACK_BYTES));
+		const uint64_t percent_slack = (uint64_t(p_base_bytes) * uint64_t(p_policy.growth_slack_percent) + 99u) / 100u;
+		const uint64_t slack_bytes = MAX<uint64_t>(percent_slack, uint64_t(p_policy.min_growth_slack_bytes));
 		const uint64_t target_bytes64 = uint64_t(p_base_bytes) + slack_bytes;
 		return uint32_t(MIN<uint64_t>(target_bytes64, uint64_t(UINT32_MAX)));
 	};
 
+	// Grow immediately when demand exceeds the current capacity.
 	if (p_required_bytes > p_current_bytes) {
 		plan.should_resize = true;
 		plan.target_bytes = compute_target_with_slack(p_required_bytes);
 		return plan;
 	}
 
+	// Nothing allocated yet and no demand: nothing to do.
 	if (p_current_bytes == 0u) {
 		return plan;
 	}
 
+	// Hysteresis of 0 would mean "shrink instantly", which is exactly the cycling
+	// we are guarding against; clamp to at least one frame so the counter logic holds.
+	const uint32_t hysteresis_frames = MAX<uint32_t>(p_policy.shrink_hysteresis_frames, 1u);
+
+	// Demand fell to zero: free the buffer once the low streak is long enough.
 	if (p_required_bytes == 0u) {
-		const uint32_t next_frames = MIN<uint32_t>(p_shrink_candidate_frames + 1u, TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES);
-		if (next_frames >= TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES) {
+		const uint32_t next_frames = MIN<uint32_t>(p_shrink_candidate_frames + 1u, hysteresis_frames);
+		if (next_frames >= hysteresis_frames) {
 			plan.should_resize = true;
 			plan.target_bytes = 0u;
 			return plan;
@@ -78,10 +92,11 @@ TileSHCacheResizePlan tile_compute_sh_cache_resize_plan(uint32_t p_required_byte
 		return plan;
 	}
 
-	const uint64_t shrink_trigger_bytes = (uint64_t(p_current_bytes) * uint64_t(TILE_SH_CACHE_SHRINK_TRIGGER_PERCENT)) / 100u;
+	// Demand dropped well below capacity: shrink once the low streak is long enough.
+	const uint64_t shrink_trigger_bytes = (uint64_t(p_current_bytes) * uint64_t(p_policy.shrink_trigger_percent)) / 100u;
 	if (uint64_t(p_required_bytes) <= shrink_trigger_bytes) {
-		const uint32_t next_frames = MIN<uint32_t>(p_shrink_candidate_frames + 1u, TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES);
-		if (next_frames >= TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES) {
+		const uint32_t next_frames = MIN<uint32_t>(p_shrink_candidate_frames + 1u, hysteresis_frames);
+		if (next_frames >= hysteresis_frames) {
 			plan.should_resize = true;
 			plan.target_bytes = compute_target_with_slack(p_required_bytes);
 			return plan;
@@ -90,7 +105,19 @@ TileSHCacheResizePlan tile_compute_sh_cache_resize_plan(uint32_t p_required_byte
 		return plan;
 	}
 
+	// Demand is within the keep band: hold capacity, reset the low streak.
 	return plan;
+}
+
+TileSHCacheResizePlan tile_compute_sh_cache_resize_plan(uint32_t p_required_bytes, uint32_t p_current_bytes,
+		uint32_t p_shrink_candidate_frames) {
+	const TileBufferShrinkPolicy policy{
+		TILE_SH_CACHE_GROWTH_SLACK_PERCENT,
+		TILE_SH_CACHE_MIN_GROWTH_SLACK_BYTES,
+		TILE_SH_CACHE_SHRINK_TRIGGER_PERCENT,
+		TILE_SH_CACHE_SHRINK_HYSTERESIS_FRAMES,
+	};
+	return tile_compute_buffer_resize_plan(p_required_bytes, p_current_bytes, p_shrink_candidate_frames, policy);
 }
 
 void TileResourceController::set_contract_main_device(RenderingDevice *p_main_device) {
@@ -613,6 +640,7 @@ void TileProjectionBuffers::reset_state() {
 	projection_buffer = RID();
 	projection_buffer_owner.clear();
 	projection_buffer_size = 0;
+	shrink_candidate_frames = 0;
 }
 
 void TileProjectionBuffers::ensure_projection_buffer(uint32_t p_visible_count) {
@@ -640,15 +668,37 @@ void TileProjectionBuffers::ensure_projection_buffer(uint32_t p_visible_count) {
 	}
 	const uint32_t required_bytes = uint32_t(required_bytes64);
 
-	// Only-grow policy: never shrink the projection buffer within a renderer's
-	// lifetime. The visible-splat count oscillates by ~15x as the camera sweeps
-	// (e.g. 250K..3.74M), and an 8x shrink hysteresis was not wide enough to
-	// prevent grow/shrink cycling — it caused this >1 GB buffer to be freed and
-	// recreated hundreds of times per session, stalling the driver (stutter) and
-	// transiently double-allocating during the realloc. Growing to the session
-	// high-water mark and holding converges after the first full-scene frame.
-	// The buffer is released wholesale on renderer teardown / scene change.
-	const bool needs_resize = !projection_buffer.is_valid() || projection_buffer_size < required_bytes;
+	// Resize policy. The visible-splat count oscillates by ~15x as the camera
+	// sweeps (e.g. 250K..3.74M), so this >1 GB buffer must never grow/shrink-cycle:
+	// an earlier 8x instantaneous shrink hysteresis was not wide enough and freed +
+	// recreated the buffer hundreds of times per session, stalling the driver and
+	// transiently double-allocating. We therefore default to ONLY-GROW (hold the
+	// session high-water mark; release wholesale on teardown / scene change).
+	//
+	// When `bounded_buffer_shrink_enabled` is set (opt-in, primarily for low-end
+	// GPUs that cannot afford to pin peak VRAM for the whole session), we instead
+	// use the shared wide-hysteresis resize plan: it reclaims the buffer only after
+	// demand stays at/below half capacity for TILE_SCRATCH_SHRINK_HYSTERESIS_FRAMES
+	// consecutive frames — far wider than the streak that caused the old cycling.
+	bool needs_resize;
+	uint32_t target_bytes;
+	if (g_gpu_sorting_config.bounded_buffer_shrink_enabled) {
+		const TileBufferShrinkPolicy policy{
+			0u, // growth slack: the power-of-two element rounding already provides headroom
+			0u,
+			TILE_SCRATCH_SHRINK_TRIGGER_PERCENT,
+			TILE_SCRATCH_SHRINK_HYSTERESIS_FRAMES,
+		};
+		const TileBufferResizePlan plan = tile_compute_buffer_resize_plan(
+				required_bytes, projection_buffer_size, shrink_candidate_frames, policy);
+		shrink_candidate_frames = plan.next_shrink_candidate_frames;
+		needs_resize = plan.should_resize;
+		target_bytes = plan.should_resize ? plan.target_bytes : required_bytes;
+	} else {
+		shrink_candidate_frames = 0;
+		needs_resize = !projection_buffer.is_valid() || projection_buffer_size < required_bytes;
+		target_bytes = required_bytes;
+	}
 
 	if (!needs_resize) {
 #ifdef DEV_ENABLED
@@ -665,11 +715,15 @@ void TileProjectionBuffers::ensure_projection_buffer(uint32_t p_visible_count) {
 		projection_buffer_owner.clear();
 	}
 
-	projection_buffer = device->storage_buffer_create(required_bytes);
-	projection_buffer_size = projection_buffer.is_valid() ? required_bytes : 0;
+	projection_buffer = device->storage_buffer_create(target_bytes);
+	projection_buffer_size = projection_buffer.is_valid() ? target_bytes : 0;
 	if (!projection_buffer.is_valid()) {
 		GS_LOG_ERROR_DEFAULT("[TileRenderer] Failed to allocate global projection buffer");
 		projection_buffer_owner.clear();
+		// The old buffer was already freed above; any descriptor set still caching it
+		// now dangles. Invalidate here too (success path invalidates below) so a failed
+		// realloc cannot leave the cache pointing at a freed RID.
+		owner._invalidate_descriptor_cache();
 		return;
 	}
 	device->set_resource_name(projection_buffer, "GS_TileRenderer_ProjectionBuffer");
@@ -1034,6 +1088,8 @@ void TileGlobalSortResources::reset_state(bool p_clear_sorter) {
 	sorter_missing_logged = false;
 	sorter_device_id = 0;
 	capacity = 0;
+	shrink_candidate_frames = 0;
+	last_observed_demand = 0;
 	key_config = SortKeyConfig();
 	keys_buffer = RID();
 	values_buffer = RID();
@@ -1168,6 +1224,70 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 				desired_key_config.depth_bits != key_config.depth_bits ||
 				desired_key_config.enable_tie_breaker != key_config.enable_tie_breaker;
 
+		// Bounded shrink (opt-in): when overlap demand stays well below the reserved
+		// sort capacity for a wide hysteresis window, recreate the sorter at the lower
+		// demand so the (up to >1 GB) key/value buffers are reclaimed. The hysteresis is
+		// wide and resets on any demand recovery, so a shrink is bounded to views that hold
+		// low overlap for the full window: a slow sweep that stays below the trigger for
+		// >240 frames between high-demand views can still shrink and later re-grow — bounded,
+		// not impossible (default-off makes the occasional realloc acceptable). Growth and
+		// key-config changes keep their existing dedicated triggers below; this only adds a
+		// shrink trigger.
+		//
+		// CRITICAL: the frame-start argument (p_visible_count) is only a coarse PRE-count
+		// estimate; the true per-frame overlap demand is measured after the count/prefix
+		// pass and stored in last_observed_demand. The estimate is systematically LOW for
+		// zoomed-in views (close splats cover 100+ tiles each), so driving the streak off
+		// the estimate alone would shrink while real demand is still high and then
+		// immediately re-grow (with an expensive re-count). We therefore gate shrink on
+		// MAX(estimate, last measured demand): the streak advances only when BOTH agree
+		// demand is low, and any measured-high frame in the 240-frame window resets it.
+		// Residual edge (accepted): a demand spike on the exact trigger frame shrinks off
+		// the prior frame's low measurement, then the post-count grow path re-grows the
+		// same frame — a single, self-correcting re-count, not sustained thrash. A pending-
+		// shrink state machine would remove even that, at a complexity cost not worth it
+		// for a default-off knob.
+		uint32_t effective_demand = MAX<uint32_t>(attempt_elements, last_observed_demand);
+		// Cap the demand to max_overlap_records: the prefix path clamps usable records to it,
+		// so any capacity above the cap is dead VRAM. Clamping the demand here (together with
+		// the forced cap-reduction shrink below) lets the shrink GATE fire AND the buffers
+		// actually reclaim when the cap is lowered below the current allocation.
+		const uint32_t overlap_hard_cap = g_gpu_sorting_config.get_overlap_records_hard_cap();
+		if (overlap_hard_cap > 0u) {
+			effective_demand = MIN(effective_demand, overlap_hard_cap);
+		}
+		bool wants_shrink = false;
+		// The shrink is gated on a live sorter because it reclaims by RECREATING the sorter
+		// at the lower capacity. On a GPU that lacks RadixSort indirect support the sorter is
+		// disabled and the global sort degrades to unsorted tiles; the key/value buffers then
+		// stay at their high-water capacity and are not reclaimed by this path. That is an
+		// accepted limitation of the opt-in shrink on an already-degraded (unsorted) fallback —
+		// reclaiming there would need a separate sorter-less buffer-resize path, which is not
+		// worth the added complexity for that narrow, low-capability-GPU case.
+		if (g_gpu_sorting_config.bounded_buffer_shrink_enabled && sorter_available && sorter.is_valid() &&
+				!key_config_changed && capacity > effective_demand) {
+			// keys (1-2 words) + values (1 word), matching the real allocation below.
+			const uint32_t bytes_per_element = (global_sort_key_stride_words(key_config) + 1u) * uint32_t(sizeof(uint32_t));
+			const uint32_t current_bytes = uint32_t(MIN<uint64_t>(uint64_t(capacity) * bytes_per_element, uint64_t(UINT32_MAX)));
+			const uint32_t required_bytes = uint32_t(MIN<uint64_t>(uint64_t(effective_demand) * bytes_per_element, uint64_t(UINT32_MAX)));
+			const TileBufferShrinkPolicy policy{ 0u, 0u,
+				TILE_SCRATCH_SHRINK_TRIGGER_PERCENT, TILE_SCRATCH_SHRINK_HYSTERESIS_FRAMES };
+			const TileBufferResizePlan plan = tile_compute_buffer_resize_plan(
+					required_bytes, current_bytes, shrink_candidate_frames, policy);
+			shrink_candidate_frames = plan.next_shrink_candidate_frames;
+			wants_shrink = plan.should_resize && plan.target_bytes < current_bytes;
+			// A capacity above the configured cap is always unused (the prefix clamps records
+			// to the cap), so a cap LOWERED below the allocation must reclaim even when measured
+			// demand still sits above the policy's ~50% trigger. effective_demand is already
+			// clamped to the cap, so forcing the shrink here targets the cap (or lower). This
+			// is thrash-free: once capacity == cap the condition no longer holds.
+			if (overlap_hard_cap > 0u && capacity > overlap_hard_cap) {
+				wants_shrink = true;
+			}
+		} else {
+			shrink_candidate_frames = 0;
+		}
+
 		auto disable_sorter = [&](const char *p_reason) {
 			if (sorter.is_valid()) {
 				sorter->shutdown();
@@ -1189,35 +1309,69 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 				capacity = MAX<uint32_t>(attempt_elements, 1u);
 				sorter_recreated = true;
 			}
-		} else if (!sorter.is_valid() || capacity < attempt_elements || key_config_changed) {
-			if (sorter.is_valid()) {
+		} else if (!sorter.is_valid() || capacity < attempt_elements || key_config_changed || wants_shrink) {
+			// A pure bounded shrink (entered ONLY via wants_shrink, with a valid sorter
+			// that already satisfies demand and key config) is an OPTIONAL VRAM reclaim:
+			// build the smaller replacement BEFORE retiring the working sorter so a
+			// failed/unsuitable shrink keeps the larger-but-correct sorter instead of
+			// dropping to unsorted tiles. Growth / key-config change / invalid sorter
+			// MUST replace in place — the existing sorter cannot satisfy the new demand,
+			// so unsorted is the only available fallback there.
+			const bool must_recreate = !sorter.is_valid() || capacity < attempt_elements || key_config_changed;
+			if (must_recreate && sorter.is_valid()) {
 				sorter->shutdown();
 				sorter.unref();
 			}
 
 			SortKeyConfig config_to_use = desired_key_config;
 
+			// On a shrink, recreate at the MEASURED demand (effective_demand), not the
+			// low pre-count estimate — otherwise the freshly shrunk capacity would be
+			// below real demand and the very next count pass would re-grow (thrash).
+			// Growth/key-config recreation keeps the estimate, which it must reserve
+			// ahead of the count. wants_shrink is mutually exclusive with the grow
+			// triggers (it requires capacity > effective_demand >= attempt_elements).
+			// effective_demand is already clamped to the overlap cap above, so the
+			// shrink target never recreates above max_overlap_records.
+			const uint32_t resize_elements = wants_shrink ? effective_demand : attempt_elements;
+
+			// must_recreate failures render unsorted; an optional-shrink failure keeps
+			// the working sorter untouched and simply skips the reclaim this frame.
+			auto handle_recreate_failure = [&](const char *p_reason) {
+				if (must_recreate) {
+					disable_sorter(p_reason);
+				} else {
+					WARN_PRINT_ONCE("[TileRenderer] Bounded overlap shrink could not build a smaller sorter; keeping the current sort capacity");
+				}
+			};
+
 			// Global composite sort requires indirect support for GPU-driven element count.
 			if (!GPUSorterFactory::probe_supports_indirect(GPUSorterFactory::ALGORITHM_RADIX, device)) {
-				disable_sorter("[TileRenderer] Global composite sort requires RadixSort indirect support; rendering unsorted tiles");
+				handle_recreate_failure("[TileRenderer] Global composite sort requires RadixSort indirect support; rendering unsorted tiles");
 			} else {
 				Ref<IGPUSorter> created_sorter = GPUSorterFactory::create_sorter(
-						GPUSorterFactory::ALGORITHM_RADIX, device, attempt_elements, config_to_use);
+						GPUSorterFactory::ALGORITHM_RADIX, device, resize_elements, config_to_use);
 				if (!created_sorter.is_valid()) {
-					disable_sorter("[TileRenderer] Failed to create global composite GPU sorter; rendering unsorted tiles");
+					handle_recreate_failure("[TileRenderer] Failed to create global composite GPU sorter; rendering unsorted tiles");
 				} else if (!created_sorter->supports_indirect()) {
 					created_sorter->shutdown();
-					disable_sorter("[TileRenderer] Created sorter does not support indirect sorting; rendering unsorted tiles");
+					handle_recreate_failure("[TileRenderer] Created sorter does not support indirect sorting; rendering unsorted tiles");
 				} else {
+					// Replacement is good. For a pure shrink the old sorter is still live;
+					// retire it now that the smaller one is known to initialize.
+					if (!must_recreate && sorter.is_valid()) {
+						sorter->shutdown();
+						sorter.unref();
+					}
 					sorter = created_sorter;
 					key_config = desired_key_config;
 					capacity = sorter->get_max_elements();
 					sorter_available = true;
 					GS_LOG_INFO_DEFAULT(vformat("[TileRenderer] Global sort capacity initialized: %d (config max_overlap_records=%d)",
 						int(capacity), int(g_gpu_sorting_config.max_overlap_records)));
-					if (capacity < attempt_elements) {
+					if (capacity < resize_elements) {
 						WARN_PRINT_ONCE(vformat("[TileRenderer] Global sort capacity capped (requested=%d, actual=%d)",
-							int(attempt_elements), int(capacity)));
+							int(resize_elements), int(capacity)));
 					}
 					sorter_recreated = true;
 				}
@@ -1247,13 +1401,18 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 			buffers_recreated = true;
 		}
 
-		const uint32_t key_stride_words = (key_config.key_bits > 32) ? 2u : 1u;
+		const uint32_t key_stride_words = global_sort_key_stride_words(key_config);
 		const uint64_t keys_bytes64 = uint64_t(capacity) * sizeof(uint32_t) * key_stride_words;
 		const uint64_t values_bytes64 = uint64_t(capacity) * sizeof(uint32_t);
 		if (keys_bytes64 > UINT32_MAX || values_bytes64 > UINT32_MAX) {
 			GS_LOG_ERROR_DEFAULT(vformat("[TileRenderer] Global composite sort buffers exceed RD limits (keys=%s bytes, values=%s bytes)",
 					String::num_uint64(keys_bytes64),
 					String::num_uint64(values_bytes64)));
+			if (buffers_recreated) {
+				// Buffers were freed above but we bail before recreating; drop cached
+				// descriptor sets that still reference the freed RIDs.
+				owner._invalidate_descriptor_cache();
+			}
 			return;
 		}
 		const uint32_t keys_bytes = uint32_t(keys_bytes64);
@@ -1317,6 +1476,9 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 				GS_LOG_ERROR_DEFAULT(vformat("[TileRenderer] Global tile buffers exceed RD limits (counts=%s bytes, ranges=%s bytes)",
 						String::num_uint64(counts_bytes64),
 						String::num_uint64(ranges_bytes64)));
+				// The tile buffers were just freed above; invalidate so no cached descriptor
+				// set keeps a dangling reference to them when we bail here.
+				owner._invalidate_descriptor_cache();
 				return;
 			}
 
@@ -1397,6 +1559,12 @@ void TileGlobalSortResources::ensure_resources(uint32_t p_visible_count) {
 					attempt_elements = reduced;
 					continue;
 				}
+			}
+			if (buffers_recreated) {
+				// Buffers were freed during recreate but the new allocation failed; drop any
+				// cached descriptor sets that still reference the now-freed sort buffers so a
+				// later frame cannot bind a dangling RID (the success path invalidates below).
+				owner._invalidate_descriptor_cache();
 			}
 			return;
 		}

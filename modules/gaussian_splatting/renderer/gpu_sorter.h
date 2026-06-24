@@ -314,6 +314,8 @@ private:
     SortKeyConfig key_config;
     // Radix sort shader resources
     struct RadixVariant {
+        // Placeholders; the real values are always assigned per build_variant()
+        // (radix_size = 1<<radix_bits, num_passes = ceil(key_bits/radix_bits)). Default is 4-bit.
         uint32_t radix_bits = 4;
         uint32_t radix_size = 16;
         uint32_t num_passes = 8;
