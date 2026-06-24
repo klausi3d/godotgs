@@ -4493,10 +4493,16 @@ void GaussianStreamingSystem::end_frame() {
     // reported figure is not under-counted by the unfilled buffer remainder.
     const uint64_t payload_vram_bytes = budget.vram_usage;
     const uint64_t overhead_vram_bytes = _get_auxiliary_vram_overhead_bytes();
+    // Mirror the live-RID gate in _get_total_vram_usage_bytes(): a failed
+    // storage_buffer_create() leaves persistent_buffer_size nonzero with an invalid
+    // RID, so report the allocation only when it actually exists. Otherwise vram_mb
+    // (gated) and vram_persistent_buffer_mb (ungated) would disagree on the
+    // allocation-failure path. (Codex #411)
+    const uint64_t allocated_persistent_bytes = persistent_buffer.is_valid() ? uint64_t(persistent_buffer_size) : 0;
     analytics_snapshot["vram_mb"] = double(_get_total_vram_usage_bytes()) / (1024.0 * 1024.0);
     analytics_snapshot["vram_payload_mb"] = double(payload_vram_bytes) / (1024.0 * 1024.0);
     analytics_snapshot["vram_overhead_mb"] = double(overhead_vram_bytes) / (1024.0 * 1024.0);
-    analytics_snapshot["vram_persistent_buffer_mb"] = double(persistent_buffer_size) / (1024.0 * 1024.0);
+    analytics_snapshot["vram_persistent_buffer_mb"] = double(allocated_persistent_bytes) / (1024.0 * 1024.0);
     analytics_snapshot["loaded_chunks"] = get_loaded_chunks();
     analytics_snapshot["atlas_published_chunks"] = global_atlas_registry.get_atlas_published_chunks();
     analytics_snapshot["visible_splats"] = get_visible_count();
