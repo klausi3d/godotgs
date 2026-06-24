@@ -66,18 +66,18 @@ void GPUSortingConfig::load_from_project_settings() {
             // Honor an EXPLICITLY-overridden project max_overlap_records even
             // under a named preset. The preset supplies the per-tile overlap-sort
             // budget as a DEFAULT, but a value the project author set on purpose
-            // is intentional and must win — otherwise the preset silently
-            // over-sizes the overlap sort buffers (the "high" default of 100M
+            // is intentional and must win — otherwise the preset silently over- or
+            // under-sizes the overlap sort buffers (the "high" budget of 100M
             // records is ~0.76 GB of keys alone, ~2 GB across keys/values/radix
-            // scratch). max_overlap_records is GLOBAL_DEF'd (default 100M, see
-            // register_project_settings), so has_setting() is always true;
-            // detect an explicit project override by comparing against that
-            // default so preset users who do NOT set the key keep their preset's
-            // budget unchanged.
-            const int64_t max_overlap_global_default = 100000000;
-            const int64_t project_overlap = ps->get_setting(MAX_OVERLAP_RECORDS_PATH, max_overlap_global_default);
-            if (project_overlap != max_overlap_global_default && project_overlap > 0) {
-                max_overlap_records = ps->get_setting(MAX_OVERLAP_RECORDS_PATH, max_overlap_records);
+            // scratch). max_overlap_records is GLOBAL_DEF'd with a 0 "auto"
+            // sentinel (see initialize_gpu_sorting_config): 0 keeps the preset's
+            // budget, any positive value is an explicit override. Detecting
+            // explicitness by sentinel — not by value-equality against 100M — lets
+            // a project pin ANY budget, including exactly 100M, on top of a preset
+            // whose budget differs.
+            const int64_t project_overlap = ps->get_setting(MAX_OVERLAP_RECORDS_PATH, 0);
+            if (project_overlap > 0) {
+                max_overlap_records = uint32_t(project_overlap);
             }
             if (enable_performance_logging) {
                 print_config_summary();
@@ -90,9 +90,12 @@ void GPUSortingConfig::load_from_project_settings() {
     // Load individual settings (custom configuration)
     target_sort_time_ms = gs::sorting_settings::get_target_sort_time_ms(ps, 2.0f);
     bool has_elements = ps->has_setting(MAX_ELEMENTS_PATH);
-    bool has_overlap = ps->has_setting(MAX_OVERLAP_RECORDS_PATH);
+    // 0 is the "auto" sentinel (see initialize_gpu_sorting_config); a project
+    // that does not pin a budget falls back to the historical 100M default.
+    const int64_t overlap_setting = ps->get_setting(MAX_OVERLAP_RECORDS_PATH, 0);
+    bool has_overlap = (overlap_setting > 0);
     max_sort_elements = ps->get_setting(MAX_ELEMENTS_PATH, 50000000);
-    max_overlap_records = ps->get_setting(MAX_OVERLAP_RECORDS_PATH, 100000000);
+    max_overlap_records = has_overlap ? uint32_t(overlap_setting) : 100000000u;
     max_raster_splats_per_tile = ps->get_setting(MAX_RASTER_SPLATS_PER_TILE_PATH, 65536);
     GS_LOG_GPU_SORT_INFO(vformat("[GPUSortingConfig] LOADED: max_sort_elements=%d max_overlap_records=%d (has_elements=%d has_overlap=%d)",
             max_sort_elements, max_overlap_records, int(has_elements), int(has_overlap)));
@@ -545,7 +548,10 @@ void initialize_gpu_sorting_config() {
 	GLOBAL_DEF(GPUSortingConfig::GPU_PRESET_PATH, "high");
 	gs::sorting_settings::register_canonical_target_sort_time_setting(ps, 2.0f);
 	GLOBAL_DEF(GPUSortingConfig::MAX_ELEMENTS_PATH, 50000000);
-    GLOBAL_DEF(GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH, 100000000);
+    // max_overlap_records uses 0 as an "auto" sentinel: 0 inherits the active
+    // gpu_preset's overlap budget; any positive value is an explicit project
+    // override that wins even under a named preset (see load_from_project_settings).
+    GLOBAL_DEF(GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH, 0);
     GLOBAL_DEF(GPUSortingConfig::MAX_RASTER_SPLATS_PER_TILE_PATH, 65536);
     GLOBAL_DEF(GPUSortingConfig::RADIX_BITS_PATH, GPUSortingConstants::DEFAULT_RADIX_BITS);
     GLOBAL_DEF(GPUSortingConfig::WORKGROUP_SIZE_PATH, GPUSortingConstants::DEFAULT_WORKGROUP_SIZE);
