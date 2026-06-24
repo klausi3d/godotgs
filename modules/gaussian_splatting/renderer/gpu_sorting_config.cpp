@@ -164,9 +164,9 @@ void GPUSortingConfig::save_to_project_settings() const {
     }
     ps->set_setting(MAX_ELEMENTS_PATH, max_sort_elements);
     ps->set_setting(MAX_OVERLAP_RECORDS_PATH, max_overlap_records);
-    ps->set_setting(BOUNDED_BUFFER_SHRINK_PATH, bounded_buffer_shrink_enabled);
-    ps->set_setting(ADAPTIVE_OVERLAP_BUDGET_PATH, adaptive_overlap_budget_enabled);
-    ps->set_setting(MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH, max_overlap_records_adaptive_min);
+    ps->set_setting(BOUNDED_BUFFER_SHRINK_PATH, bounded_buffer_shrink_enabled); // GS_CI_ALLOW_RENDER_PATH_SETTING_MUTATION
+    ps->set_setting(ADAPTIVE_OVERLAP_BUDGET_PATH, adaptive_overlap_budget_enabled); // GS_CI_ALLOW_RENDER_PATH_SETTING_MUTATION
+    ps->set_setting(MAX_OVERLAP_RECORDS_ADAPTIVE_MIN_PATH, max_overlap_records_adaptive_min); // GS_CI_ALLOW_RENDER_PATH_SETTING_MUTATION
     ps->set_setting(MAX_RASTER_SPLATS_PER_TILE_PATH, max_raster_splats_per_tile);
 
     ps->set_setting(RADIX_BITS_PATH, radix_bits);
