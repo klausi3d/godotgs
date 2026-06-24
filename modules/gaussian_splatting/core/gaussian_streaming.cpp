@@ -3314,6 +3314,17 @@ uint64_t GaussianStreamingSystem::_get_total_vram_usage_bytes() const {
     return resident_buffer_bytes + _get_auxiliary_vram_overhead_bytes();
 }
 
+uint64_t GaussianStreamingSystem::_get_evictable_vram_usage_bytes() const {
+    // Eviction/regulation basis. Only the loaded chunk payload (budget.vram_usage) is
+    // reclaimable by evicting chunks; the persistent buffer ALLOCATION (the resident_buffer
+    // term in _get_total_vram_usage_bytes) is NOT freed by eviction. Gating eviction on the
+    // full allocation would, whenever the preallocated buffer is sized above the budget
+    // (e.g. a small vram_budget_mb with a large initial chunk capacity), keep the loop over
+    // budget forever and evict every loaded/visible chunk each frame without freeing any
+    // VRAM. Reporting (get_vram_usage / analytics) uses the full allocation; eviction uses this.
+    return budget.vram_usage + _get_auxiliary_vram_overhead_bytes();
+}
+
 uint32_t GaussianStreamingSystem::_get_reserved_chunk_count() const {
     return budget.loaded_chunks_count + budget.pending_upload_slots;
 }
@@ -3379,21 +3390,21 @@ void GaussianStreamingSystem::_evict_for_vram_budget(uint32_t &evictions_left, b
     evictions_left = max_evictions_per_frame == 0 ? UINT32_MAX : max_evictions_per_frame;
     eviction_blocked = false;
     bool force_visible_eviction = false;
-    const uint64_t total_vram_usage = _get_total_vram_usage_bytes();
+    const uint64_t evictable_vram_usage = _get_evictable_vram_usage_bytes();
 
     if (budget.vram_regulator.is_valid()) {
         const VRAMBudgetConfig &budget_config = budget.vram_regulator->get_config();
         const uint64_t budget_bytes = uint64_t(budget_config.budget_mb) * BYTES_PER_MB;
-        force_visible_eviction = budget_bytes > 0 && total_vram_usage > budget_bytes;
+        force_visible_eviction = budget_bytes > 0 && evictable_vram_usage > budget_bytes;
     }
 
     if (!budget.vram_regulator.is_valid() ||
-            !budget.vram_regulator->should_trigger_eviction(total_vram_usage)) {
+            !budget.vram_regulator->should_trigger_eviction(evictable_vram_usage)) {
         return;
     }
 
     while (budget.loaded_chunks_count > 0 &&
-            budget.vram_regulator->should_trigger_eviction(_get_total_vram_usage_bytes()) &&
+            budget.vram_regulator->should_trigger_eviction(_get_evictable_vram_usage_bytes()) &&
             evictions_left > 0) {
         // Non-primary-first eviction keeps primary visible residency stable
         // under budget pressure. _evict_non_primary_lru() now returns

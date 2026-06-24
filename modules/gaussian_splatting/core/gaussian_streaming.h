@@ -441,6 +441,7 @@ private:
     uint32_t _compute_runtime_chunk_capacity_limit() const;
     uint64_t _get_auxiliary_vram_overhead_bytes() const;
     uint64_t _get_total_vram_usage_bytes() const;
+    uint64_t _get_evictable_vram_usage_bytes() const;
     uint32_t _get_reserved_chunk_count() const;
     uint64_t _get_pending_upload_bytes_for_diagnostics() const;
     void _load_zero_visible_recovery_config_from_project_settings();
