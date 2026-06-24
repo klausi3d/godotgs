@@ -44,7 +44,7 @@ Run Gaussian Splatting test lanes through maintained runners in `tests/ci/` and 
 | `run_tests.bat` | Windows batch full module run | `run_tests.bat:24`, `run_tests.bat:31` |
 | `ci/scripts/run_module_tests.bat` | Windows quick guard + module run | `ci/scripts/run_module_tests.bat:23`, `ci/scripts/run_module_tests.bat:47` |
 
-## GPU Test Harness (`--gs-gpu-test`)
+## GPU Test Harness (gs-gpu-test)
 
 The `--gs-gpu-test` entrypoint is a second doctest runner specifically for tests tagged `[RequiresGPU]`. It bootstraps `RenderingDevice` offscreen via `Main::test_setup()` + `RenderingContextDriverVulkan` / `RenderingContextDriverD3D12` (no `SceneTree`, no window) and is therefore distinct from the `--test` lane driven by `tests/ci/run_module_tests.py`.
 

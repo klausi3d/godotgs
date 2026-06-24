@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "description": "Machine-readable risk policy for agentic changes. Human-readable source of truth: docs/governance/agentic-engineering.md. Classification is derived from changed paths by scripts/agentic/classify_change.py and fails closed to the highest class for unrecognized paths. deterministic_checks accumulate along the code-risk axis R1 <= R2 <= R3, so the highest class's checks are a superset of the lower classes' runtime checks.",
+  "roles": [
+    "planner",
+    "implementer",
+    "verifier",
+    "correctness-reviewer",
+    "gpu-performance-reviewer"
+  ],
+  "risk_classes": {
+    "R0": {
+      "title": "Docs and agentic governance",
+      "description": "Documentation and the agentic control plane only; no runtime, build, or CI behavior change.",
+      "required_roles": ["planner", "implementer", "verifier", "correctness-reviewer"],
+      "deterministic_checks": [
+        "python scripts/agentic/validate_repo_contract.py",
+        "python -m unittest discover -s tests/agentic",
+        "python scripts/docs/check_links.py docs README.md BUILDING.md CONTRIBUTING.md"
+      ],
+      "evidence_requirements": [],
+      "human_approval_required": true,
+      "adr_required": false,
+      "rollback_required": false
+    },
+    "R1": {
+      "title": "Local module / test change",
+      "description": "Changes within the gaussian_splatting module or tests with no GPU, persistence-format, or engine risk.",
+      "required_roles": ["planner", "implementer", "verifier", "correctness-reviewer"],
+      "deterministic_checks": [
+        "python tests/ci/run_module_tests.py --guard-only",
+        "python -m unittest discover -s tests/agentic"
+      ],
+      "evidence_requirements": [
+        "Executed test commands and their results recorded in the PR."
+      ],
+      "human_approval_required": true,
+      "adr_required": false,
+      "rollback_required": true
+    },
+    "R2": {
+      "title": "Renderer / shaders / streaming / performance",
+      "description": "Renderer, shaders, compute, GPU sorting, streaming/LOD, performance, and VRAM changes.",
+      "required_roles": ["planner", "implementer", "verifier", "correctness-reviewer", "gpu-performance-reviewer"],
+      "deterministic_checks": [
+        "python tests/ci/run_module_tests.py --guard-only",
+        "python -m unittest discover -s tests/agentic",
+        "python tests/runtime/run_runtime_validation.py --profile streaming-gpu-ci --skip-cpp --fail-on-skip"
+      ],
+      "evidence_requirements": [
+        "Runtime/GPU harness or benchmark evidence against the immutable base.",
+        "VRAM and frame-time numbers for any change that claims a performance or memory effect.",
+        "Real-scan visual validation for rendering-math changes."
+      ],
+      "human_approval_required": true,
+      "adr_required": false,
+      "rollback_required": true
+    },
+    "R3": {
+      "title": "Engine delta / persistence / release / security",
+      "description": "Godot-engine delta outside the module, persistence/file formats, release or security workflows, and public API/compatibility changes. Also the fail-closed class for unrecognized sensitive paths.",
+      "required_roles": ["planner", "implementer", "verifier", "correctness-reviewer", "gpu-performance-reviewer"],
+      "deterministic_checks": [
+        "python tests/ci/run_module_tests.py --guard-only",
+        "python -m unittest discover -s tests/agentic",
+        "python tests/runtime/run_runtime_validation.py --profile streaming-gpu-ci --skip-cpp --fail-on-skip",
+        "python tests/ci/validate_automation.py --contracts-only"
+      ],
+      "evidence_requirements": [
+        "Design record (ADR or design-change issue) before implementation.",
+        "Backward-compatibility evidence for format/API changes.",
+        "Two independent reviews and CODEOWNER + human approval."
+      ],
+      "human_approval_required": true,
+      "adr_required": true,
+      "rollback_required": true
+    }
+  },
+  "classification": {
+    "ordering": ["R0", "R1", "R2", "R3"],
+    "default_unclassified": "R3",
+    "rules": [
+      {
+        "class": "R3",
+        "reason": "Godot engine delta outside the module",
+        "path_globs": [
+          "servers/**",
+          "scene/**",
+          "core/**",
+          "editor/**",
+          "platform/**",
+          "drivers/**",
+          "main/**",
+          "thirdparty/**",
+          "SConstruct",
+          "methods.py"
+        ]
+      },
+      {
+        "class": "R3",
+        "reason": "Persistence / on-disk format",
+        "path_globs": [
+          "modules/gaussian_splatting/persistence/**",
+          "modules/gaussian_splatting/io/**"
+        ]
+      },
+      {
+        "class": "R3",
+        "reason": "Release / security / CI workflow surface",
+        "path_globs": [
+          ".github/workflows/**",
+          ".github/CODEOWNERS",
+          "docs/reference/renderer_release_gate_manifest.json"
+        ]
+      },
+      {
+        "class": "R3",
+        "reason": "CI deterministic-check / release-gate machinery",
+        "path_globs": [
+          "tests/ci/run_module_tests.py",
+          "tests/ci/check_renderer_release_gates.py",
+          "tests/ci/validate_automation.py",
+          "tests/ci/run_gpu_harness.py",
+          "tests/runtime/run_runtime_validation.py"
+        ]
+      },
+      {
+        "class": "R2",
+        "reason": "Renderer / shaders / compute / streaming / performance",
+        "path_globs": [
+          "modules/gaussian_splatting/renderer/**",
+          "modules/gaussian_splatting/shaders/**",
+          "modules/gaussian_splatting/compute/**",
+          "modules/gaussian_splatting/lod/**",
+          "modules/gaussian_splatting/asset_management/**",
+          "modules/gaussian_splatting/core/*streaming*",
+          "modules/gaussian_splatting/core/*residency*",
+          "modules/gaussian_splatting/core/*vram*"
+        ]
+      },
+      {
+        "class": "R1",
+        "reason": "Local module or test change",
+        "path_globs": [
+          "modules/gaussian_splatting/**",
+          "tests/**"
+        ]
+      },
+      {
+        "class": "R0",
+        "reason": "Docs / agentic governance",
+        "path_globs": [
+          "docs/**",
+          "**/AGENTS.md",
+          "AGENTS.md",
+          "CLAUDE.md",
+          "README.md",
+          "BUILDING.md",
+          "CONTRIBUTING.md",
+          "CHANGELOG.md",
+          "AUTHORS.md",
+          "DONORS.md",
+          "ENGINE_PATCHES.md",
+          ".agentic/**",
+          "scripts/agentic/**"
+        ]
+      }
+    ]
+  }
+}

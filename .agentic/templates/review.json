@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "reviewer_role": "correctness-reviewer",
+  "base_sha": "0000000000000000000000000000000000000000",
+  "head_sha": "1111111111111111111111111111111111111111",
+  "verdict": "changes_requested",
+  "findings": [
+    {
+      "id": "CORR-001",
+      "severity": "high",
+      "category": "resource-lifetime",
+      "path": "modules/gaussian_splatting/renderer/example.cpp",
+      "line": 412,
+      "evidence": "Uniform set can outlive the RenderingDevice generation that created it on the failed-init path.",
+      "required_action": "Store and compare the device generation before reuse; free the uniform set on the early-return path."
+    }
+  ],
+  "tests_reviewed": [
+    "python tests/ci/run_module_tests.py --guard-only"
+  ],
+  "evidence_reviewed": [
+    "No GPU evidence was attached to the PR."
+  ],
+  "blind_spots": [
+    "No AMD/Intel GPU evidence was available; cross-vendor behavior unverified."
+  ]
+}
