@@ -2516,7 +2516,17 @@ TEST_CASE("[Streaming Pipeline] VRAM accounting includes auxiliary atlas overhea
 
     CHECK(payload_after_mb >= payload_before_mb);
     CHECK(overhead_after_mb >= overhead_before_mb);
-    CHECK(total_after > total_before);
+    // get_vram_usage() reports the real allocation now: MAX(loaded payload,
+    // persistent-buffer allocation) folded together with the auxiliary atlas
+    // overhead. Loading a single sub-capacity chunk need not grow the reported
+    // total — the up-front persistent buffer dominates the tiny 1024-splat payload,
+    // so the MAX is unchanged. Assert the accounting invariants instead of strict
+    // per-payload growth: the total never shrinks, and because the auxiliary
+    // overhead is non-zero it stays strictly above the persistent allocation alone
+    // (i.e. the overhead really is folded in on top of the buffer allocation).
+    const uint32_t persistent_bytes = system->_test_get_persistent_buffer_size();
+    CHECK(total_after >= total_before);
+    CHECK(total_after > uint64_t(persistent_bytes));
 }
 
 TEST_CASE("[Streaming Pipeline] Invalid camera/projection input is rejected safely") {
@@ -3707,8 +3717,9 @@ TEST_CASE("[Streaming VRAM] Reported total folds in the persistent buffer alloca
     // so the reported total must account for the whole allocation, not just the
     // (currently zero) loaded payload. Regression guard for the under-count:
     // pre-fix get_vram_usage() returned only the auxiliary overhead here.
-    REQUIRE(system->persistent_buffer_size > 0u);
+    const uint32_t persistent_bytes = system->_test_get_persistent_buffer_size();
+    REQUIRE(persistent_bytes > 0u);
     const uint64_t reported = system->get_vram_usage();
-    CHECK(reported >= uint64_t(system->persistent_buffer_size));
+    CHECK(reported >= uint64_t(persistent_bytes));
     CHECK(reported > 0u);
 }
