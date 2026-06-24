@@ -690,6 +690,44 @@ TEST_CASE("[GaussianSplatting] GPU layout contract invariants remain stable") {
     CHECK(offsetof(TileRenderParamsGPU, effector_configs) == size_t(768));
 }
 
+// Mirror of the GLSL direct-lighting ownership predicates in tile_binning.glsl
+// and tile_resolve.glsl. These MUST stay in sync with the shaders: binning bakes
+// direct lighting iff lighting_mode == 1u; resolve adds direct iff lighting_mode == 0u.
+static bool gs_binning_bakes_direct(uint32_t p_lighting_mode) {
+    return p_lighting_mode == 1u;
+}
+static bool gs_resolve_adds_direct(uint32_t p_lighting_mode) {
+    return p_lighting_mode == 0u;
+}
+
+TEST_CASE("[GaussianSplatting] direct-lighting passes own disjoint modes (no double-count)") {
+    // The two passes must never both apply direct lighting for any value the host
+    // could place in lighting_mode.x; otherwise mode would double-count. We sweep
+    // a generous range (well beyond the valid {0,1}) to catch any future mode that
+    // accidentally satisfies both predicates.
+    for (uint32_t mode = 0u; mode <= 8u; ++mode) {
+        const bool binning = gs_binning_bakes_direct(mode);
+        const bool resolve = gs_resolve_adds_direct(mode);
+        CHECK_MESSAGE(!(binning && resolve),
+                "tile_binning and tile_resolve both apply direct lighting for a mode");
+    }
+
+    // Every valid mode must be owned by exactly one pass (no unowned/dropped mode).
+    CHECK(gs_resolve_adds_direct(0u));
+    CHECK_FALSE(gs_binning_bakes_direct(0u));
+    CHECK(gs_binning_bakes_direct(1u));
+    CHECK_FALSE(gs_resolve_adds_direct(1u));
+
+    // The host must only ever emit the two valid, disjoint modes. The default and the
+    // two assignment sites in the codebase are 0 (resolve) and 1 (per-splat); there is
+    // intentionally no "both" (mode 2) path. Confirm the GPU-layout default carries a
+    // valid, single-owner mode.
+    TileRenderParamsGPU gpu = {};
+    CHECK(gpu.lighting_mode[0] == 0u);
+    CHECK((gpu.lighting_mode[0] == 0u || gpu.lighting_mode[0] == 1u));
+    CHECK(gs_binning_bakes_direct(gpu.lighting_mode[0]) != gs_resolve_adds_direct(gpu.lighting_mode[0]));
+}
+
 static GaussianRenderPipeline::InstancePipelineBuffers make_ready_instance_pipeline_buffers(bool p_quantization_required) {
     GaussianRenderPipeline::InstancePipelineBuffers buffers;
     uint64_t rid_id = 1;

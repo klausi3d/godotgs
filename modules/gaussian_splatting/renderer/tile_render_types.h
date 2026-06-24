@@ -432,7 +432,11 @@ struct TileRenderParams {
 	float shadow_receiver_bias_max = 0.0f;
 	bool enable_direct_lighting = true;
 	int normal_mode = 0;
-	int direct_lighting_mode = 0; // 0=resolve, 1=per-splat (binning), 2=both
+	// Direct-lighting ownership: 0=resolve adds direct (binning bakes nothing),
+	// 1=per-splat binning bakes direct (resolve adds nothing). These are the only
+	// valid values; the two passes own DISJOINT modes and must never both apply
+	// direct lighting (it would double-count). There is intentionally no "both" mode.
+	int direct_lighting_mode = 0;
 	float alpha_floor = 0.0f;
 	bool force_solid_coverage = false;
 	float cull_far_tolerance = 0.05f;

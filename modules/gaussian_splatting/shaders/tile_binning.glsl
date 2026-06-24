@@ -1235,8 +1235,13 @@ void main() {
     float shadow_strength = clamp(params.shadow_strength.x, 0.0, 1.0);
     bool shadow_sampling_enabled = shadow_strength > 0.0;
     float sh_occlusion = 0.0;
+    // Direct-lighting ownership contract (must stay disjoint from tile_resolve.glsl):
+    //   lighting_mode == 0u  -> resolve adds direct (this pass bakes NOTHING)
+    //   lighting_mode == 1u  -> this pass (binning) bakes direct (resolve adds NOTHING)
+    // The two passes must never both apply direct lighting to the same splat, or it
+    // double-counts. There is intentionally no "both" mode here.
     if (params.lighting_config.z > 0.5) {
-        if (lighting_mode == 1u || lighting_mode == 2u) {
+        if (lighting_mode == 1u) {
             vec3 view_pos = view_pos_scene;
             vec3 view_dir = view_dir_scene;
 
