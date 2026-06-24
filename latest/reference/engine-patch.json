@@ -504,19 +504,6 @@
     },
     {
       "deletion_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "display_path": ".github/CODEOWNERS",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "lines_added": 0,
-      "lines_deleted": 259,
-      "new_path": ".github/CODEOWNERS",
-      "old_path": ".github/CODEOWNERS",
-      "pre_deletion_commit": "8bb22eb668021e4089fb0d5a6f012a155b3446f5",
-      "status": "D",
-      "subsystem": ".github",
-      "touchpoints": []
-    },
-    {
-      "deletion_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
       "display_path": ".github/ISSUE_TEMPLATE/bug_report.yml",
       "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
       "lines_added": 0,
@@ -537,19 +524,6 @@
       "new_path": ".github/ISSUE_TEMPLATE/config.yml",
       "old_path": ".github/ISSUE_TEMPLATE/config.yml",
       "pre_deletion_commit": null,
-      "status": "D",
-      "subsystem": ".github",
-      "touchpoints": []
-    },
-    {
-      "deletion_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "display_path": ".github/PULL_REQUEST_TEMPLATE.md",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "lines_added": 0,
-      "lines_deleted": 8,
-      "new_path": ".github/PULL_REQUEST_TEMPLATE.md",
-      "old_path": ".github/PULL_REQUEST_TEMPLATE.md",
-      "pre_deletion_commit": "500c83305dbbdaa7a9482a4b6bcef7e5177a2c7c",
       "status": "D",
       "subsystem": ".github",
       "touchpoints": []
@@ -790,9 +764,35 @@
     },
     {
       "deletion_commit": null,
+      "display_path": ".github/CODEOWNERS",
+      "last_touch_commit": "66b5ddc884807e1fa6865add3971ddb910f864fe",
+      "lines_added": 52,
+      "lines_deleted": 259,
+      "new_path": ".github/CODEOWNERS",
+      "old_path": ".github/CODEOWNERS",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": ".github",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
+      "display_path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "last_touch_commit": "66b5ddc884807e1fa6865add3971ddb910f864fe",
+      "lines_added": 79,
+      "lines_deleted": 5,
+      "new_path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "old_path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": ".github",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
       "display_path": ".gitignore",
-      "last_touch_commit": "d11c70687add5661fcf2f11b125bf3a55f16591e",
-      "lines_added": 138,
+      "last_touch_commit": "66b5ddc884807e1fa6865add3971ddb910f864fe",
+      "lines_added": 147,
       "lines_deleted": 0,
       "new_path": ".gitignore",
       "old_path": ".gitignore",
@@ -2339,7 +2339,7 @@
       ]
     },
     "fork_base_commit": "876b290332ec6f2e6d173d08162a02aa7e6ca46d",
-    "head_commit": "9c59a3eee4a3ed23fb8587b089774cbeca1c4965",
+    "head_commit": "b06f048239e52ce43b6fd0949b3f9cf9a0fc6791",
     "head_ref": "HEAD",
     "label": "Godot 4.5 stable fork-point commit",
     "rename_threshold": "70%",
@@ -2444,8 +2444,8 @@
     }
   ],
   "summary": {
-    "deleted": 39,
-    "modified": 101,
+    "deleted": 37,
+    "modified": 103,
     "renamed": 0,
     "total_files": 140
   },
