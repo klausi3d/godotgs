@@ -219,6 +219,8 @@ void GaussianSplattingPerformanceMonitors::_register_monitor_definitions(Perform
                 callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_gpu_cull_time_ms) },
         { "gaussian_splatting/gpu_time_sort_ms",
                 callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_gpu_sort_time_ms) },
+        { "gaussian_splatting/gpu_time_overlap_count_ms",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_gpu_overlap_count_time_ms) },
         { "gaussian_splatting/gpu_time_binning_ms",
                 callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_gpu_binning_time_ms) },
         { "gaussian_splatting/gpu_time_prefix_ms",
@@ -277,6 +279,14 @@ void GaussianSplattingPerformanceMonitors::_register_monitor_definitions(Perform
         // Rendering Configuration Monitors
         { "gaussian_splatting/tile_count",
                 callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_tile_count) },
+
+        // Honest device-level VRAM (real RenderingDevice allocation, includes sort/projection/atlas/textures)
+        { "gaussian_splatting/vram_device_total_mb",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_vram_device_total_mb) },
+        { "gaussian_splatting/vram_device_buffers_mb",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_vram_device_buffers_mb) },
+        { "gaussian_splatting/vram_device_textures_mb",
+                callable_mp(this, &GaussianSplattingPerformanceMonitors::_get_vram_device_textures_mb) },
 
         // VRAM Budget Regulation Monitors (Phase 1)
         { "gaussian_splatting/vram_current_usage_mb",
@@ -536,18 +546,32 @@ float GaussianSplattingPerformanceMonitors::_get_gpu_cull_time_ms() const {
 }
 
 float GaussianSplattingPerformanceMonitors::_get_gpu_sort_time_ms() const {
+    // Prefer the REAL GPU overlap-sort timestamp (timing_state.last_overlap_sort_gpu_ms, resolved
+    // from the dedicated sort timestamp via resolve_gpu_timestamps_async). The streaming snapshot's
+    // stage/frame_sort_time_ms is the CPU command-SUBMIT time (sub-0.1ms), which massively
+    // under-reports: the overlap sort is the dominant GPU pass (measured ~7.8ms at 1.7M splats),
+    // and surfacing the submit time here was the metric-aliasing bug.
+    // Gate the direct GPU value on its validity flag (per codex review): on a frame with no sort
+    // dispatch (empty view, early-exit), last_overlap_sort_gpu_ms keeps its previous value, so an
+    // un-gated read could let a stale ~7.8ms win over the current fallback. When invalid, fall back.
+    const float direct = (active_renderer && active_renderer->is_last_gpu_overlap_sort_time_valid())
+            ? active_renderer->get_last_gpu_overlap_sort_time_ms()
+            : 0.0f;
     GaussianSplatRenderer *renderer = _get_active_splat_renderer(false);
     if (!renderer) {
-        return 0.0f;
+        return _sanitize_ms(direct);
     }
-
     const GaussianSplatRenderer::MonitorStreamingSnapshot snapshot =
             _streaming_snapshot_for_monitors(renderer);
-    if (snapshot.stage_metrics_valid) {
-        return _sanitize_ms(snapshot.stage_sort_time_ms);
-    }
+    const float fallback = snapshot.stage_metrics_valid ? snapshot.stage_sort_time_ms : snapshot.frame_sort_time_ms;
+    return _prefer_direct_or_fallback(direct, fallback);
+}
 
-    return _sanitize_ms(snapshot.frame_sort_time_ms);
+float GaussianSplattingPerformanceMonitors::_get_gpu_overlap_count_time_ms() const {
+    // Real GPU time of the overlap-COUNT pass. Captured before the mid-frame buffer_get_data flush,
+    // so (unlike the post-flush passes) it resolves reliably in steady state. Surfacing it de-aliases
+    // the dashboard: binning/emit and count are distinct passes, not the same number.
+    return active_renderer ? _sanitize_ms(active_renderer->get_last_gpu_overlap_count_time_ms()) : 0.0f;
 }
 
 float GaussianSplattingPerformanceMonitors::_get_gpu_binning_time_ms() const {
@@ -783,6 +807,34 @@ int GaussianSplattingPerformanceMonitors::_get_aggregated_count() const {
 
 int GaussianSplattingPerformanceMonitors::_get_tile_count() const {
     return active_renderer ? (int)active_renderer->get_tile_count() : 0;
+}
+
+// ============================================================================
+// Honest Device-Level VRAM Monitor Getters
+// Real RenderingDevice::get_memory_usage — the FULL GPU allocation on the device
+// (sort buffers + projection + resident atlas + textures), not just the streaming
+// regulator's atlas estimate exposed by vram_current_usage_mb.
+// ============================================================================
+
+float GaussianSplattingPerformanceMonitors::_get_vram_device_total_mb() const {
+    if (!active_renderer) return 0.0f;
+    RenderingDevice *rd = active_renderer->get_active_device();
+    if (!rd) return 0.0f;
+    return (float)((double)rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL) / (1024.0 * 1024.0));
+}
+
+float GaussianSplattingPerformanceMonitors::_get_vram_device_buffers_mb() const {
+    if (!active_renderer) return 0.0f;
+    RenderingDevice *rd = active_renderer->get_active_device();
+    if (!rd) return 0.0f;
+    return (float)((double)rd->get_memory_usage(RenderingDevice::MEMORY_BUFFERS) / (1024.0 * 1024.0));
+}
+
+float GaussianSplattingPerformanceMonitors::_get_vram_device_textures_mb() const {
+    if (!active_renderer) return 0.0f;
+    RenderingDevice *rd = active_renderer->get_active_device();
+    if (!rd) return 0.0f;
+    return (float)((double)rd->get_memory_usage(RenderingDevice::MEMORY_TEXTURES) / (1024.0 * 1024.0));
 }
 
 // ============================================================================

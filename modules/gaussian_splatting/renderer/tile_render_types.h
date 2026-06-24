@@ -269,6 +269,22 @@ struct TileTimingState {
 	bool frame_gpu_timing_valid = false;
 	uint64_t gpu_timing_frame_serial = 0;
 	uint64_t gpu_timing_frames_behind = 0;
+	// Monotonic counter advanced on EVERY _update_timing_metrics call (work AND no-work frames).
+	// The sticky-timing staleness ages against this, NOT the rasterizer's current_frame_serial:
+	// that serial freezes on the empty/no-dispatch path (which returns before rasterization) while
+	// resolve_gpu_timestamps_async() still runs, so aging against it would never expire on an empty view.
+	uint64_t gpu_timing_age_serial = 0;
+	// Frame serial at which each per-pass GPU time was last successfully resolved. Used to bound the
+	// staleness of the "sticky last-known" per-pass timings (see _update_timing_metrics): a pass that
+	// legitimately stops dispatching (e.g. raster compute/fragment switch, skipped resolve, empty
+	// view) must not keep reporting a frozen value forever — its valid flag is cleared after it has
+	// not resolved for GPU_PASS_STALE_FRAMES.
+	uint64_t last_overlap_count_resolved_serial = 0;
+	uint64_t last_overlap_emit_resolved_serial = 0;
+	uint64_t last_overlap_sort_resolved_serial = 0;
+	uint64_t last_raster_resolved_serial = 0;
+	uint64_t last_prefix_resolved_serial = 0;
+	uint64_t last_resolve_resolved_serial = 0;
 };
 
 struct TilePerformanceMetrics {

@@ -7,9 +7,33 @@
 static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
     static Vector<GaussianImportPresetDefinition> presets;
     if (presets.is_empty()) {
+        // Ultra is intentionally FIRST so it is the default preset for new
+        // .ply/.spz imports — Godot uses preset index 0 as the default options
+        // for a freshly imported file. Ultra keeps every splat
+        // (max_splats = 0, density_multiplier = 1.0), so imported assets are not
+        // pruned unless the user explicitly picks a lighter preset per asset.
+        GaussianImportPresetDefinition ultra;
+        ultra.id = "ultra";
+        ultra.display_name = RTR("Ultra Quality");
+        ultra.max_splats = 0;
+        ultra.density_multiplier = 1.0;
+        ultra.enable_lod = true;
+        ultra.optimize_for_gpu = true;
+        ultra.quantize_positions = false;
+        ultra.quantize_colors = false;
+        ultra.quantize_scales = false;
+        ultra.quantize_rotations = false;
+        ultra.pack_opacity = false;
+        ultra.thumbnail_style = 2; // normals style
+        ultra.include_statistics = true;
+        ultra.include_memory_estimate = true;
+        ultra.default_thumbnail_size = 192;
+        ultra.default_asset_type = 0;
+        presets.push_back(ultra);
+
         GaussianImportPresetDefinition mobile;
         mobile.id = "mobile";
-        mobile.display_name = TTR("Mobile");
+        mobile.display_name = RTR("Mobile");
         mobile.max_splats = 250000;
         mobile.density_multiplier = 0.4;
         mobile.enable_lod = true;
@@ -28,7 +52,7 @@ static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
 
         GaussianImportPresetDefinition desktop;
         desktop.id = "desktop";
-        desktop.display_name = TTR("Desktop");
+        desktop.display_name = RTR("Desktop");
         desktop.max_splats = 750000;
         desktop.density_multiplier = 0.7;
         desktop.enable_lod = true;
@@ -47,7 +71,7 @@ static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
 
         GaussianImportPresetDefinition high;
         high.id = "high";
-        high.display_name = TTR("High Quality");
+        high.display_name = RTR("High Quality");
         high.max_splats = 1000000;
         high.density_multiplier = 1.0;
         high.enable_lod = true;
@@ -64,28 +88,9 @@ static Vector<GaussianImportPresetDefinition> &_gaussian_import_presets() {
         high.default_asset_type = 0;
         presets.push_back(high);
 
-        GaussianImportPresetDefinition ultra;
-        ultra.id = "ultra";
-        ultra.display_name = TTR("Ultra Quality");
-        ultra.max_splats = 0;
-        ultra.density_multiplier = 1.0;
-        ultra.enable_lod = true;
-        ultra.optimize_for_gpu = true;
-        ultra.quantize_positions = false;
-        ultra.quantize_colors = false;
-        ultra.quantize_scales = false;
-        ultra.quantize_rotations = false;
-        ultra.pack_opacity = false;
-        ultra.thumbnail_style = 2; // normals style
-        ultra.include_statistics = true;
-        ultra.include_memory_estimate = true;
-        ultra.default_thumbnail_size = 192;
-        ultra.default_asset_type = 0;
-        presets.push_back(ultra);
-
         GaussianImportPresetDefinition development;
         development.id = "development";
-        development.display_name = TTR("Development");
+        development.display_name = RTR("Development");
         development.max_splats = 0;
         development.density_multiplier = 1.0;
         development.enable_lod = false;
@@ -129,7 +134,7 @@ const GaussianImportPresetDefinition &gaussian_get_import_preset_by_index(int p_
 const GaussianImportPresetDefinition &gaussian_get_import_preset_by_name(const String &p_name) {
     int idx = gaussian_find_import_preset_index(p_name);
     if (idx < 0) {
-        return gaussian_get_import_preset_by_index(1); // fallback to desktop/high
+        return gaussian_get_import_preset_by_index(0); // fallback to the default (ultra) — never prune on an unknown id
     }
     return gaussian_get_import_preset_by_index(idx);
 }

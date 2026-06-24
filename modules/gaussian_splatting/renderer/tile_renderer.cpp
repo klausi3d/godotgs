@@ -2578,36 +2578,92 @@ TileRenderer::GpuTimestampDurations TileRenderer::_compute_stage_durations(const
 }
 
 void TileRenderer::_update_timing_metrics(const GpuTimestampDurations &p_durations) {
-    if (!p_durations.has_data) {
-        return;
-    }
+	// Runs on EVERY call, including the no-data frames resolve_gpu_timestamps_async() forwards
+	// when a scene stops dispatching: per-pass ingestion self-skips without fresh data (all
+	// *_valid are false), but the staleness pass below MUST still run so sticky timings age out
+	// instead of reporting a previous scene's GPU cost forever.
 
-	timing_state.last_overlap_count_gpu_ms = (float)p_durations.count_ms;
-	timing_state.last_overlap_emit_gpu_ms = (float)p_durations.bin_ms;
-	timing_state.last_binning_gpu_ms = timing_state.last_overlap_emit_gpu_ms;
-	timing_state.last_overlap_sort_gpu_ms = (float)p_durations.overlap_sort_ms;
-	timing_state.last_raster_gpu_ms = (float)p_durations.raster_ms;
-	timing_state.last_prefix_gpu_ms = (float)p_durations.prefix_ms;
-	timing_state.last_resolve_gpu_ms = (float)p_durations.resolve_ms;
-	timing_state.overlap_count_gpu_timing_valid = p_durations.count_valid;
-	timing_state.overlap_emit_gpu_timing_valid = p_durations.bin_valid;
-	timing_state.overlap_sort_gpu_timing_valid = p_durations.overlap_sort_valid;
-	timing_state.raster_gpu_timing_valid = p_durations.raster_valid;
-	timing_state.prefix_gpu_timing_valid = p_durations.prefix_valid;
-	timing_state.resolve_gpu_timing_valid = p_durations.resolve_valid;
-	float fallback_total = 0.0f;
-	fallback_total += p_durations.count_valid ? (float)p_durations.count_ms : 0.0f;
-	fallback_total += p_durations.prefix_valid ? (float)p_durations.prefix_ms : 0.0f;
-	fallback_total += p_durations.bin_valid ? (float)p_durations.bin_ms : 0.0f;
-	fallback_total += p_durations.overlap_sort_valid ? (float)p_durations.overlap_sort_ms : 0.0f;
-	fallback_total += p_durations.raster_valid ? (float)p_durations.raster_ms : 0.0f;
-	fallback_total += p_durations.resolve_valid ? (float)p_durations.resolve_ms : 0.0f;
-	timing_state.last_frame_gpu_ms = (float)(p_durations.total_valid ? p_durations.total_ms : fallback_total);
-	timing_state.frame_gpu_timing_valid = p_durations.total_valid || fallback_total > 0.0f;
-	timing_state.gpu_timing_frame_serial = p_durations.serial;
-    timing_state.gpu_timing_frames_behind = (frame_state.current_frame_serial > p_durations.serial)
-            ? (frame_state.current_frame_serial - p_durations.serial)
-            : 0;
+	// Per-pass GPU timestamps resolve only INTERMITTENTLY: the mid-frame buffer_get_data flush
+	// (prefix stage) wipes the main-submission markers on most frames, so only the sort — captured
+	// in its own GPU submission — survives every frame; count/binning/raster/prefix/resolve resolve
+	// only on frames where the flush timing happens to align. Therefore DON'T clobber a previously
+	// resolved per-pass value with 0 on a frame where that pass didn't resolve: keep the last-known
+	// GPU time and a sticky valid flag, so the monitors show stable real values instead of flickering
+	// to 0. (_reset_timestamp_tracking() zeros these when timestamp capture is disabled.)
+	// Age against a per-resolve counter, not the rasterizer frame serial (which freezes on the
+	// empty/no-dispatch path), so sticky timings expire on an empty view (Codex follow-up on #397).
+	const uint64_t cur_serial = ++timing_state.gpu_timing_age_serial;
+	if (p_durations.count_valid) {
+		timing_state.last_overlap_count_gpu_ms = (float)p_durations.count_ms;
+		timing_state.overlap_count_gpu_timing_valid = true;
+		timing_state.last_overlap_count_resolved_serial = cur_serial;
+	}
+	if (p_durations.bin_valid) {
+		timing_state.last_overlap_emit_gpu_ms = (float)p_durations.bin_ms;
+		timing_state.last_binning_gpu_ms = timing_state.last_overlap_emit_gpu_ms;
+		timing_state.overlap_emit_gpu_timing_valid = true;
+		timing_state.last_overlap_emit_resolved_serial = cur_serial;
+	}
+	if (p_durations.overlap_sort_valid) {
+		timing_state.last_overlap_sort_gpu_ms = (float)p_durations.overlap_sort_ms;
+		timing_state.overlap_sort_gpu_timing_valid = true;
+		timing_state.last_overlap_sort_resolved_serial = cur_serial;
+	}
+	if (p_durations.raster_valid) {
+		timing_state.last_raster_gpu_ms = (float)p_durations.raster_ms;
+		timing_state.raster_gpu_timing_valid = true;
+		timing_state.last_raster_resolved_serial = cur_serial;
+	}
+	if (p_durations.prefix_valid) {
+		timing_state.last_prefix_gpu_ms = (float)p_durations.prefix_ms;
+		timing_state.prefix_gpu_timing_valid = true;
+		timing_state.last_prefix_resolved_serial = cur_serial;
+	}
+	if (p_durations.resolve_valid) {
+		timing_state.last_resolve_gpu_ms = (float)p_durations.resolve_ms;
+		timing_state.resolve_gpu_timing_valid = true;
+		timing_state.last_resolve_resolved_serial = cur_serial;
+	}
+	// Staleness bound (per dual review): a pass that legitimately STOPS dispatching (raster
+	// compute/fragment switch, skipped resolve, empty view) must not report a frozen value forever.
+	// Clear a sticky per-pass valid flag once it has not resolved for GPU_PASS_STALE_FRAMES; passes
+	// that keep resolving intermittently stay valid.
+	constexpr uint64_t GPU_PASS_STALE_FRAMES = 120; // ~2s at 60fps
+	auto expire_stale = [cur_serial](bool &r_valid, float &r_value, uint64_t p_resolved_serial) {
+		if (r_valid && cur_serial > p_resolved_serial && (cur_serial - p_resolved_serial) > GPU_PASS_STALE_FRAMES) {
+			r_valid = false;
+			r_value = 0.0f;
+		}
+	};
+	expire_stale(timing_state.overlap_count_gpu_timing_valid, timing_state.last_overlap_count_gpu_ms, timing_state.last_overlap_count_resolved_serial);
+	expire_stale(timing_state.overlap_emit_gpu_timing_valid, timing_state.last_overlap_emit_gpu_ms, timing_state.last_overlap_emit_resolved_serial);
+	if (!timing_state.overlap_emit_gpu_timing_valid) {
+		timing_state.last_binning_gpu_ms = 0.0f; // binning mirrors emit
+	}
+	expire_stale(timing_state.overlap_sort_gpu_timing_valid, timing_state.last_overlap_sort_gpu_ms, timing_state.last_overlap_sort_resolved_serial);
+	expire_stale(timing_state.raster_gpu_timing_valid, timing_state.last_raster_gpu_ms, timing_state.last_raster_resolved_serial);
+	expire_stale(timing_state.prefix_gpu_timing_valid, timing_state.last_prefix_gpu_ms, timing_state.last_prefix_resolved_serial);
+	expire_stale(timing_state.resolve_gpu_timing_valid, timing_state.last_resolve_gpu_ms, timing_state.last_resolve_resolved_serial);
+	// Frame total from the (sticky) last-known per-pass values, so it reflects the full pipeline
+	// (~13ms) rather than just whichever passes happened to resolve this frame (which made it read
+	// ~8ms = sort only). The GaussianSplat_ total marker is itself flush-discarded, so don't rely on it.
+	float frame_total = 0.0f;
+	frame_total += timing_state.overlap_count_gpu_timing_valid ? timing_state.last_overlap_count_gpu_ms : 0.0f;
+	frame_total += timing_state.prefix_gpu_timing_valid ? timing_state.last_prefix_gpu_ms : 0.0f;
+	frame_total += timing_state.overlap_emit_gpu_timing_valid ? timing_state.last_overlap_emit_gpu_ms : 0.0f;
+	frame_total += timing_state.overlap_sort_gpu_timing_valid ? timing_state.last_overlap_sort_gpu_ms : 0.0f;
+	frame_total += timing_state.raster_gpu_timing_valid ? timing_state.last_raster_gpu_ms : 0.0f;
+	frame_total += timing_state.resolve_gpu_timing_valid ? timing_state.last_resolve_gpu_ms : 0.0f;
+	timing_state.last_frame_gpu_ms = frame_total;
+	timing_state.frame_gpu_timing_valid = frame_total > 0.0f;
+	// Only fresh data advances the reported frame serial / frames-behind; a no-data ageing call
+	// must not stamp the default serial (UINT64_MAX) over the last real measurement.
+	if (p_durations.has_data) {
+		timing_state.gpu_timing_frame_serial = p_durations.serial;
+		timing_state.gpu_timing_frames_behind = (frame_state.current_frame_serial > p_durations.serial)
+				? (frame_state.current_frame_serial - p_durations.serial)
+				: 0;
+	}
 }
 
 void TileRenderer::resolve_gpu_timestamps_async() {
@@ -2628,6 +2684,9 @@ void TileRenderer::resolve_gpu_timestamps_async() {
         if (timing_state.gpu_timing_frame_serial > 0 && frame_state.current_frame_serial > timing_state.gpu_timing_frame_serial) {
             timing_state.gpu_timing_frames_behind = frame_state.current_frame_serial - timing_state.gpu_timing_frame_serial;
         }
+        // No fresh timestamps this frame (empty / no-dispatch view): still run the staleness pass
+        // so the sticky per-pass timings age out instead of reporting the last scene's cost forever.
+        _update_timing_metrics(GpuTimestampDurations());
         return;
     }
 

@@ -640,9 +640,15 @@ void TileProjectionBuffers::ensure_projection_buffer(uint32_t p_visible_count) {
 	}
 	const uint32_t required_bytes = uint32_t(required_bytes64);
 
-	const bool should_shrink = projection_buffer.is_valid() && projection_buffer_size > 0 &&
-			projection_buffer_size > required_bytes * 8u;
-	const bool needs_resize = !projection_buffer.is_valid() || projection_buffer_size < required_bytes || should_shrink;
+	// Only-grow policy: never shrink the projection buffer within a renderer's
+	// lifetime. The visible-splat count oscillates by ~15x as the camera sweeps
+	// (e.g. 250K..3.74M), and an 8x shrink hysteresis was not wide enough to
+	// prevent grow/shrink cycling — it caused this >1 GB buffer to be freed and
+	// recreated hundreds of times per session, stalling the driver (stutter) and
+	// transiently double-allocating during the realloc. Growing to the session
+	// high-water mark and holding converges after the first full-scene frame.
+	// The buffer is released wholesale on renderer teardown / scene change.
+	const bool needs_resize = !projection_buffer.is_valid() || projection_buffer_size < required_bytes;
 
 	if (!needs_resize) {
 #ifdef DEV_ENABLED

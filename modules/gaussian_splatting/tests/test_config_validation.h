@@ -432,6 +432,54 @@ TEST_CASE("[GaussianSplatting][Config] Project settings apply preset layouts unl
 	g_gpu_sorting_config = previous_global_config;
 }
 
+TEST_CASE("[GaussianSplatting][Config] Explicit max_overlap_records overrides a named preset's budget") {
+	ProjectSettings *project_settings = ProjectSettings::get_singleton();
+	REQUIRE(project_settings != nullptr);
+
+	const GPUSortingConfig previous_global_config = g_gpu_sorting_config;
+	const String preset_path = GPUSortingConfig::GPU_PRESET_PATH;
+	const String overlap_path = GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH;
+	ProjectSettingGuard preset_guard(project_settings, preset_path);
+	ProjectSettingGuard overlap_guard(project_settings, overlap_path);
+
+	// preset_low() pins a 10M overlap budget; the legacy/"high" budget is 100M.
+	const uint32_t kLowPresetOverlap = 10000000u;
+	const uint32_t kHighOverlap = 100000000u;
+
+	SUBCASE("0 sentinel keeps the preset's own overlap budget") {
+		project_settings->set_setting(preset_path, "low");
+		project_settings->set_setting(overlap_path, 0);
+		g_gpu_sorting_config.load_from_project_settings();
+		CHECK(g_gpu_sorting_config.max_overlap_records == kLowPresetOverlap);
+	}
+
+	SUBCASE("Explicit 100M wins over a preset whose budget is lower") {
+		// Regression for Codex P2 on #397: detecting explicitness by value-equality
+		// against the 100M default dropped a project that intentionally pinned
+		// exactly the legacy budget on top of the low-VRAM preset.
+		project_settings->set_setting(preset_path, "low");
+		project_settings->set_setting(overlap_path, 100000000);
+		g_gpu_sorting_config.load_from_project_settings();
+		CHECK(g_gpu_sorting_config.max_overlap_records == kHighOverlap);
+	}
+
+	SUBCASE("Explicit 100M wins over a preset whose budget is higher") {
+		project_settings->set_setting(preset_path, "ultra"); // preset_ultra() pins 150M
+		project_settings->set_setting(overlap_path, 100000000);
+		g_gpu_sorting_config.load_from_project_settings();
+		CHECK(g_gpu_sorting_config.max_overlap_records == kHighOverlap);
+	}
+
+	SUBCASE("Custom preset with the 0 sentinel falls back to the 100M default") {
+		project_settings->set_setting(preset_path, "custom");
+		project_settings->set_setting(overlap_path, 0);
+		g_gpu_sorting_config.load_from_project_settings();
+		CHECK(g_gpu_sorting_config.max_overlap_records == kHighOverlap);
+	}
+
+	g_gpu_sorting_config = previous_global_config;
+}
+
 TEST_CASE("[GaussianSplatting][Config] GPUSortingConfig validates tile/depth bit allocation") {
 	GPUSortingConfig config;
 	config.reset_to_defaults();

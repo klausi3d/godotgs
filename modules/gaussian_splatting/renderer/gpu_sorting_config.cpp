@@ -63,6 +63,22 @@ void GPUSortingConfig::load_from_project_settings() {
             validate_sorted_output = ps->get_setting(VALIDATE_SORTED_OUTPUT_PATH, validate_sorted_output);
             enable_stage_timestamps = ps->get_setting(ENABLE_STAGE_TIMESTAMPS_PATH, enable_stage_timestamps);
             subgroup_prefix_mode = static_cast<uint8_t>(ps->get_setting(SUBGROUP_PREFIX_MODE_PATH, int(subgroup_prefix_mode)));
+            // Honor an EXPLICITLY-overridden project max_overlap_records even
+            // under a named preset. The preset supplies the per-tile overlap-sort
+            // budget as a DEFAULT, but a value the project author set on purpose
+            // is intentional and must win — otherwise the preset silently over- or
+            // under-sizes the overlap sort buffers (the "high" budget of 100M
+            // records is ~0.76 GB of keys alone, ~2 GB across keys/values/radix
+            // scratch). max_overlap_records is GLOBAL_DEF'd with a 0 "auto"
+            // sentinel (see initialize_gpu_sorting_config): 0 keeps the preset's
+            // budget, any positive value is an explicit override. Detecting
+            // explicitness by sentinel — not by value-equality against 100M — lets
+            // a project pin ANY budget, including exactly 100M, on top of a preset
+            // whose budget differs.
+            const int64_t project_overlap = ps->get_setting(MAX_OVERLAP_RECORDS_PATH, 0);
+            if (project_overlap > 0) {
+                max_overlap_records = uint32_t(project_overlap);
+            }
             if (enable_performance_logging) {
                 print_config_summary();
             }
@@ -74,9 +90,12 @@ void GPUSortingConfig::load_from_project_settings() {
     // Load individual settings (custom configuration)
     target_sort_time_ms = gs::sorting_settings::get_target_sort_time_ms(ps, 2.0f);
     bool has_elements = ps->has_setting(MAX_ELEMENTS_PATH);
-    bool has_overlap = ps->has_setting(MAX_OVERLAP_RECORDS_PATH);
+    // 0 is the "auto" sentinel (see initialize_gpu_sorting_config); a project
+    // that does not pin a budget falls back to the historical 100M default.
+    const int64_t overlap_setting = ps->get_setting(MAX_OVERLAP_RECORDS_PATH, 0);
+    bool has_overlap = (overlap_setting > 0);
     max_sort_elements = ps->get_setting(MAX_ELEMENTS_PATH, 50000000);
-    max_overlap_records = ps->get_setting(MAX_OVERLAP_RECORDS_PATH, 100000000);
+    max_overlap_records = has_overlap ? uint32_t(overlap_setting) : 100000000u;
     max_raster_splats_per_tile = ps->get_setting(MAX_RASTER_SPLATS_PER_TILE_PATH, 65536);
     GS_LOG_GPU_SORT_INFO(vformat("[GPUSortingConfig] LOADED: max_sort_elements=%d max_overlap_records=%d (has_elements=%d has_overlap=%d)",
             max_sort_elements, max_overlap_records, int(has_elements), int(has_overlap)));
@@ -264,10 +283,14 @@ void GPUSortingConfig::print_config_summary() const {
     GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Active Preset: %s", get_current_preset_name()));
     GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Performance Target: %.1f ms per sort (instance/depth max %d elements)",
             target_sort_time_ms, max_sort_elements));
-    // Calculate VRAM usage for overlap record buffers: keys (8 bytes each for 64-bit) + values (4 bytes each)
-    const float overlap_vram_mb = float(max_overlap_records) * 12.0f / (1024.0f * 1024.0f);
-    GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Overlap Budget: %d records (~%.0f MB VRAM for key+value buffers)",
-            max_overlap_records, overlap_vram_mb));
+    // VRAM for overlap record buffers. Per record we allocate BOTH the primary key+value AND an
+    // equal-sized radix ping-pong temp (temp_keys + temp_values, see gpu_sorter.cpp). 64-bit keys
+    // store an 8-byte key (uvec2), 32-bit keys a 4-byte key; values are always 4 bytes.
+    const uint32_t key_bytes = (key_bits > 32) ? 8u : 4u;
+    const uint32_t bytes_per_record = (key_bytes + 4u) * 2u; // primary + radix temp
+    const float overlap_vram_mb = float(max_overlap_records) * float(bytes_per_record) / (1024.0f * 1024.0f);
+    GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Overlap Budget: %d records (~%.0f MB VRAM, %d B/record incl. radix ping-pong temp)",
+            max_overlap_records, overlap_vram_mb, bytes_per_record));
     GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Raster Tile Cap: %d splats/tile", max_raster_splats_per_tile));
     GS_LOG_GPU_SORT_INFO(vformat("[GPU Sorting Config] Radix Configuration: %d-bit radix, workgroup size %d",
             radix_bits, workgroup_size));
@@ -525,7 +548,10 @@ void initialize_gpu_sorting_config() {
 	GLOBAL_DEF(GPUSortingConfig::GPU_PRESET_PATH, "high");
 	gs::sorting_settings::register_canonical_target_sort_time_setting(ps, 2.0f);
 	GLOBAL_DEF(GPUSortingConfig::MAX_ELEMENTS_PATH, 50000000);
-    GLOBAL_DEF(GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH, 100000000);
+    // max_overlap_records uses 0 as an "auto" sentinel: 0 inherits the active
+    // gpu_preset's overlap budget; any positive value is an explicit project
+    // override that wins even under a named preset (see load_from_project_settings).
+    GLOBAL_DEF(GPUSortingConfig::MAX_OVERLAP_RECORDS_PATH, 0);
     GLOBAL_DEF(GPUSortingConfig::MAX_RASTER_SPLATS_PER_TILE_PATH, 65536);
     GLOBAL_DEF(GPUSortingConfig::RADIX_BITS_PATH, GPUSortingConstants::DEFAULT_RADIX_BITS);
     GLOBAL_DEF(GPUSortingConfig::WORKGROUP_SIZE_PATH, GPUSortingConstants::DEFAULT_WORKGROUP_SIZE);
