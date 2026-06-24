@@ -105,7 +105,9 @@ struct GPUSortingConfig {
     // LOW TIER: Integrated GPUs (Intel UHD, AMD Vega), older discrete GPUs
     //   - Minimizes memory usage and compute load
     //   - Smaller workgroups for better occupancy on limited hardware
-    //   - 32-bit keys to reduce bandwidth
+    //   - 64-bit keys (the only shippable layout): 32-bit depth keys band and
+    //     flicker on real-scan content, so no preset selects them. 32-bit keys are
+    //     an explicit gpu_preset="custom" + key_bits=32 opt-in only.
     //
     // MEDIUM TIER: Mid-range discrete GPUs (GTX 1060, RTX 3050, RX 5600)
     //   - Balanced settings for good performance and quality

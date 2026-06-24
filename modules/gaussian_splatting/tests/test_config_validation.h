@@ -494,7 +494,11 @@ TEST_CASE("[GaussianSplatting][Config] Project settings apply preset layouts unl
 			bool tie_breaker;
 		};
 		const PresetExpectation preset_expectations[] = {
-			{ "low", 32, 16, 16, false },
+			// "low" deliberately uses 64-bit keys too: 32-bit depth keys band and
+			// flicker on real-scan content, so NO preset is allowed to silently
+			// select them (see GS-298 / project memory "64-bit keys are the only
+			// shippable config"). 32-bit keys are an explicit "custom" opt-in only.
+			{ "low", 64, 32, 32, false },
 			{ "medium", 64, 32, 32, false },
 			{ "high", 64, 32, 32, false },
 			{ "ultra", 64, 32, 32, true },
@@ -554,6 +558,78 @@ TEST_CASE("[GaussianSplatting][Config] Project settings apply preset layouts unl
 	}
 
 	g_gpu_sorting_config = previous_global_config;
+}
+
+TEST_CASE("[GaussianSplatting][Config] No preset or default path silently yields 32-bit sort keys") {
+	// GS-298 regression guard. 32-bit quantized depth keys give only 16 depth bits,
+	// which band and flicker on real-scan content; 64-bit keys are the only shippable
+	// layout. A user must never end up on the 32-bit path WITHOUT an explicit opt-in.
+	// This guards every selectable preset AND the documented default preset.
+
+	SUBCASE("Every named preset uses 64-bit keys") {
+		CHECK(GPUSortingConfig::preset_low().key_bits == 64u);
+		CHECK(GPUSortingConfig::preset_medium().key_bits == 64u);
+		CHECK(GPUSortingConfig::preset_high().key_bits == 64u);
+		CHECK(GPUSortingConfig::preset_ultra().key_bits == 64u);
+	}
+
+	SUBCASE("apply_preset by name never installs 32-bit keys") {
+		const char *names[] = { "low", "performance", "medium", "balanced",
+				"high", "quality", "ultra", "maximum" };
+		for (const char *name : names) {
+			GPUSortingConfig config;
+			REQUIRE(config.apply_preset(name));
+			CHECK_MESSAGE(config.key_bits == 64u,
+					vformat("Preset '%s' silently selected %d-bit keys", name, config.key_bits));
+		}
+	}
+
+	SUBCASE("The documented default gpu_preset loads 64-bit keys") {
+		ProjectSettings *project_settings = ProjectSettings::get_singleton();
+		REQUIRE(project_settings != nullptr);
+
+		const GPUSortingConfig previous_global_config = g_gpu_sorting_config;
+		const String preset_path = GPUSortingConfig::GPU_PRESET_PATH;
+		ProjectSettingGuard preset_guard(project_settings, preset_path);
+
+		// "high" is the GLOBAL_DEF default (see initialize_gpu_sorting_config).
+		project_settings->set_setting(preset_path, "high");
+		g_gpu_sorting_config.load_from_project_settings();
+		CHECK(g_gpu_sorting_config.key_bits == 64u);
+
+		g_gpu_sorting_config = previous_global_config;
+	}
+
+	SUBCASE("32-bit keys remain reachable ONLY via an explicit custom opt-in") {
+		ProjectSettings *project_settings = ProjectSettings::get_singleton();
+		REQUIRE(project_settings != nullptr);
+
+		const GPUSortingConfig previous_global_config = g_gpu_sorting_config;
+		const String preset_path = GPUSortingConfig::GPU_PRESET_PATH;
+		const String key_bits_path = GPUSortingConfig::KEY_BITS_PATH;
+		const String tile_bits_path = GPUSortingConfig::TILE_BITS_PATH;
+		const String depth_bits_path = GPUSortingConfig::DEPTH_BITS_PATH;
+		ProjectSettingGuard preset_guard(project_settings, preset_path);
+		ProjectSettingGuard key_bits_guard(project_settings, key_bits_path);
+		ProjectSettingGuard tile_bits_guard(project_settings, tile_bits_path);
+		ProjectSettingGuard depth_bits_guard(project_settings, depth_bits_path);
+
+		// Selecting a named preset ignores an explicit key_bits=32: the layout is
+		// the preset's own (64-bit), so the 32-bit request cannot silently apply.
+		project_settings->set_setting(preset_path, "low");
+		project_settings->set_setting(key_bits_path, 32);
+		project_settings->set_setting(tile_bits_path, 16);
+		project_settings->set_setting(depth_bits_path, 16);
+		g_gpu_sorting_config.load_from_project_settings();
+		CHECK(g_gpu_sorting_config.key_bits == 64u);
+
+		// Only the explicit "custom" path honors key_bits=32 — an intentional opt-in.
+		project_settings->set_setting(preset_path, "custom");
+		g_gpu_sorting_config.load_from_project_settings();
+		CHECK(g_gpu_sorting_config.key_bits == 32u);
+
+		g_gpu_sorting_config = previous_global_config;
+	}
 }
 
 TEST_CASE("[GaussianSplatting][Config] Explicit max_overlap_records overrides a named preset's budget") {
