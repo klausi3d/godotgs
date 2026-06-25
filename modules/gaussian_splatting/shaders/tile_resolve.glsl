@@ -255,7 +255,11 @@ void main() {
     // Debug: force white albedo to isolate lighting contribution (debug_overlay_flags.w).
     // Only apply in resolve-direct mode; per-splat mode already bakes lighting into the color.
     uint lighting_mode = params.lighting_mode.x;
-    bool resolve_direct = (lighting_mode == 0u) || (lighting_mode == 2u);
+    // Direct-lighting ownership contract (must stay disjoint from tile_binning.glsl):
+    //   lighting_mode == 0u -> this pass (resolve) adds direct; binning bakes NOTHING.
+    //   lighting_mode == 1u -> binning bakes direct; this pass adds NOTHING.
+    // The two passes must never both apply direct lighting, or it double-counts.
+    bool resolve_direct = (lighting_mode == 0u);
     if (params.debug_overlay_flags.w > 0.5 && resolve_direct) {
         base_color = vec3(0.7);  // Neutral grey to see lighting clearly
     }

@@ -460,7 +460,8 @@ struct alignas(16) TileRenderParamsGPU {
     // y=receiver_bias_min, z=receiver_bias_max (0=disabled), w=reserved
     float shadow_bias_config[4];
     // Lighting mode:
-    // lighting_mode: x=direct_lighting_mode (0=resolve, 1=per-splat, 2=both), yzw=reserved
+    // lighting_mode: x=direct_lighting_mode (0=resolve adds direct, 1=per-splat binning
+    // bakes direct), yzw=reserved. The two passes own DISJOINT modes; no "both" mode.
     uint32_t lighting_mode[4];
     // Light counts:
     // light_counts: x=omni_light_count, y=spot_light_count, z=cluster_enabled, w=light_mask

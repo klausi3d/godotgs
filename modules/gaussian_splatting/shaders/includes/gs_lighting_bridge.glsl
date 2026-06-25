@@ -48,9 +48,12 @@
 // ============================================================================
 // The Godot scene_forward_lights_inc.glsl uses gl_FragCoord for shadow sampling
 // randomization. In compute shaders, gl_FragCoord doesn't exist, so we provide
-// a substitute. Since we disable soft shadows (sc_*_shadow_samples() return 0),
-// the code paths using gl_FragCoord are never executed, but GLSL still needs
-// to be able to parse them.
+// a substitute. Soft shadows are gated off here via sc_use_light_soft_shadows()
+// returning false; that is the real switch, so the gl_FragCoord-using soft-shadow
+// code paths are never executed at runtime. Note that the sample-count specializers
+// sc_soft_shadow_samples()/sc_directional_soft_shadow_samples() deliberately return
+// 4u (forward-prep for when soft shadows are enabled), so the substitute still needs
+// to parse and compile.
 //
 // Compute shaders should define GS_COMPUTE_SHADER before including this file
 // and can optionally set gs_frag_coord_substitute to a meaningful value if
