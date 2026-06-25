@@ -6440,6 +6440,10 @@ uint64_t RenderingDevice::get_memory_usage(MemoryType p_type) const {
 	}
 }
 
+uint64_t RenderingDevice::get_device_memory_budget() const {
+	return driver->get_device_memory_budget();
+}
+
 void RenderingDevice::_begin_frame(bool p_presented) {
 	// Before writing to this frame, wait for it to be finished.
 	_stall_for_frame(frame);

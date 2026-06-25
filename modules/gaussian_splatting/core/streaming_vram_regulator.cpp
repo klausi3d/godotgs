@@ -367,11 +367,19 @@ void VRAMBudgetRegulator::_query_device_memory() {
     stats.device_reported_usage_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
     stats.device_memory_queryable = (stats.device_reported_usage_bytes > 0);
 
-    // Capacity is known only when a trusted source supplied it; otherwise it
-    // stays unknown until platform-specific query sources are wired.
-    stats.device_capacity_bytes = config_capacity_known ? config.device_capacity_bytes : 0;
+    // Capacity precedence: a trusted out-of-band value (config override / explicit
+    // project pin) is authoritative; otherwise query the real device-local VRAM budget
+    // now that RenderingDevice exposes it (GS #321; Vulkan-backed, other backends report
+    // 0 and fall through to the conservative capacity-unknown path).
+    if (config_capacity_known) {
+        stats.device_capacity_bytes = config.device_capacity_bytes;
+        stats.device_capacity_known = true;
+    } else {
+        const uint64_t queried_budget_bytes = rd->get_device_memory_budget();
+        stats.device_capacity_bytes = queried_budget_bytes;
+        stats.device_capacity_known = queried_budget_bytes > 0;
+    }
     stats.device_available_bytes = 0;
-    stats.device_capacity_known = config_capacity_known;
 
     if (GaussianSplatting::is_debug_frame_logging_enabled()) {
         if (stats.device_capacity_known) {

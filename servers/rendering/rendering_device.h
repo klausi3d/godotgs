@@ -1640,6 +1640,9 @@ public:
 	};
 
 	uint64_t get_memory_usage(MemoryType p_type) const;
+	// Total VRAM budget (bytes) the app may use on the device-local heap(s), or 0 when
+	// the backend cannot report it (currently only the Vulkan driver answers). (GS #321)
+	uint64_t get_device_memory_budget() const;
 
 	RenderingDevice *create_local_device();
 

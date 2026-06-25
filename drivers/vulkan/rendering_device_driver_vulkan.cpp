@@ -5794,6 +5794,31 @@ uint64_t RenderingDeviceDriverVulkan::get_lazily_memory_used() {
 	return vmaCalculateLazilyAllocatedBytes(allocator);
 }
 
+uint64_t RenderingDeviceDriverVulkan::get_device_memory_budget() {
+	// Total VRAM budget across the device-local heap(s) (GS #321). VMA derives the
+	// budget from the true heap sizes in VkPhysicalDeviceMemoryProperties (and, when
+	// VK_EXT_memory_budget is active, the driver's live budget); summing the
+	// DEVICE_LOCAL heaps' budgets gives the capacity the app may target. Returns 0 if
+	// the allocator/properties are unavailable so callers fall back to capacity-unknown.
+	if (allocator == nullptr) {
+		return 0;
+	}
+	const VkPhysicalDeviceMemoryProperties *mem_props = nullptr;
+	vmaGetMemoryProperties(allocator, &mem_props);
+	if (mem_props == nullptr) {
+		return 0;
+	}
+	VmaBudget budgets[VK_MAX_MEMORY_HEAPS] = {};
+	vmaGetHeapBudgets(allocator, budgets);
+	uint64_t device_local_budget = 0;
+	for (uint32_t i = 0; i < mem_props->memoryHeapCount && i < VK_MAX_MEMORY_HEAPS; i++) {
+		if (mem_props->memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+			device_local_budget += budgets[i].budget;
+		}
+	}
+	return device_local_budget;
+}
+
 uint64_t RenderingDeviceDriverVulkan::limit_get(Limit p_limit) {
 	const VkPhysicalDeviceLimits &limits = physical_device_properties.limits;
 	uint64_t safe_unbounded = ((uint64_t)1 << 30);

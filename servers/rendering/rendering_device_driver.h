@@ -812,6 +812,11 @@ public:
 	virtual uint64_t get_resource_native_handle(DriverResource p_type, ID p_driver_id) = 0;
 	virtual uint64_t get_total_memory_used() = 0;
 	virtual uint64_t get_lazily_memory_used() = 0;
+	// Total VRAM budget (bytes) the app may use across the device-local heap(s), or 0
+	// when the backend cannot report it. Non-pure with a 0 default so only backends that
+	// can answer (currently Vulkan via VMA heap budgets) need to override it; others
+	// degrade to the caller's capacity-unknown fallback path. (GS #321)
+	virtual uint64_t get_device_memory_budget() { return 0; }
 	virtual uint64_t limit_get(Limit p_limit) = 0;
 	virtual uint64_t api_trait_get(ApiTrait p_trait);
 	virtual bool has_feature(Features p_feature) = 0;
