@@ -755,7 +755,13 @@ static void _finalize_stage_io(GaussianSplatRenderer *p_renderer, const char *p_
 	}
 }
 
-static GaussianSplatRenderer::RenderRouteDecision _build_route_decision(
+} // namespace
+
+// Single producer for the per-frame RenderRouteDecision (#351). Called once at the
+// route selection site (GaussianSplatRenderer::render_scene_instance) to build the
+// authoritative decision, and again here by build_frame_plan only when the selection
+// site has not produced one (light/shadow pass, no-render-data early path, tests).
+GaussianSplatRenderer::RenderRouteDecision RenderPipelineStages::build_route_decision(
 		GaussianSplatRenderer::InstanceBackendPolicy p_instance_backend_policy,
 		const GaussianSplatRenderer::DataSourcePlan &p_data_source,
 		bool p_has_render_data,
@@ -791,7 +797,6 @@ static GaussianSplatRenderer::RenderRouteDecision _build_route_decision(
 	decision.selected_backend_name = GaussianRenderPipeline::render_route_backend_to_string(decision.selected_backend);
 	return decision;
 }
-} // namespace
 
 // Frame planning static helpers (moved from GaussianSplatRenderer)
 
@@ -936,7 +941,8 @@ RenderPipelineStages::RenderFramePlan RenderPipelineStages::build_frame_plan(
 		RenderFallbackReason p_cull_skip_reason_code,
 		RenderFallbackReason p_sort_skip_reason_code,
 		bool p_set_skip_metrics,
-		bool p_clear_cull_state_on_skip) {
+		bool p_clear_cull_state_on_skip,
+		const RenderRouteDecision *p_authoritative_route_decision) {
 	RenderFramePlan plan;
 	plan.has_render_data = p_has_render_data;
 	plan.set_skip_metrics = p_set_skip_metrics;
@@ -950,8 +956,16 @@ RenderPipelineStages::RenderFramePlan RenderPipelineStages::build_frame_plan(
 	plan.sort_skip_reason_code = p_sort_skip_reason_code;
 	plan.data_source = build_data_source_plan(p_scene_state, p_streaming_state, p_sorting_state,
 			p_instance_buffers, p_instance_backend_policy, p_resource_state, p_subsystem_state);
-	plan.route_decision = _build_route_decision(p_instance_backend_policy, plan.data_source,
-			p_has_render_data, p_cull_skip_reason);
+	// #351: consume the authoritative per-frame decision produced at the route
+	// selection site when present; otherwise derive the (identical) decision from
+	// the backend policy as before. This keeps exactly one decision per frame
+	// rather than reconstructing a downstream mirror.
+	if (p_authoritative_route_decision && p_authoritative_route_decision->valid) {
+		plan.route_decision = *p_authoritative_route_decision;
+	} else {
+		plan.route_decision = build_route_decision(p_instance_backend_policy, plan.data_source,
+				p_has_render_data, p_cull_skip_reason);
+	}
 	return plan;
 }
 
@@ -1106,7 +1120,7 @@ void RenderPipelineStages::execute_frame_entry(const RenderFrameContext &p_frame
 			renderer->get_instance_backend_policy(), resource_state,
 			subsystem_state_ref, pipeline_features, p_has_render_data, p_cull_skip_reason,
 			p_sort_skip_reason, p_cull_skip_reason_code, p_sort_skip_reason_code, p_set_skip_metrics,
-			p_clear_cull_state_on_skip);
+			p_clear_cull_state_on_skip, &renderer->get_authoritative_route_decision());
 
 	// Update deps with the frame_plan BEFORE constructing provider.
 	// Borrow invariant: `frame_plan` is a stack local; it must outlive every consumer of
