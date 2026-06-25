@@ -220,6 +220,20 @@ STATIC_FORMAT_GUARDS: tuple[tuple[str, Path, tuple[str, ...]], ...] = (
             r"bool can_direct_copy = .*?!format_mismatch.*?;",
         ),
     ),
+    # The _check_dual_state_sync canonical-vs-derived guardrail was a documented
+    # no-op (it null-checked the orchestrators then validated nothing) and was
+    # deleted outright rather than silently retained. This guard locks in the
+    # honest decision: the deletion note must stay present, so the misleading
+    # no-op cannot be reintroduced without a reviewer re-reading why it is gone.
+    # If a real check is implemented, replace the note with the real method and
+    # update this guard to assert the real validation instead.
+    (
+        "dual_state_sync_guardrail_removed_not_silently_kept",
+        MODULE_SOURCE_DIR / "renderer" / "gaussian_splat_renderer.cpp",
+        (
+            r"_check_dual_state_sync was removed:.*?validated nothing",
+        ),
+    ),
 )
 
 _approved_tracked_synthetic_ply_fixtures_cache: set[str] | None = None
