@@ -5817,6 +5817,13 @@ uint64_t RenderingDeviceDriverVulkan::get_device_memory_budget() {
 	if (allocator == nullptr) {
 		return 0;
 	}
+	// A software/CPU Vulkan device (lavapipe, SwiftShader, headless CI) reports its
+	// DEVICE_LOCAL heap as host RAM, not dedicated GPU VRAM. Report capacity unknown (0)
+	// so the regulator keeps its conservative fallback instead of clamping/verifying the
+	// streaming budget against system memory on a non-GPU backend. (GS #321)
+	if (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU) {
+		return 0;
+	}
 	const VkPhysicalDeviceMemoryProperties *mem_props = nullptr;
 	vmaGetMemoryProperties(allocator, &mem_props);
 	if (mem_props == nullptr) {
