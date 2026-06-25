@@ -91,6 +91,23 @@ private:
 	uint64_t streaming_bootstrap_retry_after_frame = 0;
 	String streaming_bootstrap_last_error = "none";
 
+	// Bijective projection from the FULL 64-bit submission ObjectID to a small,
+	// orchestrator-owned uint32 "streaming slot id". The GaussianStreamingSystem
+	// registry identity is uint32 (its _make_chunk_key packs (asset_id<<32)|chunk_id,
+	// so widening it is a GPU-coupled redesign). Calling the registry with
+	// static_cast<uint32_t>(object_id) would truncate the high 32 bits: two distinct
+	// ObjectIDs sharing their low 32 bits would alias to the same registry slot. We
+	// instead assign each distinct ObjectID its own sequential slot, which is
+	// provably collision-free regardless of any engine ObjectID-layout invariant.
+	// Slot 0 is reserved for the synthetic primary/world id (kPrimaryStreamingAssetId)
+	// and is never handed to a real ObjectID. The reverse map + free list let
+	// _release_streaming_asset_slot recycle slots on unregister so the counter does
+	// not grow unbounded across asset churn.
+	HashMap<uint64_t, uint32_t> streaming_asset_slot_by_object_id;
+	HashMap<uint32_t, uint64_t> streaming_object_id_by_slot;
+	LocalVector<uint32_t> streaming_asset_slot_free_list;
+	uint32_t streaming_asset_slot_next = 1;
+
 	uint64_t static_layout_cache_revision = 0;
 	Vector<GaussianStreamingSystem::ChunkLayoutHint> static_layout_cache_hints;
 	bool static_layout_cache_valid = false;
@@ -112,6 +129,23 @@ private:
 	bool primary_layout_warned_invalid = false;
 
 	VisibleLODSelection visible_lod_selection;
+
+	// Get-or-assign the projected slot for a full 64-bit submission ObjectID
+	// (mutating). Records both forward and reverse maps. The reserved primary id
+	// (0) maps to slot 0; every real (non-zero) ObjectID gets a non-zero slot.
+	uint32_t _project_streaming_asset_slot(uint64_t p_object_id);
+	// Return the already-assigned slot for an ObjectID, or UINT32_MAX if none has
+	// been assigned yet (read-only; safe to call from const-flavored build paths).
+	uint32_t _peek_streaming_asset_slot(uint64_t p_object_id) const;
+	// Recycle a slot previously handed out by _project_streaming_asset_slot.
+	void _release_streaming_asset_slot(uint32_t p_slot);
+
+	GaussianSplatRenderer::PublishedInstanceAssetRemap _build_streaming_instance_asset_remap(
+			GaussianStreamingSystem *p_streaming_system,
+			const LocalVector<InstanceAssetRegistration> &p_asset_cache,
+			const LocalVector<InstanceDataGPU> &p_instances,
+			const LocalVector<uint64_t> &p_submission_asset_ids,
+			uint64_t p_generation) const;
 
 	void invalidate_instance_pipeline_caches();
 	bool refresh_instance_asset_snapshot(GaussianSplatSceneDirector *p_director, bool p_trace_enabled);
