@@ -533,12 +533,6 @@ Error RenderingDeviceDriverVulkan::_initialize_device_extensions() {
 	_register_requested_device_extension(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME, false);
 	_register_requested_device_extension(VK_KHR_VULKAN_MEMORY_MODEL_EXTENSION_NAME, false);
 	_register_requested_device_extension(VK_EXT_TEXTURE_COMPRESSION_ASTC_HDR_EXTENSION_NAME, false);
-	// Optional: lets VMA report the driver's LIVE device-local memory budget (used by
-	// get_device_memory_budget(), GS #321). Without it VMA falls back to a static
-	// 80%-of-heap estimate; with it the budget reflects real availability under system
-	// pressure. Graceful when unsupported (the allocator only sets the matching VMA flag
-	// when the extension actually got enabled, below).
-	_register_requested_device_extension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME, false);
 
 	// We don't actually use this extension, but some runtime components on some platforms
 	// can and will fill the validation layers with useless info otherwise if not enabled.
@@ -1254,28 +1248,12 @@ Error RenderingDeviceDriverVulkan::_initialize_allocator() {
 	allocator_info.physicalDevice = physical_device;
 	allocator_info.device = vk_device;
 	allocator_info.instance = context_driver->instance_get();
-	// Tell VMA the real device API version so it uses the core entry points (e.g. the
-	// 1.1 vkGetPhysicalDeviceMemoryProperties2 needed by the memory-budget flag below)
-	// instead of the KHR variants that depend on the VK_KHR_get_physical_device_properties2
-	// instance extension. Defaults to 1.0 when unset, which would force the KHR path.
-	allocator_info.vulkanApiVersion = physical_device_properties.apiVersion;
 	const bool use_1_3_features = physical_device_properties.apiVersion >= VK_API_VERSION_1_3;
 	if (use_1_3_features) {
 		allocator_info.flags |= VMA_ALLOCATOR_CREATE_KHR_MAINTENANCE5_BIT;
 	}
 	if (buffer_device_address_support) {
 		allocator_info.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
-	}
-	// Use the driver's live memory budget (VK_EXT_memory_budget) when the extension was
-	// enabled, so vmaGetHeapBudgets() / get_device_memory_budget() report the real budget
-	// instead of VMA's static 80%-of-heap fallback (GS #321). Gate on Vulkan 1.1+: VMA's
-	// budget flag immediately calls vkGetPhysicalDeviceMemoryProperties2 during allocator
-	// init, which only exists as a core entry point from 1.1 (below that it needs the
-	// VK_KHR_get_physical_device_properties2 instance extension and would assert/crash on
-	// 1.0 paths). On 1.0 devices VMA falls back to the static heap estimate (graceful).
-	if (physical_device_properties.apiVersion >= VK_API_VERSION_1_1 &&
-			enabled_device_extension_names.has(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME)) {
-		allocator_info.flags |= VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
 	}
 	VkResult err = vmaCreateAllocator(&allocator_info, &allocator);
 	ERR_FAIL_COND_V_MSG(err, ERR_CANT_CREATE, "vmaCreateAllocator failed with error " + itos(err) + ".");
@@ -5817,11 +5795,25 @@ uint64_t RenderingDeviceDriverVulkan::get_lazily_memory_used() {
 }
 
 uint64_t RenderingDeviceDriverVulkan::get_device_memory_budget() {
-	// Total VRAM budget across the device-local heap(s) (GS #321). VMA derives the
-	// budget from the true heap sizes in VkPhysicalDeviceMemoryProperties (and, when
-	// VK_EXT_memory_budget is active, the driver's live budget); summing the
-	// DEVICE_LOCAL heaps' budgets gives the capacity the app may target. Returns 0 if
-	// the allocator/properties are unavailable so callers fall back to capacity-unknown.
+	// Total device-local VRAM CAPACITY in bytes — the streaming budget ceiling for GS
+	// #321. Deliberately the *static* hardware capacity (sum of the DEVICE_LOCAL
+	// VkPhysicalDeviceMemoryProperties heap sizes), NOT a live/available budget:
+	//  - A budget ceiling wants a stable, reproducible hardware number; clamping the
+	//    configured budget to a fluctuating live value (e.g. shrunk by another app at
+	//    startup) would permanently cap it because the regulator clamp only ratchets
+	//    down. Live VRAM pressure is already handled by the regulator's per-frame
+	//    warning/eviction/auto-regulation loop, not by this ceiling.
+	//  - vmaGetMemoryProperties() returns VMA's cached VkPhysicalDeviceMemoryProperties,
+	//    populated at init via core (1.0) vkGetPhysicalDeviceMemoryProperties. It needs
+	//    no extension, no VMA allocator flag, and no vulkanApiVersion coupling, so it is
+	//    crash-free on every backend/driver (unlike VK_EXT_memory_budget +
+	//    vmaGetHeapBudgets, which trip VMA's properties2 / version-cap asserts).
+	// Returns the raw capacity (no headroom fraction — that is regulator policy and the
+	// existing warning/eviction thresholds already provide operating headroom). 0 when
+	// no device-local heap is found, so callers keep the conservative capacity-unknown path.
+	// NOTE: on UMA/iGPU devices a DEVICE_LOCAL heap can be shared system memory rather
+	// than dedicated VRAM; the value is then the (large) shared heap. The regulator's
+	// sane-floor + clamp keep that safe, and surfacing the true hardware number is correct.
 	if (allocator == nullptr) {
 		return 0;
 	}
@@ -5830,15 +5822,13 @@ uint64_t RenderingDeviceDriverVulkan::get_device_memory_budget() {
 	if (mem_props == nullptr) {
 		return 0;
 	}
-	VmaBudget budgets[VK_MAX_MEMORY_HEAPS] = {};
-	vmaGetHeapBudgets(allocator, budgets);
-	uint64_t device_local_budget = 0;
+	uint64_t device_local_capacity = 0;
 	for (uint32_t i = 0; i < mem_props->memoryHeapCount && i < VK_MAX_MEMORY_HEAPS; i++) {
 		if (mem_props->memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
-			device_local_budget += budgets[i].budget;
+			device_local_capacity += mem_props->memoryHeaps[i].size;
 		}
 	}
-	return device_local_budget;
+	return device_local_capacity;
 }
 
 uint64_t RenderingDeviceDriverVulkan::limit_get(Limit p_limit) {

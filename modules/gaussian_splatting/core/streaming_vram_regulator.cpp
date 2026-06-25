@@ -375,9 +375,16 @@ void VRAMBudgetRegulator::_query_device_memory() {
         stats.device_capacity_bytes = config.device_capacity_bytes;
         stats.device_capacity_known = true;
     } else {
-        const uint64_t queried_budget_bytes = rd->get_device_memory_budget();
-        stats.device_capacity_bytes = queried_budget_bytes;
-        stats.device_capacity_known = queried_budget_bytes > 0;
+        // Static device-local VRAM capacity from the driver (GS #321). Only trust it as
+        // "known" above a sane floor: a degenerate/garbage small-positive value would
+        // otherwise clamp the budget to nonsense AND mark it capacity-verified, which is
+        // strictly worse than the conservative unknown-capacity fallback. The floor also
+        // closes the capacity_mb == 0 (< 1 MiB) truncation hole in the _apply_config clamp.
+        constexpr uint64_t MIN_TRUSTED_DEVICE_CAPACITY_BYTES = uint64_t(256) * 1024 * 1024;
+        const uint64_t queried_capacity_bytes = rd->get_device_memory_budget();
+        const bool capacity_plausible = queried_capacity_bytes >= MIN_TRUSTED_DEVICE_CAPACITY_BYTES;
+        stats.device_capacity_bytes = capacity_plausible ? queried_capacity_bytes : 0;
+        stats.device_capacity_known = capacity_plausible;
     }
     stats.device_available_bytes = 0;
 
