@@ -1082,8 +1082,38 @@ bool GaussianStreamingSystem::_try_grow_persistent_buffer_for_atlas_pressure(uin
         return false;
     }
 
-    const uint64_t target64 = MIN<uint64_t>(uint64_t(streaming_current_capacity) * 2u,
+    uint64_t target64 = MIN<uint64_t>(uint64_t(streaming_current_capacity) * 2u,
             uint64_t(growth_ceiling));
+
+    // Allocation-inclusive growth gate. The regulator is fed the *evictable* usage so
+    // eviction/admission-into-existing-slots ignore the non-reclaimable persistent buffer
+    // (see _update_vram_regulator). Growth is different: it ENLARGES that allocation, so
+    // p_vram_regulator_allows_load (derived from can_load_more_chunks on reclaimable usage)
+    // would stay under threshold and let the buffer grow past budget while get_vram_usage()
+    // is already over. Bound the growth target by the budget instead, so we never grow the
+    // persistent buffer beyond the configured VRAM budget. CLAMP the target down to the
+    // largest in-budget slot count rather than refusing growth outright: with room for some
+    // (but not the doubled) slots we should still grow as far as the budget allows, or a
+    // low-budget config would plateau the atlas below its usable capacity. (Codex #411)
+    if (p_enforce_vram_regulator_gate && budget.vram_regulator.is_valid()) {
+        const uint64_t budget_bytes = budget.vram_regulator->get_debug_stats().budget_bytes;
+        if (budget_bytes > 0) {
+            const uint64_t chunk_bytes = uint64_t(CHUNK_SIZE) * sizeof(PackedGaussian);
+            const uint64_t aux_bytes = _get_auxiliary_vram_overhead_bytes();
+            // Largest persistent-buffer slot count whose allocation-inclusive total
+            // (slots*chunk_bytes + aux; the grown buffer dominates the payload) fits the budget.
+            const uint64_t budget_for_persistent = budget_bytes > aux_bytes ? (budget_bytes - aux_bytes) : 0;
+            const uint64_t budget_max_slots = chunk_bytes > 0 ? budget_for_persistent / chunk_bytes : 0;
+            if (budget_max_slots <= uint64_t(streaming_current_capacity)) {
+                return false; // no in-budget headroom to grow into
+            }
+            target64 = MIN(target64, budget_max_slots);
+        }
+    }
+
+    if (target64 <= uint64_t(streaming_current_capacity)) {
+        return false;
+    }
     return _grow_persistent_buffer(static_cast<uint32_t>(target64));
 }
 
@@ -3301,7 +3331,38 @@ uint64_t GaussianStreamingSystem::_get_auxiliary_vram_overhead_bytes() const {
 }
 
 uint64_t GaussianStreamingSystem::_get_total_vram_usage_bytes() const {
-    return budget.vram_usage + _get_auxiliary_vram_overhead_bytes();
+    // budget.vram_usage tracks the *loaded chunk payload* that currently lives
+    // inside the persistent storage buffer. The persistent buffer itself is the
+    // single largest streaming VRAM allocation (sized for the resident chunk set
+    // plus growth headroom), and chunk payloads are uploaded into it — so the
+    // reserved VRAM is the whole buffer allocation, not just the bytes uploaded
+    // so far. Reporting only the payload under-counts the regulator's true
+    // footprint by the unfilled remainder of the buffer. Count the full
+    // allocation (MAX guards against any transient payload > size accounting
+    // skew, and degrades to the payload when the buffer is not yet allocated).
+    // Only count the allocation when the RID is actually live: initialize() and
+    // initialize_empty() set persistent_buffer_size *before* the storage_buffer_create()
+    // that may fail and leave an invalid RID with a stale nonzero size. Without this
+    // gate get_vram_usage()/diagnostics would report a phantom allocation after a failed
+    // init instead of degrading to the payload as documented. (Codex #411)
+    const uint64_t allocated_persistent_bytes = persistent_buffer.is_valid() ? uint64_t(persistent_buffer_size) : 0;
+    const uint64_t resident_buffer_bytes = MAX(budget.vram_usage, allocated_persistent_bytes);
+    return resident_buffer_bytes + _get_auxiliary_vram_overhead_bytes();
+}
+
+uint64_t GaussianStreamingSystem::_get_evictable_vram_usage_bytes() const {
+    // Eviction/regulation/admission decision basis: ONLY the bytes that evicting chunks can
+    // actually reclaim. Evicting a chunk frees only its slot in the persistent buffer, i.e. it
+    // reduces budget.vram_usage. It does NOT free either non-reclaimable fixed cost:
+    //   - the persistent-buffer ALLOCATION (the resident_buffer term in _get_total_vram_usage_bytes), nor
+    //   - the auxiliary atlas/quantization overhead (_get_auxiliary_vram_overhead_bytes).
+    // Including EITHER here would, whenever that fixed cost is large relative to the budget,
+    // keep the decision basis above threshold even after every chunk is evicted — recreating
+    // the infinite-pressure / evict-every-visible-chunk loop with no VRAM actually freed. The
+    // only quantity that always falls to zero as chunks are evicted is the payload itself, so
+    // that is the reclaimable basis. Reporting (get_vram_usage / analytics / overlay) and the
+    // budget warning use the full allocation-inclusive total; decisions use this. (Codex #411)
+    return budget.vram_usage;
 }
 
 uint32_t GaussianStreamingSystem::_get_reserved_chunk_count() const {
@@ -3369,21 +3430,21 @@ void GaussianStreamingSystem::_evict_for_vram_budget(uint32_t &evictions_left, b
     evictions_left = max_evictions_per_frame == 0 ? UINT32_MAX : max_evictions_per_frame;
     eviction_blocked = false;
     bool force_visible_eviction = false;
-    const uint64_t total_vram_usage = _get_total_vram_usage_bytes();
+    const uint64_t evictable_vram_usage = _get_evictable_vram_usage_bytes();
 
     if (budget.vram_regulator.is_valid()) {
         const VRAMBudgetConfig &budget_config = budget.vram_regulator->get_config();
         const uint64_t budget_bytes = uint64_t(budget_config.budget_mb) * BYTES_PER_MB;
-        force_visible_eviction = budget_bytes > 0 && total_vram_usage > budget_bytes;
+        force_visible_eviction = budget_bytes > 0 && evictable_vram_usage > budget_bytes;
     }
 
     if (!budget.vram_regulator.is_valid() ||
-            !budget.vram_regulator->should_trigger_eviction(total_vram_usage)) {
+            !budget.vram_regulator->should_trigger_eviction(evictable_vram_usage)) {
         return;
     }
 
     while (budget.loaded_chunks_count > 0 &&
-            budget.vram_regulator->should_trigger_eviction(_get_total_vram_usage_bytes()) &&
+            budget.vram_regulator->should_trigger_eviction(_get_evictable_vram_usage_bytes()) &&
             evictions_left > 0) {
         // Non-primary-first eviction keeps primary visible residency stable
         // under budget pressure. _evict_non_primary_lru() now returns
@@ -3771,9 +3832,15 @@ void GaussianStreamingSystem::_update_vram_regulator() {
         return;
     }
 
-    budget.vram_regulator->update(_get_total_vram_usage_bytes(), budget.loaded_chunks_count,
-            budget.chunks_loaded_this_frame, eviction_controller.get_chunks_evicted_this_frame(),
-            total_frame_count);
+    // Feed the regulator BOTH bases: the allocation-inclusive total for reporting (debug
+    // overlay + budget warning, matching get_vram_usage()) and the reclaimable/evictable
+    // figure for decisions (admission gate + auto-regulation). Evicting/regulating frees only
+    // budget.vram_usage, never the persistent-buffer allocation, so decisions must not gate on
+    // the non-reclaimable allocation (it would deny loads / ratchet the cap down while no VRAM
+    // can be freed); but the overlay must still show the true footprint. (Codex #411)
+    budget.vram_regulator->update(_get_total_vram_usage_bytes(), _get_evictable_vram_usage_bytes(),
+            budget.loaded_chunks_count, budget.chunks_loaded_this_frame,
+            eviction_controller.get_chunks_evicted_this_frame(), total_frame_count);
 }
 
 void GaussianStreamingSystem::_log_streaming_frame_stats(uint32_t effective_max) {
@@ -4453,12 +4520,21 @@ void GaussianStreamingSystem::end_frame() {
     }
     analytics_snapshot = memory_stream_proxy.is_valid() ? memory_stream_proxy->get_task_debug_state() : Dictionary();
 
-    // Add VRAM usage stats to analytics
+    // Add VRAM usage stats to analytics. vram_mb mirrors the regulator-facing
+    // total (full persistent buffer allocation + auxiliary overhead), so the
+    // reported figure is not under-counted by the unfilled buffer remainder.
     const uint64_t payload_vram_bytes = budget.vram_usage;
     const uint64_t overhead_vram_bytes = _get_auxiliary_vram_overhead_bytes();
-    analytics_snapshot["vram_mb"] = double(payload_vram_bytes + overhead_vram_bytes) / (1024.0 * 1024.0);
+    // Mirror the live-RID gate in _get_total_vram_usage_bytes(): a failed
+    // storage_buffer_create() leaves persistent_buffer_size nonzero with an invalid
+    // RID, so report the allocation only when it actually exists. Otherwise vram_mb
+    // (gated) and vram_persistent_buffer_mb (ungated) would disagree on the
+    // allocation-failure path. (Codex #411)
+    const uint64_t allocated_persistent_bytes = persistent_buffer.is_valid() ? uint64_t(persistent_buffer_size) : 0;
+    analytics_snapshot["vram_mb"] = double(_get_total_vram_usage_bytes()) / (1024.0 * 1024.0);
     analytics_snapshot["vram_payload_mb"] = double(payload_vram_bytes) / (1024.0 * 1024.0);
     analytics_snapshot["vram_overhead_mb"] = double(overhead_vram_bytes) / (1024.0 * 1024.0);
+    analytics_snapshot["vram_persistent_buffer_mb"] = double(allocated_persistent_bytes) / (1024.0 * 1024.0);
     analytics_snapshot["loaded_chunks"] = get_loaded_chunks();
     analytics_snapshot["atlas_published_chunks"] = global_atlas_registry.get_atlas_published_chunks();
     analytics_snapshot["visible_splats"] = get_visible_count();

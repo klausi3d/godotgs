@@ -360,6 +360,11 @@ public:
         return _begin_chunk_upload(p_asset_id, p_chunk_idx, p_chunk, p_buffer_slot);
     }
     uint32_t _test_get_reserved_chunk_count() const { return _get_reserved_chunk_count(); }
+    // Persistent storage-buffer allocation size in bytes. Test-only window onto the
+    // single largest streaming VRAM allocation so the VRAM-accounting tests can
+    // assert get_vram_usage() folds it in, without the `#define private public`
+    // hack that breaks the GCC ODR build.
+    uint32_t _test_get_persistent_buffer_size() const { return persistent_buffer_size; }
     uint32_t _test_get_retired_upload_slots_this_frame() const { return budget.retired_upload_slots_this_frame; }
     uint64_t _test_get_retired_upload_bytes_this_frame() const { return budget.retired_upload_bytes_this_frame; }
     uint64_t _test_get_failed_upload_retirements() const { return budget.failed_upload_retirements; }
@@ -441,6 +446,7 @@ private:
     uint32_t _compute_runtime_chunk_capacity_limit() const;
     uint64_t _get_auxiliary_vram_overhead_bytes() const;
     uint64_t _get_total_vram_usage_bytes() const;
+    uint64_t _get_evictable_vram_usage_bytes() const;
     uint32_t _get_reserved_chunk_count() const;
     uint64_t _get_pending_upload_bytes_for_diagnostics() const;
     void _load_zero_visible_recovery_config_from_project_settings();

@@ -40,6 +40,12 @@ struct VRAMBudgetConfig {
     bool budget_uses_unknown_capacity_fallback = false;
     bool budget_unverified = false;
 
+    // Real device VRAM capacity, when the caller can supply it from a trusted
+    // source (e.g. a platform query or an explicit project pin). 0 / false means
+    // capacity is genuinely unknown and the conservative fallback path applies.
+    uint64_t device_capacity_bytes = 0;
+    bool device_capacity_known = false;
+
     static VRAMBudgetConfig load_from_project_settings();
 };
 
@@ -75,6 +81,15 @@ private:
     // Dynamic chunk limit (adjusted based on VRAM pressure)
     uint32_t current_max_chunks = 32;
 
+    // Decision-basis usage (reclaimable/evictable), kept distinct from the reported
+    // allocation-inclusive usage published in `stats`. Eviction, admission, and
+    // auto-regulation act on what they can actually free; the overlay + budget warning
+    // report the true footprint. Gating decisions on the non-reclaimable persistent-buffer
+    // allocation would ratchet limits down or deny loads while no VRAM can be freed, and
+    // publishing the decision basis as the reported usage would under-count the overlay. (Codex #411)
+    uint64_t decision_usage_bytes = 0;
+    float decision_usage_percent = 0.0f;
+
     // Thrashing prevention state
     static constexpr uint32_t THRASHING_HISTORY_SIZE = 16;
     uint32_t load_history[THRASHING_HISTORY_SIZE] = {};
@@ -94,6 +109,7 @@ private:
     void _update_regulation(uint64_t current_usage, uint64_t current_frame);
     bool _detect_thrashing() const;
     void _record_activity(uint32_t loads, uint32_t evictions);
+    void _capture_requested_budget();
     void _apply_config();
 
 protected:
@@ -109,8 +125,10 @@ public:
     void set_config_override(const VRAMBudgetConfig &p_config);
     void clear_config_override();
 
-    // Called each frame with current usage stats
-    void update(uint64_t current_vram_usage, uint32_t loaded_chunks,
+    // Called each frame with current usage stats. p_reported_usage is the
+    // allocation-inclusive footprint (overlay + warning); p_decision_usage is the
+    // reclaimable/evictable subset that admission + auto-regulation act on. (Codex #411)
+    void update(uint64_t p_reported_usage, uint64_t p_decision_usage, uint32_t loaded_chunks,
                 uint32_t loads_this_frame, uint32_t evictions_this_frame,
                 uint64_t current_frame);
 

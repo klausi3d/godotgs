@@ -242,13 +242,26 @@ void VRAMBudgetRegulator::initialize(RenderingDevice *p_rd) {
             config.budget_mb, config.auto_regulate_enabled ? "enabled" : "disabled", current_max_chunks));
 }
 
+void VRAMBudgetRegulator::_capture_requested_budget() {
+    // Snapshot the caller's original ask BEFORE any clamp/fallback mutates
+    // config.budget_mb. _apply_config() rewrites budget_mb in place, so it can no
+    // longer recover the pre-clamp request on a second pass — initialize() applies
+    // an already-mutated config a second time. Capturing the request here, at the
+    // genuine config-establishment points, keeps requested_budget_mb stable across
+    // those re-applications (Codex #411).
+    config.requested_budget_mb = config.budget_mb;
+    config.requested_source_budget_mb = config.source_budget_mb;
+}
+
 void VRAMBudgetRegulator::_apply_config() {
     config.min_chunks = MAX(1u, config.min_chunks);
     config.max_chunks = MAX(config.min_chunks, config.max_chunks);
     config.warning_threshold_percent = CLAMP(config.warning_threshold_percent, 50u, 99u);
     config.regulation_step_percent = CLAMP(config.regulation_step_percent, 0.1f, 10.0f);
-    config.requested_budget_mb = config.budget_mb;
-    config.requested_source_budget_mb = config.source_budget_mb;
+    // requested_budget_mb / requested_source_budget_mb are captured by the
+    // config-establishment entry points (reload_config / set_config_override)
+    // before the clamp below runs; do NOT overwrite them here or a second
+    // _apply_config() pass would replace the original ask with the clamped value.
     config.budget_capacity_verified = stats.device_capacity_known;
     config.budget_uses_unknown_capacity_fallback = false;
     config.budget_unverified = false;
@@ -295,6 +308,14 @@ void VRAMBudgetRegulator::reload_config() {
         return;
     }
     config = VRAMBudgetConfig::load_from_project_settings();
+    // Re-derive device capacity from the freshly loaded config. clear_config_override()
+    // reaches here after dropping an override that may have carried a trusted capacity;
+    // without a re-query, stats.device_capacity_* would stay populated from the cleared
+    // override and a now-unknown-capacity project would be falsely capacity-verified or
+    // clamped to the stale capacity instead of following the unknown-capacity path
+    // (Codex #411).
+    _query_device_memory();
+    _capture_requested_budget();
     _apply_config();
 }
 
@@ -310,6 +331,9 @@ void VRAMBudgetRegulator::set_config_override(const VRAMBudgetConfig &p_config) 
     if (config.source_max_chunks.is_empty() || config.source_max_chunks == "project_default") {
         config.source_max_chunks = "runtime_override";
     }
+    // Pick up any trusted capacity carried on the override before applying.
+    _query_device_memory();
+    _capture_requested_budget();
     _apply_config();
 }
 
@@ -322,12 +346,20 @@ void VRAMBudgetRegulator::clear_config_override() {
 }
 
 void VRAMBudgetRegulator::_query_device_memory() {
+    // A trusted device VRAM capacity may be supplied out-of-band (config override
+    // or an explicit project pin resolved in load_from_project_settings()). When
+    // present it is authoritative and must survive a re-query — RenderingDevice
+    // exposes no portable capacity API, so the only way the capacity-known path
+    // (and its precise budget clamp) becomes reachable is to honor that value
+    // instead of unconditionally forcing "unknown".
+    const bool config_capacity_known = config.device_capacity_known && config.device_capacity_bytes > 0;
+
     if (!rd) {
         stats.device_reported_usage_bytes = 0;
-        stats.device_capacity_bytes = 0;
         stats.device_available_bytes = 0;
         stats.device_memory_queryable = false;
-        stats.device_capacity_known = false;
+        stats.device_capacity_bytes = config_capacity_known ? config.device_capacity_bytes : 0;
+        stats.device_capacity_known = config_capacity_known;
         return;
     }
 
@@ -335,13 +367,18 @@ void VRAMBudgetRegulator::_query_device_memory() {
     stats.device_reported_usage_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
     stats.device_memory_queryable = (stats.device_reported_usage_bytes > 0);
 
-    // Capacity query fallback chain placeholder: unknown until platform-specific sources are wired.
-    stats.device_capacity_bytes = 0;
+    // Capacity is known only when a trusted source supplied it; otherwise it
+    // stays unknown until platform-specific query sources are wired.
+    stats.device_capacity_bytes = config_capacity_known ? config.device_capacity_bytes : 0;
     stats.device_available_bytes = 0;
-    stats.device_capacity_known = false;
+    stats.device_capacity_known = config_capacity_known;
 
     if (GaussianSplatting::is_debug_frame_logging_enabled()) {
-        if (stats.device_memory_queryable) {
+        if (stats.device_capacity_known) {
+            GS_LOG_STREAMING_INFO(vformat("[VRAM Regulator] Device capacity known: %d MB (reported usage %d MB)",
+                    stats.device_capacity_bytes / (1024 * 1024),
+                    stats.device_reported_usage_bytes / (1024 * 1024)));
+        } else if (stats.device_memory_queryable) {
             GS_LOG_STREAMING_INFO(vformat("[VRAM Regulator] Device usage queryable: %d MB reported usage (capacity unknown)",
                     stats.device_reported_usage_bytes / (1024 * 1024)));
         } else {
@@ -350,24 +387,31 @@ void VRAMBudgetRegulator::_query_device_memory() {
     }
 }
 
-void VRAMBudgetRegulator::update(uint64_t current_vram_usage, uint32_t loaded_chunks,
+void VRAMBudgetRegulator::update(uint64_t p_reported_usage, uint64_t p_decision_usage, uint32_t loaded_chunks,
                                   uint32_t loads_this_frame, uint32_t evictions_this_frame,
                                   uint64_t current_frame) {
-    // Update stats
-    stats.current_usage_bytes = current_vram_usage;
+    // p_reported_usage is the allocation-inclusive footprint (persistent buffer + payload +
+    // auxiliary overhead) — it mirrors get_vram_usage()/end-frame vram_mb and is what the debug
+    // overlay and the budget warning must show. p_decision_usage is the reclaimable/evictable
+    // subset that admission and auto-regulation act on; gating those on the non-reclaimable
+    // allocation would deny loads or ratchet the chunk cap down while no VRAM can be freed.
+    // Keep the two separate so reporting is never under-counted by the decision basis. (Codex #411)
+    stats.current_usage_bytes = p_reported_usage;
     stats.loaded_chunks = loaded_chunks;
     stats.loaded_this_frame = loads_this_frame;
     stats.evicted_this_frame = evictions_this_frame;
     stats.current_max_chunks = current_max_chunks;
 
-    // Calculate usage percentage
+    decision_usage_bytes = p_decision_usage;
     if (stats.budget_bytes > 0) {
-        stats.usage_percent = (float(current_vram_usage) / float(stats.budget_bytes)) * 100.0f;
+        stats.usage_percent = (float(p_reported_usage) / float(stats.budget_bytes)) * 100.0f;
+        decision_usage_percent = (float(p_decision_usage) / float(stats.budget_bytes)) * 100.0f;
     } else {
         stats.usage_percent = 0.0f;
+        decision_usage_percent = 0.0f;
     }
 
-    // Check if we need to warn
+    // Warn on the true footprint approaching budget (reported, not the reclaimable subset).
     bool was_warning = stats.budget_warning_active;
     stats.budget_warning_active = (stats.usage_percent >= config.warning_threshold_percent);
 
@@ -375,15 +419,16 @@ void VRAMBudgetRegulator::update(uint64_t current_vram_usage, uint32_t loaded_ch
     if (stats.budget_warning_active && !was_warning) {
         WARN_PRINT(vformat("[VRAM Budget] Approaching VRAM limit: %.1f%% of %d MB budget used (%d MB)",
                 stats.usage_percent, config.budget_mb,
-                current_vram_usage / (1024 * 1024)));
+                p_reported_usage / (1024 * 1024)));
     }
 
     // Record activity for thrashing detection
     _record_activity(loads_this_frame, evictions_this_frame);
 
-    // Perform regulation if enabled
+    // Auto-regulation chases the budget by raising/lowering the chunk cap; reducing the cap only
+    // frees payload, so it must act on the reclaimable decision usage, not the full allocation.
     if (config.auto_regulate_enabled) {
-        _update_regulation(current_vram_usage, current_frame);
+        _update_regulation(p_decision_usage, current_frame);
     }
 }
 
@@ -392,6 +437,13 @@ void VRAMBudgetRegulator::_update_regulation(uint64_t current_usage, uint64_t cu
     if (current_frame - last_adjustment_frame < MIN_FRAMES_BETWEEN_ADJUSTMENTS) {
         return;
     }
+
+    // Regulate against the reclaimable basis the caller passes (decision usage), NOT
+    // stats.usage_percent which now reflects the full allocation-inclusive footprint:
+    // lowering the chunk cap frees only payload, never the persistent buffer. (Codex #411)
+    const float decision_percent = stats.budget_bytes > 0
+            ? (float(current_usage) / float(stats.budget_bytes)) * 100.0f
+            : 0.0f;
 
     // Check for thrashing - if detected, reduce chunks more aggressively
     if (_detect_thrashing()) {
@@ -416,7 +468,7 @@ void VRAMBudgetRegulator::_update_regulation(uint64_t current_usage, uint64_t cu
     uint32_t step_size = MAX(1u, uint32_t(float(config.max_chunks) * config.regulation_step_percent / 100.0f));
 
     // If over budget, reduce chunks
-    if (stats.usage_percent > float(config.warning_threshold_percent)) {
+    if (decision_percent > float(config.warning_threshold_percent)) {
         uint32_t new_max = MAX(config.min_chunks, current_max_chunks - step_size);
         if (new_max != current_max_chunks) {
             current_max_chunks = new_max;
@@ -424,11 +476,11 @@ void VRAMBudgetRegulator::_update_regulation(uint64_t current_usage, uint64_t cu
             stats.regulation_adjustments++;
 
             GS_LOG_STREAMING_DEBUG(vformat("[VRAM Regulator] Reducing max chunks: %d -> %d (usage: %.1f%%)",
-                    current_max_chunks + step_size, current_max_chunks, stats.usage_percent));
+                    current_max_chunks + step_size, current_max_chunks, decision_percent));
         }
     }
     // If well under budget and not at max, increase chunks
-    else if (stats.usage_percent < float(config.warning_threshold_percent) * 0.7f) {
+    else if (decision_percent < float(config.warning_threshold_percent) * 0.7f) {
         if (current_max_chunks < config.max_chunks) {
             uint32_t new_max = MIN(config.max_chunks, current_max_chunks + step_size);
             if (new_max != current_max_chunks) {
@@ -442,7 +494,7 @@ void VRAMBudgetRegulator::_update_regulation(uint64_t current_usage, uint64_t cu
                 }
 
                 GS_LOG_STREAMING_DEBUG(vformat("[VRAM Regulator] Increasing max chunks: %d -> %d (usage: %.1f%%)",
-                        current_max_chunks - step_size, current_max_chunks, stats.usage_percent));
+                        current_max_chunks - step_size, current_max_chunks, decision_percent));
             }
         }
     }
@@ -477,8 +529,11 @@ bool VRAMBudgetRegulator::can_load_more_chunks(uint32_t current_loaded) const {
         return false;
     }
 
-    // If approaching budget, be more conservative
-    if (stats.usage_percent >= float(config.warning_threshold_percent)) {
+    // If approaching budget, be more conservative. Gate on the reclaimable decision usage,
+    // not the reported allocation-inclusive percentage: loading a chunk into an existing slot
+    // grows payload, not the persistent-buffer allocation, so the non-reclaimable allocation
+    // must not block admission. Buffer growth has its own allocation-inclusive gate. (Codex #411)
+    if (decision_usage_percent >= float(config.warning_threshold_percent)) {
         // Only allow loading if we have significant headroom
         return current_loaded < current_max_chunks / 2;
     }
