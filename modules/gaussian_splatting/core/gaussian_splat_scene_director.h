@@ -136,8 +136,16 @@ public:
     void update_instance_lods_for_renderer(const GaussianSplatRenderer *p_renderer, const Vector3 &p_camera_pos,
             const LODConfig &p_lod_config, float p_hysteresis_zone);
     void build_instance_buffer(LocalVector<InstanceDataGPU> &out) const;
+	// Builds the per-instance GPU rows. When r_submission_asset_ids is non-null it is
+	// filled parallel to `out` with each instance's FULL 64-bit submission asset
+	// identity (the asset_records key). The GPU InstanceDataGPU::ids[0] field is only
+	// 32 bits and therefore cannot carry that identity losslessly once 64-bit ObjectIDs
+	// are in play; update_instance_buffer() uses this parallel array as the collision-
+	// free key into PublishedInstanceAssetRemap before overwriting ids[0] with the
+	// resolved dense slot.
 	void build_instance_buffer_for_renderer(const GaussianSplatRenderer *p_renderer, LocalVector<InstanceDataGPU> &out,
-			bool p_shadow_casters_only = false) const;
+			bool p_shadow_casters_only = false,
+			LocalVector<uint64_t> *r_submission_asset_ids = nullptr) const;
 	// Build the per-instance color grading SSBO for the supplied renderer. Walks the same
 	// instance list as build_instance_buffer_for_renderer; falls back to the renderer's
 	// RenderConfig::color_grading when a record has no per-instance ref. When no director
@@ -274,6 +282,20 @@ public:
     // given scenario in the director's map. Distinct from get_shared_renderer(),
     // which lazily creates the entry on a miss.
     bool has_shared_world_for_scenario(const RID &p_scenario) const;
+#if defined(TESTS_ENABLED) || defined(TOOLS_ENABLED)
+    // Test/diagnostics-only: returns the SharedWorld::asset_records key the
+    // director derives from an asset's ObjectID. Exposed so a regression test
+    // can prove two ObjectIDs colliding in the low 32 bits do NOT alias.
+    static uint64_t test_asset_records_key(ObjectID p_asset_object_id) {
+        return _asset_records_key(p_asset_object_id);
+    }
+    // Test/diagnostics-only: number of distinct asset records retained in the
+    // SharedWorld bound to the given scenario (0 if no world exists).
+    uint32_t test_asset_record_count_for_scenario(const RID &p_scenario) const;
+    // Test/diagnostics-only: true iff the SharedWorld for the scenario holds an
+    // asset record under the full 64-bit ObjectID key.
+    bool test_has_asset_record_for_scenario(const RID &p_scenario, ObjectID p_asset_object_id) const;
+#endif
     bool get_world_submission(ObjectID p_owner_id, WorldSubmission *r_submission) const;
     bool get_world_submission_for_scenario(const RID &p_scenario, WorldSubmission *r_submission) const;
     bool has_world_submission_for_renderer(const GaussianSplatRenderer *p_renderer) const;
@@ -300,7 +322,10 @@ private:
 		float wind_frequency = 1.0f;
 		float effect_position_scale = 1.0f;
 		float effect_opacity_scale = 1.0f;
-		uint32_t asset_id = 0;
+		// Full 64-bit ObjectID of the asset Node3D. Must NOT be truncated to
+		// 32 bits: two assets whose ObjectIDs collide in the low 32 bits would
+		// otherwise alias the same SharedWorld::asset_records entry.
+		uint64_t asset_id = 0;
 		uint32_t flags = 0;
         uint32_t last_lod = 0;
         bool casts_shadow = false;
@@ -375,7 +400,7 @@ private:
             uint32_t refcount = 0;
             uint32_t edited_version = 0;
         };
-        HashMap<uint32_t, AssetRecord> asset_records;
+        HashMap<uint64_t, AssetRecord> asset_records;
     };
 
     static GaussianSplatSceneDirector *singleton;
@@ -404,10 +429,17 @@ private:
     static uint32_t _build_scene_effector_mask_for_record(const InstanceRecord &p_record,
             const LocalVector<SphereEffectorSelection> &p_payload);
 
+	// Single source of truth for the SharedWorld::asset_records key. The key is
+	// the FULL 64-bit ObjectID; it must never be truncated to 32 bits or two
+	// assets whose ObjectIDs share the low 32 bits would alias the same record.
+	static uint64_t _asset_records_key(ObjectID p_asset_object_id) {
+		return p_asset_object_id;
+	}
+
 	static bool _populate_gaussian_data_from_asset(const Ref<GaussianSplatAsset> &p_asset, Ref<GaussianData> &r_data);
-	static bool _retain_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint32_t p_asset_id);
-	static bool _refresh_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint32_t p_asset_id);
-	static void _release_asset_record(SharedWorld &p_world, uint32_t p_asset_id);
+	static bool _retain_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint64_t p_asset_id);
+	static bool _refresh_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint64_t p_asset_id);
+	static void _release_asset_record(SharedWorld &p_world, uint64_t p_asset_id);
 	static bool _is_world_submission_owner_live(ObjectID p_owner_id);
 	static void _store_world_submission_record(SharedWorld::WorldSubmissionRecord &r_record, const WorldSubmission &p_submission);
 	static bool _world_submission_record_has_renderable_payload(const SharedWorld::WorldSubmissionRecord &p_record);

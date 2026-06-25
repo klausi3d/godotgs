@@ -707,7 +707,7 @@ bool GaussianSplatSceneDirector::_populate_gaussian_data_from_asset(const Ref<Ga
 	return true;
 }
 
-bool GaussianSplatSceneDirector::_retain_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint32_t p_asset_id) {
+bool GaussianSplatSceneDirector::_retain_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint64_t p_asset_id) {
 	if (p_asset.is_null()) {
 		return false;
 	}
@@ -747,7 +747,7 @@ bool GaussianSplatSceneDirector::_retain_asset_record(SharedWorld &p_world, cons
 	return true;
 }
 
-bool GaussianSplatSceneDirector::_refresh_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint32_t p_asset_id) {
+bool GaussianSplatSceneDirector::_refresh_asset_record(SharedWorld &p_world, const Ref<GaussianSplatAsset> &p_asset, uint64_t p_asset_id) {
 	if (p_asset.is_null()) {
 		return false;
 	}
@@ -775,7 +775,7 @@ bool GaussianSplatSceneDirector::_refresh_asset_record(SharedWorld &p_world, con
 	return true;
 }
 
-void GaussianSplatSceneDirector::_release_asset_record(SharedWorld &p_world, uint32_t p_asset_id) {
+void GaussianSplatSceneDirector::_release_asset_record(SharedWorld &p_world, uint64_t p_asset_id) {
 	SharedWorld::AssetRecord *record = p_world.asset_records.getptr(p_asset_id);
 	if (!record) {
 		return;
@@ -935,7 +935,7 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 			continue;
 		}
 		const uint32_t idx = *stale_index;
-		const uint32_t stale_asset_id = other.instances[idx].asset_id;
+		const uint64_t stale_asset_id = other.instances[idx].asset_id;
 		const uint32_t last_index = other.instances.size() - 1;
 		if (idx != last_index) {
 			other.instances[idx] = other.instances[last_index];
@@ -960,8 +960,10 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 		GaussianSplatting::debug_trace_record_event("instance_reg", "FAIL: asset=null", true);
 		return;
 	}
-	const uint64_t asset_id_u64 = p_asset->get_instance_id();
-	const uint32_t asset_id = static_cast<uint32_t>(asset_id_u64);
+	// Use the full 64-bit ObjectID as the asset_records key. Truncating to
+	// uint32_t (the old behaviour) made two assets whose ObjectIDs share the
+	// low 32 bits alias the same asset record.
+	const uint64_t asset_id = _asset_records_key(p_asset->get_instance_id());
 	const float wind_intensity = MAX(0.0f, p_wind_intensity);
 	const uint32_t wind_mode = MIN(p_wind_mode, (uint32_t)INSTANCE_WIND_FORCE_ENABLED);
 	const float wind_frequency = MAX(0.0f, p_wind_frequency);
@@ -972,7 +974,7 @@ void GaussianSplatSceneDirector::register_instance(ObjectID p_node_id, const Ref
 		return;
 	}
 	GaussianSplatting::debug_trace_record_event("instance_reg",
-			vformat("OK: asset_id=%d instances_before=%d", asset_id, world->instances.size()),
+			vformat("OK: asset_id=%s instances_before=%d", String::num_uint64(asset_id), world->instances.size()),
 			false);
 
 	uint32_t *index_ptr = world->instance_lookup.getptr(p_node_id);
@@ -1276,7 +1278,7 @@ void GaussianSplatSceneDirector::unregister_instance(ObjectID p_node_id) {
 	}
 
 	uint32_t index = *index_ptr;
-	const uint32_t asset_id = world->instances[index].asset_id;
+	const uint64_t asset_id = world->instances[index].asset_id;
 	uint32_t last_index = world->instances.size() - 1;
 	if (index != last_index) {
 		world->instances[index] = world->instances[last_index];
@@ -1390,8 +1392,8 @@ void GaussianSplatSceneDirector::update_instance_lods(const Vector3 &p_camera_po
 			}
 			if (desired_lod == static_cast<int>(current_lod)) {
 				if (log_enabled) {
-					GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%u dist=%.3f bias=%.3f eff=%.3f lod=%u desired=%d (no change)",
-							String::num_uint64((uint64_t)record.node_id), record.asset_id, distance, bias, effective_distance, current_lod, desired_lod));
+					GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%s dist=%.3f bias=%.3f eff=%.3f lod=%u desired=%d (no change)",
+							String::num_uint64((uint64_t)record.node_id), String::num_uint64(record.asset_id), distance, bias, effective_distance, current_lod, desired_lod));
 				}
 				continue;
 			}
@@ -1401,8 +1403,8 @@ void GaussianSplatSceneDirector::update_instance_lods(const Vector3 &p_camera_po
 				const float zone = use_fallback ? MAX(0.5f, 0.05f * threshold) : p_hysteresis_zone;
 				if (effective_distance < threshold + zone) {
 					if (log_enabled) {
-						GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%u dist=%.3f bias=%.3f eff=%.3f lod=%u desired=%d (hold-up)",
-								String::num_uint64((uint64_t)record.node_id), record.asset_id, distance, bias, effective_distance, current_lod, desired_lod));
+						GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%s dist=%.3f bias=%.3f eff=%.3f lod=%u desired=%d (hold-up)",
+								String::num_uint64((uint64_t)record.node_id), String::num_uint64(record.asset_id), distance, bias, effective_distance, current_lod, desired_lod));
 					}
 					continue;
 				}
@@ -1411,8 +1413,8 @@ void GaussianSplatSceneDirector::update_instance_lods(const Vector3 &p_camera_po
 				const float zone = use_fallback ? MAX(0.5f, 0.05f * threshold) : p_hysteresis_zone;
 				if (effective_distance > threshold - zone) {
 					if (log_enabled) {
-						GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%u dist=%.3f bias=%.3f eff=%.3f lod=%u desired=%d (hold-down)",
-								String::num_uint64((uint64_t)record.node_id), record.asset_id, distance, bias, effective_distance, current_lod, desired_lod));
+						GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%s dist=%.3f bias=%.3f eff=%.3f lod=%u desired=%d (hold-down)",
+								String::num_uint64((uint64_t)record.node_id), String::num_uint64(record.asset_id), distance, bias, effective_distance, current_lod, desired_lod));
 					}
 					continue;
 				}
@@ -1422,8 +1424,8 @@ void GaussianSplatSceneDirector::update_instance_lods(const Vector3 &p_camera_po
 			record.dirty = true;
 			any_changed = true;
 			if (log_enabled) {
-				GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%u dist=%.3f bias=%.3f eff=%.3f lod=%u -> %u",
-						String::num_uint64((uint64_t)record.node_id), record.asset_id, distance, bias, effective_distance,
+				GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%s dist=%.3f bias=%.3f eff=%.3f lod=%u -> %u",
+						String::num_uint64((uint64_t)record.node_id), String::num_uint64(record.asset_id), distance, bias, effective_distance,
 						current_lod, record.last_lod));
 			}
 		}
@@ -1463,8 +1465,8 @@ void GaussianSplatSceneDirector::update_instance_lods_for_renderer(const Gaussia
 		}
 		if (desired_lod == static_cast<int>(current_lod)) {
 			if (log_enabled) {
-				GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%u dist=%.3f bias=%.3f eff=%.3f lod=%u desired=%d (no change)",
-						String::num_uint64((uint64_t)record.node_id), record.asset_id, distance, bias, effective_distance, current_lod, desired_lod));
+				GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%s dist=%.3f bias=%.3f eff=%.3f lod=%u desired=%d (no change)",
+						String::num_uint64((uint64_t)record.node_id), String::num_uint64(record.asset_id), distance, bias, effective_distance, current_lod, desired_lod));
 			}
 			continue;
 		}
@@ -1474,8 +1476,8 @@ void GaussianSplatSceneDirector::update_instance_lods_for_renderer(const Gaussia
 			const float zone = use_fallback ? MAX(0.5f, 0.05f * threshold) : p_hysteresis_zone;
 			if (effective_distance < threshold + zone) {
 				if (log_enabled) {
-					GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%u dist=%.3f bias=%.3f eff=%.3f lod=%u desired=%d (hold-up)",
-							String::num_uint64((uint64_t)record.node_id), record.asset_id, distance, bias, effective_distance, current_lod, desired_lod));
+					GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%s dist=%.3f bias=%.3f eff=%.3f lod=%u desired=%d (hold-up)",
+							String::num_uint64((uint64_t)record.node_id), String::num_uint64(record.asset_id), distance, bias, effective_distance, current_lod, desired_lod));
 				}
 				continue;
 			}
@@ -1484,8 +1486,8 @@ void GaussianSplatSceneDirector::update_instance_lods_for_renderer(const Gaussia
 			const float zone = use_fallback ? MAX(0.5f, 0.05f * threshold) : p_hysteresis_zone;
 			if (effective_distance > threshold - zone) {
 				if (log_enabled) {
-					GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%u dist=%.3f bias=%.3f eff=%.3f lod=%u desired=%d (hold-down)",
-							String::num_uint64((uint64_t)record.node_id), record.asset_id, distance, bias, effective_distance, current_lod, desired_lod));
+					GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%s dist=%.3f bias=%.3f eff=%.3f lod=%u desired=%d (hold-down)",
+							String::num_uint64((uint64_t)record.node_id), String::num_uint64(record.asset_id), distance, bias, effective_distance, current_lod, desired_lod));
 				}
 				continue;
 			}
@@ -1495,8 +1497,8 @@ void GaussianSplatSceneDirector::update_instance_lods_for_renderer(const Gaussia
 		record.dirty = true;
 		any_changed = true;
 		if (log_enabled) {
-			GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%u dist=%.3f bias=%.3f eff=%.3f lod=%u -> %u",
-					String::num_uint64((uint64_t)record.node_id), record.asset_id, distance, bias, effective_distance,
+			GS_LOG_RENDERER_DEBUG(vformat("[InstanceLOD] node=%s asset=%s dist=%.3f bias=%.3f eff=%.3f lod=%u -> %u",
+					String::num_uint64((uint64_t)record.node_id), String::num_uint64(record.asset_id), distance, bias, effective_distance,
 					current_lod, record.last_lod));
 		}
 	}
@@ -1562,7 +1564,10 @@ void GaussianSplatSceneDirector::build_instance_buffer(LocalVector<InstanceDataG
 			entry.params[2] = record.wind_intensity;
 			entry.params[3] = float(record.wind_mode);
 
-			entry.ids[0] = record.asset_id;
+			// GPU instance slot is a 32-bit opaque tag used only for dense-id
+			// remapping; the collision-free identity lives in the 64-bit
+			// asset_records key, so truncation here is intentional.
+			entry.ids[0] = static_cast<uint32_t>(record.asset_id);
 			uint32_t flags = record.flags;
 			if (rotation.is_equal_approx(Quaternion())) {
 				flags |= GS_INSTANCE_FLAG_ROTATION_IDENTITY;
@@ -1592,9 +1597,13 @@ void GaussianSplatSceneDirector::build_instance_buffer(LocalVector<InstanceDataG
 }
 
 void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const GaussianSplatRenderer *p_renderer,
-		LocalVector<InstanceDataGPU> &out, bool p_shadow_casters_only) const {
+		LocalVector<InstanceDataGPU> &out, bool p_shadow_casters_only,
+		LocalVector<uint64_t> *r_submission_asset_ids) const {
 	MutexLock lock(world_mutex);
 	out.clear();
+	if (r_submission_asset_ids) {
+		r_submission_asset_ids->clear();
+	}
 
 	const SharedWorld *world = _find_world_for_renderer(p_renderer);
 	if (!world) {
@@ -1649,6 +1658,10 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 			entry.effect_params[2] = _encode_u32_as_float_bits(world_scope_mask);
 			entry.effect_params[3] = float(scene_payload.size());
 			out.push_back(entry);
+			if (r_submission_asset_ids) {
+				// Primary/world-submission asset id is 0 (kPrimary*AssetId).
+				r_submission_asset_ids->push_back(0ULL);
+			}
 		}
 		return;
 	}
@@ -1672,8 +1685,8 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 		const SharedWorld::AssetRecord *asset_record = world->asset_records.getptr(record.asset_id);
 		if (!asset_record || asset_record->data.is_null()) {
 			if (log_enabled) {
-				GS_LOG_RENDERER_DEBUG(vformat("[InstanceBuffer] SKIP asset_id=%d record=%s data=%s",
-						record.asset_id,
+				GS_LOG_RENDERER_DEBUG(vformat("[InstanceBuffer] SKIP asset_id=%s record=%s data=%s",
+						String::num_uint64(record.asset_id),
 						asset_record ? "found" : "NULL",
 						(asset_record && asset_record->data.is_valid()) ? "valid" : "null"));
 			}
@@ -1712,7 +1725,11 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 		entry.params[2] = record.wind_intensity;
 		entry.params[3] = float(record.wind_mode);
 
-		entry.ids[0] = record.asset_id;
+		// GPU tag is only 32 bits; it carries a TRANSIENT truncated asset id that
+		// update_instance_buffer() overwrites with the resolved dense slot. The
+		// collision-free 64-bit submission identity is published in parallel via
+		// r_submission_asset_ids below (and lives authoritatively in asset_records).
+		entry.ids[0] = static_cast<uint32_t>(record.asset_id);
 		uint32_t flags = record.flags;
 		if (rotation.is_equal_approx(Quaternion())) {
 			flags |= GS_INSTANCE_FLAG_ROTATION_IDENTITY;
@@ -1737,6 +1754,9 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 		entry.effect_params[3] = float(scene_payload.size());
 
 		out.push_back(entry);
+		if (r_submission_asset_ids) {
+			r_submission_asset_ids->push_back(record.asset_id);
+		}
 		if (trace_enabled) {
 			const bool rotation_identity = (flags & GS_INSTANCE_FLAG_ROTATION_IDENTITY) != 0u;
 			const bool scale_identity = (flags & GS_INSTANCE_FLAG_SCALE_IDENTITY) != 0u;
@@ -1748,9 +1768,9 @@ void GaussianSplatSceneDirector::build_instance_buffer_for_renderer(const Gaussi
 			traced_fully_identity += (rotation_identity && scale_identity && translation_zero) ? 1u : 0u;
 		}
 		if (log_enabled) {
-			GS_LOG_RENDERER_DEBUG(vformat("[InstanceBuffer] idx=%d node=%s asset=%u lod=%u flags=0x%08X pos=(%.3f,%.3f,%.3f) scale=%.3f",
+			GS_LOG_RENDERER_DEBUG(vformat("[InstanceBuffer] idx=%d node=%s asset=%s lod=%u flags=0x%08X pos=(%.3f,%.3f,%.3f) scale=%.3f",
 					out.size() - 1,
-					String::num_uint64((uint64_t)record.node_id), record.asset_id, record.last_lod, record.flags,
+					String::num_uint64((uint64_t)record.node_id), String::num_uint64(record.asset_id), record.last_lod, record.flags,
 					entry.translation_scale[0], entry.translation_scale[1], entry.translation_scale[2], entry.translation_scale[3]));
 		}
 	}
@@ -2681,6 +2701,26 @@ bool GaussianSplatSceneDirector::has_shared_world_for_scenario(const RID &p_scen
 	return worlds.getptr(p_scenario) != nullptr;
 }
 
+#if defined(TESTS_ENABLED) || defined(TOOLS_ENABLED)
+uint32_t GaussianSplatSceneDirector::test_asset_record_count_for_scenario(const RID &p_scenario) const {
+	MutexLock lock(world_mutex);
+	const SharedWorld *world = worlds.getptr(p_scenario);
+	if (!world) {
+		return 0;
+	}
+	return world->asset_records.size();
+}
+
+bool GaussianSplatSceneDirector::test_has_asset_record_for_scenario(const RID &p_scenario, ObjectID p_asset_object_id) const {
+	MutexLock lock(world_mutex);
+	const SharedWorld *world = worlds.getptr(p_scenario);
+	if (!world) {
+		return false;
+	}
+	return world->asset_records.has(_asset_records_key(p_asset_object_id));
+}
+#endif
+
 void GaussianSplatSceneDirector::teardown_world_for_scenario(const RID &p_scenario) {
 	// Explicit, idempotent F6-reload teardown. See header comment for rationale.
 	// Drops every Ref the SharedWorld holds (renderer, asset records, world-submission
@@ -2866,7 +2906,7 @@ void GaussianSplatSceneDirector::collect_instance_assets_for_renderer(const Gaus
 		return;
 	}
 
-	HashSet<uint32_t> selected_asset_ids;
+	HashSet<uint64_t> selected_asset_ids;
 	selected_asset_ids.reserve(world->asset_records.size());
 	for (const InstanceRecord &record : world->instances) {
 		if (!record.visible) {
@@ -2881,12 +2921,15 @@ void GaussianSplatSceneDirector::collect_instance_assets_for_renderer(const Gaus
 	}
 
 	out.reserve(selected_asset_ids.size());
-	for (const uint32_t &asset_id : selected_asset_ids) {
+	for (const uint64_t &asset_id : selected_asset_ids) {
 		const SharedWorld::AssetRecord *record = world->asset_records.getptr(asset_id);
 		if (!record || record->data.is_null()) {
 			continue;
 		}
 		InstanceAssetRegistration entry;
+		// Carry the FULL 64-bit submission identity through to the renderer remap.
+		// This is the collision-free key into PublishedInstanceAssetRemap; truncating
+		// it here would alias two assets whose ObjectIDs share the low 32 bits.
 		entry.asset_id = asset_id;
 		entry.data = record->data;
 		entry.edited_version = record->edited_version;
@@ -2906,11 +2949,13 @@ void GaussianSplatSceneDirector::collect_registered_assets_for_renderer(const Ga
 	}
 
 	out.reserve(world->asset_records.size());
-	for (const KeyValue<uint32_t, SharedWorld::AssetRecord> &E : world->asset_records) {
+	for (const KeyValue<uint64_t, SharedWorld::AssetRecord> &E : world->asset_records) {
 		if (E.key == 0 || E.value.data.is_null()) {
 			continue;
 		}
 		InstanceAssetRegistration entry;
+		// Carry the FULL 64-bit asset_records key (host submission identity) through
+		// to the renderer remap so distinct ObjectIDs never alias a dense slot.
 		entry.asset_id = E.key;
 		entry.data = E.value.data;
 		entry.edited_version = E.value.edited_version;
