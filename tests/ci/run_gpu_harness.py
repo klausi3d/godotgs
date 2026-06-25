@@ -62,6 +62,18 @@ BATCHES: tuple[BatchSpec, ...] = (
     BatchSpec("GpuSorting", ("*Sort*][RequiresGPU]*",)),
     BatchSpec("MemoryStream", ("*MemoryStream*][RequiresGPU]*",)),
     BatchSpec("Streaming", ("*Streaming*][RequiresGPU]*",)),
+    # Render route/stage cascade failure-injection coverage for #351 (resident,
+    # streaming, AND serial paths). These tests carry no subsystem bracket tag, so the
+    # batch matches on the descriptive phrase. The phrases are deliberately NOT wrapped in
+    # "[...]" brackets: the manifest contract check matches filters with fnmatch (where
+    # "[RequiresGPU]" would be a character class), while doctest treats brackets literally,
+    # so only a bracket-free phrase matches identically in both. Both phrases are unique to
+    # these four [RequiresGPU] tests (verified): "Stage results report ..." (resident
+    # cull/sort skip, resident raster failure, streaming not-ready) + the serial test.
+    BatchSpec("RendererPipeline", (
+            "*Stage results report*",
+            "*Serial instancing failure injection*",
+    )),
     # Lifetime batch is intentionally OMITTED from the default set until the
     # fixture's WorkerThreadPool dependency is resolved (issue #392 — scenarios
     # A/D crash with STATUS_STACK_BUFFER_OVERRUN under --gs-gpu-test because
@@ -82,7 +94,11 @@ BATCHES: tuple[BatchSpec, ...] = (
 # hazard (the entire reason for the scratch-copy path and this harness). If its
 # filter ever stops matching, the gate must fail loudly rather than greenly
 # skip — anyone touching the renderer should see immediate signal.
-REQUIRED_BATCHES: frozenset[str] = frozenset({"CompositorHazard"})
+#
+# RendererPipeline carries #351's route/stage cascade failure-injection coverage
+# (resident, streaming, serial). It is required so a rename/removal of those tests
+# fails the gate loudly instead of silently dropping the route-contract coverage.
+REQUIRED_BATCHES: frozenset[str] = frozenset({"CompositorHazard", "RendererPipeline"})
 
 # Validate at import time that every required batch name actually exists in
 # BATCHES — without this, renaming a batch but forgetting to update the
