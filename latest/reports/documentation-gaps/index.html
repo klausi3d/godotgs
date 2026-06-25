@@ -3358,17 +3358,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrendererrender_streaming_orchestratorcpp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/renderer/render_streaming_orchestrator.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#modulesgaussian_splattingasset_managementasset_dependency_managercpp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3395,17 +3384,6 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/interfaces/painterly_renderer.cpp
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#modulesgaussian_splattingrendererrender_streaming_orchestratorh" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        modules/gaussian_splatting/renderer/render_streaming_orchestrator.h
       
     </span>
   </a>
@@ -3835,6 +3813,17 @@
     <span class="md-ellipsis">
       
         tests/examples/godot/test_project/scenes/perf_test_clean.gd
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingrendererrender_streaming_orchestratorcpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/renderer/render_streaming_orchestrator.cpp
       
     </span>
   </a>
@@ -4847,6 +4836,17 @@
     <span class="md-ellipsis">
       
         modules/gaussian_splatting/core/gaussian_data_octree.cpp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modulesgaussian_splattingrendererrender_streaming_orchestratorh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        modules/gaussian_splatting/renderer/render_streaming_orchestrator.h
       
     </span>
   </a>
@@ -8325,23 +8325,6 @@
 <li>line 257: func _compute_luma_buffer(img: Image) -&gt; PackedFloat32Array:...</li>
 <li>line 270: func _get_ssim_kernel() -&gt; PackedFloat32Array:...</li>
 </ul>
-<h2 id="modulesgaussian_splattingrendererrender_streaming_orchestratorcpp">modules/gaussian_splatting/renderer/render_streaming_orchestrator.cpp<a class="headerlink" href="#modulesgaussian_splattingrendererrender_streaming_orchestratorcpp" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 33: static uint64_t _mix_content_generation(uint64_t a, uint64_t...</li>
-<li>line 39: static uint64_t _mix_u32_generation(uint64_t p_generation, u...</li>
-<li>line 43: static uint64_t _mix_rid_generation(uint64_t p_generation, c...</li>
-<li>line 47: static uint64_t _compute_instance_pipeline_resource_fingerpr...</li>
-<li>line 86: static uint64_t _compute_instance_asset_remap_fingerprint(co...</li>
-<li>line 240: static LayoutHintFailureCategory _layout_hint_reason_categor...</li>
-<li>line 276: static String _layout_hint_failure_detail(int p_hint_index, ...</li>
-<li>line 402: static String _streaming_not_ready_route_uid(StreamingReadin...</li>
-<li>line 406: static String _streaming_not_ready_reason(StreamingReadiness...</li>
-<li>line 475: static bool _is_debug_or_test_invariant_hard_fail_enabled() ...</li>
-<li>line 637: void RenderStreamingOrchestrator::invalidate_instance_pipeli...</li>
-<li>line 655: bool RenderStreamingOrchestrator::refresh_instance_asset_sna...</li>
-<li>line 816: bool RenderStreamingOrchestrator::ensure_instance_streaming_...</li>
-<li>line 926: void RenderStreamingOrchestrator::sync_instance_pipeline_ass...</li>
-</ul>
 <h2 id="modulesgaussian_splattingasset_managementasset_dependency_managercpp">modules/gaussian_splatting/asset_management/asset_dependency_manager.cpp<a class="headerlink" href="#modulesgaussian_splattingasset_managementasset_dependency_managercpp" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 15: static bool asset_id_from_string_checked(const String &amp;p_ass...</li>
@@ -8452,10 +8435,6 @@
 <li>line 1474: void PainterlyRenderer::free_painterly_resources(GaussianSpl...</li>
 <li>line 1478: void PainterlyRenderer::clear_painterly_gpu_resources(Gaussi...</li>
 <li>line 1491: void PainterlyRenderer::update_painterly_gpu_resources(Gauss...</li>
-</ul>
-<h2 id="modulesgaussian_splattingrendererrender_streaming_orchestratorh">modules/gaussian_splatting/renderer/render_streaming_orchestrator.h<a class="headerlink" href="#modulesgaussian_splattingrendererrender_streaming_orchestratorh" title="Permanent link">¶</a></h2>
-<ul>
-<li>line 55: bool has_instances() const { return !instances.is_empty(); }...</li>
 </ul>
 <h2 id="modulesgaussian_splattingiostreaming_chunk_bakecpp">modules/gaussian_splatting/io/streaming_chunk_bake.cpp<a class="headerlink" href="#modulesgaussian_splattingiostreaming_chunk_bakecpp" title="Permanent link">¶</a></h2>
 <ul>
@@ -9174,6 +9153,26 @@
 <li>line 38: func _process(delta: float) -&gt; void:...</li>
 <li>line 84: func _get_avg_fps() -&gt; float:...</li>
 <li>line 92: func _input(event: InputEvent) -&gt; void:...</li>
+</ul>
+<h2 id="modulesgaussian_splattingrendererrender_streaming_orchestratorcpp">modules/gaussian_splatting/renderer/render_streaming_orchestrator.cpp<a class="headerlink" href="#modulesgaussian_splattingrendererrender_streaming_orchestratorcpp" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 33: static uint64_t _mix_content_generation(uint64_t a, uint64_t...</li>
+<li>line 39: static uint64_t _mix_u32_generation(uint64_t p_generation, u...</li>
+<li>line 43: static uint64_t _mix_rid_generation(uint64_t p_generation, c...</li>
+<li>line 47: static uint64_t _compute_instance_pipeline_resource_fingerpr...</li>
+<li>line 86: static uint64_t _compute_instance_asset_remap_fingerprint(co...</li>
+<li>line 248: static LayoutHintFailureCategory _layout_hint_reason_categor...</li>
+<li>line 284: static String _layout_hint_failure_detail(int p_hint_index, ...</li>
+<li>line 410: static String _streaming_not_ready_route_uid(StreamingReadin...</li>
+<li>line 414: static String _streaming_not_ready_reason(StreamingReadiness...</li>
+<li>line 483: static bool _is_debug_or_test_invariant_hard_fail_enabled() ...</li>
+<li>line 653: uint32_t RenderStreamingOrchestrator::_project_streaming_ass...</li>
+<li>line 680: uint32_t RenderStreamingOrchestrator::<em>peek_streaming_asset</em>...</li>
+<li>line 690: void RenderStreamingOrchestrator::_release_streaming_asset_s...</li>
+<li>line 706: void RenderStreamingOrchestrator::invalidate_instance_pipeli...</li>
+<li>line 733: bool RenderStreamingOrchestrator::refresh_instance_asset_sna...</li>
+<li>line 912: bool RenderStreamingOrchestrator::ensure_instance_streaming_...</li>
+<li>line 1032: void RenderStreamingOrchestrator::sync_instance_pipeline_ass...</li>
 </ul>
 <h2 id="modulesgaussian_splattingioi_gaussian_loaderh">modules/gaussian_splatting/io/i_gaussian_loader.h<a class="headerlink" href="#modulesgaussian_splattingioi_gaussian_loaderh" title="Permanent link">¶</a></h2>
 <ul>
@@ -10742,6 +10741,10 @@
 <li>line 224: TypedArray<int> GaussianData::query_octree(const AABB &amp;p_bou...</int></li>
 <li>line 295: void GaussianData::gather_frustum_indices(const Vector&lt;Plane...</li>
 </ul>
+<h2 id="modulesgaussian_splattingrendererrender_streaming_orchestratorh">modules/gaussian_splatting/renderer/render_streaming_orchestrator.h<a class="headerlink" href="#modulesgaussian_splattingrendererrender_streaming_orchestratorh" title="Permanent link">¶</a></h2>
+<ul>
+<li>line 55: bool has_instances() const { return !instances.is_empty(); }...</li>
+</ul>
 <h2 id="modulesgaussian_splattingeditorgaussian_import_dialogh">modules/gaussian_splatting/editor/gaussian_import_dialog.h<a class="headerlink" href="#modulesgaussian_splattingeditorgaussian_import_dialogh" title="Permanent link">¶</a></h2>
 <ul>
 <li>line 180: ImportConfiguration get_configuration() const { return curre...</li>
@@ -11215,7 +11218,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="June 25, 2026 10:07:54 UTC">June 25, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="June 25, 2026 20:40:31 UTC">June 25, 2026</span>
   </span>
 
     
