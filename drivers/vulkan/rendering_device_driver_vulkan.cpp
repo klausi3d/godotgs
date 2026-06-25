@@ -1254,6 +1254,11 @@ Error RenderingDeviceDriverVulkan::_initialize_allocator() {
 	allocator_info.physicalDevice = physical_device;
 	allocator_info.device = vk_device;
 	allocator_info.instance = context_driver->instance_get();
+	// Tell VMA the real device API version so it uses the core entry points (e.g. the
+	// 1.1 vkGetPhysicalDeviceMemoryProperties2 needed by the memory-budget flag below)
+	// instead of the KHR variants that depend on the VK_KHR_get_physical_device_properties2
+	// instance extension. Defaults to 1.0 when unset, which would force the KHR path.
+	allocator_info.vulkanApiVersion = physical_device_properties.apiVersion;
 	const bool use_1_3_features = physical_device_properties.apiVersion >= VK_API_VERSION_1_3;
 	if (use_1_3_features) {
 		allocator_info.flags |= VMA_ALLOCATOR_CREATE_KHR_MAINTENANCE5_BIT;
@@ -1263,8 +1268,13 @@ Error RenderingDeviceDriverVulkan::_initialize_allocator() {
 	}
 	// Use the driver's live memory budget (VK_EXT_memory_budget) when the extension was
 	// enabled, so vmaGetHeapBudgets() / get_device_memory_budget() report the real budget
-	// instead of VMA's static 80%-of-heap fallback (GS #321).
-	if (enabled_device_extension_names.has(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME)) {
+	// instead of VMA's static 80%-of-heap fallback (GS #321). Gate on Vulkan 1.1+: VMA's
+	// budget flag immediately calls vkGetPhysicalDeviceMemoryProperties2 during allocator
+	// init, which only exists as a core entry point from 1.1 (below that it needs the
+	// VK_KHR_get_physical_device_properties2 instance extension and would assert/crash on
+	// 1.0 paths). On 1.0 devices VMA falls back to the static heap estimate (graceful).
+	if (physical_device_properties.apiVersion >= VK_API_VERSION_1_1 &&
+			enabled_device_extension_names.has(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME)) {
 		allocator_info.flags |= VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
 	}
 	VkResult err = vmaCreateAllocator(&allocator_info, &allocator);
