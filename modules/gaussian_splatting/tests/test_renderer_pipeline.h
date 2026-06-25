@@ -4836,7 +4836,7 @@ TEST_CASE("[GaussianSplatting] runtime fidelity policy centralizes route policy 
 	CHECK(runtime_policy.runtime_budget_splats == 8);
 }
 
-TEST_CASE("[GaussianSplatting] frame backend plan centralizes streaming bootstrap without synthetic primary fallback") {
+TEST_CASE("[GaussianSplatting] frame backend plan forces resident for direct data with no submission (no synthetic primary fallback)") {
 	ProjectSettings *project_settings = ProjectSettings::get_singleton();
 	if (project_settings == nullptr) {
 		MESSAGE("Skipping test - ProjectSettings unavailable");
@@ -4859,12 +4859,20 @@ TEST_CASE("[GaussianSplatting] frame backend plan centralizes streaming bootstra
 	GaussianSplatRenderer::SceneState &scene_state = renderer->get_scene_state();
 	scene_state.gaussian_data = data;
 
+	// Direct gaussian_data on a standalone renderer (no world submission) has no instance
+	// to populate the streaming instance cache. The synthetic primary-data bootstrap
+	// instance that used to cover this case was pruned (commit de71685b08), so the streaming
+	// backend would now emit zero splats. build_frame_backend_plan() therefore forces resident
+	// for direct-data-without-submission (reason "direct_data_no_submission") and suppresses the
+	// streaming bootstrap, even though the route policy requests streaming. The genuine
+	// streaming-bootstrap path is exercised by the file-backed-payload test below.
 	const GaussianSplatRenderer::FrameBackendPlan backend_plan = renderer->build_frame_backend_plan(false);
 	CHECK(backend_plan.streaming_requested);
-	CHECK_FALSE(backend_plan.prefer_resident_backend);
+	CHECK(backend_plan.prefer_resident_backend);
 	CHECK_FALSE(backend_plan.streaming_ready);
-	CHECK(backend_plan.should_attempt_streaming_bootstrap);
+	CHECK_FALSE(backend_plan.should_attempt_streaming_bootstrap);
 	CHECK_FALSE(backend_plan.has_active_world_submission);
+	CHECK(backend_plan.resident_backend_reason == String("direct_data_no_submission"));
 }
 
 TEST_CASE("[GaussianSplatting] frame backend plan preserves resident request semantics") {
