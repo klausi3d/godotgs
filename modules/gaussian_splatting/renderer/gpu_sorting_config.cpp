@@ -62,11 +62,13 @@ void GPUSortingConfig::load_from_project_settings() {
             // overrides that are orthogonal to the sort layout. Per Codex P2 on
             // PR #325: reading max_raster_splats_per_tile / key_bits / tile_bits
             // / depth_bits / enable_tie_breaker here would silently promote the
-            // preset's layout back to the GLOBAL_DEF defaults (65536/64/32/32/0),
-            // defeating preset_low() which intentionally sets 32-bit keys at
-            // 16/16. Users who want a custom layout should select
-            // gpu_sorting/preset="custom", which falls through to the manual
-            // config block below and reads every knob individually.
+            // preset's layout back to the GLOBAL_DEF defaults, overriding a
+            // preset's intentional layout choice. Every preset now uses 64-bit
+            // keys (the only shippable layout); 32-bit keys are reachable ONLY via
+            // gpu_sorting/preset="custom", which falls through to the manual config
+            // block below and reads every knob individually. This keeps the
+            // flickering 32-bit depth-key path an explicit opt-in, never a silent
+            // default or preset side effect.
             enable_performance_logging = ps->get_setting(PERFORMANCE_LOGGING_PATH, enable_performance_logging);
             performance_log_interval = ps->get_setting(LOG_INTERVAL_PATH, performance_log_interval);
             enable_bandwidth_monitoring = ps->get_setting(BANDWIDTH_MONITORING_PATH, enable_bandwidth_monitoring);
@@ -200,9 +202,13 @@ void GPUSortingConfig::reset_to_defaults() {
     max_raster_splats_per_tile = 65536;
     radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS;
     workgroup_size = GPUSortingConstants::DEFAULT_WORKGROUP_SIZE;
-    key_bits = 32;  // Default 32-bit for 8 passes instead of 16
-    tile_bits = 16;
-    depth_bits = 16;
+    // 64-bit keys (32 tile + 32 depth) are the only shippable layout; 32-bit (16 depth bits)
+    // bands/flickers on real-scan content (GS-298). reset_to_defaults() is also the recovery
+    // path used by initialize_gpu_sorting_config() after a validation failure, so it must NOT
+    // yield the 32-bit layout without an explicit gpu_preset="custom" opt-in.
+    key_bits = 64;
+    tile_bits = 32;
+    depth_bits = 32;
     enable_tie_breaker = false;
     enable_performance_logging = false;
     performance_log_interval = 100;
@@ -370,10 +376,17 @@ GPUSortingConfig GPUSortingConfig::preset_low() {
     config.radix_bits = GPUSortingConstants::DEFAULT_RADIX_BITS; // 4-bit radix (DEFAULT_RADIX_BITS); 8-bit measured slower for our workload
     config.workgroup_size = 128;             // Smaller workgroups for limited compute units
 
-    // Key layout - 32-bit keys to reduce memory bandwidth
-    config.key_bits = 32;                    // 32-bit keys reduce bandwidth by 50%
-    config.tile_bits = 16;                   // 16 bits for tile_id (65K tiles max)
-    config.depth_bits = 16;                  // 16 bits for depth (sufficient precision)
+    // Key layout - 64-bit keys. The 32-bit quantized depth key is the ONLY way a
+    // user could SILENTLY select the flickering/banding path: 32-bit keys give just
+    // 16 depth bits, which band and flicker on real-scan content (see project memory
+    // "64-bit sort keys are the only shippable config"). preset_low must therefore
+    // keep full-precision 64-bit keys; the modest extra VRAM (8-byte vs 4-byte keys)
+    // is acceptable on low-end GPUs versus shipping visibly wrong images. 32-bit keys
+    // remain reachable only via an EXPLICIT gpu_preset="custom" + key_bits=32 opt-in,
+    // never as a default or preset side effect.
+    config.key_bits = 64;                    // 64-bit keys: full depth precision, no banding
+    config.tile_bits = 32;                   // 32 bits for tile_id
+    config.depth_bits = 32;                  // 32 bits for depth
     config.enable_tie_breaker = false;       // Disable to save bits
     // Performance monitoring - minimal overhead
     config.enable_performance_logging = false;

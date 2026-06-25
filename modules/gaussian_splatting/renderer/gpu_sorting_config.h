@@ -64,9 +64,9 @@ struct GPUSortingConfig {
     uint32_t workgroup_size = GPUSortingConstants::DEFAULT_WORKGROUP_SIZE; // GPU workgroup size
 
     // Key layout
-    uint32_t key_bits = 32;                  // Sort key width (32 or 64)
-    uint32_t tile_bits = 16;                 // Bits reserved for tile_id in the key
-    uint32_t depth_bits = 16;                // Bits reserved for depth in the key
+    uint32_t key_bits = 64;                  // Sort key width (32 or 64); 64 is the only shippable default (32-bit flickers on real scans, GS-298)
+    uint32_t tile_bits = 32;                 // Bits reserved for tile_id in the key
+    uint32_t depth_bits = 32;                // Bits reserved for depth in the key
     bool enable_tie_breaker = false;         // Reserve low bits for splat_id tie-breaks
 
     // Performance monitoring and logging
@@ -105,7 +105,9 @@ struct GPUSortingConfig {
     // LOW TIER: Integrated GPUs (Intel UHD, AMD Vega), older discrete GPUs
     //   - Minimizes memory usage and compute load
     //   - Smaller workgroups for better occupancy on limited hardware
-    //   - 32-bit keys to reduce bandwidth
+    //   - 64-bit keys (the only shippable layout): 32-bit depth keys band and
+    //     flicker on real-scan content, so no preset selects them. 32-bit keys are
+    //     an explicit gpu_preset="custom" + key_bits=32 opt-in only.
     //
     // MEDIUM TIER: Mid-range discrete GPUs (GTX 1060, RTX 3050, RX 5600)
     //   - Balanced settings for good performance and quality
