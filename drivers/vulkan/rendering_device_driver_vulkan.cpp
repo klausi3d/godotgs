@@ -5824,7 +5824,25 @@ uint64_t RenderingDeviceDriverVulkan::get_device_memory_budget() {
 	}
 	uint64_t device_local_capacity = 0;
 	for (uint32_t i = 0; i < mem_props->memoryHeapCount && i < VK_MAX_MEMORY_HEAPS; i++) {
-		if (mem_props->memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+		if (!(mem_props->memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)) {
+			continue;
+		}
+		// Count the heap only if it backs at least one memory type usable by normal,
+		// non-lazy device-local allocations — the path streaming buffer payloads use. A
+		// DEVICE_LOCAL heap whose types are all LAZILY_ALLOCATED holds only transient
+		// attachment memory and cannot store streaming buffers; summing it would
+		// over-report usable capacity and let admission run up to a budget that fails.
+		bool usable_for_buffers = false;
+		for (uint32_t t = 0; t < mem_props->memoryTypeCount; t++) {
+			const VkMemoryType &type = mem_props->memoryTypes[t];
+			if (type.heapIndex == i &&
+					(type.propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
+					!(type.propertyFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT)) {
+				usable_for_buffers = true;
+				break;
+			}
+		}
+		if (usable_for_buffers) {
 			device_local_capacity += mem_props->memoryHeaps[i].size;
 		}
 	}
