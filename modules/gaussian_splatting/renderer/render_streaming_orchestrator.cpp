@@ -712,13 +712,15 @@ void RenderStreamingOrchestrator::invalidate_instance_pipeline_caches() {
 	instance_pipeline_submission_asset_ids_cache.clear();
 	instance_pipeline_asset_versions.clear();
 	instance_pipeline_lod_mask_cache.clear();
-	// A full invalidation drops every registration, so re-base the slot projection
-	// cleanly: clear both maps and the free list and reset the counter. Subsequent
-	// syncs re-assign slots from 1 upward (slot 0 stays reserved for the primary id).
-	streaming_asset_slot_by_object_id.clear();
-	streaming_object_id_by_slot.clear();
-	streaming_asset_slot_free_list.clear();
-	streaming_asset_slot_next = 1;
+	// NOTE: do NOT reset the slot projection here. This only clears the orchestrator's
+	// local tracking; it does NOT unregister assets from the GaussianStreamingSystem,
+	// which can still be alive (e.g. the director-null sync path). If we re-based the
+	// projection while those registrations persisted, the next sync could hand slot N to
+	// a different ObjectID while the streaming system still holds the old slot-N entry, so
+	// register_asset() would mutate the wrong registration. The projection must stay stable
+	// (ObjectID->slot) for as long as the streaming registry lives; it is reset only when a
+	// fresh streaming system is created (see ensure_instance_streaming_system) and it
+	// self-cleans per asset via _release_streaming_asset_slot in the unregister path.
 	instance_pipeline_asset_snapshot_generation = 0;
 	instance_pipeline_asset_snapshot_shadow_only = false;
 	instance_pipeline_empty_asset_sync_streak = 0;
@@ -946,6 +948,16 @@ bool RenderStreamingOrchestrator::ensure_instance_streaming_system(const Gaussia
 
 	Ref<GaussianStreamingSystem> streaming_system;
 	streaming_system.instantiate();
+	// A brand-new streaming system starts with an empty registry, so re-base the slot
+	// projection to match: clear both maps + the free list and restart the counter at 1
+	// (slot 0 stays reserved for kPrimaryStreamingAssetId). This is the ONLY place the
+	// projection resets — invalidate_instance_pipeline_caches must not, because it leaves
+	// existing registrations intact. Subsequent syncs assign collision-free slots against
+	// this fresh registry.
+	streaming_asset_slot_by_object_id.clear();
+	streaming_object_id_by_slot.clear();
+	streaming_asset_slot_free_list.clear();
+	streaming_asset_slot_next = 1;
 	GaussianStreamingSystem::ConfigOverrides overrides;
 	if (data_orchestrator) {
 		overrides = data_orchestrator->get_streaming_config_overrides();
