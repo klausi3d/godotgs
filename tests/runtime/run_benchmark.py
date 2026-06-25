@@ -1181,6 +1181,10 @@ def _run_lane(
     sort_active_algorithm = None
     stage_sort_status = None
     stage_sort_reason = None
+    route_uid = None
+    stage_cull_status = None
+    stage_raster_status = None
+    stage_composite_status = None
     instancing_execution_mode = None
     instancing_execution_path = None
     instancing_execution_reason = None
@@ -1248,6 +1252,14 @@ def _run_lane(
         sort_active_algorithm = _report_renderer_metric(report, "sort_active_algorithm")
         stage_sort_status = _report_renderer_metric(report, "stage_sort_status")
         stage_sort_reason = _report_renderer_metric(report, "stage_sort_reason")
+        # #351 E3: source the route uid and the per-stage statuses the SAME way
+        # as every other lane field (renderer_telemetry, then overall block).
+        route_uid = _report_renderer_metric(report, "route_uid")
+        if route_uid is None:
+            route_uid = _report_renderer_metric(report, "sort_route_uid")
+        stage_cull_status = _report_renderer_metric(report, "stage_cull_status")
+        stage_raster_status = _report_renderer_metric(report, "stage_raster_status")
+        stage_composite_status = _report_renderer_metric(report, "stage_composite_status")
         instancing_execution_mode = _report_renderer_metric(report, "instance_pipeline_execution_mode")
         instancing_execution_path = _report_renderer_metric(report, "instance_pipeline_execution_path")
         instancing_execution_reason = _report_renderer_metric(report, "instance_pipeline_execution_reason")
@@ -1323,6 +1335,27 @@ def _run_lane(
         "sort_active_algorithm": sort_active_algorithm,
         "stage_sort_status": stage_sort_status,
         "stage_sort_reason": stage_sort_reason,
+        # #351 E3 release-gate roll-ups of already-published per-frame telemetry.
+        # Non-null by construction so the candidate gate
+        # (benchmark_acceptance.required_fields_non_null) can assert presence.
+        "route_uid": route_uid if route_uid is not None else "unknown",
+        "stage_statuses": {
+            "cull": stage_cull_status if stage_cull_status is not None else "unknown",
+            "sort": stage_sort_status if stage_sort_status is not None else "unknown",
+            "raster": stage_raster_status if stage_raster_status is not None else "unknown",
+            "composite": stage_composite_status if stage_composite_status is not None else "unknown",
+        },
+        "fallback_counters": {
+            "sort_sync": sort_sync_fallback_count if sort_sync_fallback_count is not None else 0,
+            "sort_total_route": sort_total_route_fallback_count
+            if sort_total_route_fallback_count is not None
+            else 0,
+            "sort_cached": sort_cached_fallback_count if sort_cached_fallback_count is not None else 0,
+            "sort_identity": sort_identity_fallback_count if sort_identity_fallback_count is not None else 0,
+            "sort_cull_order": sort_cull_order_fallback_count
+            if sort_cull_order_fallback_count is not None
+            else 0,
+        },
         "instancing_execution_mode": instancing_execution_mode,
         "instancing_execution_path": instancing_execution_path,
         "instancing_execution_reason": instancing_execution_reason,

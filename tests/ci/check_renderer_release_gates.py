@@ -758,7 +758,9 @@ def _rows_from_report(report: Any) -> list[dict[str, Any]]:
     if isinstance(report, list):
         return [row for row in report if isinstance(row, dict)]
     if isinstance(report, dict):
-        for key in ("lanes", "results", "rows"):
+        # "lane_results" is the key the benchmark suite runner actually writes
+        # (run_benchmark.py main()); accept it alongside the legacy aliases.
+        for key in ("lanes", "results", "rows", "lane_results"):
             value = report.get(key)
             if isinstance(value, list):
                 return [row for row in value if isinstance(row, dict)]
