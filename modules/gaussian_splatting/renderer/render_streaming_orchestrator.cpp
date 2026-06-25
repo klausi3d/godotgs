@@ -128,12 +128,12 @@ constexpr uint32_t kPrimaryStreamingAssetId = 0u;
 constexpr uint32_t kInvalidStreamingAssetId = UINT32_MAX;
 constexpr uint64_t kStreamingBootstrapRetryCooldownFrames = 30u;
 
-static PublishedInstanceAssetRemap _build_streaming_instance_asset_remap(
+PublishedInstanceAssetRemap RenderStreamingOrchestrator::_build_streaming_instance_asset_remap(
 		GaussianStreamingSystem *p_streaming_system,
 		const LocalVector<InstanceAssetRegistration> &p_asset_cache,
 		const LocalVector<InstanceDataGPU> &p_instances,
 		const LocalVector<uint64_t> &p_submission_asset_ids,
-		uint64_t p_generation) {
+		uint64_t p_generation) const {
 	PublishedInstanceAssetRemap remap;
 	if (p_streaming_system == nullptr) {
 		return remap;
@@ -141,9 +141,11 @@ static PublishedInstanceAssetRemap _build_streaming_instance_asset_remap(
 
 	// The remap KEY is the FULL 64-bit submission identity (collision-free) so it
 	// matches the key update_instance_buffer() resolves against. The streaming dense
-	// registry is itself still 32-bit keyed (a separate, GPU-atlas-coupled follow-up);
-	// its get_dense_asset_id() takes a uint32_t, so we truncate ONLY for that internal
-	// dense lookup while keeping the published key 64-bit.
+	// registry is uint32-keyed, so we map each 64-bit submission id through the
+	// orchestrator's bijective slot projection (see _project_streaming_asset_slot)
+	// before calling get_dense_asset_id(). This is read-only here, so we _peek the
+	// slot (assigned by sync_instance_pipeline_assets) and fall back to the primary
+	// dense id when no slot has been assigned yet. The published key stays 64-bit.
 	const uint32_t primary_dense_id = p_streaming_system->get_dense_asset_id(kPrimaryStreamingAssetId) !=
 					kInvalidStreamingAssetId
 			? p_streaming_system->get_dense_asset_id(kPrimaryStreamingAssetId)
@@ -154,7 +156,10 @@ static PublishedInstanceAssetRemap _build_streaming_instance_asset_remap(
 		if (entry.asset_id == 0) {
 			continue;
 		}
-		uint32_t dense_id = p_streaming_system->get_dense_asset_id(static_cast<uint32_t>(entry.asset_id));
+		const uint32_t slot = _peek_streaming_asset_slot(entry.asset_id);
+		uint32_t dense_id = slot != kInvalidStreamingAssetId
+				? p_streaming_system->get_dense_asset_id(slot)
+				: kInvalidStreamingAssetId;
 		if (dense_id == kInvalidStreamingAssetId) {
 			dense_id = primary_dense_id;
 		}
@@ -172,7 +177,10 @@ static PublishedInstanceAssetRemap _build_streaming_instance_asset_remap(
 		if (remap.asset_to_dense_id.has(asset_id)) {
 			continue;
 		}
-		uint32_t dense_id = p_streaming_system->get_dense_asset_id(static_cast<uint32_t>(asset_id));
+		const uint32_t slot = _peek_streaming_asset_slot(asset_id);
+		uint32_t dense_id = slot != kInvalidStreamingAssetId
+				? p_streaming_system->get_dense_asset_id(slot)
+				: kInvalidStreamingAssetId;
 		if (dense_id == kInvalidStreamingAssetId) {
 			dense_id = primary_dense_id;
 		}
@@ -576,6 +584,7 @@ static OwnerMismatchRemediationResult _remediate_instance_pipeline_buffer_owner_
 }
 
 static void _collect_instance_pipeline_residency_requests(const LocalVector<InstanceDataGPU> &p_instance_cache,
+		const LocalVector<uint32_t> &p_streaming_slots,
 		HashMap<uint32_t, uint32_t> &r_lod_mask_cache,
 		GaussianStreamingSystem *p_streaming_system,
 		int *r_request_count = nullptr) {
@@ -586,11 +595,18 @@ static void _collect_instance_pipeline_residency_requests(const LocalVector<Inst
 		return;
 	}
 
+	// request_asset_residency() keys on the SAME uint32 streaming-registry identity
+	// as register_asset(), so it must receive the orchestrator's projected slot, not
+	// the truncated 64-bit ObjectID that InstanceDataGPU::ids[0] still carries at this
+	// pre-remap stage. The caller supplies the parallel projected-slot array; we fall
+	// back to the legacy ids[0] tag only for callers that cannot provide it.
+	const bool have_projected_slots = p_streaming_slots.size() == p_instance_cache.size();
 	r_lod_mask_cache.clear();
 	r_lod_mask_cache.reserve(p_instance_cache.size());
-	for (const InstanceDataGPU &entry : p_instance_cache) {
-		const uint32_t asset_id = entry.ids[0];
-		if (asset_id == 0) {
+	for (uint32_t i = 0; i < p_instance_cache.size(); i++) {
+		const InstanceDataGPU &entry = p_instance_cache[i];
+		const uint32_t asset_id = have_projected_slots ? p_streaming_slots[i] : entry.ids[0];
+		if (asset_id == 0 || asset_id == kInvalidStreamingAssetId) {
 			continue;
 		}
 		const uint32_t lod_level = MIN<uint32_t>(entry.lod[0], GS_MAX_ASSET_LODS - 1);
@@ -634,6 +650,59 @@ RenderStreamingOrchestrator::RenderStreamingOrchestrator(const RenderStreamingOr
 	ERR_FAIL_COND_MSG(runtime_ports.get_cull_frustum_plane_slack == nullptr, "RenderStreamingOrchestrator requires get_cull_frustum_plane_slack runtime port.");
 }
 
+uint32_t RenderStreamingOrchestrator::_project_streaming_asset_slot(uint64_t p_object_id) {
+	// Synthetic primary/world id maps to the reserved slot 0 and must never consume a
+	// real slot. Callers already skip asset_id==0 via their own guards, but keep this
+	// here so the projection is self-consistent even if a 0 leaks through.
+	if (p_object_id == uint64_t(kPrimaryStreamingAssetId)) {
+		return kPrimaryStreamingAssetId;
+	}
+	if (const uint32_t *existing = streaming_asset_slot_by_object_id.getptr(p_object_id)) {
+		return *existing;
+	}
+	uint32_t slot;
+	if (!streaming_asset_slot_free_list.is_empty()) {
+		slot = streaming_asset_slot_free_list[streaming_asset_slot_free_list.size() - 1];
+		streaming_asset_slot_free_list.remove_at(streaming_asset_slot_free_list.size() - 1);
+	} else {
+		// kInvalidStreamingAssetId (UINT32_MAX) is reserved as the "no slot" sentinel;
+		// never hand it out as a real slot. In practice the counter cannot reach it.
+		slot = streaming_asset_slot_next;
+		if (streaming_asset_slot_next != kInvalidStreamingAssetId) {
+			streaming_asset_slot_next++;
+		}
+	}
+	streaming_asset_slot_by_object_id.insert(p_object_id, slot);
+	streaming_object_id_by_slot.insert(slot, p_object_id);
+	return slot;
+}
+
+uint32_t RenderStreamingOrchestrator::_peek_streaming_asset_slot(uint64_t p_object_id) const {
+	if (p_object_id == uint64_t(kPrimaryStreamingAssetId)) {
+		return kPrimaryStreamingAssetId;
+	}
+	if (const uint32_t *existing = streaming_asset_slot_by_object_id.getptr(p_object_id)) {
+		return *existing;
+	}
+	return kInvalidStreamingAssetId;
+}
+
+void RenderStreamingOrchestrator::_release_streaming_asset_slot(uint32_t p_slot) {
+	// Slot 0 is the reserved primary slot and is never tracked in the maps.
+	if (p_slot == kPrimaryStreamingAssetId || p_slot == kInvalidStreamingAssetId) {
+		return;
+	}
+	const uint64_t *object_id_ptr = streaming_object_id_by_slot.getptr(p_slot);
+	if (!object_id_ptr) {
+		return;
+	}
+	// Copy out before erasing; object_id_ptr points into streaming_object_id_by_slot.
+	const uint64_t object_id = *object_id_ptr;
+	streaming_asset_slot_by_object_id.erase(object_id);
+	streaming_object_id_by_slot.erase(p_slot);
+	streaming_asset_slot_free_list.push_back(p_slot);
+}
+
 void RenderStreamingOrchestrator::invalidate_instance_pipeline_caches() {
 	instance_pipeline_assets.clear();
 	instance_pipeline_assets_next.clear();
@@ -643,6 +712,15 @@ void RenderStreamingOrchestrator::invalidate_instance_pipeline_caches() {
 	instance_pipeline_submission_asset_ids_cache.clear();
 	instance_pipeline_asset_versions.clear();
 	instance_pipeline_lod_mask_cache.clear();
+	// NOTE: do NOT reset the slot projection here. This only clears the orchestrator's
+	// local tracking; it does NOT unregister assets from the GaussianStreamingSystem,
+	// which can still be alive (e.g. the director-null sync path). If we re-based the
+	// projection while those registrations persisted, the next sync could hand slot N to
+	// a different ObjectID while the streaming system still holds the old slot-N entry, so
+	// register_asset() would mutate the wrong registration. The projection must stay stable
+	// (ObjectID->slot) for as long as the streaming registry lives; it is reset only when a
+	// fresh streaming system is created (see ensure_instance_streaming_system) and it
+	// self-cleans per asset via _release_streaming_asset_slot in the unregister path.
 	instance_pipeline_asset_snapshot_generation = 0;
 	instance_pipeline_asset_snapshot_shadow_only = false;
 	instance_pipeline_empty_asset_sync_streak = 0;
@@ -748,9 +826,27 @@ void RenderStreamingOrchestrator::consume_visible_lod_selection_for_residency(
 
 	visible_lod_selection.residency_request_count = 0;
 	if (p_selection.has_instances()) {
+		// Resolve each instance's residency key in the streaming-registry identity
+		// space: project the parallel 64-bit submission id through the same slot
+		// projection sync_instance_pipeline_assets() used at register time, so
+		// request_asset_residency() targets the registered slot rather than the
+		// truncated ObjectID carried by ids[0]. _peek (not _project) because the
+		// slot is already assigned during the sync that runs before this consume;
+		// an unassigned slot (UINT32_MAX) is skipped, matching the prior behavior of
+		// a residency request against an unregistered asset.
+		const LocalVector<InstanceDataGPU> &instances = p_selection.get_instances();
+		const LocalVector<uint64_t> &submission_ids = p_selection.get_submission_asset_ids();
+		LocalVector<uint32_t> streaming_slots;
+		if (submission_ids.size() == instances.size()) {
+			streaming_slots.resize(instances.size());
+			for (uint32_t i = 0; i < instances.size(); i++) {
+				streaming_slots[i] = _peek_streaming_asset_slot(submission_ids[i]);
+			}
+		}
 		int request_count = 0;
 		_collect_instance_pipeline_residency_requests(
-				p_selection.get_instances(),
+				instances,
+				streaming_slots,
 				instance_pipeline_lod_mask_cache,
 				p_streaming_system,
 				&request_count);
@@ -852,6 +948,16 @@ bool RenderStreamingOrchestrator::ensure_instance_streaming_system(const Gaussia
 
 	Ref<GaussianStreamingSystem> streaming_system;
 	streaming_system.instantiate();
+	// A brand-new streaming system starts with an empty registry, so re-base the slot
+	// projection to match: clear both maps + the free list and restart the counter at 1
+	// (slot 0 stays reserved for kPrimaryStreamingAssetId). This is the ONLY place the
+	// projection resets — invalidate_instance_pipeline_caches must not, because it leaves
+	// existing registrations intact. Subsequent syncs assign collision-free slots against
+	// this fresh registry.
+	streaming_asset_slot_by_object_id.clear();
+	streaming_object_id_by_slot.clear();
+	streaming_asset_slot_free_list.clear();
+	streaming_asset_slot_next = 1;
 	GaussianStreamingSystem::ConfigOverrides overrides;
 	if (data_orchestrator) {
 		overrides = data_orchestrator->get_streaming_config_overrides();
@@ -1258,10 +1364,16 @@ void RenderStreamingOrchestrator::sync_instance_pipeline_assets(GaussianStreamin
 		if (entry.asset_id == 0 || entry.data.is_null()) {
 			continue;
 		}
-		// The streaming registry's identity space is 32-bit (a separate follow-up to
-		// widen). Project the 64-bit submission id into it explicitly here; the
-		// collision-free 64-bit key is preserved in the published remap above.
-		const uint32_t streaming_asset_id = static_cast<uint32_t>(entry.asset_id);
+		// The streaming registry's identity space is uint32. Map the full 64-bit
+		// submission ObjectID through the orchestrator's bijective slot projection so
+		// the registry key is collision-free (vs the old low-32 truncation). This is
+		// the first pass over the asset cache this frame, so it ASSIGNS the slot the
+		// register/version/layout-bind paths below (and the published-remap _peek)
+		// then reuse. The collision-free 64-bit key is preserved in the published
+		// remap above. static_layout_bound_asset_id is therefore also a projected
+		// slot, matching the asset_id register_asset() will be called with — required
+		// so GaussianStreamingSystem's io_chunk_layout_asset_id binding compares equal.
+		const uint32_t streaming_asset_id = _project_streaming_asset_slot(entry.asset_id);
 		if (deterministic_asset_id == UINT32_MAX || streaming_asset_id < deterministic_asset_id) {
 			deterministic_asset_id = streaming_asset_id;
 		}
@@ -1330,9 +1442,14 @@ void RenderStreamingOrchestrator::sync_instance_pipeline_assets(GaussianStreamin
 				}
 				continue;
 			}
-			// Streaming registry identity is 32-bit (separate follow-up); project the
-			// 64-bit submission id explicitly. The published remap keeps the 64-bit key.
-			const uint32_t asset_id = static_cast<uint32_t>(entry.asset_id);
+			// Map the full 64-bit submission ObjectID through the orchestrator's
+			// bijective slot projection (collision-free, unlike the old low-32
+			// truncation). The slot was already assigned by the deterministic_asset_id
+			// pass above, so this _project is an idempotent get; every consumer below
+			// (register_asset, is_asset_registered, version map, assets/_next sets,
+			// static_layout_bound_asset_id compare) keys on the SAME projected slot.
+			// The published remap keeps the 64-bit key.
+			const uint32_t asset_id = _project_streaming_asset_slot(entry.asset_id);
 			instance_pipeline_assets_next.insert(asset_id);
 			uint32_t *version_ptr = instance_pipeline_asset_versions.getptr(asset_id);
 			const bool version_changed = !version_ptr || *version_ptr != entry.edited_version;
@@ -1372,8 +1489,13 @@ void RenderStreamingOrchestrator::sync_instance_pipeline_assets(GaussianStreamin
 			}
 		}
 		for (uint32_t asset_id : instance_pipeline_assets_to_remove) {
+			// asset_id here is already a projected slot (it came from
+			// instance_pipeline_assets). Unregister it from the streaming registry,
+			// then recycle the slot so its ObjectID->slot mapping is dropped and the
+			// slot can be reused for a future asset.
 			p_streaming_system->unregister_asset(asset_id);
 			instance_pipeline_asset_versions.erase(asset_id);
+			_release_streaming_asset_slot(asset_id);
 		}
 	}
 
