@@ -562,7 +562,10 @@ public:
             RenderFallbackReason p_cull_skip_reason_code,
             RenderFallbackReason p_sort_skip_reason_code,
             bool p_set_skip_metrics,
-            bool p_clear_cull_state_on_skip);
+            bool p_clear_cull_state_on_skip,
+            // #351: authoritative per-frame route decision produced at the selection
+            // site; consumed verbatim when valid (see RenderPipelineStages::build_frame_plan).
+            const RenderRouteDecision *p_authoritative_route_decision = nullptr);
 
     struct RasterStageInput {
         uint64_t frame_id = 0;
@@ -634,6 +637,9 @@ public:
     PublishedInstanceAssetRemap instance_asset_remap;
     bool instance_pipeline_buffers_valid = false;
     InstanceBackendPolicy instance_backend_policy = InstanceBackendPolicy::NONE;
+    // Authoritative per-frame route decision (#351). Reset at the top of each
+    // render_scene_instance frame and populated once at the selected route branch.
+    RenderRouteDecision authoritative_route_decision;
     String instance_contract_shape = "none";
     uint64_t instance_contract_source_generation = 0;
     bool world_submission_contract_active = false;
@@ -838,6 +844,15 @@ public:
     bool has_instance_asset_remap() const { return instance_asset_remap.valid; }
     const PublishedInstanceAssetRemap &get_instance_asset_remap() const { return instance_asset_remap; }
     InstanceBackendPolicy get_instance_backend_policy() const { return instance_backend_policy; }
+    // Authoritative per-frame route contract (#351). Produced ONCE at the route
+    // selection site in render_scene_instance and consumed downstream by
+    // build_frame_plan for stage stamping. When invalid, build_frame_plan derives
+    // the (identical) decision from instance_backend_policy as a fallback (e.g. the
+    // light/shadow pass, the no-render-data early path, and unit tests that drive
+    // the pipeline without going through the selection site).
+    const RenderRouteDecision &get_authoritative_route_decision() const { return authoritative_route_decision; }
+    void set_authoritative_route_decision(const RenderRouteDecision &p_decision) { authoritative_route_decision = p_decision; }
+    void reset_authoritative_route_decision() { authoritative_route_decision = RenderRouteDecision(); }
     void publish_route_skip_stage_metrics(const String &p_route_uid, InstanceBackendPolicy p_backend_policy,
             const String &p_cull_route_reason, const String &p_cull_stage_reason,
             RenderFallbackReason p_fallback_reason);

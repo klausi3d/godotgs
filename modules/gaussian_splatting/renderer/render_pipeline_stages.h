@@ -15,6 +15,7 @@ public:
 
 	using StageResult = GaussianSplatRenderer::StageResult;
 	using DataSourcePlan = GaussianSplatRenderer::DataSourcePlan;
+	using RenderRouteDecision = GaussianSplatRenderer::RenderRouteDecision;
 	using RenderFramePlan = GaussianSplatRenderer::RenderFramePlan;
 	using RenderFrameContext = GaussianSplatRenderer::RenderFrameContext;
 	using RenderFallbackReason = GaussianSplatRenderer::RenderFallbackReason;
@@ -53,6 +54,14 @@ public:
 				const String &p_copy_error, bool p_copy_degraded, const String &p_degradation_reason,
 				bool p_depth_test_honored, bool p_viewport_copy_success, bool p_strict_depth_contract_required);
 	static void finalize_stage_contracts(StageMetrics &r_metrics, const RenderFramePlan &p_frame_plan);
+	// Single producer for RenderRouteDecision (#351). Both the route selection site
+	// (GaussianSplatRenderer::render_scene_instance) and build_frame_plan derive the
+	// per-frame route contract from here so there is exactly one decision per frame.
+	static RenderRouteDecision build_route_decision(
+			InstanceBackendPolicy p_instance_backend_policy,
+			const DataSourcePlan &p_data_source,
+			bool p_has_render_data,
+			const String &p_no_data_reason);
 	static RenderFramePlan build_frame_plan(const SceneState &p_scene_state,
 			const StreamingState &p_streaming_state,
 			const SortingState &p_sorting_state,
@@ -67,7 +76,12 @@ public:
 			RenderFallbackReason p_cull_skip_reason_code,
 			RenderFallbackReason p_sort_skip_reason_code,
 			bool p_set_skip_metrics,
-			bool p_clear_cull_state_on_skip);
+			bool p_clear_cull_state_on_skip,
+			// When valid, the authoritative per-frame decision produced at the route
+			// selection site is consumed verbatim instead of being re-derived. Pass
+			// nullptr (or an invalid decision) for paths with no selection-site
+			// decision (light/shadow pass, no-render-data early path, unit tests).
+			const RenderRouteDecision *p_authoritative_route_decision = nullptr);
 
 	// Frame context preparation and entry (moved from GaussianSplatRenderer)
 	void prepare_frame_context(RenderDataRD *p_render_data, const Transform3D &p_world_to_camera_transform,

@@ -3488,6 +3488,139 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Stage results report streaming not-r
 
 }
 
+TEST_CASE("[GaussianSplatting][RequiresGPU] Serial instancing failure injection reports first failed instance and cascades skips") {
+    // Closes #351 evidence gate E2: failure-injection coverage of the SERIAL
+    // instancing path (RenderInstancingOrchestrator::render_instanced). The
+    // resident (3255/3341) and streaming (3417) siblings drive
+    // render_scene_instance, which routes the resident path through
+    // render_instanced with a SINGLE instance. This test drives the serial
+    // orchestrator head-on with MULTIPLE instances and an injected per-instance
+    // raster failure, then asserts the cascade contract plus the
+    // first_failed/first_skipped instance-index aggregation the orchestrator
+    // publishes after the instance loop (render_instancing_orchestrator.cpp
+    // ~247-282 -> get_render_stats stage_first_failure/skipped_instance_index).
+    //
+    // Injection mechanism: test_disable_rasterizer() (the SAME hook the resident
+    // raster-failure sibling uses). The GPU-culler-disable hook is NOT usable on
+    // the serial path: render_instanced calls frame_context.deps.validate()
+    // (render_instancing_orchestrator.cpp:182), which hard-requires a non-null
+    // gpu_culler (gaussian_splat_renderer.h:427) and would abort the whole call
+    // before the per-instance cull stage runs. Disabling the rasterizer leaves
+    // cull/sort intact (they run against the REAL resident contract buffers
+    // bootstrapped by the prior render_scene_instance frame) and forces the
+    // failure at the raster stage, exactly mirroring the resident sibling.
+    RenderingServer *rs = RenderingServer::get_singleton();
+    if (rs == nullptr) {
+        MESSAGE("Skipping test - Rendering server unavailable");
+        return;
+    }
+
+    ScopedGaussianManagerPipeline manager_scope;
+    GaussianSplatManager *manager = manager_scope.get();
+    if (manager == nullptr) {
+        MESSAGE("Skipping test - GaussianSplatManager unavailable");
+        return;
+    }
+
+    ScopedRenderingDeviceLease device_lease;
+    RenderingDevice *primary_rd = device_lease.acquire(rs, manager);
+    if (primary_rd == nullptr) {
+        MESSAGE("Skipping test - Rendering device unavailable");
+        return;
+    }
+
+    Ref<GaussianSplatRenderer> renderer;
+    renderer.instantiate(primary_rd);
+    CHECK(renderer.is_valid());
+    if (!renderer.is_valid()) {
+        return;
+    }
+    renderer->initialize();
+
+    const uint32_t total_gaussians = GaussianStreamingSystem::CHUNK_SIZE * 2;
+    LocalVector<Gaussian> gaussians;
+    fill_gaussians(gaussians, total_gaussians);
+
+    Ref<::GaussianData> data;
+    data.instantiate();
+    data->set_gaussians(gaussians);
+
+    renderer->set_max_splats(total_gaussians);
+    Error set_data_err = renderer->set_gaussian_data(data);
+    CHECK(set_data_err == OK);
+    if (set_data_err != OK) {
+        return;
+    }
+
+    RenderSceneDataRD scene_data;
+    scene_data.cam_transform = Transform3D(Basis(), Vector3(0.0f, 0.0f, 5.0f));
+    scene_data.cam_projection.set_perspective(70.0f, 1.0f, 0.1f, 100.0f);
+
+    RenderDataRD render_data;
+    render_data.scene_data = &scene_data;
+    render_data.render_buffers = Ref<RenderSceneBuffersRD>();
+
+    // Bootstrap the resident instance pipeline contract (real atlas/cull/sort/
+    // raster buffers) and publish the authoritative resident route decision by
+    // running one normal frame. render_scene_instance pushes a single instance
+    // transform through render_instanced; the serial multi-instance aggregation
+    // exercised below is what remains uncovered.
+    renderer->render_scene_instance(&render_data);
+    if (!renderer->has_instance_pipeline_buffers()) {
+        MESSAGE("Skipping test - resident instance pipeline contract unavailable on this device");
+        return;
+    }
+
+    // Inject the per-instance raster failure using the same hook the resident
+    // raster-failure sibling uses (test_disable_rasterizer).
+    renderer->test_disable_rasterizer();
+
+    // Drive the SERIAL path directly with multiple instances. Mirror the
+    // camera/view derivation render_scene_instance performs (view = camera
+    // affine inverse; render projection == camera projection for this synthetic
+    // unflipped scene) so cull/sort run against the bootstrapped contract.
+    const Transform3D world_to_camera = scene_data.cam_transform.affine_inverse();
+    const Projection projection = scene_data.cam_projection;
+    LocalVector<Transform3D> instance_transforms;
+    instance_transforms.push_back(Transform3D());
+    instance_transforms.push_back(Transform3D(Basis(), Vector3(2.0f, 0.0f, 0.0f)));
+    instance_transforms.push_back(Transform3D(Basis(), Vector3(-2.0f, 0.0f, 0.0f)));
+    REQUIRE(instance_transforms.size() > 1);
+
+    renderer->render_instanced(&render_data, GaussianSplatManager::SharedDynamicAssetHandle(),
+            world_to_camera, projection, projection, instance_transforms);
+
+    Dictionary stats = renderer->get_render_stats();
+    CHECK_MESSAGE(stats.get("stage_metrics_valid", false), "Expected stage metrics to be valid");
+    const String raster_status = stats.get("stage_raster_status", String());
+    CHECK_MESSAGE(raster_status == String("failed"),
+            vformat("Expected serial-path raster stage failed, got '%s'", raster_status));
+    const String composite_status = stats.get("stage_composite_status", String());
+    CHECK_MESSAGE(composite_status == String("skipped"),
+            vformat("Expected serial-path composite stage skipped, got '%s'", composite_status));
+    const String composite_reason = stats.get("stage_composite_reason", String());
+    CHECK_MESSAGE(composite_reason.find("raster failed") != -1,
+            vformat("Expected composite skip reason to cite raster failure, got '%s'", composite_reason));
+
+    // The orchestrator aggregates the FIRST instance whose stage metrics carry a
+    // failure / downstream-skip across the serial loop. With the rasterizer
+    // disabled every instance fails at raster, so the first failed/skipped
+    // instance is index 0; the <0 guards in render_instanced keep only the
+    // first. These two keys are unique to the serial path (resident/streaming
+    // single-instance frames leave them at -1).
+    const int64_t first_failure_instance = int64_t(stats.get("stage_first_failure_instance_index", int64_t(-99)));
+    CHECK_MESSAGE(first_failure_instance == 0,
+            vformat("Expected first failed instance index 0, got %d", int(first_failure_instance)));
+    const int64_t first_skipped_instance = int64_t(stats.get("stage_first_skipped_instance_index", int64_t(-99)));
+    CHECK_MESSAGE(first_skipped_instance == 0,
+            vformat("Expected first skipped instance index 0, got %d", int(first_skipped_instance)));
+    const String stage_first_failure = stats.get("stage_first_failure", String());
+    CHECK_MESSAGE(stage_first_failure == String("raster"),
+            vformat("Expected aggregated first-failure stage 'raster', got '%s'", stage_first_failure));
+
+    renderer.unref();
+}
+
 static RID create_test_texture(RenderingDevice *p_rd, const Vector2i &p_size, RD::DataFormat p_format, RD::TextureUsageBits p_usage) {
     RD::TextureFormat format;
     format.format = p_format;

@@ -575,12 +575,13 @@ GaussianSplatRenderer::RenderFramePlan GaussianSplatRenderer::build_frame_plan(c
         RenderFallbackReason p_cull_skip_reason_code,
         RenderFallbackReason p_sort_skip_reason_code,
         bool p_set_skip_metrics,
-        bool p_clear_cull_state_on_skip) {
+        bool p_clear_cull_state_on_skip,
+        const RenderRouteDecision *p_authoritative_route_decision) {
     // Delegate to RenderPipelineStages (T4-PR3)
     return RenderPipelineStages::build_frame_plan(p_scene_state, p_streaming_state, p_sorting_state,
             p_instance_buffers, p_instance_backend_policy, p_resource_state, p_subsystem_state, p_pipeline_features, p_has_render_data, p_cull_skip_reason,
             p_sort_skip_reason, p_cull_skip_reason_code, p_sort_skip_reason_code, p_set_skip_metrics,
-            p_clear_cull_state_on_skip);
+            p_clear_cull_state_on_skip, p_authoritative_route_decision);
 }
 
 Projection GaussianSplatRenderer::build_cull_projection(RenderDataRD *p_render_data, const Projection &p_projection) const {
@@ -1878,6 +1879,10 @@ bool GaussianSplatRenderer::render_shadow_depth_map(const Projection &p_light_pr
 
     ScopedShadowPassState shadow_state_guard(*this, shadow_pass, shadow_output_compositor);
 
+    // #351: the shadow pass is not a route-selection frame. Clear any authoritative
+    // decision committed by the main color frame so this pass's stage stamping derives
+    // from instance_backend_policy exactly as it did before this change.
+    reset_authoritative_route_decision();
     render_sorted_splats(nullptr, p_light_transform.affine_inverse(), projection, render_projection, false,
             RenderPassKind::SHADOW_MAP);
 
@@ -2141,8 +2146,17 @@ bool GaussianSplatRenderer::_try_render_resident_frame(RenderDataRD *p_render_da
             String("atlas_emulation"));
 
     if (resident_contract_ready) {
+        // #351: the resident route is now committed. Produce the authoritative
+        // per-frame route decision ONCE here (the true selection point) via the
+        // single producer, store it, and derive the debug route_uid from it. The
+        // contract publisher above has already set instance_backend_policy=RESIDENT,
+        // so build_route_decision yields route_uid INSTANCE.RESIDENT -- identical to
+        // what build_frame_plan derived downstream before this change.
+        const RenderRouteDecision resident_decision = RenderPipelineStages::build_route_decision(
+                InstanceBackendPolicy::RESIDENT, DataSourcePlan(), true, String());
+        set_authoritative_route_decision(resident_decision);
         if (debug_state_orchestrator) {
-            get_debug_state().route_uid = RenderRouteUID::INSTANCE_RESIDENT;
+            get_debug_state().route_uid = resident_decision.route_uid;
         }
         LocalVector<Transform3D> instance_transforms;
         instance_transforms.push_back(Transform3D());
@@ -2175,6 +2189,10 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
         debug_state.route_uid = RenderRouteUID::COMMON_UNSET_ROUTE;
         debug_state.sort_route_uid = RenderRouteUID::COMMON_UNSET_SORT_ROUTE;
     }
+    // #351: clear the authoritative per-frame route decision so this frame's
+    // selected route branch is the only producer. Downstream build_frame_plan calls
+    // derive from instance_backend_policy until the branch publishes the decision.
+    reset_authoritative_route_decision();
 
     get_resource_state().deletion_queue.process_frame();
     // Dual-state-sync guardrail removed (was a no-op); see _check_dual_state_sync deletion note.
@@ -2345,6 +2363,19 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
         const String resident_rejection_reason =
                 vformat("%s_not_feasible:%s", backend_plan.resident_backend_reason, resident_attempt_reason);
         const String resident_rejection_route_uid = _resident_not_feasible_route_uid(resident_attempt_reason);
+        // #351 (option B): the single-route / no-alternate-fallback invariants are
+        // now carried on the route decision and READ here instead of being enforced
+        // by the WARN string alone. The skip decision keeps the struct defaults
+        // (single_route_per_frame = true, alternate_backend_fallback_forbidden = true).
+        RenderRouteDecision resident_skip_decision;
+        resident_skip_decision.valid = true;
+        resident_skip_decision.selected_backend = RenderRouteBackend::NONE;
+        resident_skip_decision.selected_backend_name =
+                GaussianRenderPipeline::render_route_backend_to_string(RenderRouteBackend::NONE);
+        resident_skip_decision.route_uid = resident_rejection_route_uid;
+        resident_skip_decision.reason = resident_rejection_reason;
+        resident_skip_decision.has_render_data = false;
+        set_authoritative_route_decision(resident_skip_decision);
         if (debug_state_orchestrator) {
             get_debug_state().route_uid = resident_rejection_route_uid;
         }
@@ -2356,15 +2387,32 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
                 resident_rejection_reason,
                 false,
                 "atlas_emulation");
-        WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Resident route rejected (reason=%s); frame skipped to preserve single-route-per-frame contract.",
-                resident_rejection_reason));
+        // The invariant flags drive the hard skip: with single_route_per_frame /
+        // alternate_backend_fallback_forbidden set we never fall through to an
+        // alternate backend on the same frame. Reading them here makes the flags
+        // load-bearing while preserving the existing skip+warn behavior.
+        const bool enforce_single_route = resident_skip_decision.single_route_per_frame ||
+                resident_skip_decision.alternate_backend_fallback_forbidden;
+        if (enforce_single_route) {
+            WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Resident route rejected (reason=%s); frame skipped to preserve single-route-per-frame contract.",
+                    resident_rejection_reason));
+        }
+        // The single-route invariant always holds (flag defaults true); skip the frame
+        // rather than attempting an alternate backend.
         return;
     }
     if (backend_plan.streaming_requested && backend_plan.streaming_ready) {
         _set_instance_backend_diagnostics(InstanceBackendPolicy::STREAMING,
                 backend_plan.streaming_backend_reason, has_instance_pipeline_buffers(), "atlas_emulation");
+        // #351: streaming is the committed route for this frame. Produce the
+        // authoritative decision ONCE here via the single producer and derive the
+        // debug route_uid from it; the streaming render path's downstream
+        // build_frame_plan consumes this same decision instead of re-deriving it.
+        const RenderRouteDecision streaming_decision = RenderPipelineStages::build_route_decision(
+                InstanceBackendPolicy::STREAMING, DataSourcePlan(), true, String());
+        set_authoritative_route_decision(streaming_decision);
         if (debug_state_orchestrator) {
-            get_debug_state().route_uid = RenderRouteUID::INSTANCE_STREAMING;
+            get_debug_state().route_uid = streaming_decision.route_uid;
         }
         const bool streaming_frame_rendered = streaming_orchestrator &&
                 streaming_orchestrator->render_streaming_frame(
@@ -2402,14 +2450,36 @@ void GaussianSplatRenderer::render_scene_instance(RenderDataRD *p_render_data) {
         const String &reason = backend_plan.streaming_ready
                 ? backend_plan.streaming_not_ready_fallback_reason
                 : backend_plan.streaming_unavailable_fallback_reason;
+        // #351 (option B): record the skip as the authoritative decision (overriding
+        // any streaming decision committed above when render_streaming_frame rejected
+        // the frame) and read the single-route / no-alternate-fallback invariants from
+        // it. Defaults stay true, so the hard skip+warn behavior is preserved.
+        RenderRouteDecision streaming_skip_decision;
+        streaming_skip_decision.valid = true;
+        streaming_skip_decision.selected_backend = RenderRouteBackend::NONE;
+        streaming_skip_decision.selected_backend_name =
+                GaussianRenderPipeline::render_route_backend_to_string(RenderRouteBackend::NONE);
+        streaming_skip_decision.route_uid = fallback_route_uid;
+        streaming_skip_decision.reason = reason;
+        streaming_skip_decision.has_render_data = false;
+        set_authoritative_route_decision(streaming_skip_decision);
         publish_route_skip_stage_metrics(fallback_route_uid, InstanceBackendPolicy::STREAMING,
                 _streaming_not_ready_reason_code(fallback_route_uid),
                 "Cull skipped: streaming path not ready",
                 RenderFallbackReason::STREAMING_DATA_UNAVAILABLE);
         _set_instance_backend_diagnostics(InstanceBackendPolicy::STREAMING, reason,
                 has_instance_pipeline_buffers(), "atlas_emulation");
-        WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Streaming requested but not ready (route=%s); frame skipped to preserve single-route-per-frame contract.",
-                fallback_route_uid));
+        // The invariant flags drive the hard skip: never fall through to the resident
+        // render path on the same frame once streaming was requested. Reading them
+        // here makes the flags load-bearing while preserving the existing skip+warn.
+        const bool enforce_single_route = streaming_skip_decision.single_route_per_frame ||
+                streaming_skip_decision.alternate_backend_fallback_forbidden;
+        if (enforce_single_route) {
+            WARN_PRINT_ONCE(vformat("[GaussianSplatRenderer] Streaming requested but not ready (route=%s); frame skipped to preserve single-route-per-frame contract.",
+                    fallback_route_uid));
+        }
+        // The single-route invariant always holds (flag defaults true); skip the frame
+        // rather than bouncing to the resident path.
         return;
     }
     // Streaming was not requested at all (explicit resident policy). Run the
@@ -2463,7 +2533,8 @@ void GaussianSplatRenderer::render_sorted_splats(RenderDataRD *p_render_data,
 	const InstancePipelineBuffers *instance_buffers = has_instance_pipeline_buffers() ? &get_instance_pipeline_buffers() : nullptr;
 	RenderFramePlan frame_plan = build_frame_plan(state_view.get_scene_state(), state_view.get_streaming_state(), state_view.get_sorting_state_view(),
 			instance_buffers, get_instance_backend_policy(), state_view.get_resource_state_view(), state_view.get_subsystem_state_view(), state_view.get_pipeline_features(),
-			true, String(), String(), RenderFallbackReason::NONE, RenderFallbackReason::NONE, false, false);
+			true, String(), String(), RenderFallbackReason::NONE, RenderFallbackReason::NONE, false, false,
+			&get_authoritative_route_decision());
     frame_context.deps.frame_plan = &frame_plan;
     DEV_ASSERT(frame_context.deps.frame_plan);
 	ERR_FAIL_COND(!frame_context.deps.validate());

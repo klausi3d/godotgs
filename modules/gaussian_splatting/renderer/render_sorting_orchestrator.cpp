@@ -1293,6 +1293,14 @@ void RenderSortingOrchestrator::force_sort_for_view(const Transform3D &p_world_t
 		return;
 	}
 
+	// #351: force_sort_for_view runs OUTSIDE render_scene_instance and never produces a
+	// per-frame route decision. Its streaming path reaches build_frame_plan via
+	// render_streaming_frame -> execute_frame_entry, which consumes the renderer's
+	// authoritative decision. Reset it here (as the shadow pass does) so that decision is
+	// derived fresh from the current backend policy for this sort, never inherited stale
+	// from a prior resident/streaming/skip frame.
+	renderer->reset_authoritative_route_decision();
+
 	Transform3D view_transform = p_world_to_camera_transform.affine_inverse();
 
 	const auto &view_state = renderer->get_view_state();
