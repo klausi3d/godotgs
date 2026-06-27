@@ -5794,6 +5794,74 @@ uint64_t RenderingDeviceDriverVulkan::get_lazily_memory_used() {
 	return vmaCalculateLazilyAllocatedBytes(allocator);
 }
 
+uint64_t RenderingDeviceDriverVulkan::get_device_memory_budget() {
+	// Total device-local VRAM CAPACITY in bytes — the streaming budget ceiling for GS
+	// #321. Deliberately the *static* hardware capacity (sum of the DEVICE_LOCAL
+	// VkPhysicalDeviceMemoryProperties heap sizes), NOT a live/available budget:
+	//  - A budget ceiling wants a stable, reproducible hardware number; clamping the
+	//    configured budget to a fluctuating live value (e.g. shrunk by another app at
+	//    startup) would permanently cap it because the regulator clamp only ratchets
+	//    down. Live VRAM pressure is already handled by the regulator's per-frame
+	//    warning/eviction/auto-regulation loop, not by this ceiling.
+	//  - vmaGetMemoryProperties() returns VMA's cached VkPhysicalDeviceMemoryProperties,
+	//    populated at init via core (1.0) vkGetPhysicalDeviceMemoryProperties. It needs
+	//    no extension, no VMA allocator flag, and no vulkanApiVersion coupling, so it is
+	//    crash-free on every backend/driver (unlike VK_EXT_memory_budget +
+	//    vmaGetHeapBudgets, which trip VMA's properties2 / version-cap asserts).
+	// Returns the raw capacity (no headroom fraction — that is regulator policy and the
+	// existing warning/eviction thresholds already provide operating headroom). 0 when
+	// no device-local heap is found, so callers keep the conservative capacity-unknown path.
+	// NOTE: only a DISCRETE GPU exposes a DEVICE_LOCAL heap that is genuinely dedicated
+	// VRAM. On UMA/iGPU (and software/CPU) backends a DEVICE_LOCAL heap is shared system
+	// memory, so it is reported as unknown capacity below rather than verifying/clamping the
+	// streaming budget against contended system RAM.
+	if (allocator == nullptr) {
+		return 0;
+	}
+	// A software/CPU Vulkan device (lavapipe, SwiftShader, headless CI) reports its
+	// DEVICE_LOCAL heap as host RAM, and an integrated/UMA GPU shares system memory rather
+	// than exposing dedicated VRAM. In both cases report capacity unknown (0) so the
+	// regulator keeps its conservative fallback instead of clamping/verifying the streaming
+	// budget against shared, contended system memory on a non-discrete backend. (GS #321)
+	if (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU ||
+			physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
+		return 0;
+	}
+	const VkPhysicalDeviceMemoryProperties *mem_props = nullptr;
+	vmaGetMemoryProperties(allocator, &mem_props);
+	if (mem_props == nullptr) {
+		return 0;
+	}
+	uint64_t device_local_capacity = 0;
+	for (uint32_t i = 0; i < mem_props->memoryHeapCount && i < VK_MAX_MEMORY_HEAPS; i++) {
+		if (!(mem_props->memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)) {
+			continue;
+		}
+		// Count the heap only if it backs at least one memory type usable by normal,
+		// non-lazy, non-protected device-local allocations — the path streaming buffer
+		// payloads use. A DEVICE_LOCAL heap whose types are all LAZILY_ALLOCATED holds only
+		// transient attachment memory and cannot store streaming buffers. PROTECTED types
+		// are likewise unusable: Godot disables protectedMemory at device creation, so the
+		// streaming buffers are never protected and cannot live there. Summing either kind
+		// would over-report usable capacity and let admission run up to a budget that fails.
+		bool usable_for_buffers = false;
+		for (uint32_t t = 0; t < mem_props->memoryTypeCount; t++) {
+			const VkMemoryType &type = mem_props->memoryTypes[t];
+			if (type.heapIndex == i &&
+					(type.propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
+					!(type.propertyFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT) &&
+					!(type.propertyFlags & VK_MEMORY_PROPERTY_PROTECTED_BIT)) {
+				usable_for_buffers = true;
+				break;
+			}
+		}
+		if (usable_for_buffers) {
+			device_local_capacity += mem_props->memoryHeaps[i].size;
+		}
+	}
+	return device_local_capacity;
+}
+
 uint64_t RenderingDeviceDriverVulkan::limit_get(Limit p_limit) {
 	const VkPhysicalDeviceLimits &limits = physical_device_properties.limits;
 	uint64_t safe_unbounded = ((uint64_t)1 << 30);

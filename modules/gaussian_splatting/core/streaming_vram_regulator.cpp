@@ -367,11 +367,26 @@ void VRAMBudgetRegulator::_query_device_memory() {
     stats.device_reported_usage_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
     stats.device_memory_queryable = (stats.device_reported_usage_bytes > 0);
 
-    // Capacity is known only when a trusted source supplied it; otherwise it
-    // stays unknown until platform-specific query sources are wired.
-    stats.device_capacity_bytes = config_capacity_known ? config.device_capacity_bytes : 0;
+    // Capacity precedence: a trusted out-of-band value (config override / explicit
+    // project pin) is authoritative; otherwise query the real device-local VRAM budget
+    // now that RenderingDevice exposes it (GS #321; Vulkan-backed, other backends report
+    // 0 and fall through to the conservative capacity-unknown path).
+    if (config_capacity_known) {
+        stats.device_capacity_bytes = config.device_capacity_bytes;
+        stats.device_capacity_known = true;
+    } else {
+        // Static device-local VRAM capacity from the driver (GS #321). Only trust it as
+        // "known" above a sane floor: a degenerate/garbage small-positive value would
+        // otherwise clamp the budget to nonsense AND mark it capacity-verified, which is
+        // strictly worse than the conservative unknown-capacity fallback. The floor also
+        // closes the capacity_mb == 0 (< 1 MiB) truncation hole in the _apply_config clamp.
+        constexpr uint64_t MIN_TRUSTED_DEVICE_CAPACITY_BYTES = uint64_t(256) * 1024 * 1024;
+        const uint64_t queried_capacity_bytes = rd->get_device_memory_budget();
+        const bool capacity_plausible = queried_capacity_bytes >= MIN_TRUSTED_DEVICE_CAPACITY_BYTES;
+        stats.device_capacity_bytes = capacity_plausible ? queried_capacity_bytes : 0;
+        stats.device_capacity_known = capacity_plausible;
+    }
     stats.device_available_bytes = 0;
-    stats.device_capacity_known = config_capacity_known;
 
     if (GaussianSplatting::is_debug_frame_logging_enabled()) {
         if (stats.device_capacity_known) {
