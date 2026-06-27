@@ -1297,6 +1297,11 @@ def _run_lane(
         effective_tiny_splat_screen_radius = _report_renderer_metric(report, "effective_tiny_splat_screen_radius")
         gpu_timing_available = _report_renderer_metric(report, "gpu_timing_available")
         gpu_frame_time_source = _report_renderer_metric(report, "gpu_frame_time_source")
+        if not _telemetry_value_present(gpu_frame_time_source):
+            # The in-engine suite's overall block records the same timing source under the
+            # overall-schema name "gpu_time_frame_source"; fall back to it so produced reports
+            # carry the explicit "unavailable" marker instead of a null source.
+            gpu_frame_time_source = _report_renderer_metric(report, "gpu_time_frame_source")
         gpu_frame_estimate_ms = _report_renderer_metric(report, "gpu_frame_estimate_ms")
         gpu_time_frame_ms = _report_renderer_metric(report, "gpu_frame_time_ms")
         node_visible_splats_max = report.get("node_visible_splats_max")

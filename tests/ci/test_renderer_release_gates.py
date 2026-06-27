@@ -930,6 +930,29 @@ class RendererReleaseGateTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["lane_id"], "static_baseline")
 
+    def test_gpu_timing_unavailability_accepts_both_source_keys(self) -> None:
+        # The selected-route runner (run_benchmark.py) emits the timing source as
+        # "gpu_frame_time_source"; the in-engine suite's overall block emits the same value
+        # as "gpu_time_frame_source". When GPU timing is unavailable, an explicit
+        # "unavailable" marker under EITHER key must satisfy the gate, and its absence under
+        # both must fail closed (Codex #418).
+        base = {"gpu_timing_available": False}
+        self.assertEqual(
+            checker._candidate_lane_gpu_timing_failures(
+                "static_baseline", {**base, "gpu_frame_time_source": "unavailable"}),
+            [],
+        )
+        self.assertEqual(
+            checker._candidate_lane_gpu_timing_failures(
+                "static_baseline", {**base, "gpu_time_frame_source": "unavailable"}),
+            [],
+        )
+        failures = checker._candidate_lane_gpu_timing_failures("static_baseline", dict(base))
+        self.assertTrue(
+            any("lacks explicit GPU timing unavailability" in f for f in failures),
+            failures,
+        )
+
     def test_candidate_benchmark_lane_passes_with_351_fields(self) -> None:
         # #351 E3 positive proof: a lane row carrying route_uid / stage_statuses /
         # fallback_counters passes the candidate gate when the manifest's
