@@ -80,6 +80,32 @@
     },
     {
       "deletion_commit": null,
+      "display_path": "drivers/vulkan/rendering_device_driver_vulkan.cpp",
+      "last_touch_commit": "2687700e1e527e806566b1f545b77ca4edcf3dff",
+      "lines_added": 68,
+      "lines_deleted": 0,
+      "new_path": "drivers/vulkan/rendering_device_driver_vulkan.cpp",
+      "old_path": "drivers/vulkan/rendering_device_driver_vulkan.cpp",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": "drivers",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
+      "display_path": "drivers/vulkan/rendering_device_driver_vulkan.h",
+      "last_touch_commit": "2687700e1e527e806566b1f545b77ca4edcf3dff",
+      "lines_added": 1,
+      "lines_deleted": 0,
+      "new_path": "drivers/vulkan/rendering_device_driver_vulkan.h",
+      "old_path": "drivers/vulkan/rendering_device_driver_vulkan.h",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": "drivers",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
       "display_path": "editor/docks/scene_tree_dock.cpp",
       "last_touch_commit": "27035f2d9868a044b2fcc074414b68a57cc7fc1c",
       "lines_added": 83,
@@ -406,8 +432,8 @@
     {
       "deletion_commit": null,
       "display_path": "servers/rendering/rendering_device.cpp",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "lines_added": 44,
+      "last_touch_commit": "2687700e1e527e806566b1f545b77ca4edcf3dff",
+      "lines_added": 48,
       "lines_deleted": 11,
       "new_path": "servers/rendering/rendering_device.cpp",
       "old_path": "servers/rendering/rendering_device.cpp",
@@ -419,11 +445,24 @@
     {
       "deletion_commit": null,
       "display_path": "servers/rendering/rendering_device.h",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "lines_added": 14,
+      "last_touch_commit": "2687700e1e527e806566b1f545b77ca4edcf3dff",
+      "lines_added": 17,
       "lines_deleted": 7,
       "new_path": "servers/rendering/rendering_device.h",
       "old_path": "servers/rendering/rendering_device.h",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": "servers",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
+      "display_path": "servers/rendering/rendering_device_driver.h",
+      "last_touch_commit": "2687700e1e527e806566b1f545b77ca4edcf3dff",
+      "lines_added": 5,
+      "lines_deleted": 0,
+      "new_path": "servers/rendering/rendering_device_driver.h",
+      "old_path": "servers/rendering/rendering_device_driver.h",
       "pre_deletion_commit": null,
       "status": "M",
       "subsystem": "servers",
@@ -484,9 +523,9 @@
   ],
   "engine_source_summary": {
     "deleted": 0,
-    "modified": 37,
+    "modified": 40,
     "renamed": 0,
-    "total_files": 37
+    "total_files": 40
   },
   "entries": [
     {
@@ -1082,6 +1121,32 @@
       "lines_deleted": 1,
       "new_path": "drivers/gles3/rasterizer_scene_gles3.h",
       "old_path": "drivers/gles3/rasterizer_scene_gles3.h",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": "drivers",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
+      "display_path": "drivers/vulkan/rendering_device_driver_vulkan.cpp",
+      "last_touch_commit": "2687700e1e527e806566b1f545b77ca4edcf3dff",
+      "lines_added": 68,
+      "lines_deleted": 0,
+      "new_path": "drivers/vulkan/rendering_device_driver_vulkan.cpp",
+      "old_path": "drivers/vulkan/rendering_device_driver_vulkan.cpp",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": "drivers",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
+      "display_path": "drivers/vulkan/rendering_device_driver_vulkan.h",
+      "last_touch_commit": "2687700e1e527e806566b1f545b77ca4edcf3dff",
+      "lines_added": 1,
+      "lines_deleted": 0,
+      "new_path": "drivers/vulkan/rendering_device_driver_vulkan.h",
+      "old_path": "drivers/vulkan/rendering_device_driver_vulkan.h",
       "pre_deletion_commit": null,
       "status": "M",
       "subsystem": "drivers",
@@ -2143,8 +2208,8 @@
     {
       "deletion_commit": null,
       "display_path": "servers/rendering/rendering_device.cpp",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "lines_added": 44,
+      "last_touch_commit": "2687700e1e527e806566b1f545b77ca4edcf3dff",
+      "lines_added": 48,
       "lines_deleted": 11,
       "new_path": "servers/rendering/rendering_device.cpp",
       "old_path": "servers/rendering/rendering_device.cpp",
@@ -2156,11 +2221,24 @@
     {
       "deletion_commit": null,
       "display_path": "servers/rendering/rendering_device.h",
-      "last_touch_commit": "aeeb1475cb347fc9724490e410733b50f59c9003",
-      "lines_added": 14,
+      "last_touch_commit": "2687700e1e527e806566b1f545b77ca4edcf3dff",
+      "lines_added": 17,
       "lines_deleted": 7,
       "new_path": "servers/rendering/rendering_device.h",
       "old_path": "servers/rendering/rendering_device.h",
+      "pre_deletion_commit": null,
+      "status": "M",
+      "subsystem": "servers",
+      "touchpoints": []
+    },
+    {
+      "deletion_commit": null,
+      "display_path": "servers/rendering/rendering_device_driver.h",
+      "last_touch_commit": "2687700e1e527e806566b1f545b77ca4edcf3dff",
+      "lines_added": 5,
+      "lines_deleted": 0,
+      "new_path": "servers/rendering/rendering_device_driver.h",
+      "old_path": "servers/rendering/rendering_device_driver.h",
       "pre_deletion_commit": null,
       "status": "M",
       "subsystem": "servers",
@@ -2339,7 +2417,7 @@
       ]
     },
     "fork_base_commit": "876b290332ec6f2e6d173d08162a02aa7e6ca46d",
-    "head_commit": "7876b90230a6b72062708ea888b56dd228ba9b0e",
+    "head_commit": "2687700e1e527e806566b1f545b77ca4edcf3dff",
     "head_ref": "HEAD",
     "label": "Godot 4.5 stable fork-point commit",
     "rename_threshold": "70%",
@@ -2387,7 +2465,7 @@
       "name": "doc"
     },
     {
-      "count": 3,
+      "count": 5,
       "name": "drivers"
     },
     {
@@ -2427,7 +2505,7 @@
       "name": "platform/windows"
     },
     {
-      "count": 24,
+      "count": 25,
       "name": "servers"
     },
     {
@@ -2445,9 +2523,9 @@
   ],
   "summary": {
     "deleted": 37,
-    "modified": 103,
+    "modified": 106,
     "renamed": 0,
-    "total_files": 140
+    "total_files": 143
   },
   "warnings": []
 }
