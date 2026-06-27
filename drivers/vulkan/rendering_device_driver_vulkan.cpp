@@ -5835,16 +5835,19 @@ uint64_t RenderingDeviceDriverVulkan::get_device_memory_budget() {
 			continue;
 		}
 		// Count the heap only if it backs at least one memory type usable by normal,
-		// non-lazy device-local allocations — the path streaming buffer payloads use. A
-		// DEVICE_LOCAL heap whose types are all LAZILY_ALLOCATED holds only transient
-		// attachment memory and cannot store streaming buffers; summing it would
-		// over-report usable capacity and let admission run up to a budget that fails.
+		// non-lazy, non-protected device-local allocations — the path streaming buffer
+		// payloads use. A DEVICE_LOCAL heap whose types are all LAZILY_ALLOCATED holds only
+		// transient attachment memory and cannot store streaming buffers. PROTECTED types
+		// are likewise unusable: Godot disables protectedMemory at device creation, so the
+		// streaming buffers are never protected and cannot live there. Summing either kind
+		// would over-report usable capacity and let admission run up to a budget that fails.
 		bool usable_for_buffers = false;
 		for (uint32_t t = 0; t < mem_props->memoryTypeCount; t++) {
 			const VkMemoryType &type = mem_props->memoryTypes[t];
 			if (type.heapIndex == i &&
 					(type.propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
-					!(type.propertyFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT)) {
+					!(type.propertyFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT) &&
+					!(type.propertyFlags & VK_MEMORY_PROPERTY_PROTECTED_BIT)) {
 				usable_for_buffers = true;
 				break;
 			}
