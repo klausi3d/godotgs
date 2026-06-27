@@ -90,14 +90,19 @@ BATCHES: tuple[BatchSpec, ...] = (
             "*Streaming-requested failure hard-fails*",
             "*Serial instancing failure injection*",
     )),
-    # Lifetime batch is intentionally OMITTED from the default set until the
-    # fixture's WorkerThreadPool dependency is resolved (issue #392 — scenarios
-    # A/D crash with STATUS_STACK_BUFFER_OVERRUN under --gs-gpu-test because
-    # the runner provisions an RD without WorkerThreadPool). The supervisor
-    # treats any non-zero batch rc as gate_failed, so re-adding this batch
-    # while it crashes would turn the whole GPU harness lane red even when the
-    # canonical visual-regression batches pass. Diagnostic runs can still
-    # invoke it explicitly with --batch Lifetime once the fixture is hardened.
+    # Lifetime batch: the renderer/RID leak + shutdown-lifetime proof scenarios that
+    # carry #352's "zero rid_leak_bytes" evidence. Re-enabled now that the --gs-gpu-test
+    # runner starts WorkerThreadPool (issue #392 fix in gs_gpu_test_runner.cpp), so the
+    # GPU scenarios run their assertions instead of skipping via
+    # REQUIRE_WORKER_THREAD_POOL(). Bracket-free phrases (fnmatch treats [tags] as char
+    # classes). The host-only stringname_orphans + monotonicity scenarios and the
+    # no-device failed_init scenario run on the module-test lane, not here.
+    BatchSpec("Lifetime", (
+            "*renderer_instance lifetime proof*",
+            "*scene_director_reload lifetime proof*",
+            "*asset_attach_detach lifetime proof*",
+            "*tile_shader_recompile frees old shaders*",
+    )),
 )
 
 # Batches whose filter MUST resolve to at least one matching doctest test case
@@ -114,7 +119,14 @@ BATCHES: tuple[BatchSpec, ...] = (
 # RendererPipeline carries #351's route/stage cascade failure-injection coverage
 # (resident, streaming, serial). It is required so a rename/removal of those tests
 # fails the gate loudly instead of silently dropping the route-contract coverage.
-REQUIRED_BATCHES: frozenset[str] = frozenset({"CompositorHazard", "RendererPipeline"})
+#
+# Lifetime carries #352's renderer GPU-resource leak / shutdown-lifetime proof
+# (renderer_instance, scene_director_reload, asset_attach_detach, tile_shader_recompile).
+# It is required (allow_rid_leaks=false in the manifest) so a leak regression — or a
+# rename/removal of the scenarios — fails the gate loudly: this batch IS the
+# "candidate GPU harness report includes zero rid_leak_bytes for required batches"
+# evidence #352 demands. Runnable now that the runner starts WorkerThreadPool (#392).
+REQUIRED_BATCHES: frozenset[str] = frozenset({"CompositorHazard", "RendererPipeline", "Lifetime"})
 
 # Validate at import time that every required batch name actually exists in
 # BATCHES — without this, renaming a batch but forgetting to update the

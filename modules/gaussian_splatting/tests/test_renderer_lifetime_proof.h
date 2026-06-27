@@ -127,6 +127,23 @@ static constexpr uint32_t RDM_UNMEASURED = std::numeric_limits<uint32_t>::max();
 // rdm_tracked_resources / rdm_owned_resources sentinel RDM_UNMEASURED =
 // not measured (no record_rdm_shutdown_counts() call in this scenario);
 // see RDM_UNMEASURED rationale above.
+// #352: measure GS-OWNED GPU memory (buffer + texture bytes the renderer
+// allocates and is responsible for freeing), NOT RenderingDevice::MEMORY_TOTAL.
+// MEMORY_TOTAL is the VMA grand total, which includes process-lifetime
+// driver-internal allocations (compute pipelines, descriptor pools, command/VMA
+// overhead) created once and never freed per renderer instance. Gating on
+// MEMORY_TOTAL charged that shared one-time infrastructure to each scenario and
+// was order-dependent (pipeline compilation landing in different measurement
+// windows produced ~64-178 MB swings with GS buffers/textures already at 0).
+// buffers+textures isolates the renderer's own resources; owned pipeline/shader
+// RID leaks are covered separately by the RDM owned-resource count.
+static uint64_t _gs_owned_memory_bytes(RenderingDevice *p_rd) {
+	if (p_rd == nullptr) {
+		return 0ull;
+	}
+	return p_rd->get_memory_usage(RenderingDevice::MEMORY_BUFFERS) + p_rd->get_memory_usage(RenderingDevice::MEMORY_TEXTURES);
+}
+
 // ---------------------------------------------------------------------------
 struct LifetimeBaseline {
 	uint64_t rd_memory_usage_bytes = 0;
@@ -365,9 +382,7 @@ private:
 	uint64_t rd_bytes_override_value_ = 0;
 
 	void _snapshot(LifetimeBaseline &r_out) const {
-		r_out.rd_memory_usage_bytes = (rd_ != nullptr)
-				? rd_->get_memory_usage(RenderingDevice::MEMORY_TOTAL)
-				: 0ull;
+		r_out.rd_memory_usage_bytes = _gs_owned_memory_bytes(rd_);
 		// RDM counters: initialize to the RDM_UNMEASURED sentinel rather
 		// than a measured zero. Scenarios that own an RDM and want the
 		// pass rule to enforce its post-shutdown counters MUST call
@@ -615,6 +630,17 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] renderer_instanc
 		renderer.unref();
 	}
 
+	// Drive the main-device frame forward so the render-path + dtor deferred
+	// frees actually reclaim before measuring. RenderingDevice::free() only
+	// queues onto the per-frame disposal list; _free_pending_resources runs on
+	// frame advance (_begin_frame). The --gs-gpu-test runner has no production
+	// render loop to advance frames, so without this the one-time render
+	// allocations sit unreclaimed and read as a ~178 MB leak. Advancing past the
+	// (small) frame ring drains the queue, matching production steady state.
+	for (int i = 0; i < 4; i++) {
+		rd->swap_buffers(false);
+	}
+
 	const bool passed = fixture.finalize();
 	CHECK_MESSAGE(passed, fixture.result().fail_reason);
 	CHECK(fixture.result().teardown_was_synchronous);
@@ -723,7 +749,7 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] scene_director_r
 	String teardown_observed_reason;
 
 	{
-		const uint64_t pre_cycle_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
+		const uint64_t pre_cycle_bytes = _gs_owned_memory_bytes(rd);
 
 		for (int cycle = 0; cycle < 3; cycle++) {
 			// Synthetic scenario RID per cycle so the director treats every
@@ -768,7 +794,7 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] scene_director_r
 			// state. Idempotent: if release already pruned, this is a no-op.
 			director->teardown_world_for_scenario(scenario);
 
-			const uint64_t post_cycle_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
+			const uint64_t post_cycle_bytes = _gs_owned_memory_bytes(rd);
 			const uint64_t cycle_delta = (post_cycle_bytes > pre_cycle_bytes)
 					? (post_cycle_bytes - pre_cycle_bytes)
 					: 0ull;
@@ -854,7 +880,7 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 		Ref<::GaussianData> data = _make_lifetime_test_data(64);
 		Ref<::GaussianData> empty_data; // null Ref — clear path.
 
-		const uint64_t pre_cycle_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
+		const uint64_t pre_cycle_bytes = _gs_owned_memory_bytes(rd);
 
 		for (int cycle = 0; cycle < 3; cycle++) {
 			const Error set_err = renderer->set_gaussian_data(data);
@@ -868,7 +894,17 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 			const Error clear_err = renderer->set_gaussian_data(empty_data);
 			CHECK((clear_err == OK || clear_err == ERR_UNCONFIGURED));
 
-			const uint64_t post_cycle_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
+			// #352: advance the main-device frame so this cycle's render-path
+			// deferred frees reclaim before the per-cycle measurement, mirroring
+			// the production render loop the --gs-gpu-test runner does not drive.
+			// RenderingDevice::free() only queues onto the per-frame disposal list;
+			// without this drain the per-cycle delta reads the unreclaimed render
+			// allocations as monotonic growth. (Same drain rationale as the
+			// teardown drain after the cycle loop and the tile_shader_recompile
+			// scenario.)
+			rd->swap_buffers(false);
+
+			const uint64_t post_cycle_bytes = _gs_owned_memory_bytes(rd);
 			const uint64_t cycle_delta = (post_cycle_bytes > pre_cycle_bytes)
 					? (post_cycle_bytes - pre_cycle_bytes)
 					: 0ull;
@@ -898,6 +934,17 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 		CHECK_MESSAGE(renderer->get_reference_count() == 1,
 				"Renderer refcount > 1 before unref in asset_attach_detach scenario.");
 		renderer.unref();
+	}
+
+	// Drain the renderer's destructor deferred frees before the absolute-gate
+	// measurement (mirrors renderer_instance): unref() queues the persistent
+	// buffer/texture frees onto the per-frame disposal list; advancing the
+	// main-device frame past the ring runs _free_pending_resources so finalize()
+	// sees the reclaimed steady state, not the unreclaimed dtor allocations. The
+	// per-cycle swap_buffers above already drains each cycle's render frees (the
+	// monotonicity signal); this drains the final teardown. (#352)
+	for (int i = 0; i < 4; i++) {
+		rd->swap_buffers(false);
 	}
 
 	(void)cycle_growth_beyond_cycle1;
@@ -992,6 +1039,24 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] tile_shader_reco
 				"shaders/pipelines were orphaned instead of freed (issue #298 regression).");
 
 		renderer.unref();
+	}
+
+	// Drain the renderer's destructor deferred frees before the absolute-gate
+	// measurement (mirrors renderer_instance / asset_attach_detach). #352:
+	// RenderingDevice::free() only QUEUES the renderer's persistent buffers/
+	// textures onto the per-frame disposal list; _free_pending_resources runs on
+	// frame advance (_begin_frame), which the --gs-gpu-test runner never drives
+	// because it has no production render loop. Measured on RTX 3090: the renderer
+	// allocates ~265 MB during render_for_view, ~145 MB is reclaimed synchronously
+	// on unref(), and the remaining ~120 MB of buffers sit on the disposal queue
+	// — they ARE freed (the dtor called rd->free()), just not yet reclaimed, so
+	// finalize() would read them as a false 120 MB leak. Advancing past the (small)
+	// frame ring runs _free_pending_resources and returns the device to the
+	// reclaimed steady state (buffers=0 textures=0) the listener then measures.
+	// This is the same deferred-free drain the other two renderer scenarios use;
+	// it does NOT relax any gate — the 4 MiB absolute threshold is unchanged.
+	for (int i = 0; i < 4; i++) {
+		rd->swap_buffers(false);
 	}
 
 	const bool passed = fixture.finalize();
