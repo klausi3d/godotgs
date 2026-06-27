@@ -1298,6 +1298,39 @@ def _run_lane(
             capture_psnr_avg = visual_summary.get("psnr_avg")
     proof_eval = _evaluate_large_world_proof_contract(lane.lane_id, report)
 
+    # #351 E3 evidence roll-ups — FAIL CLOSED. When the renderer telemetry block is absent
+    # (e.g. a regressed scene or diagnostics path that captured no route/stage/fallback
+    # data), leave the field null so the candidate gate's required_fields_non_null check
+    # fails, instead of fabricating "unknown"/0 placeholders that would let the public-alpha
+    # #351 evidence pass with no data actually captured (Codex #418). A real frame — healthy
+    # or degraded — publishes concrete status strings ("success"/"skipped"/"failed") and
+    # numeric counters; only a missing telemetry block yields None here.
+    _stage_status_values = [stage_cull_status, stage_sort_status, stage_raster_status, stage_composite_status]
+    stage_statuses_field = None
+    if all(value is not None for value in _stage_status_values):
+        stage_statuses_field = {
+            "cull": stage_cull_status,
+            "sort": stage_sort_status,
+            "raster": stage_raster_status,
+            "composite": stage_composite_status,
+        }
+    _fallback_counter_values = [
+        sort_sync_fallback_count,
+        sort_total_route_fallback_count,
+        sort_cached_fallback_count,
+        sort_identity_fallback_count,
+        sort_cull_order_fallback_count,
+    ]
+    fallback_counters_field = None
+    if all(value is not None for value in _fallback_counter_values):
+        fallback_counters_field = {
+            "sort_sync": sort_sync_fallback_count,
+            "sort_total_route": sort_total_route_fallback_count,
+            "sort_cached": sort_cached_fallback_count,
+            "sort_identity": sort_identity_fallback_count,
+            "sort_cull_order": sort_cull_order_fallback_count,
+        }
+
     return {
         "lane_id": lane.lane_id,
         "lane_name": lane.description,
@@ -1335,27 +1368,12 @@ def _run_lane(
         "sort_active_algorithm": sort_active_algorithm,
         "stage_sort_status": stage_sort_status,
         "stage_sort_reason": stage_sort_reason,
-        # #351 E3 release-gate roll-ups of already-published per-frame telemetry.
-        # Non-null by construction so the candidate gate
-        # (benchmark_acceptance.required_fields_non_null) can assert presence.
-        "route_uid": route_uid if route_uid is not None else "unknown",
-        "stage_statuses": {
-            "cull": stage_cull_status if stage_cull_status is not None else "unknown",
-            "sort": stage_sort_status if stage_sort_status is not None else "unknown",
-            "raster": stage_raster_status if stage_raster_status is not None else "unknown",
-            "composite": stage_composite_status if stage_composite_status is not None else "unknown",
-        },
-        "fallback_counters": {
-            "sort_sync": sort_sync_fallback_count if sort_sync_fallback_count is not None else 0,
-            "sort_total_route": sort_total_route_fallback_count
-            if sort_total_route_fallback_count is not None
-            else 0,
-            "sort_cached": sort_cached_fallback_count if sort_cached_fallback_count is not None else 0,
-            "sort_identity": sort_identity_fallback_count if sort_identity_fallback_count is not None else 0,
-            "sort_cull_order": sort_cull_order_fallback_count
-            if sort_cull_order_fallback_count is not None
-            else 0,
-        },
+        # #351 E3 evidence (see the fail-closed roll-ups above): the real route uid /
+        # per-stage statuses / fallback counters when the telemetry was captured, else null
+        # so the candidate gate fails closed rather than passing on fabricated placeholders.
+        "route_uid": route_uid,
+        "stage_statuses": stage_statuses_field,
+        "fallback_counters": fallback_counters_field,
         "instancing_execution_mode": instancing_execution_mode,
         "instancing_execution_path": instancing_execution_path,
         "instancing_execution_reason": instancing_execution_reason,
