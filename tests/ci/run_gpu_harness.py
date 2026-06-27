@@ -62,16 +62,26 @@ BATCHES: tuple[BatchSpec, ...] = (
     BatchSpec("GpuSorting", ("*Sort*][RequiresGPU]*",)),
     BatchSpec("MemoryStream", ("*MemoryStream*][RequiresGPU]*",)),
     BatchSpec("Streaming", ("*Streaming*][RequiresGPU]*",)),
-    # Render route/stage cascade failure-injection coverage for #351 (resident,
-    # streaming, AND serial paths). These tests carry no subsystem bracket tag, so the
-    # batch matches on the descriptive phrase. The phrases are deliberately NOT wrapped in
-    # "[...]" brackets: the manifest contract check matches filters with fnmatch (where
-    # "[RequiresGPU]" would be a character class), while doctest treats brackets literally,
-    # so only a bracket-free phrase matches identically in both. Both phrases are unique to
-    # these four [RequiresGPU] tests (verified): "Stage results report ..." (resident
-    # cull/sort skip, resident raster failure, streaming not-ready) + the serial test.
+    # Render route/stage cascade failure-injection coverage for #351. These tests carry no
+    # subsystem bracket tag, so the batch matches on the descriptive phrase. The phrases are
+    # deliberately NOT wrapped in "[...]" brackets: the manifest contract check matches with
+    # fnmatch (where "[RequiresGPU]" would be a character class), while doctest treats
+    # brackets literally, so only a bracket-free phrase matches identically in both.
+    #
+    # Counts only the cascade tests that ACTUALLY execute their assertions under the GPU
+    # harness (no SceneTree): the resident cull/sort-skip case, the resident raster-failure
+    # case, and the serial failure-injection case. The "Stage results report streaming
+    # not-ready" case is deliberately EXCLUDED: it depends on a SceneTree (via
+    # ScopedWorldStreamingRenderer) but is not [SceneTree]-tagged, so the test listener
+    # (tests/test_main.cpp) never gives it a SceneTree and it early-returns — which doctest
+    # counts as a PASS, not a skip. Counting it would let this required batch be satisfied
+    # without exercising the streaming cascade (Codex #418). Making the streaming cascade
+    # genuinely run on the harness (tag [SceneTree] + waiver, or a SceneTree-free streaming
+    # fixture) is a tracked follow-up; until then the streaming path's failure-injection
+    # coverage is the host/contract tests, not this GPU batch.
     BatchSpec("RendererPipeline", (
-            "*Stage results report*",
+            "*Stage results report cull*",
+            "*Stage results report raster*",
             "*Serial instancing failure injection*",
     )),
     # Lifetime batch is intentionally OMITTED from the default set until the
