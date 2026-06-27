@@ -632,12 +632,13 @@ def _report_renderer_metric(report: dict[str, Any], key: str, default: Any = Non
     return default
 
 
-def _telemetry_status_present(value: Any) -> bool:
-    """A stage status counts as captured only when it is non-null and not an empty/
-    whitespace string. Producers default a missing renderer status to "" (e.g.
-    benchmark_suite_lane.gd's overall block), which is not None and would otherwise
-    satisfy the fail-closed roll-up's null check and mask absent telemetry. A real
-    frame publishes a concrete token ("success"/"skipped"/"failed"/"unknown")."""
+def _telemetry_value_present(value: Any) -> bool:
+    """A captured telemetry field counts as present only when it is non-null and not an
+    empty/whitespace string. Producers default a missing renderer field to "" (e.g.
+    benchmark_suite_lane.gd's overall block writes "" for an absent route_uid or stage
+    status), which is not None and would otherwise satisfy the fail-closed roll-up's null
+    check and mask absent telemetry. A real frame publishes a concrete token (a route UID,
+    or a "success"/"skipped"/"failed"/"unknown" stage status)."""
     if value is None:
         return False
     if isinstance(value, str) and value.strip() == "":
@@ -1266,10 +1267,13 @@ def _run_lane(
         stage_sort_status = _report_renderer_metric(report, "stage_sort_status")
         stage_sort_reason = _report_renderer_metric(report, "stage_sort_reason")
         # #351 E3: source the route uid and the per-stage statuses the SAME way
-        # as every other lane field (renderer_telemetry, then overall block).
+        # as every other lane field (renderer_telemetry, then overall block). Do NOT
+        # substitute sort_route_uid for a missing selected-route UID: that reports the
+        # sort sub-route as the render route and would let E3 pass without the selected
+        # render route captured. Missing/empty -> None so the candidate gate fails closed.
         route_uid = _report_renderer_metric(report, "route_uid")
-        if route_uid is None:
-            route_uid = _report_renderer_metric(report, "sort_route_uid")
+        if not _telemetry_value_present(route_uid):
+            route_uid = None
         stage_cull_status = _report_renderer_metric(report, "stage_cull_status")
         stage_raster_status = _report_renderer_metric(report, "stage_raster_status")
         stage_composite_status = _report_renderer_metric(report, "stage_composite_status")
@@ -1318,10 +1322,10 @@ def _run_lane(
     # #351 evidence pass with no data actually captured (Codex #418). A real frame — healthy
     # or degraded — publishes concrete status strings ("success"/"skipped"/"failed"/"unknown")
     # and numeric counters; a missing telemetry block (None) or an empty-string status
-    # placeholder is treated as absent via _telemetry_status_present and fails the roll-up.
+    # placeholder is treated as absent via _telemetry_value_present and fails the roll-up.
     _stage_status_values = [stage_cull_status, stage_sort_status, stage_raster_status, stage_composite_status]
     stage_statuses_field = None
-    if all(_telemetry_status_present(value) for value in _stage_status_values):
+    if all(_telemetry_value_present(value) for value in _stage_status_values):
         stage_statuses_field = {
             "cull": stage_cull_status,
             "sort": stage_sort_status,
