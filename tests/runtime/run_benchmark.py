@@ -632,6 +632,20 @@ def _report_renderer_metric(report: dict[str, Any], key: str, default: Any = Non
     return default
 
 
+def _telemetry_value_present(value: Any) -> bool:
+    """A captured telemetry field counts as present only when it is non-null and not an
+    empty/whitespace string. Producers default a missing renderer field to "" (e.g.
+    benchmark_suite_lane.gd's overall block writes "" for an absent route_uid or stage
+    status), which is not None and would otherwise satisfy the fail-closed roll-up's null
+    check and mask absent telemetry. A real frame publishes a concrete token (a route UID,
+    or a "success"/"skipped"/"failed"/"unknown" stage status)."""
+    if value is None:
+        return False
+    if isinstance(value, str) and value.strip() == "":
+        return False
+    return True
+
+
 def _normalize_execution_mode_token(value: Any) -> str:
     raw = str(value or "").strip().lower()
     if raw.startswith("single_pass"):
@@ -1181,6 +1195,10 @@ def _run_lane(
     sort_active_algorithm = None
     stage_sort_status = None
     stage_sort_reason = None
+    route_uid = None
+    stage_cull_status = None
+    stage_raster_status = None
+    stage_composite_status = None
     instancing_execution_mode = None
     instancing_execution_path = None
     instancing_execution_reason = None
@@ -1248,6 +1266,17 @@ def _run_lane(
         sort_active_algorithm = _report_renderer_metric(report, "sort_active_algorithm")
         stage_sort_status = _report_renderer_metric(report, "stage_sort_status")
         stage_sort_reason = _report_renderer_metric(report, "stage_sort_reason")
+        # #351 E3: source the route uid and the per-stage statuses the SAME way
+        # as every other lane field (renderer_telemetry, then overall block). Do NOT
+        # substitute sort_route_uid for a missing selected-route UID: that reports the
+        # sort sub-route as the render route and would let E3 pass without the selected
+        # render route captured. Missing/empty -> None so the candidate gate fails closed.
+        route_uid = _report_renderer_metric(report, "route_uid")
+        if not _telemetry_value_present(route_uid):
+            route_uid = None
+        stage_cull_status = _report_renderer_metric(report, "stage_cull_status")
+        stage_raster_status = _report_renderer_metric(report, "stage_raster_status")
+        stage_composite_status = _report_renderer_metric(report, "stage_composite_status")
         instancing_execution_mode = _report_renderer_metric(report, "instance_pipeline_execution_mode")
         instancing_execution_path = _report_renderer_metric(report, "instance_pipeline_execution_path")
         instancing_execution_reason = _report_renderer_metric(report, "instance_pipeline_execution_reason")
@@ -1268,6 +1297,11 @@ def _run_lane(
         effective_tiny_splat_screen_radius = _report_renderer_metric(report, "effective_tiny_splat_screen_radius")
         gpu_timing_available = _report_renderer_metric(report, "gpu_timing_available")
         gpu_frame_time_source = _report_renderer_metric(report, "gpu_frame_time_source")
+        if not _telemetry_value_present(gpu_frame_time_source):
+            # The in-engine suite's overall block records the same timing source under the
+            # overall-schema name "gpu_time_frame_source"; fall back to it so produced reports
+            # carry the explicit "unavailable" marker instead of a null source.
+            gpu_frame_time_source = _report_renderer_metric(report, "gpu_time_frame_source")
         gpu_frame_estimate_ms = _report_renderer_metric(report, "gpu_frame_estimate_ms")
         gpu_time_frame_ms = _report_renderer_metric(report, "gpu_frame_time_ms")
         node_visible_splats_max = report.get("node_visible_splats_max")
@@ -1285,6 +1319,40 @@ def _run_lane(
             capture_psnr_min = visual_summary.get("psnr_min")
             capture_psnr_avg = visual_summary.get("psnr_avg")
     proof_eval = _evaluate_large_world_proof_contract(lane.lane_id, report)
+
+    # #351 E3 evidence roll-ups — FAIL CLOSED. When the renderer telemetry block is absent
+    # (e.g. a regressed scene or diagnostics path that captured no route/stage/fallback
+    # data), leave the field null so the candidate gate's required_fields_non_null check
+    # fails, instead of fabricating "unknown"/0 placeholders that would let the public-alpha
+    # #351 evidence pass with no data actually captured (Codex #418). A real frame — healthy
+    # or degraded — publishes concrete status strings ("success"/"skipped"/"failed"/"unknown")
+    # and numeric counters; a missing telemetry block (None) or an empty-string status
+    # placeholder is treated as absent via _telemetry_value_present and fails the roll-up.
+    _stage_status_values = [stage_cull_status, stage_sort_status, stage_raster_status, stage_composite_status]
+    stage_statuses_field = None
+    if all(_telemetry_value_present(value) for value in _stage_status_values):
+        stage_statuses_field = {
+            "cull": stage_cull_status,
+            "sort": stage_sort_status,
+            "raster": stage_raster_status,
+            "composite": stage_composite_status,
+        }
+    _fallback_counter_values = [
+        sort_sync_fallback_count,
+        sort_total_route_fallback_count,
+        sort_cached_fallback_count,
+        sort_identity_fallback_count,
+        sort_cull_order_fallback_count,
+    ]
+    fallback_counters_field = None
+    if all(value is not None for value in _fallback_counter_values):
+        fallback_counters_field = {
+            "sort_sync": sort_sync_fallback_count,
+            "sort_total_route": sort_total_route_fallback_count,
+            "sort_cached": sort_cached_fallback_count,
+            "sort_identity": sort_identity_fallback_count,
+            "sort_cull_order": sort_cull_order_fallback_count,
+        }
 
     return {
         "lane_id": lane.lane_id,
@@ -1323,6 +1391,12 @@ def _run_lane(
         "sort_active_algorithm": sort_active_algorithm,
         "stage_sort_status": stage_sort_status,
         "stage_sort_reason": stage_sort_reason,
+        # #351 E3 evidence (see the fail-closed roll-ups above): the real route uid /
+        # per-stage statuses / fallback counters when the telemetry was captured, else null
+        # so the candidate gate fails closed rather than passing on fabricated placeholders.
+        "route_uid": route_uid,
+        "stage_statuses": stage_statuses_field,
+        "fallback_counters": fallback_counters_field,
         "instancing_execution_mode": instancing_execution_mode,
         "instancing_execution_path": instancing_execution_path,
         "instancing_execution_reason": instancing_execution_reason,

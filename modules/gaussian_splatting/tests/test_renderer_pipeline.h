@@ -97,6 +97,60 @@ TEST_CASE("[GaussianSplatting] Stage cascade contract preserves first failure an
 	CHECK(raster_skip.output_count == 0);
 }
 
+TEST_CASE("[GaussianSplatting] Stage cascade contract reports all stages SUCCESS for a healthy frame") {
+	// Positive-path counterpart to the failure-injection cascade tests (#351): when every
+	// stage succeeds, finalize_stage_contracts must record NO first-failure and NO
+	// skip-cause and leave all four stage statuses SUCCESS. The failure-injection tests
+	// only exercise the degraded paths; this locks in the healthy-frame aggregation. Host
+	// test (no GPU) over the contract structs, so it runs in the headless suite.
+	GaussianSplatRenderer::StageResult cull_ok;
+	cull_ok.status = GaussianSplatRenderer::StageResult::StageStatus::SUCCESS;
+	RenderPipelineStages::stamp_stage_result_contract(cull_ok, "cull",
+			RenderRouteUID::INSTANCE_RESIDENT,
+			GaussianSplatRenderer::IndexDomain::GAUSSIAN_GLOBAL,
+			GaussianSplatRenderer::IndexDomain::CHUNK_REF, 16, 16);
+
+	GaussianSplatRenderer::StageResult sort_ok;
+	sort_ok.status = GaussianSplatRenderer::StageResult::StageStatus::SUCCESS;
+	RenderPipelineStages::stamp_stage_result_contract(sort_ok, "sort",
+			RenderRouteUID::INSTANCE_RESIDENT,
+			GaussianSplatRenderer::IndexDomain::CHUNK_REF,
+			GaussianSplatRenderer::IndexDomain::CHUNK_REF, 16, 16);
+
+	GaussianSplatRenderer::StageResult raster_ok;
+	raster_ok.status = GaussianSplatRenderer::StageResult::StageStatus::SUCCESS;
+	RenderPipelineStages::stamp_stage_result_contract(raster_ok, "raster",
+			RenderRouteUID::INSTANCE_RESIDENT,
+			GaussianSplatRenderer::IndexDomain::CHUNK_REF,
+			GaussianSplatRenderer::IndexDomain::SPLAT_REF, 16, 16);
+
+	GaussianSplatRenderer::StageResult composite_ok;
+	composite_ok.status = GaussianSplatRenderer::StageResult::StageStatus::SUCCESS;
+	RenderPipelineStages::stamp_stage_result_contract(composite_ok, "composite",
+			RenderRouteUID::INSTANCE_RESIDENT,
+			GaussianSplatRenderer::IndexDomain::SPLAT_REF,
+			GaussianSplatRenderer::IndexDomain::SPLAT_REF, 16, 16);
+
+	GaussianSplatRenderer::StageMetrics metrics;
+	metrics.cull_result = cull_ok;
+	metrics.sort_result = sort_ok;
+	metrics.raster_result = raster_ok;
+	metrics.composite_result = composite_ok;
+
+	GaussianSplatRenderer::RenderFramePlan plan;
+	plan.route_decision.valid = true;
+	plan.route_decision.route_uid = RenderRouteUID::INSTANCE_RESIDENT;
+	plan.route_decision.selected_backend_name = "resident";
+	RenderPipelineStages::finalize_stage_contracts(metrics, plan);
+
+	CHECK(metrics.first_failure_stage.is_empty());
+	CHECK(metrics.skip_cause_stage.is_empty());
+	CHECK(metrics.cull_result.status == GaussianSplatRenderer::StageResult::StageStatus::SUCCESS);
+	CHECK(metrics.sort_result.status == GaussianSplatRenderer::StageResult::StageStatus::SUCCESS);
+	CHECK(metrics.raster_result.status == GaussianSplatRenderer::StageResult::StageStatus::SUCCESS);
+	CHECK(metrics.composite_result.status == GaussianSplatRenderer::StageResult::StageStatus::SUCCESS);
+}
+
 TEST_CASE("[GaussianSplatting] Downstream skip contract does not invent first failure for benign upstream skips") {
 	GaussianSplatRenderer::StageResult cull_skip;
 	cull_skip.status = GaussianSplatRenderer::StageResult::StageStatus::SKIPPED;

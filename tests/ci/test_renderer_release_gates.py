@@ -279,7 +279,7 @@ def _valid_candidate_evidence(root: Path) -> dict[str, Any]:
                     "capture_ssim_min": 0.99,
                     "capture_psnr_min": 40.0,
                     "gpu_timing_available": False,
-                    "gpu_timing_source": "unavailable",
+                    "gpu_frame_time_source": "unavailable",
                     "exit_code": 0,
                     "report_valid": True,
                     "visible_output_valid": True,
@@ -845,7 +845,7 @@ class RendererReleaseGateTests(unittest.TestCase):
                             "capture_ssim_min": 0.99,
                             "capture_psnr_min": 40.0,
                             "gpu_timing_available": False,
-                            "gpu_timing_source": "unavailable",
+                            "gpu_frame_time_source": "unavailable",
                         }
                     ]
                 ),
@@ -873,7 +873,7 @@ class RendererReleaseGateTests(unittest.TestCase):
                             "capture_ssim_min": 0.99,
                             "capture_psnr_min": 40.0,
                             "gpu_timing_available": False,
-                            "gpu_timing_source": "unavailable",
+                            "gpu_frame_time_source": "unavailable",
                         }
                     ]
                 ),
@@ -922,6 +922,181 @@ class RendererReleaseGateTests(unittest.TestCase):
             self.assertTrue(any("forbidden CPU sort route" in item for item in failures))
             self.assertTrue(any("unallowed sort fallback routes" in item for item in failures))
 
+    def test_rows_from_report_reads_lane_results_key(self) -> None:
+        # #351 E3: the benchmark suite runner writes rows under "lane_results"
+        # (run_benchmark.py main()); the checker must read that key.
+        report = {"lane_results": [{"lane_id": "static_baseline"}]}
+        rows = checker._rows_from_report(report)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["lane_id"], "static_baseline")
+
+    def test_gpu_timing_unavailability_accepts_both_source_keys(self) -> None:
+        # The selected-route runner (run_benchmark.py) emits the timing source as
+        # "gpu_frame_time_source"; the in-engine suite's overall block emits the same value
+        # as "gpu_time_frame_source". When GPU timing is unavailable, an explicit
+        # "unavailable" marker under EITHER key must satisfy the gate, and its absence under
+        # both must fail closed (Codex #418).
+        base = {"gpu_timing_available": False}
+        self.assertEqual(
+            checker._candidate_lane_gpu_timing_failures(
+                "static_baseline", {**base, "gpu_frame_time_source": "unavailable"}),
+            [],
+        )
+        self.assertEqual(
+            checker._candidate_lane_gpu_timing_failures(
+                "static_baseline", {**base, "gpu_time_frame_source": "unavailable"}),
+            [],
+        )
+        failures = checker._candidate_lane_gpu_timing_failures("static_baseline", dict(base))
+        self.assertTrue(
+            any("lacks explicit GPU timing unavailability" in f for f in failures),
+            failures,
+        )
+
+    def test_candidate_benchmark_lane_passes_with_351_fields(self) -> None:
+        # #351 E3 positive proof: a lane row carrying route_uid / stage_statuses /
+        # fallback_counters passes the candidate gate when the manifest's
+        # required_fields_non_null includes all three (the REAL set).
+        manifest = {
+            "benchmark_acceptance": {
+                "required_fields_non_null": [
+                    "lane_id",
+                    "route_uid",
+                    "stage_statuses",
+                    "fallback_counters",
+                ],
+            },
+            "visual_acceptance": {"candidate_rules": {"capture_count_min": 1}},
+        }
+        row = {
+            "lane_id": "static_baseline",
+            "route_uid": "INSTANCE.RASTER.COMPUTE",
+            "stage_statuses": {
+                "cull": "success",
+                "sort": "success",
+                "raster": "success",
+                "composite": "success",
+            },
+            "fallback_counters": {
+                "sort_sync": 0,
+                "sort_total_route": 0,
+                "sort_cached": 0,
+                "sort_identity": 0,
+                "sort_cull_order": 0,
+            },
+            # other non-351 candidate-lane signals kept clean so this isolates the 3 fields
+            "capture_count": 1,
+            "capture_reference_match_count": 1,
+            "capture_threshold_pass_count": 1,
+            "capture_ssim_min": 0.99,
+            "capture_psnr_min": 40.0,
+            "gpu_timing_available": False,
+            "gpu_frame_time_source": "unavailable",
+            "exit_code": 0,
+        }
+        required = manifest["benchmark_acceptance"]["required_fields_non_null"]
+        visual_rules = manifest["visual_acceptance"]["candidate_rules"]
+        failures = checker._validate_candidate_benchmark_lane(
+            "static_baseline", row, required, visual_rules, None
+        )
+        self.assertEqual(failures, [], failures)
+        # The dedicated required-field check must also report no failures.
+        field_failures = checker._candidate_lane_required_field_failures(
+            "static_baseline", row, required
+        )
+        self.assertEqual(field_failures, [])
+
+    def test_candidate_benchmark_lane_fails_on_missing_351_field(self) -> None:
+        # #351 E3 negative proof: dropping any of the three #351 fields trips the
+        # candidate gate with the "null/missing <field>" message.
+        required = ["lane_id", "route_uid", "stage_statuses", "fallback_counters"]
+        for missing in ("route_uid", "stage_statuses", "fallback_counters"):
+            with self.subTest(missing=missing):
+                row = {
+                    "lane_id": "static_baseline",
+                    "route_uid": "INSTANCE.RASTER.COMPUTE",
+                    "stage_statuses": {"cull": "success"},
+                    "fallback_counters": {"sort_sync": 0},
+                }
+                row[missing] = None
+                field_failures = checker._candidate_lane_required_field_failures(
+                    "static_baseline", row, required
+                )
+                self.assertTrue(
+                    any(
+                        f"candidate benchmark lane static_baseline has null/missing {missing}" == item
+                        for item in field_failures
+                    ),
+                    field_failures,
+                )
+
+    def test_candidate_benchmark_report_under_lane_results_validates_351_fields(self) -> None:
+        # #351 E3 end-to-end: a producer-shaped report (rows under "lane_results")
+        # is now consumed, and a row with the three fields passes the gate.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            manifest["benchmark_acceptance"]["required_fields_non_null"] = [
+                "lane_id",
+                "commit_sha",
+                "godot_binary_commit",
+                "godot_binary_mtime_utc",
+                "route_uid",
+                "stage_statuses",
+                "fallback_counters",
+            ]
+            evidence = _valid_candidate_evidence(root)
+            lane = {
+                "lane_id": "static_baseline",
+                "commit_sha": "abc",
+                "godot_binary_commit": "abc",
+                "godot_binary_mtime_utc": "2026-05-19T10:01:00Z",
+                "route_uid": "INSTANCE.RASTER.COMPUTE",
+                "stage_statuses": {
+                    "cull": "success",
+                    "sort": "success",
+                    "raster": "success",
+                    "composite": "success",
+                },
+                "fallback_counters": {
+                    "sort_sync": 0,
+                    "sort_total_route": 0,
+                    "sort_cached": 0,
+                    "sort_identity": 0,
+                    "sort_cull_order": 0,
+                },
+                "capture_count": 1,
+                "capture_reference_match_count": 1,
+                "capture_threshold_pass_count": 1,
+                "capture_ssim_min": 0.99,
+                "capture_psnr_min": 40.0,
+                "gpu_timing_available": False,
+                "gpu_frame_time_source": "unavailable",
+                "exit_code": 0,
+                "report_valid": True,
+                "visible_output_valid": True,
+                "visual_reference_match": True,
+                "proof_valid": True,
+                "lane_valid": True,
+            }
+            # Producer-shaped: rows under the top-level "lane_results" key.
+            _write(root / "bench.json", json.dumps({"lane_results": [lane]}))
+            failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
+            self.assertEqual(failures, [], failures)
+
+            # Drop one #351 field -> the gate must now fail with the precise message.
+            broken = dict(lane)
+            broken["route_uid"] = None
+            _write(root / "bench.json", json.dumps({"lane_results": [broken]}))
+            failures = checker._validate_candidate_benchmark_report(root, manifest, evidence)
+            self.assertTrue(
+                any(
+                    "candidate benchmark lane static_baseline has null/missing route_uid" in item
+                    for item in failures
+                ),
+                failures,
+            )
+
     def test_candidate_json_numbers_must_be_finite(self) -> None:
         self.assertFalse(checker._is_json_number(float("nan")))
         self.assertFalse(checker._is_json_number(float("inf")))
@@ -962,7 +1137,7 @@ class RendererReleaseGateTests(unittest.TestCase):
                             "capture_ssim_min": 0.99,
                             "capture_psnr_min": 40.0,
                             "gpu_timing_available": False,
-                            "gpu_timing_source": "unavailable",
+                            "gpu_frame_time_source": "unavailable",
                         }
                     ]
                 ),

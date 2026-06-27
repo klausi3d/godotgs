@@ -1332,6 +1332,9 @@ func _build_report() -> Dictionary:
 	overall["stage_cull_status"] = renderer_stats.get("stage_cull_status", "")
 	overall["stage_sort_status"] = renderer_stats.get("stage_sort_status", "")
 	overall["stage_raster_status"] = renderer_stats.get("stage_raster_status", "")
+	# #351: the renderer publishes all four cascade stage statuses; emit composite too so
+	# the candidate stage_statuses roll-up is non-null for real lanes (codex #418).
+	overall["stage_composite_status"] = renderer_stats.get("stage_composite_status", "")
 	if renderer_stats.has("gpu_frame_time_ms"):
 		var gpu_frame_ms := float(renderer_stats.get("gpu_frame_time_ms", 0.0))
 		var gpu_frame_source := str(renderer_stats.get("gpu_frame_time_source", "unavailable"))

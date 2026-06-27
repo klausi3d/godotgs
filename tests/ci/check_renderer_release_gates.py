@@ -758,7 +758,9 @@ def _rows_from_report(report: Any) -> list[dict[str, Any]]:
     if isinstance(report, list):
         return [row for row in report if isinstance(row, dict)]
     if isinstance(report, dict):
-        for key in ("lanes", "results", "rows"):
+        # "lane_results" is the key the benchmark suite runner actually writes
+        # (run_benchmark.py main()); accept it alongside the legacy aliases.
+        for key in ("lanes", "results", "rows", "lane_results"):
             value = report.get(key)
             if isinstance(value, list):
                 return [row for row in value if isinstance(row, dict)]
@@ -1195,7 +1197,15 @@ def _candidate_lane_gpu_timing_failures(lane_id: str, row: dict[str, Any]) -> li
     gpu_time_is_number = isinstance(gpu_time, (int, float)) and not isinstance(gpu_time, bool)
     if gpu_available is True and (not gpu_time_is_number or gpu_time <= 0):
         failures.append(f"candidate benchmark lane {lane_id} has invalid GPU time")
-    if gpu_available is not True and row.get("gpu_timing_source") != "unavailable":
+    # The selected-route runner (run_benchmark.py) emits the timing source as
+    # "gpu_frame_time_source"; the in-engine benchmark suite's overall block emits the same
+    # value as "gpu_time_frame_source" (overall-schema naming, see benchmark_suite_lane.gd /
+    # benchmark_suite_report.json). Accept either spelling so a produced report's explicit
+    # "unavailable" marker is honoured regardless of which producer shaped the row.
+    gpu_timing_source = row.get("gpu_frame_time_source")
+    if gpu_timing_source is None:
+        gpu_timing_source = row.get("gpu_time_frame_source")
+    if gpu_available is not True and gpu_timing_source != "unavailable":
         failures.append(f"candidate benchmark lane {lane_id} lacks explicit GPU timing unavailability")
     return failures
 

@@ -62,6 +62,34 @@ BATCHES: tuple[BatchSpec, ...] = (
     BatchSpec("GpuSorting", ("*Sort*][RequiresGPU]*",)),
     BatchSpec("MemoryStream", ("*MemoryStream*][RequiresGPU]*",)),
     BatchSpec("Streaming", ("*Streaming*][RequiresGPU]*",)),
+    # Render route/stage cascade failure-injection coverage for #351. These tests carry no
+    # subsystem bracket tag, so the batch matches on the descriptive phrase. The phrases are
+    # deliberately NOT wrapped in "[...]" brackets: the manifest contract check matches with
+    # fnmatch (where "[RequiresGPU]" would be a character class), while doctest treats
+    # brackets literally, so only a bracket-free phrase matches identically in both.
+    #
+    # Counts only the cascade tests that ACTUALLY execute their assertions under the GPU
+    # harness (no SceneTree): the resident cull/sort-skip case, the resident raster-failure
+    # case, the streaming-requested hard-fail case, and the serial failure-injection case —
+    # genuine resident + streaming + serial route/stage coverage as #351 requires. The
+    # streaming leg is the "Streaming-requested failure hard-fails" case: it forces
+    # route_policy=STREAMING with the streaming system released and asserts a typed
+    # COMMON.SKIP.STREAMING_NOT_READY.* route that does not bounce to resident. It gates only
+    # on RenderingServer/ProjectSettings/GaussianSplatManager/RenderingDevice (all present
+    # under the harness), so it runs its assertions rather than early-returning.
+    #
+    # The separate "Stage results report streaming not-ready" case stays EXCLUDED: it depends
+    # on a SceneTree (via ScopedWorldStreamingRenderer) but is not [SceneTree]-tagged, so the
+    # test listener (tests/test_main.cpp) never gives it a SceneTree and it early-returns —
+    # which doctest counts as a PASS, not a skip. Counting it would let this required batch be
+    # satisfied without exercising the streaming cascade (Codex #418). Its stage-status
+    # assertions remain host/contract coverage until it is given a SceneTree-free fixture.
+    BatchSpec("RendererPipeline", (
+            "*Stage results report cull*",
+            "*Stage results report raster*",
+            "*Streaming-requested failure hard-fails*",
+            "*Serial instancing failure injection*",
+    )),
     # Lifetime batch is intentionally OMITTED from the default set until the
     # fixture's WorkerThreadPool dependency is resolved (issue #392 — scenarios
     # A/D crash with STATUS_STACK_BUFFER_OVERRUN under --gs-gpu-test because
@@ -82,7 +110,11 @@ BATCHES: tuple[BatchSpec, ...] = (
 # hazard (the entire reason for the scratch-copy path and this harness). If its
 # filter ever stops matching, the gate must fail loudly rather than greenly
 # skip — anyone touching the renderer should see immediate signal.
-REQUIRED_BATCHES: frozenset[str] = frozenset({"CompositorHazard"})
+#
+# RendererPipeline carries #351's route/stage cascade failure-injection coverage
+# (resident, streaming, serial). It is required so a rename/removal of those tests
+# fails the gate loudly instead of silently dropping the route-contract coverage.
+REQUIRED_BATCHES: frozenset[str] = frozenset({"CompositorHazard", "RendererPipeline"})
 
 # Validate at import time that every required batch name actually exists in
 # BATCHES — without this, renaming a batch but forgetting to update the

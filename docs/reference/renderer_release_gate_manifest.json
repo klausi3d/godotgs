@@ -111,6 +111,14 @@
         "allow_timeout": false,
         "allow_rid_leaks": false,
         "reference_artifacts": ["tests/visual_baselines/composite_hazard_256x256.png"]
+      },
+      {
+        "name": "RendererPipeline",
+        "minimum_test_cases": 4,
+        "allow_skips": false,
+        "allow_timeout": false,
+        "allow_rid_leaks": false,
+        "reference_artifacts": []
       }
     ],
     "follow_up_hooks": [
