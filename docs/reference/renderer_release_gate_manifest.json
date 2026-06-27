@@ -114,7 +114,7 @@
       },
       {
         "name": "RendererPipeline",
-        "minimum_test_cases": 3,
+        "minimum_test_cases": 4,
         "allow_skips": false,
         "allow_timeout": false,
         "allow_rid_leaks": false,

@@ -632,6 +632,19 @@ def _report_renderer_metric(report: dict[str, Any], key: str, default: Any = Non
     return default
 
 
+def _telemetry_status_present(value: Any) -> bool:
+    """A stage status counts as captured only when it is non-null and not an empty/
+    whitespace string. Producers default a missing renderer status to "" (e.g.
+    benchmark_suite_lane.gd's overall block), which is not None and would otherwise
+    satisfy the fail-closed roll-up's null check and mask absent telemetry. A real
+    frame publishes a concrete token ("success"/"skipped"/"failed"/"unknown")."""
+    if value is None:
+        return False
+    if isinstance(value, str) and value.strip() == "":
+        return False
+    return True
+
+
 def _normalize_execution_mode_token(value: Any) -> str:
     raw = str(value or "").strip().lower()
     if raw.startswith("single_pass"):
@@ -1303,11 +1316,12 @@ def _run_lane(
     # data), leave the field null so the candidate gate's required_fields_non_null check
     # fails, instead of fabricating "unknown"/0 placeholders that would let the public-alpha
     # #351 evidence pass with no data actually captured (Codex #418). A real frame — healthy
-    # or degraded — publishes concrete status strings ("success"/"skipped"/"failed") and
-    # numeric counters; only a missing telemetry block yields None here.
+    # or degraded — publishes concrete status strings ("success"/"skipped"/"failed"/"unknown")
+    # and numeric counters; a missing telemetry block (None) or an empty-string status
+    # placeholder is treated as absent via _telemetry_status_present and fails the roll-up.
     _stage_status_values = [stage_cull_status, stage_sort_status, stage_raster_status, stage_composite_status]
     stage_statuses_field = None
-    if all(value is not None for value in _stage_status_values):
+    if all(_telemetry_status_present(value) for value in _stage_status_values):
         stage_statuses_field = {
             "cull": stage_cull_status,
             "sort": stage_sort_status,

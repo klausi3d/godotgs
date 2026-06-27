@@ -70,18 +70,24 @@ BATCHES: tuple[BatchSpec, ...] = (
     #
     # Counts only the cascade tests that ACTUALLY execute their assertions under the GPU
     # harness (no SceneTree): the resident cull/sort-skip case, the resident raster-failure
-    # case, and the serial failure-injection case. The "Stage results report streaming
-    # not-ready" case is deliberately EXCLUDED: it depends on a SceneTree (via
-    # ScopedWorldStreamingRenderer) but is not [SceneTree]-tagged, so the test listener
-    # (tests/test_main.cpp) never gives it a SceneTree and it early-returns — which doctest
-    # counts as a PASS, not a skip. Counting it would let this required batch be satisfied
-    # without exercising the streaming cascade (Codex #418). Making the streaming cascade
-    # genuinely run on the harness (tag [SceneTree] + waiver, or a SceneTree-free streaming
-    # fixture) is a tracked follow-up; until then the streaming path's failure-injection
-    # coverage is the host/contract tests, not this GPU batch.
+    # case, the streaming-requested hard-fail case, and the serial failure-injection case —
+    # genuine resident + streaming + serial route/stage coverage as #351 requires. The
+    # streaming leg is the "Streaming-requested failure hard-fails" case: it forces
+    # route_policy=STREAMING with the streaming system released and asserts a typed
+    # COMMON.SKIP.STREAMING_NOT_READY.* route that does not bounce to resident. It gates only
+    # on RenderingServer/ProjectSettings/GaussianSplatManager/RenderingDevice (all present
+    # under the harness), so it runs its assertions rather than early-returning.
+    #
+    # The separate "Stage results report streaming not-ready" case stays EXCLUDED: it depends
+    # on a SceneTree (via ScopedWorldStreamingRenderer) but is not [SceneTree]-tagged, so the
+    # test listener (tests/test_main.cpp) never gives it a SceneTree and it early-returns —
+    # which doctest counts as a PASS, not a skip. Counting it would let this required batch be
+    # satisfied without exercising the streaming cascade (Codex #418). Its stage-status
+    # assertions remain host/contract coverage until it is given a SceneTree-free fixture.
     BatchSpec("RendererPipeline", (
             "*Stage results report cull*",
             "*Stage results report raster*",
+            "*Streaming-requested failure hard-fails*",
             "*Serial instancing failure injection*",
     )),
     # Lifetime batch is intentionally OMITTED from the default set until the
