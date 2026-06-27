@@ -3128,12 +3128,19 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Production metrics contract and perf
             "Expected VRAM cap source to report tier preset");
     CHECK_MESSAGE(String(stats.get("streaming_requested_cap_source_vram_budget_mb", String())) == String("tier_preset"),
             "Expected requested VRAM cap source to report tier preset");
-    CHECK_MESSAGE(!bool(stats.get("streaming_vram_budget_capacity_verified", true)),
-            "Expected test rendering device capacity to remain unknown");
+    // #321: device capacity is "known" only when the Vulkan driver reports a real
+    // device-local heap. On hardware that reports capacity the tier budget is
+    // capacity-verified (verified=true, unverified=false); a software/CPU device or an
+    // unknown-capacity backend leaves it unverified (verified=false, unverified=true). The
+    // flags are therefore device-dependent, so assert they stay mutually consistent rather
+    // than pinning a fixed value, and that the tier budget (not the project-default
+    // fallback) was selected either way.
+    const bool capacity_verified = bool(stats.get("streaming_vram_budget_capacity_verified", false));
+    const bool budget_unverified = bool(stats.get("streaming_vram_budget_unverified", true));
+    CHECK_MESSAGE(capacity_verified != budget_unverified,
+            "Tier-selected budget must be exactly one of capacity-verified or unverified, never both/neither");
     CHECK_MESSAGE(!bool(stats.get("streaming_vram_budget_unknown_capacity_fallback", true)),
             "Expected tier-selected budget, not unknown-capacity project default fallback");
-    CHECK_MESSAGE(bool(stats.get("streaming_vram_budget_unverified", false)),
-            "Expected tier-selected budget to be marked unverified while capacity is unknown");
 
     Dictionary validation = stats.get("production_metrics_validation", Dictionary());
     CHECK_MESSAGE(bool(validation.get("valid", false)), "Expected production_metrics_validation to be valid");
