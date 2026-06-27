@@ -279,7 +279,7 @@ def _valid_candidate_evidence(root: Path) -> dict[str, Any]:
                     "capture_ssim_min": 0.99,
                     "capture_psnr_min": 40.0,
                     "gpu_timing_available": False,
-                    "gpu_timing_source": "unavailable",
+                    "gpu_frame_time_source": "unavailable",
                     "exit_code": 0,
                     "report_valid": True,
                     "visible_output_valid": True,
@@ -845,7 +845,7 @@ class RendererReleaseGateTests(unittest.TestCase):
                             "capture_ssim_min": 0.99,
                             "capture_psnr_min": 40.0,
                             "gpu_timing_available": False,
-                            "gpu_timing_source": "unavailable",
+                            "gpu_frame_time_source": "unavailable",
                         }
                     ]
                 ),
@@ -873,7 +873,7 @@ class RendererReleaseGateTests(unittest.TestCase):
                             "capture_ssim_min": 0.99,
                             "capture_psnr_min": 40.0,
                             "gpu_timing_available": False,
-                            "gpu_timing_source": "unavailable",
+                            "gpu_frame_time_source": "unavailable",
                         }
                     ]
                 ),
@@ -968,7 +968,7 @@ class RendererReleaseGateTests(unittest.TestCase):
             "capture_ssim_min": 0.99,
             "capture_psnr_min": 40.0,
             "gpu_timing_available": False,
-            "gpu_timing_source": "unavailable",
+            "gpu_frame_time_source": "unavailable",
             "exit_code": 0,
         }
         required = manifest["benchmark_acceptance"]["required_fields_non_null"]
@@ -1048,7 +1048,7 @@ class RendererReleaseGateTests(unittest.TestCase):
                 "capture_ssim_min": 0.99,
                 "capture_psnr_min": 40.0,
                 "gpu_timing_available": False,
-                "gpu_timing_source": "unavailable",
+                "gpu_frame_time_source": "unavailable",
                 "exit_code": 0,
                 "report_valid": True,
                 "visible_output_valid": True,
@@ -1114,7 +1114,7 @@ class RendererReleaseGateTests(unittest.TestCase):
                             "capture_ssim_min": 0.99,
                             "capture_psnr_min": 40.0,
                             "gpu_timing_available": False,
-                            "gpu_timing_source": "unavailable",
+                            "gpu_frame_time_source": "unavailable",
                         }
                     ]
                 ),

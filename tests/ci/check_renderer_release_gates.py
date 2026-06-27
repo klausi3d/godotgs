@@ -1197,7 +1197,7 @@ def _candidate_lane_gpu_timing_failures(lane_id: str, row: dict[str, Any]) -> li
     gpu_time_is_number = isinstance(gpu_time, (int, float)) and not isinstance(gpu_time, bool)
     if gpu_available is True and (not gpu_time_is_number or gpu_time <= 0):
         failures.append(f"candidate benchmark lane {lane_id} has invalid GPU time")
-    if gpu_available is not True and row.get("gpu_timing_source") != "unavailable":
+    if gpu_available is not True and row.get("gpu_frame_time_source") != "unavailable":
         failures.append(f"candidate benchmark lane {lane_id} lacks explicit GPU timing unavailability")
     return failures
 
