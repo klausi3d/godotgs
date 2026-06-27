@@ -5811,17 +5811,20 @@ uint64_t RenderingDeviceDriverVulkan::get_device_memory_budget() {
 	// Returns the raw capacity (no headroom fraction — that is regulator policy and the
 	// existing warning/eviction thresholds already provide operating headroom). 0 when
 	// no device-local heap is found, so callers keep the conservative capacity-unknown path.
-	// NOTE: on UMA/iGPU devices a DEVICE_LOCAL heap can be shared system memory rather
-	// than dedicated VRAM; the value is then the (large) shared heap. The regulator's
-	// sane-floor + clamp keep that safe, and surfacing the true hardware number is correct.
+	// NOTE: only a DISCRETE GPU exposes a DEVICE_LOCAL heap that is genuinely dedicated
+	// VRAM. On UMA/iGPU (and software/CPU) backends a DEVICE_LOCAL heap is shared system
+	// memory, so it is reported as unknown capacity below rather than verifying/clamping the
+	// streaming budget against contended system RAM.
 	if (allocator == nullptr) {
 		return 0;
 	}
 	// A software/CPU Vulkan device (lavapipe, SwiftShader, headless CI) reports its
-	// DEVICE_LOCAL heap as host RAM, not dedicated GPU VRAM. Report capacity unknown (0)
-	// so the regulator keeps its conservative fallback instead of clamping/verifying the
-	// streaming budget against system memory on a non-GPU backend. (GS #321)
-	if (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU) {
+	// DEVICE_LOCAL heap as host RAM, and an integrated/UMA GPU shares system memory rather
+	// than exposing dedicated VRAM. In both cases report capacity unknown (0) so the
+	// regulator keeps its conservative fallback instead of clamping/verifying the streaming
+	// budget against shared, contended system memory on a non-discrete backend. (GS #321)
+	if (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU ||
+			physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
 		return 0;
 	}
 	const VkPhysicalDeviceMemoryProperties *mem_props = nullptr;
