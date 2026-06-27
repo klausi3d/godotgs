@@ -570,6 +570,16 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] renderer_instanc
 	RendererLifetimeFixture fixture("renderer_instance", rd);
 	fixture.capture_baseline();
 
+	// #392 / Codex PR #419 Finding 1: clear the process-static RDM teardown
+	// snapshot BEFORE constructing the renderer so the count we read after
+	// destruction reflects exactly this renderer's per-instance RDM shutdown.
+	// The renderer owns its RDM and records get_last_shutdown_owned/tracked
+	// counts during _teardown_resources() (on unref); we feed those into
+	// record_rdm_shutdown_counts() so a leaked pipeline/shader/uniform-set/
+	// sampler/framebuffer RID is caught by COUNT even when it adds no
+	// buffer/texture BYTES.
+	GaussianSplatRenderer::test_reset_last_teardown_rdm_counts();
+
 	{
 		Ref<GaussianSplatRenderer> renderer;
 		renderer.instantiate(rd);
@@ -640,6 +650,20 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] renderer_instanc
 	for (int i = 0; i < 4; i++) {
 		rd->swap_buffers(false);
 	}
+
+	// #392 / Codex PR #419 Finding 1: the renderer's per-instance RDM was shut
+	// down inside _teardown_resources() (on unref above), which recorded its
+	// post-shutdown owned/tracked RID counts. Feed them into the pass rule so a
+	// leaked owned RID that adds no buffer/texture bytes still fails the gate
+	// via the RDM COUNT clause. A healthy teardown frees every owned RID before
+	// shutdown, so owned==0 here (measured-clean, NOT the -1 unmeasured
+	// sentinel).
+	REQUIRE_MESSAGE(GaussianSplatRenderer::test_has_last_teardown_rdm_counts(),
+			"renderer teardown did not record RDM shutdown counts; the RDM owned-count "
+			"coverage would silently fall back to the -1 unmeasured sentinel.");
+	fixture.record_rdm_shutdown_counts(
+			GaussianSplatRenderer::test_get_last_teardown_rdm_owned_count(),
+			GaussianSplatRenderer::test_get_last_teardown_rdm_tracked_count());
 
 	const bool passed = fixture.finalize();
 	CHECK_MESSAGE(passed, fixture.result().fail_reason);
@@ -867,6 +891,10 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 	fixture.set_monotonicity_threshold_bytes(64ull * 1024ull);
 	fixture.capture_baseline();
 
+	// #392 / Codex PR #419 Finding 1: clear the static RDM teardown snapshot
+	// before constructing the renderer (same rationale as renderer_instance).
+	GaussianSplatRenderer::test_reset_last_teardown_rdm_counts();
+
 	uint64_t cycle1_delta_bytes = 0;
 	uint64_t cycle_growth_beyond_cycle1 = 0;
 	bool monotonicity_ok = true;
@@ -946,6 +974,16 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 	for (int i = 0; i < 4; i++) {
 		rd->swap_buffers(false);
 	}
+
+	// #392 / Codex PR #419 Finding 1: feed the renderer's per-instance RDM
+	// last-shutdown owned/tracked counts into the pass rule (same rationale as
+	// renderer_instance) so a leaked owned RID with no byte footprint trips the
+	// RDM COUNT clause.
+	REQUIRE_MESSAGE(GaussianSplatRenderer::test_has_last_teardown_rdm_counts(),
+			"renderer teardown did not record RDM shutdown counts in asset_attach_detach.");
+	fixture.record_rdm_shutdown_counts(
+			GaussianSplatRenderer::test_get_last_teardown_rdm_owned_count(),
+			GaussianSplatRenderer::test_get_last_teardown_rdm_tracked_count());
 
 	(void)cycle_growth_beyond_cycle1;
 

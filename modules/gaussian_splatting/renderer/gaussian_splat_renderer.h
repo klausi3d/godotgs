@@ -618,6 +618,17 @@ public:
     // These will gradually replace the inline debug/interactive state management
     SubsystemState subsystem_state;
 
+    // #392 / Codex PR #419 Finding 1: process-static snapshot of the most
+    // recent renderer teardown's RDM last-shutdown owned/tracked RID counts.
+    // Populated in _teardown_resources() right before the per-instance RDM is
+    // unref()'d; read by the lifetime fixture's static test accessors after
+    // the renderer is destroyed. Test-only instrumentation: no production code
+    // reads these. Not atomic — lifetime scenarios run single-threaded under
+    // the --gs-gpu-test doctest runner.
+    static bool test_last_teardown_rdm_counts_valid;
+    static uint32_t test_last_teardown_rdm_owned_count;
+    static uint32_t test_last_teardown_rdm_tracked_count;
+
     std::unique_ptr<RenderPipelineStages> pipeline_stages;
     std::unique_ptr<RenderDeviceOrchestrator> device_orchestrator;
     std::unique_ptr<RenderDebugStateOrchestrator> debug_state_orchestrator;
@@ -1782,6 +1793,31 @@ public:
     void test_notify_render_thread_dispatch_completed(uint64_t p_request_id);
     uint64_t test_get_render_thread_dispatch_completed_request_id() const;
     bool test_shadow_pass_guard_restores_after_scope();
+
+    // #392 / Codex PR #419 Finding 1: surface the per-instance
+    // RenderDeviceManager's last-shutdown owned/tracked RID counts AFTER the
+    // renderer has been destroyed. The renderer owns its RDM
+    // (subsystem_state.device_manager), shuts it down inside
+    // _teardown_resources() — which records get_last_shutdown_owned/tracked
+    // counts — and then unref()s it, so the RDM object is gone by the time a
+    // lifetime scenario can measure. _teardown_resources() snapshots those
+    // counts into a process-static cell right before the unref(); the lifetime
+    // fixture reads them back here to feed record_rdm_shutdown_counts().
+    //
+    // This restores COUNT coverage for renderer-owned RIDs that add no
+    // buffer/texture BYTES (compute/render pipelines, shaders, uniform sets,
+    // samplers, framebuffers): a leaked pipeline RID leaves the RDM's owned
+    // count > 0 at shutdown even though MEMORY_BUFFERS+MEMORY_TEXTURES read 0.
+    //
+    // Static (not a member) because the storage must outlive the renderer it
+    // describes. A scenario calls test_reset_last_teardown_rdm_counts() BEFORE
+    // constructing the renderer so the snapshot reflects exactly this
+    // renderer's teardown, then reads test_has/owned/tracked AFTER the
+    // renderer is destroyed.
+    static void test_reset_last_teardown_rdm_counts();
+    static bool test_has_last_teardown_rdm_counts();
+    static uint32_t test_get_last_teardown_rdm_owned_count();
+    static uint32_t test_get_last_teardown_rdm_tracked_count();
 
     /**
      * @brief Returns the axis-aligned bounding box of the Gaussian data.

@@ -145,6 +145,20 @@ assert REQUIRED_BATCHES <= {spec.name for spec in BATCHES}, (
 # and fold into the gate decision.
 RID_LEAK_RE = re.compile(r"\[GS-GPU\]\[RID-LEAK\?\] bytes=(\d+)")
 
+# Matches the per-scenario lifetime line emitted by the lifetime-proof fixture
+# (modules/gaussian_splatting/tests/test_renderer_lifetime_proof.h):
+#   `[GS-LIFETIME] {"scenario":"renderer_instance","passed":true,...}`
+# A skipped scenario (RendererLifetimeFixture::mark_skipped) and a
+# scope-exited-without-finalize (crashed_or_aborted) BOTH emit this line with
+# `"passed":false` while doctest still counts the test case as PASSED (a skip
+# raises no failed assertion). For a REQUIRED batch that means a scenario could
+# silently stop exercising its path — hollow coverage, the same class as the
+# #418 streaming-leg finding — yet satisfy the doctest-rc / empty-batch / leak
+# gate. We scrape these lines here and treat any non-passing required-batch
+# scenario as a gate failure (Codex PR #419 Finding 2). This mirrors the
+# manifest's gpu_harness_policy.required_batches[].allow_skips=false intent.
+GS_LIFETIME_RE = re.compile(r"\[GS-LIFETIME\]\s*(.+?)\s*$")
+
 # Doctest summary lines we parse:
 #   "[doctest] test cases:  N | M passed | K failed | L skipped"
 #   "[doctest] assertions: N | M passed | K failed |"
@@ -184,6 +198,12 @@ class BatchResult:
     stderr_tail: str = ""
     rid_leak_bytes: int = 0
     summary_parse_ok: bool = False
+    # Scenarios from [GS-LIFETIME] lines that reported passed != true (a real
+    # failure, a mark_skipped(), or a scope-exited-without-finalize). Each entry
+    # is "scenario: fail_reason". Folded into the gate for REQUIRED batches so a
+    # skipped lifetime scenario can't satisfy the gate without exercising its
+    # path (Codex PR #419 Finding 2).
+    lifetime_failed_scenarios: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -208,6 +228,7 @@ class BatchResult:
             "stderr_tail": self.stderr_tail,
             "rid_leak_bytes": self.rid_leak_bytes,
             "summary_parse_ok": self.summary_parse_ok,
+            "lifetime_failed_scenarios": list(self.lifetime_failed_scenarios),
         }
 
 
@@ -247,6 +268,30 @@ def _parse_summary(stdout: str, result: BatchResult) -> None:
         except ValueError:
             pass
     result.rid_leak_bytes = total_leak
+
+    # Scrape [GS-LIFETIME] scenario lines. A skip (mark_skipped) or a
+    # scope-exited-without-finalize both emit passed=false while doctest still
+    # counts the case as PASSED, so without this a required lifetime scenario
+    # could silently stop running and still green the gate. Collect any
+    # non-passing scenario; main() escalates these for REQUIRED batches only.
+    # (Codex PR #419 Finding 2.) A line we can't parse as JSON is itself
+    # suspect (the contract is a single JSON object after the marker), so we
+    # record it as an unparseable-lifetime failure rather than ignoring it.
+    for line in stdout.splitlines():
+        m = GS_LIFETIME_RE.search(line.strip())
+        if not m:
+            continue
+        try:
+            payload = json.loads(m.group(1))
+        except (ValueError, TypeError):
+            result.lifetime_failed_scenarios.append(
+                f"<unparseable lifetime line>: {line.strip()[:200]}"
+            )
+            continue
+        if payload.get("passed") is not True:
+            scenario = payload.get("scenario", "<unknown>")
+            fail_reason = payload.get("fail_reason") or "no fail_reason reported"
+            result.lifetime_failed_scenarios.append(f"{scenario}: {fail_reason}")
 
 
 def _run_batch(
@@ -555,6 +600,12 @@ def main() -> int:
     # check below, the gate would silently pass while exercising nothing.
     parsed_failures = totals["test_cases_failed"] + totals["assertions_failed"]
     empty_required_batches: list[str] = []
+    # Lifetime scenarios in REQUIRED batches that reported passed=false (a real
+    # failure, a mark_skipped, or a scope-exited-without-finalize). doctest
+    # counts a skip as PASSED, so this is the only signal that catches a
+    # required lifetime scenario silently ceasing to exercise its path
+    # (hollow coverage; Codex PR #419 Finding 2). Format: "Batch/scenario: reason".
+    required_lifetime_failures: list[str] = []
     if selected_required := REQUIRED_BATCHES.intersection({spec.name for spec in selected}):
         for r in results:
             if r.name in selected_required and r.test_cases_total <= 0:
@@ -566,6 +617,16 @@ def main() -> int:
                     "this batch from REQUIRED_BATCHES.",
                     flush=True,
                 )
+            if r.name in selected_required and r.lifetime_failed_scenarios:
+                for entry in r.lifetime_failed_scenarios:
+                    required_lifetime_failures.append(f"{r.name}/{entry}")
+                    print(
+                        f"[run_gpu_harness] FATAL: required batch '{r.name}' lifetime scenario "
+                        f"reported passed=false ({entry}). A skipped or failed lifetime scenario "
+                        "must not satisfy the gate without exercising its path — fix the scenario "
+                        "or its harness wiring (Codex PR #419 Finding 2).",
+                        flush=True,
+                    )
     # Per-batch RID-leak totals scraped from the listener's stdout marker.
     # The listener's threshold was raised to 4 MiB in #335 (above the ~2.25 MiB
     # of allocator-pool overhead observed on the hazard test on NVIDIA/Vulkan/
@@ -593,6 +654,7 @@ def main() -> int:
         or bool(empty_required_batches)
         or bool(summary_parse_failures)
         or (total_rid_leak_bytes > 0)
+        or bool(required_lifetime_failures)
     )
     # Preserve the worst batch's exit code as the supervisor exit when a batch
     # itself failed (the module header promises "returns max(batch_rc)"). The
@@ -622,6 +684,7 @@ def main() -> int:
         "parsed_failures": parsed_failures,
         "empty_required_batches": empty_required_batches,
         "summary_parse_failures": summary_parse_failures,
+        "required_lifetime_failures": required_lifetime_failures,
         "total_rid_leak_bytes": total_rid_leak_bytes,
         "supervisor_exit": supervisor_exit,
         "totals": totals,
@@ -678,6 +741,8 @@ def main() -> int:
         extra_suffix_parts.append(f"rid_leak_bytes={total_rid_leak_bytes}")
     if summary_parse_failures:
         extra_suffix_parts.append(f"summary_parse_failures={summary_parse_failures}")
+    if required_lifetime_failures:
+        extra_suffix_parts.append(f"required_lifetime_failures={required_lifetime_failures}")
     extra_suffix = (" " + " ".join(extra_suffix_parts)) if extra_suffix_parts else ""
     print(
         f"[run_gpu_harness] DONE max_rc={max_rc} cases={totals['test_cases_passed']}/{totals['test_cases_total']} "

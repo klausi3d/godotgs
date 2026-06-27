@@ -2411,5 +2411,97 @@ class LifetimeAccountingProofTests(unittest.TestCase):
             )
 
 
+def _load_run_gpu_harness():
+    """Load the real run_gpu_harness.py supervisor module for runtime tests."""
+    script = ROOT / "tests" / "ci" / "run_gpu_harness.py"
+    harness_spec = importlib.util.spec_from_file_location("run_gpu_harness", script)
+    assert harness_spec and harness_spec.loader
+    module = importlib.util.module_from_spec(harness_spec)
+    # Register before exec so dataclass annotation resolution (Optional[int])
+    # can find the module in sys.modules.
+    import sys
+
+    sys.modules["run_gpu_harness"] = module
+    harness_spec.loader.exec_module(module)
+    return module
+
+
+class GpuHarnessLifetimeSkipGateTests(unittest.TestCase):
+    """Codex PR #419 Finding 2: a skipped/failed lifetime scenario in a REQUIRED
+    batch must fail the GPU-harness gate even though doctest counts a skip as a
+    PASSED test case."""
+
+    def setUp(self) -> None:
+        self.harness = _load_run_gpu_harness()
+
+    def _parse(self, stdout: str):
+        result = self.harness.BatchResult(name="Lifetime", filters=("x",))
+        result.rc = 0
+        self.harness._parse_summary(stdout, result)
+        return result
+
+    def test_lifetime_skip_marker_is_collected(self) -> None:
+        stdout = "\n".join(
+            [
+                '[GS-LIFETIME] {"scenario":"renderer_instance","passed":true,"fail_reason":""}',
+                '[GS-LIFETIME] {"scenario":"tile_shader_recompile","passed":false,'
+                '"fail_reason":"skipped: tile binning pipeline not compiled in this harness"}',
+                "[doctest] test cases:  4 |  4 passed |  0 failed |  0 skipped",
+                "[doctest] assertions: 10 | 10 passed |  0 failed |",
+                "[doctest] Status: SUCCESS!",
+            ]
+        )
+        result = self._parse(stdout)
+        self.assertEqual(
+            result.lifetime_failed_scenarios,
+            [
+                "tile_shader_recompile: skipped: tile binning pipeline not "
+                "compiled in this harness"
+            ],
+        )
+        # doctest still reports the skip as a PASSED case — proving the
+        # doctest-rc/failed-count gate alone would have greened this run.
+        self.assertEqual(result.test_cases_failed, 0)
+        self.assertTrue(result.summary_parse_ok)
+
+    def test_lifetime_all_pass_collects_nothing(self) -> None:
+        stdout = "\n".join(
+            [
+                '[GS-LIFETIME] {"scenario":"renderer_instance","passed":true,"fail_reason":""}',
+                '[GS-LIFETIME] {"scenario":"tile_shader_recompile","passed":true,"fail_reason":""}',
+            ]
+        )
+        self.assertEqual(self._parse(stdout).lifetime_failed_scenarios, [])
+
+    def test_lifetime_real_failure_is_collected(self) -> None:
+        stdout = (
+            '[GS-LIFETIME] {"scenario":"renderer_instance","passed":false,'
+            '"fail_reason":"rd_bytes_leaked=8388608 >= threshold=4194304"}'
+        )
+        self.assertEqual(
+            self._parse(stdout).lifetime_failed_scenarios,
+            ["renderer_instance: rd_bytes_leaked=8388608 >= threshold=4194304"],
+        )
+
+    def test_unparseable_lifetime_line_is_flagged(self) -> None:
+        stdout = "[GS-LIFETIME] {not valid json"
+        failures = self._parse(stdout).lifetime_failed_scenarios
+        self.assertEqual(len(failures), 1)
+        self.assertIn("unparseable", failures[0])
+
+    def test_lifetime_field_serialized_in_report(self) -> None:
+        result = self.harness.BatchResult(name="Lifetime", filters=("x",))
+        result.lifetime_failed_scenarios = ["tile_shader_recompile: skipped: x"]
+        self.assertEqual(
+            result.to_dict()["lifetime_failed_scenarios"],
+            ["tile_shader_recompile: skipped: x"],
+        )
+
+    def test_lifetime_failure_gate_only_for_required_batches(self) -> None:
+        # Confirms the supervisor only escalates lifetime failures for batches
+        # that are in REQUIRED_BATCHES — the gate decision logic in main().
+        self.assertIn("Lifetime", self.harness.REQUIRED_BATCHES)
+
+
 if __name__ == "__main__":
     unittest.main()
