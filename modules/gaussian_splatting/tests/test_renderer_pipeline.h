@@ -3116,31 +3116,51 @@ TEST_CASE("[GaussianSplatting][RequiresGPU] Production metrics contract and perf
     CHECK_MESSAGE(stats.has("streaming_vram_budget_unverified"), "Expected streaming unverified VRAM budget flag in render stats");
     CHECK_MESSAGE(stats.has("streaming_upload_frame_cap_hit"), "Expected streaming upload frame cap indicator in render stats");
     CHECK_MESSAGE(stats.has("streaming_queue_pressure_active"), "Expected streaming queue pressure indicator in render stats");
-    CHECK_MESSAGE(int64_t(stats.get("streaming_effective_upload_cap_mb_per_frame", int64_t(-1))) == 32,
-            "Expected low-tier effective upload frame cap");
-    CHECK_MESSAGE(int64_t(stats.get("streaming_effective_vram_budget_mb", int64_t(-1))) == 2048,
-            "Expected low-tier effective VRAM budget");
-    CHECK_MESSAGE(int64_t(stats.get("streaming_requested_vram_budget_mb", int64_t(-1))) == 2048,
-            "Expected low-tier requested VRAM budget");
-    CHECK_MESSAGE(String(stats.get("streaming_cap_source_upload_mb_per_frame", String())) == String("tier_preset"),
-            "Expected upload cap source to report tier preset");
-    CHECK_MESSAGE(String(stats.get("streaming_cap_source_vram_budget_mb", String())) == String("tier_preset"),
-            "Expected VRAM cap source to report tier preset");
-    CHECK_MESSAGE(String(stats.get("streaming_requested_cap_source_vram_budget_mb", String())) == String("tier_preset"),
-            "Expected requested VRAM cap source to report tier preset");
     // #321: device capacity is "known" only when the Vulkan driver reports a real
     // device-local heap. On hardware that reports capacity the tier budget is
-    // capacity-verified (verified=true, unverified=false); a software/CPU device or an
-    // unknown-capacity backend leaves it unverified (verified=false, unverified=true). The
-    // flags are therefore device-dependent, so assert they stay mutually consistent rather
-    // than pinning a fixed value, and that the tier budget (not the project-default
-    // fallback) was selected either way.
+    // capacity-verified (verified=true, unverified=false) and the configured 2048 MiB
+    // low-tier budget is clamped down to the detected capacity on GPUs with less VRAM; a
+    // software/CPU device or an unknown-capacity backend leaves it unverified
+    // (verified=false, unverified=true) and the tier budget is used as-is. Assert the
+    // device-dependent quantities by their invariants rather than pinning hardware values.
     const bool capacity_verified = bool(stats.get("streaming_vram_budget_capacity_verified", false));
     const bool budget_unverified = bool(stats.get("streaming_vram_budget_unverified", true));
     CHECK_MESSAGE(capacity_verified != budget_unverified,
             "Tier-selected budget must be exactly one of capacity-verified or unverified, never both/neither");
     CHECK_MESSAGE(!bool(stats.get("streaming_vram_budget_unknown_capacity_fallback", true)),
             "Expected tier-selected budget, not unknown-capacity project default fallback");
+
+    // Upload cap and the *requested* VRAM budget are tier-derived and never capacity-clamped.
+    CHECK_MESSAGE(int64_t(stats.get("streaming_effective_upload_cap_mb_per_frame", int64_t(-1))) == 32,
+            "Expected low-tier effective upload frame cap");
+    CHECK_MESSAGE(int64_t(stats.get("streaming_requested_vram_budget_mb", int64_t(-1))) == 2048,
+            "Expected low-tier requested VRAM budget");
+    CHECK_MESSAGE(String(stats.get("streaming_cap_source_upload_mb_per_frame", String())) == String("tier_preset"),
+            "Expected upload cap source to report tier preset");
+    CHECK_MESSAGE(String(stats.get("streaming_requested_cap_source_vram_budget_mb", String())) == String("tier_preset"),
+            "Expected requested VRAM cap source to report tier preset");
+
+    // The *effective* VRAM budget is MIN(low-tier 2048 MiB, detected capacity): unknown
+    // capacity keeps the tier preset; known capacity either keeps 2048 (the tier still
+    // bounds it) or clamps below it with a detected_capacity_clamp source on low-VRAM GPUs.
+    const int64_t effective_vram_budget_mb = int64_t(stats.get("streaming_effective_vram_budget_mb", int64_t(-1)));
+    const String effective_vram_cap_source = String(stats.get("streaming_cap_source_vram_budget_mb", String()));
+    if (capacity_verified) {
+        CHECK_MESSAGE((effective_vram_budget_mb > 0 && effective_vram_budget_mb <= 2048),
+                "Capacity-known effective VRAM budget must be positive and not exceed the low-tier request");
+        if (effective_vram_budget_mb == 2048) {
+            CHECK_MESSAGE(effective_vram_cap_source == String("tier_preset"),
+                    "Unclamped capacity-known VRAM budget must report the tier preset source");
+        } else {
+            CHECK_MESSAGE(effective_vram_cap_source == String("detected_capacity_clamp"),
+                    "Capacity-clamped VRAM budget must report the detected_capacity_clamp source");
+        }
+    } else {
+        CHECK_MESSAGE(effective_vram_budget_mb == 2048,
+                "Unknown-capacity effective VRAM budget must equal the low-tier preset");
+        CHECK_MESSAGE(effective_vram_cap_source == String("tier_preset"),
+                "Unknown-capacity effective VRAM budget must report the tier preset source");
+    }
 
     Dictionary validation = stats.get("production_metrics_validation", Dictionary());
     CHECK_MESSAGE(bool(validation.get("valid", false)), "Expected production_metrics_validation to be valid");
