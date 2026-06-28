@@ -1058,7 +1058,50 @@ def _candidate_gpu_batch_policy_failures(
         failures.append(f"candidate GPU batch {name} rid_leak_bytes must be numeric")
     elif not required.get("allow_rid_leaks", False) and rid_leak_bytes:
         failures.append(f"candidate GPU batch {name} reported RID leaks")
+    failures.extend(_candidate_gpu_batch_lifetime_failures(name, batch, required))
     return failures
+
+
+def _candidate_gpu_batch_lifetime_failures(
+    name: Any,
+    batch: dict[str, Any],
+    required: dict[str, Any],
+) -> list[str]:
+    """Reject candidate GPU reports that recorded a non-passing lifetime scenario.
+
+    run_gpu_harness.py scrapes the fixture's [GS-LIFETIME] lines and records every
+    scenario that reported ``passed != true`` (a real failure, a mark_skipped(), or
+    a scope-exited-without-finalize) into the batch's ``lifetime_failed_scenarios``
+    list (and escalates them at harness runtime via ``required_lifetime_failures``).
+    The byte-leak / skip-count gates above cannot see these: doctest counts a
+    fixture skip as PASSED and a non-byte (pipeline/shader/uniform-set) RID leak
+    adds zero ``rid_leak_bytes`` — so a candidate report carrying a lifetime
+    skip/failure would otherwise PASS ``--mode candidate`` even though the harness
+    itself failed the batch. Fold the field into the candidate gate so the release
+    decision matches the harness decision (Codex PR #419 round-2 Finding 1).
+
+    Enforced whenever the manifest forbids EITHER skips or RID leaks for the batch
+    (``allow_skips=false`` or ``allow_rid_leaks=false``): a non-passing lifetime
+    scenario is simultaneously a hollow-coverage skip and a potential non-byte RID
+    leak, so either prohibition is sufficient to reject it. A batch that explicitly
+    allows both still tolerates the field, matching the harness's REQUIRED-only
+    escalation.
+    """
+    enforce = (not required.get("allow_skips", False)) or (not required.get("allow_rid_leaks", False))
+    if not enforce:
+        return []
+    raw = batch.get("lifetime_failed_scenarios", [])
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        return [f"candidate GPU batch {name} lifetime_failed_scenarios must be a list"]
+    scenarios = [str(entry) for entry in raw if str(entry).strip()]
+    if not scenarios:
+        return []
+    return [
+        f"candidate GPU batch {name} reported non-passing lifetime scenario(s): "
+        f"{scenarios}"
+    ]
 
 
 def _validate_candidate_gpu_batch(

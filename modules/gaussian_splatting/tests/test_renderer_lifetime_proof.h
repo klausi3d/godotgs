@@ -1033,6 +1033,12 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] tile_shader_reco
 	fixture.capture_baseline();
 
 	bool old_pipeline_was_freed = false;
+	// Codex PR #419 round-2 Finding 2: aggregate non-byte RID-leak coverage.
+	// Survivors of the OLD compiled tile pipeline set after the recompile. A
+	// healthy recompile frees them all (0 survivors); an orphaned pipeline (the
+	// #298 regression) survives and bumps this. Default 0 so a clean skip path
+	// records measured-clean, while a real leak records a measured non-zero COUNT.
+	uint32_t old_pipeline_survivors = 0u;
 
 	{
 		Ref<GaussianSplatRenderer> renderer;
@@ -1065,6 +1071,17 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] tile_shader_reco
 			return;
 		}
 
+		// Codex PR #419 round-2 Finding 2: snapshot the FULL set of currently
+		// compiled tile compute+render pipeline RIDs (not just the binning
+		// canary) so the aggregate count below proves the recompile frees the
+		// entire #298 leak surface, not one representative RID. The byte metric
+		// reads 0 here and these pipelines are not RDM-tracked, so this COUNT is
+		// the only aggregate signal that catches a leaked tile pipeline.
+		const Vector<RID> old_pipelines = tile->_test_compiled_pipeline_snapshot();
+		REQUIRE_MESSAGE(!old_pipelines.is_empty(),
+				"no compiled tile pipelines captured before recompile; the aggregate "
+				"RID-count coverage would be vacuous.");
+
 		// Flip a recompile trigger directly on the tile renderer. This routes
 		// through _release_compiled_shaders(), which must FREE the old pipeline
 		// before clearing its RID. No render happens in between, so a freed RID
@@ -1075,6 +1092,15 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] tile_shader_reco
 		CHECK_MESSAGE(old_pipeline_was_freed,
 				"recompile trigger left the previous tile binning pipeline alive on the device — "
 				"shaders/pipelines were orphaned instead of freed (issue #298 regression).");
+
+		// Aggregate count: how many of the OLD pipeline RIDs survived the
+		// recompile. Must be 0 — every old pipeline must have been freed. This is
+		// the measured non-byte RID-count signal fed into the gate below.
+		old_pipeline_survivors = TileRenderer::_test_count_valid_pipelines(rd, old_pipelines);
+		CHECK_MESSAGE(old_pipeline_survivors == 0u,
+				vformat("recompile orphaned %d of %d previously compiled tile pipelines on the "
+						"device (issue #298 regression; non-byte owned-RID leak).",
+						int64_t(old_pipeline_survivors), int64_t(old_pipelines.size())));
 
 		renderer.unref();
 	}
@@ -1097,9 +1123,22 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] tile_shader_reco
 		rd->swap_buffers(false);
 	}
 
+	// Codex PR #419 round-2 Finding 2: feed the recompile pipeline-survivor count
+	// into the fixture's MEASURED RDM-count clause. Unlike renderer_instance /
+	// asset_attach_detach this is NOT the per-instance RDM shutdown count (tile
+	// shaders/pipelines are freed via RenderingDevice directly and are never
+	// tracked in the RenderDeviceManager, so its shutdown count is 0 regardless of
+	// a recompile leak). Instead the survivor count IS the leaked-owned-RID signal
+	// for this scenario: 0 survivors records measured-clean (rdm_owned_leaked:0,
+	// not the -1 unmeasured sentinel); any survivor records a measured non-zero
+	// count that fails the gate's RDM clause — restoring aggregate non-byte-RID
+	// coverage the byte metric (0 bytes) and the RDM shutdown snapshot both miss.
+	fixture.record_rdm_shutdown_counts(old_pipeline_survivors, old_pipeline_survivors);
+
 	const bool passed = fixture.finalize();
 	CHECK_MESSAGE(passed, fixture.result().fail_reason);
 	CHECK(old_pipeline_was_freed);
+	CHECK(old_pipeline_survivors == 0u);
 }
 
 // ---------------------------------------------------------------------------

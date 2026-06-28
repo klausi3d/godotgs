@@ -790,6 +790,111 @@ class RendererReleaseGateTests(unittest.TestCase):
             failures = checker._validate_candidate_gpu_report(root, manifest, evidence)
             self.assertFalse(any("timed out" in item for item in failures))
 
+    def test_candidate_gpu_report_rejects_lifetime_failed_scenario(self) -> None:
+        # Codex PR #419 round-2 Finding 1: a candidate GPU report that recorded a
+        # non-passing lifetime scenario (a fixture skip / mark_skipped / failure)
+        # must FAIL --mode candidate. doctest counts a fixture skip as PASSED and a
+        # non-byte RID leak adds zero rid_leak_bytes, so without inspecting
+        # lifetime_failed_scenarios the report would pass every other batch gate.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            _write(
+                root / "gpu_report.json",
+                json.dumps(
+                    {
+                        "batches": [
+                            {
+                                "name": "CompositorHazard",
+                                "timed_out": False,
+                                "summary_parse_ok": True,
+                                "rc": 0,
+                                "test_cases": {"total": 1, "failed": 0, "skipped": 0},
+                                "assertions": {"failed": 0},
+                                "rid_leak_bytes": 0,
+                                "lifetime_failed_scenarios": [
+                                    "tile_shader_recompile: skipped: tile binning pipeline not compiled"
+                                ],
+                            }
+                        ]
+                    }
+                ),
+            )
+            failures = checker._validate_candidate_gpu_report(root, manifest, evidence)
+            self.assertTrue(
+                any(
+                    "non-passing lifetime scenario" in item and "tile_shader_recompile" in item
+                    for item in failures
+                ),
+                failures,
+            )
+
+    def test_candidate_gpu_report_accepts_clean_lifetime_field(self) -> None:
+        # The mirror of the rejection test: an empty (or absent)
+        # lifetime_failed_scenarios list must NOT introduce a failure, so a clean
+        # harness report still passes the candidate gate.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            _write(
+                root / "gpu_report.json",
+                json.dumps(
+                    {
+                        "batches": [
+                            {
+                                "name": "CompositorHazard",
+                                "timed_out": False,
+                                "summary_parse_ok": True,
+                                "rc": 0,
+                                "test_cases": {"total": 1, "failed": 0, "skipped": 0},
+                                "assertions": {"failed": 0},
+                                "rid_leak_bytes": 0,
+                                "lifetime_failed_scenarios": [],
+                            }
+                        ]
+                    }
+                ),
+            )
+            failures = checker._validate_candidate_gpu_report(root, manifest, evidence)
+            self.assertFalse(
+                any("lifetime" in item for item in failures),
+                failures,
+            )
+
+    def test_candidate_gpu_report_rejects_non_list_lifetime_field(self) -> None:
+        # Defense-in-depth: a malformed lifetime_failed_scenarios (wrong type) must
+        # surface as a structured failure rather than being silently ignored.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _base_manifest(root)
+            evidence = _valid_candidate_evidence(root)
+            _write(
+                root / "gpu_report.json",
+                json.dumps(
+                    {
+                        "batches": [
+                            {
+                                "name": "CompositorHazard",
+                                "timed_out": False,
+                                "summary_parse_ok": True,
+                                "rc": 0,
+                                "test_cases": {"total": 1, "failed": 0, "skipped": 0},
+                                "assertions": {"failed": 0},
+                                "rid_leak_bytes": 0,
+                                "lifetime_failed_scenarios": "tile_shader_recompile: skipped",
+                            }
+                        ]
+                    }
+                ),
+            )
+            failures = checker._validate_candidate_gpu_report(root, manifest, evidence)
+            self.assertTrue(
+                any("lifetime_failed_scenarios must be a list" in item for item in failures),
+                failures,
+            )
+
     def test_candidate_missing_benchmark_report_is_structured_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

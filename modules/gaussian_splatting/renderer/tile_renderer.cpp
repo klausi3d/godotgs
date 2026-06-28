@@ -3133,6 +3133,59 @@ Vector<uint64_t> TileRenderer::_test_instance_pipeline_binding_generation_trace(
 
 	return generation_trace;
 }
+
+// Codex PR #419 round-2 Finding 2: snapshot the live compiled tile pipeline RIDs
+// (the device-checkable subset of the #298 leak surface). Compute pipelines:
+// binning / binning_count / prefix pass1-3 / raster_compute. Render pipeline:
+// raster (lazily created during first render). Only currently-valid RIDs are
+// returned so the survivor count after a recompile is a clean leak signal. The
+// raster_compute vs raster split mirrors _free_existing_pipelines(): the compute
+// variants are validated with compute_pipeline_is_valid, the graphics raster
+// pipeline with render_pipeline_is_valid.
+Vector<RID> TileRenderer::_test_compiled_pipeline_snapshot() const {
+	Vector<RID> out;
+	RenderingDevice *device = _get_resource_device();
+	if (device == nullptr) {
+		return out;
+	}
+	const RID compute_pipelines[] = {
+		shader_resources.tile_binning_pipeline,
+		shader_resources.tile_binning_count_pipeline,
+		shader_resources.tile_prefix_pipeline_pass1,
+		shader_resources.tile_prefix_pipeline_pass2,
+		shader_resources.tile_prefix_pipeline_pass3,
+		shader_resources.tile_raster_compute_pipeline,
+	};
+	for (const RID &rid : compute_pipelines) {
+		if (rid.is_valid() && device->compute_pipeline_is_valid(rid)) {
+			out.push_back(rid);
+		}
+	}
+	if (shader_resources.tile_raster_pipeline.is_valid() &&
+			device->render_pipeline_is_valid(shader_resources.tile_raster_pipeline)) {
+		out.push_back(shader_resources.tile_raster_pipeline);
+	}
+	return out;
+}
+
+// Count how many of a previously captured pipeline-RID snapshot are STILL valid
+// on the device. A pipeline RID may be either a compute or a graphics pipeline;
+// check both so a leaked RID of either kind is counted. (Codex PR #419 Finding 2.)
+uint32_t TileRenderer::_test_count_valid_pipelines(RenderingDevice *p_device, const Vector<RID> &p_pipelines) {
+	if (p_device == nullptr) {
+		return 0u;
+	}
+	uint32_t alive = 0u;
+	for (const RID &rid : p_pipelines) {
+		if (!rid.is_valid()) {
+			continue;
+		}
+		if (p_device->compute_pipeline_is_valid(rid) || p_device->render_pipeline_is_valid(rid)) {
+			alive++;
+		}
+	}
+	return alive;
+}
 #endif
 
 bool TileRenderer::_ensure_param_uniform_buffer(RenderingDevice *p_device) {
