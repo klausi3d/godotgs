@@ -249,6 +249,23 @@ public:
     }
     static Vector<uint64_t> _test_instance_pipeline_binding_generation_trace(
             const Vector<RenderParams> &p_params_sequence);
+
+    // Codex PR #419 round-2 Finding 2: aggregate non-byte RID-leak coverage for
+    // the tile_shader_recompile lifetime scenario (#298 regression). The forced
+    // recompile must FREE the previously compiled tile shaders/pipelines, which
+    // are owned RIDs that carry NO buffer/texture bytes — so the byte-leak metric
+    // reads 0 and (because tile shaders/pipelines are freed via RenderingDevice
+    // directly, never tracked in the RenderDeviceManager) the per-instance RDM
+    // shutdown-count mechanism the other renderer scenarios use cannot observe
+    // them either. _test_compiled_pipeline_snapshot() captures the live compiled
+    // compute+render pipeline RIDs (the device-checkable subset of the #298 leak),
+    // and _test_count_valid_pipelines() counts how many of a captured snapshot are
+    // STILL valid on the device. The lifetime fixture snapshots before the
+    // recompile and counts survivors after: a healthy recompile frees them all
+    // (survivors == 0); a leaked/orphaned pipeline survives (survivors > 0),
+    // failing the gate via the measured RDM-count clause.
+    Vector<RID> _test_compiled_pipeline_snapshot() const;
+    static uint32_t _test_count_valid_pipelines(RenderingDevice *p_device, const Vector<RID> &p_pipelines);
 #endif
 
 protected:

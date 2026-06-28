@@ -1240,6 +1240,31 @@ GaussianSplatRenderer::~GaussianSplatRenderer() {
     _teardown_resources();
 }
 
+// #392 / Codex PR #419 Finding 1: process-static storage for the most recent
+// renderer teardown's RDM last-shutdown owned/tracked RID counts. Test-only
+// instrumentation; see the header for the rationale.
+bool GaussianSplatRenderer::test_last_teardown_rdm_counts_valid = false;
+uint32_t GaussianSplatRenderer::test_last_teardown_rdm_owned_count = 0;
+uint32_t GaussianSplatRenderer::test_last_teardown_rdm_tracked_count = 0;
+
+void GaussianSplatRenderer::test_reset_last_teardown_rdm_counts() {
+    test_last_teardown_rdm_counts_valid = false;
+    test_last_teardown_rdm_owned_count = 0;
+    test_last_teardown_rdm_tracked_count = 0;
+}
+
+bool GaussianSplatRenderer::test_has_last_teardown_rdm_counts() {
+    return test_last_teardown_rdm_counts_valid;
+}
+
+uint32_t GaussianSplatRenderer::test_get_last_teardown_rdm_owned_count() {
+    return test_last_teardown_rdm_owned_count;
+}
+
+uint32_t GaussianSplatRenderer::test_get_last_teardown_rdm_tracked_count() {
+    return test_last_teardown_rdm_tracked_count;
+}
+
 void GaussianSplatRenderer::_teardown_resources() {
     bool expected = false;
     if (!teardown_resources_started.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
@@ -1376,6 +1401,18 @@ void GaussianSplatRenderer::_teardown_resources() {
     // Keep device manager alive until all owned RID frees have completed.
     if (subsystem_state.device_manager.is_valid()) {
         subsystem_state.device_manager->shutdown();
+        // #392 / Codex PR #419 Finding 1: snapshot the RDM's just-recorded
+        // last-shutdown owned/tracked RID counts into the process-static cell
+        // BEFORE the RDM is unref()'d (and destroyed). The lifetime fixture
+        // reads these back after the renderer is gone to feed
+        // record_rdm_shutdown_counts(), restoring COUNT coverage for
+        // renderer-owned RIDs (pipelines/shaders/uniform-sets/samplers/
+        // framebuffers) that leak without adding buffer/texture BYTES.
+        test_last_teardown_rdm_owned_count =
+                subsystem_state.device_manager->get_last_shutdown_owned_resource_count();
+        test_last_teardown_rdm_tracked_count =
+                subsystem_state.device_manager->get_last_shutdown_tracked_resource_count();
+        test_last_teardown_rdm_counts_valid = true;
         subsystem_state.device_manager.unref();
     }
 }

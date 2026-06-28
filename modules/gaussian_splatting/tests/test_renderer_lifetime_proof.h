@@ -127,6 +127,23 @@ static constexpr uint32_t RDM_UNMEASURED = std::numeric_limits<uint32_t>::max();
 // rdm_tracked_resources / rdm_owned_resources sentinel RDM_UNMEASURED =
 // not measured (no record_rdm_shutdown_counts() call in this scenario);
 // see RDM_UNMEASURED rationale above.
+// #352: measure GS-OWNED GPU memory (buffer + texture bytes the renderer
+// allocates and is responsible for freeing), NOT RenderingDevice::MEMORY_TOTAL.
+// MEMORY_TOTAL is the VMA grand total, which includes process-lifetime
+// driver-internal allocations (compute pipelines, descriptor pools, command/VMA
+// overhead) created once and never freed per renderer instance. Gating on
+// MEMORY_TOTAL charged that shared one-time infrastructure to each scenario and
+// was order-dependent (pipeline compilation landing in different measurement
+// windows produced ~64-178 MB swings with GS buffers/textures already at 0).
+// buffers+textures isolates the renderer's own resources; owned pipeline/shader
+// RID leaks are covered separately by the RDM owned-resource count.
+static uint64_t _gs_owned_memory_bytes(RenderingDevice *p_rd) {
+	if (p_rd == nullptr) {
+		return 0ull;
+	}
+	return p_rd->get_memory_usage(RenderingDevice::MEMORY_BUFFERS) + p_rd->get_memory_usage(RenderingDevice::MEMORY_TEXTURES);
+}
+
 // ---------------------------------------------------------------------------
 struct LifetimeBaseline {
 	uint64_t rd_memory_usage_bytes = 0;
@@ -365,9 +382,7 @@ private:
 	uint64_t rd_bytes_override_value_ = 0;
 
 	void _snapshot(LifetimeBaseline &r_out) const {
-		r_out.rd_memory_usage_bytes = (rd_ != nullptr)
-				? rd_->get_memory_usage(RenderingDevice::MEMORY_TOTAL)
-				: 0ull;
+		r_out.rd_memory_usage_bytes = _gs_owned_memory_bytes(rd_);
 		// RDM counters: initialize to the RDM_UNMEASURED sentinel rather
 		// than a measured zero. Scenarios that own an RDM and want the
 		// pass rule to enforce its post-shutdown counters MUST call
@@ -555,6 +570,16 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] renderer_instanc
 	RendererLifetimeFixture fixture("renderer_instance", rd);
 	fixture.capture_baseline();
 
+	// #392 / Codex PR #419 Finding 1: clear the process-static RDM teardown
+	// snapshot BEFORE constructing the renderer so the count we read after
+	// destruction reflects exactly this renderer's per-instance RDM shutdown.
+	// The renderer owns its RDM and records get_last_shutdown_owned/tracked
+	// counts during _teardown_resources() (on unref); we feed those into
+	// record_rdm_shutdown_counts() so a leaked pipeline/shader/uniform-set/
+	// sampler/framebuffer RID is caught by COUNT even when it adds no
+	// buffer/texture BYTES.
+	GaussianSplatRenderer::test_reset_last_teardown_rdm_counts();
+
 	{
 		Ref<GaussianSplatRenderer> renderer;
 		renderer.instantiate(rd);
@@ -614,6 +639,31 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] renderer_instanc
 
 		renderer.unref();
 	}
+
+	// Drive the main-device frame forward so the render-path + dtor deferred
+	// frees actually reclaim before measuring. RenderingDevice::free() only
+	// queues onto the per-frame disposal list; _free_pending_resources runs on
+	// frame advance (_begin_frame). The --gs-gpu-test runner has no production
+	// render loop to advance frames, so without this the one-time render
+	// allocations sit unreclaimed and read as a ~178 MB leak. Advancing past the
+	// (small) frame ring drains the queue, matching production steady state.
+	for (int i = 0; i < 4; i++) {
+		rd->swap_buffers(false);
+	}
+
+	// #392 / Codex PR #419 Finding 1: the renderer's per-instance RDM was shut
+	// down inside _teardown_resources() (on unref above), which recorded its
+	// post-shutdown owned/tracked RID counts. Feed them into the pass rule so a
+	// leaked owned RID that adds no buffer/texture bytes still fails the gate
+	// via the RDM COUNT clause. A healthy teardown frees every owned RID before
+	// shutdown, so owned==0 here (measured-clean, NOT the -1 unmeasured
+	// sentinel).
+	REQUIRE_MESSAGE(GaussianSplatRenderer::test_has_last_teardown_rdm_counts(),
+			"renderer teardown did not record RDM shutdown counts; the RDM owned-count "
+			"coverage would silently fall back to the -1 unmeasured sentinel.");
+	fixture.record_rdm_shutdown_counts(
+			GaussianSplatRenderer::test_get_last_teardown_rdm_owned_count(),
+			GaussianSplatRenderer::test_get_last_teardown_rdm_tracked_count());
 
 	const bool passed = fixture.finalize();
 	CHECK_MESSAGE(passed, fixture.result().fail_reason);
@@ -723,7 +773,7 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] scene_director_r
 	String teardown_observed_reason;
 
 	{
-		const uint64_t pre_cycle_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
+		const uint64_t pre_cycle_bytes = _gs_owned_memory_bytes(rd);
 
 		for (int cycle = 0; cycle < 3; cycle++) {
 			// Synthetic scenario RID per cycle so the director treats every
@@ -768,7 +818,7 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] scene_director_r
 			// state. Idempotent: if release already pruned, this is a no-op.
 			director->teardown_world_for_scenario(scenario);
 
-			const uint64_t post_cycle_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
+			const uint64_t post_cycle_bytes = _gs_owned_memory_bytes(rd);
 			const uint64_t cycle_delta = (post_cycle_bytes > pre_cycle_bytes)
 					? (post_cycle_bytes - pre_cycle_bytes)
 					: 0ull;
@@ -841,6 +891,10 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 	fixture.set_monotonicity_threshold_bytes(64ull * 1024ull);
 	fixture.capture_baseline();
 
+	// #392 / Codex PR #419 Finding 1: clear the static RDM teardown snapshot
+	// before constructing the renderer (same rationale as renderer_instance).
+	GaussianSplatRenderer::test_reset_last_teardown_rdm_counts();
+
 	uint64_t cycle1_delta_bytes = 0;
 	uint64_t cycle_growth_beyond_cycle1 = 0;
 	bool monotonicity_ok = true;
@@ -854,7 +908,7 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 		Ref<::GaussianData> data = _make_lifetime_test_data(64);
 		Ref<::GaussianData> empty_data; // null Ref — clear path.
 
-		const uint64_t pre_cycle_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
+		const uint64_t pre_cycle_bytes = _gs_owned_memory_bytes(rd);
 
 		for (int cycle = 0; cycle < 3; cycle++) {
 			const Error set_err = renderer->set_gaussian_data(data);
@@ -868,7 +922,17 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 			const Error clear_err = renderer->set_gaussian_data(empty_data);
 			CHECK((clear_err == OK || clear_err == ERR_UNCONFIGURED));
 
-			const uint64_t post_cycle_bytes = rd->get_memory_usage(RenderingDevice::MEMORY_TOTAL);
+			// #352: advance the main-device frame so this cycle's render-path
+			// deferred frees reclaim before the per-cycle measurement, mirroring
+			// the production render loop the --gs-gpu-test runner does not drive.
+			// RenderingDevice::free() only queues onto the per-frame disposal list;
+			// without this drain the per-cycle delta reads the unreclaimed render
+			// allocations as monotonic growth. (Same drain rationale as the
+			// teardown drain after the cycle loop and the tile_shader_recompile
+			// scenario.)
+			rd->swap_buffers(false);
+
+			const uint64_t post_cycle_bytes = _gs_owned_memory_bytes(rd);
 			const uint64_t cycle_delta = (post_cycle_bytes > pre_cycle_bytes)
 					? (post_cycle_bytes - pre_cycle_bytes)
 					: 0ull;
@@ -899,6 +963,27 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] asset_attach_det
 				"Renderer refcount > 1 before unref in asset_attach_detach scenario.");
 		renderer.unref();
 	}
+
+	// Drain the renderer's destructor deferred frees before the absolute-gate
+	// measurement (mirrors renderer_instance): unref() queues the persistent
+	// buffer/texture frees onto the per-frame disposal list; advancing the
+	// main-device frame past the ring runs _free_pending_resources so finalize()
+	// sees the reclaimed steady state, not the unreclaimed dtor allocations. The
+	// per-cycle swap_buffers above already drains each cycle's render frees (the
+	// monotonicity signal); this drains the final teardown. (#352)
+	for (int i = 0; i < 4; i++) {
+		rd->swap_buffers(false);
+	}
+
+	// #392 / Codex PR #419 Finding 1: feed the renderer's per-instance RDM
+	// last-shutdown owned/tracked counts into the pass rule (same rationale as
+	// renderer_instance) so a leaked owned RID with no byte footprint trips the
+	// RDM COUNT clause.
+	REQUIRE_MESSAGE(GaussianSplatRenderer::test_has_last_teardown_rdm_counts(),
+			"renderer teardown did not record RDM shutdown counts in asset_attach_detach.");
+	fixture.record_rdm_shutdown_counts(
+			GaussianSplatRenderer::test_get_last_teardown_rdm_owned_count(),
+			GaussianSplatRenderer::test_get_last_teardown_rdm_tracked_count());
 
 	(void)cycle_growth_beyond_cycle1;
 
@@ -948,6 +1033,12 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] tile_shader_reco
 	fixture.capture_baseline();
 
 	bool old_pipeline_was_freed = false;
+	// Codex PR #419 round-2 Finding 2: aggregate non-byte RID-leak coverage.
+	// Survivors of the OLD compiled tile pipeline set after the recompile. A
+	// healthy recompile frees them all (0 survivors); an orphaned pipeline (the
+	// #298 regression) survives and bumps this. Default 0 so a clean skip path
+	// records measured-clean, while a real leak records a measured non-zero COUNT.
+	uint32_t old_pipeline_survivors = 0u;
 
 	{
 		Ref<GaussianSplatRenderer> renderer;
@@ -980,6 +1071,17 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] tile_shader_reco
 			return;
 		}
 
+		// Codex PR #419 round-2 Finding 2: snapshot the FULL set of currently
+		// compiled tile compute+render pipeline RIDs (not just the binning
+		// canary) so the aggregate count below proves the recompile frees the
+		// entire #298 leak surface, not one representative RID. The byte metric
+		// reads 0 here and these pipelines are not RDM-tracked, so this COUNT is
+		// the only aggregate signal that catches a leaked tile pipeline.
+		const Vector<RID> old_pipelines = tile->_test_compiled_pipeline_snapshot();
+		REQUIRE_MESSAGE(!old_pipelines.is_empty(),
+				"no compiled tile pipelines captured before recompile; the aggregate "
+				"RID-count coverage would be vacuous.");
+
 		// Flip a recompile trigger directly on the tile renderer. This routes
 		// through _release_compiled_shaders(), which must FREE the old pipeline
 		// before clearing its RID. No render happens in between, so a freed RID
@@ -991,12 +1093,52 @@ TEST_CASE("[GaussianSplatting][Renderer][Lifetime][RequiresGPU] tile_shader_reco
 				"recompile trigger left the previous tile binning pipeline alive on the device — "
 				"shaders/pipelines were orphaned instead of freed (issue #298 regression).");
 
+		// Aggregate count: how many of the OLD pipeline RIDs survived the
+		// recompile. Must be 0 — every old pipeline must have been freed. This is
+		// the measured non-byte RID-count signal fed into the gate below.
+		old_pipeline_survivors = TileRenderer::_test_count_valid_pipelines(rd, old_pipelines);
+		CHECK_MESSAGE(old_pipeline_survivors == 0u,
+				vformat("recompile orphaned %d of %d previously compiled tile pipelines on the "
+						"device (issue #298 regression; non-byte owned-RID leak).",
+						int64_t(old_pipeline_survivors), int64_t(old_pipelines.size())));
+
 		renderer.unref();
 	}
+
+	// Drain the renderer's destructor deferred frees before the absolute-gate
+	// measurement (mirrors renderer_instance / asset_attach_detach). #352:
+	// RenderingDevice::free() only QUEUES the renderer's persistent buffers/
+	// textures onto the per-frame disposal list; _free_pending_resources runs on
+	// frame advance (_begin_frame), which the --gs-gpu-test runner never drives
+	// because it has no production render loop. Measured on RTX 3090: the renderer
+	// allocates ~265 MB during render_for_view, ~145 MB is reclaimed synchronously
+	// on unref(), and the remaining ~120 MB of buffers sit on the disposal queue
+	// — they ARE freed (the dtor called rd->free()), just not yet reclaimed, so
+	// finalize() would read them as a false 120 MB leak. Advancing past the (small)
+	// frame ring runs _free_pending_resources and returns the device to the
+	// reclaimed steady state (buffers=0 textures=0) the listener then measures.
+	// This is the same deferred-free drain the other two renderer scenarios use;
+	// it does NOT relax any gate — the 4 MiB absolute threshold is unchanged.
+	for (int i = 0; i < 4; i++) {
+		rd->swap_buffers(false);
+	}
+
+	// Codex PR #419 round-2 Finding 2: feed the recompile pipeline-survivor count
+	// into the fixture's MEASURED RDM-count clause. Unlike renderer_instance /
+	// asset_attach_detach this is NOT the per-instance RDM shutdown count (tile
+	// shaders/pipelines are freed via RenderingDevice directly and are never
+	// tracked in the RenderDeviceManager, so its shutdown count is 0 regardless of
+	// a recompile leak). Instead the survivor count IS the leaked-owned-RID signal
+	// for this scenario: 0 survivors records measured-clean (rdm_owned_leaked:0,
+	// not the -1 unmeasured sentinel); any survivor records a measured non-zero
+	// count that fails the gate's RDM clause — restoring aggregate non-byte-RID
+	// coverage the byte metric (0 bytes) and the RDM shutdown snapshot both miss.
+	fixture.record_rdm_shutdown_counts(old_pipeline_survivors, old_pipeline_survivors);
 
 	const bool passed = fixture.finalize();
 	CHECK_MESSAGE(passed, fixture.result().fail_reason);
 	CHECK(old_pipeline_was_freed);
+	CHECK(old_pipeline_survivors == 0u);
 }
 
 // ---------------------------------------------------------------------------
