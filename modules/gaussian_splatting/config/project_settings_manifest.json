@@ -1068,6 +1068,16 @@
       "test_coverage": "inventory_only"
     },
     {
+      "effective_state": "ResidentInstanceContractPublisher effective atlas VRAM cap (importance-LOD clamp).",
+      "key": "rendering/gaussian_splatting/resident/atlas_vram_budget_override_mb",
+      "owner": "ResidentInstanceContractPublisher VRAM clamp",
+      "publicness": "public",
+      "reload_semantics": "settings_changed",
+      "scope": "runtime",
+      "test_coverage": "partial",
+      "visibility": "editor_visible"
+    },
+    {
       "effective_state": "GaussianSplatManager global stats/config.shared_submission_device_enabled",
       "key": "rendering/gaussian_splatting/shared_submission_device_enabled",
       "test_coverage": "inventory_only"

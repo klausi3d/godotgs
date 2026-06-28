@@ -461,6 +461,14 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 
 		uint32_t max_chunk_count_per_asset = 0;
 		uint32_t max_chunk_splats = 0;
+		// Hard global budget for the importance-LOD clamp. The per-chunk thinning below keeps
+		// at least one splat from each non-empty chunk for coverage, which can overshoot the
+		// device VRAM target on datasets with many tiny chunks; capping the cumulative kept
+		// count here guarantees the resident atlas never exceeds the budget (Codex #420).
+		// UINT32_MAX == unbounded when the atlas is not being thinned.
+		uint32_t resident_remaining_budget = subset_plan.reduced
+				? uint32_t(MIN<uint64_t>(subset_plan.target_keep, uint64_t(UINT32_MAX)))
+				: UINT32_MAX;
 
 		for (uint32_t asset_index = 0; asset_index < assets.size(); asset_index++) {
 			const ResidentAssetDescriptor &asset = assets[asset_index];
@@ -488,9 +496,9 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 			asset_meta.bounds_center_local[2] = asset_center.z;
 			asset_meta.bounds_radius_local = asset_half.length();
 			asset_meta.chunk_index_base = asset_chunk_index_cpu.size();
-			asset_meta.chunk_index_count = chunk_descriptors.size();
-			asset_meta.lod_ranges[0].base = asset_meta.chunk_index_base;
-			asset_meta.lod_ranges[0].count = asset_meta.chunk_index_count;
+			// chunk_index_count / lod_ranges are finalized AFTER the chunk loop: importance
+			// thinning under the global budget may drop whole chunks (0 kept), so the count
+			// must reflect the chunks actually emitted, not chunk_descriptors.size().
 
 			max_chunk_count_per_asset = MAX<uint32_t>(max_chunk_count_per_asset, chunk_descriptors.size());
 
@@ -516,15 +524,22 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 					return false;
 				}
 
-				// Importance-ordered LOD: when the atlas is over the VRAM budget, keep the
-				// top splats of THIS chunk (by the culler's opacity*scale importance) so every
-				// spatial region survives the thinning -- preserves coverage on real-scan
-				// content. Compacts the gaussian payload and its parallel high-order SH block
-				// in place, so sh_coeffs is taken AFTER compaction.
+				// Importance-ordered LOD: when the atlas is over the VRAM budget, keep the top
+				// splats of THIS chunk (by the culler's opacity*scale importance) so every
+				// spatial region keeps its most important splats -- preserves coverage on
+				// real-scan content while the global budget below bounds the total. Compacts the
+				// gaussian payload and its parallel high-order SH block in place, so sh_coeffs is
+				// taken AFTER compaction.
 				uint32_t chunk_pack_count = descriptor.count;
 				if (subset_plan.reduced) {
 					chunk_pack_count = ResidentAtlasBudget::compact_chunk_by_importance(
-							gaussian_snapshot, sh_high_order_snapshot, sh_high_order, subset_plan.keep_ratio);
+							gaussian_snapshot, sh_high_order_snapshot, sh_high_order,
+							subset_plan.keep_ratio, resident_remaining_budget);
+					if (chunk_pack_count == 0) {
+						// Global VRAM budget exhausted (or this chunk's quota rounded to 0):
+						// drop the chunk rather than emit a zero-splat ChunkMeta.
+						continue;
+					}
 				}
 
 				SHCompressionMetrics sh_metrics;
@@ -559,6 +574,11 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 				max_chunk_splats = MAX(max_chunk_splats, chunk_pack_count);
 			}
 
+			// Finalize the asset's chunk-index range from the chunks actually emitted (some
+			// may have been dropped to 0 splats by the importance-LOD budget above).
+			asset_meta.chunk_index_count = asset_chunk_index_cpu.size() - asset_meta.chunk_index_base;
+			asset_meta.lod_ranges[0].base = asset_meta.chunk_index_base;
+			asset_meta.lod_ranges[0].count = asset_meta.chunk_index_count;
 			asset_meta_cpu.write[asset.dense_asset_id] = asset_meta;
 		}
 

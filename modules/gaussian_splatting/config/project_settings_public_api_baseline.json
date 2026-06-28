@@ -115,6 +115,7 @@
     "rendering/gaussian_splatting/rasterization/low_pass_filter",
     "rendering/gaussian_splatting/renderdoc_compatibility",
     "rendering/gaussian_splatting/rendering/sh_bands",
+    "rendering/gaussian_splatting/resident/atlas_vram_budget_override_mb",
     "rendering/gaussian_splatting/shared_submission_device_enabled",
     "rendering/gaussian_splatting/sorting/bitonic_max_elements",
     "rendering/gaussian_splatting/sorting/force_algorithm",

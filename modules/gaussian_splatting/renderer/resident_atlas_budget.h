@@ -106,11 +106,16 @@ inline uint32_t compute_chunk_keep_count(uint32_t count, double keep_ratio) {
 }
 
 // The project's own per-splat importance metric (interfaces/gpu_culler.cpp:291-293):
-// opacity (clamped) * (max scale axis + epsilon), floored to epsilon. Reused here so
-// the subset is selected by the same definition the culler uses, not a new heuristic.
+// opacity (clamped) * (max scale axis + epsilon), floored to epsilon. Reused so the subset
+// is selected by the same definition the culler uses, not a new heuristic -- with one
+// deliberate refinement for this DESTRUCTIVE selection: use the scale MAGNITUDE
+// (max(abs(scale))) rather than the signed axis. The covariance build squares scale and
+// GaussianData::compute_radius() treats scale by magnitude, so a large negative-scale splat
+// (e.g. (-5,-4,-3)) is visibly large and must not be forced to the minimum importance and
+// preferentially dropped (Codex #420).
 inline float gaussian_importance(const Gaussian &p_g) {
     const float opacity = CLAMP(p_g.opacity, 0.0f, 1.0f);
-    const float size_factor = MAX(MAX(p_g.scale.x, p_g.scale.y), p_g.scale.z);
+    const float size_factor = MAX(MAX(Math::abs(p_g.scale.x), Math::abs(p_g.scale.y)), Math::abs(p_g.scale.z));
     return MAX(0.0001f, opacity * (size_factor + 0.0001f));
 }
 
@@ -153,13 +158,25 @@ inline void select_top_k_indices(const float *p_importance, uint32_t p_count, ui
 // Compact a captured chunk snapshot down to its top-importance subset in place,
 // moving both the Gaussian payload and its parallel high-order SH block (stride =
 // p_sh_stride coefficients per gaussian, gaussian-major, per capture_*_snapshot).
-// Returns the number of kept gaussians (== count when keep_ratio implies no thinning).
+// `r_remaining_budget` is the global cap on cumulative kept splats across all chunks: the
+// per-chunk keep is clamped to it and it is decremented by the kept count, so the resident
+// atlas honors the device VRAM target even when many per-chunk floors would otherwise
+// overshoot it (e.g. a dataset of many one-splat static chunks) -- Codex #420. Returns the
+// number of kept gaussians (0 when the budget is exhausted -> the caller drops the chunk).
 inline uint32_t compact_chunk_by_importance(LocalVector<Gaussian> &r_gaussians,
-        LocalVector<Vector3> &r_sh_high_order, uint32_t p_sh_stride, double p_keep_ratio) {
+        LocalVector<Vector3> &r_sh_high_order, uint32_t p_sh_stride, double p_keep_ratio,
+        uint32_t &r_remaining_budget) {
     const uint32_t count = r_gaussians.size();
-    const uint32_t keep = compute_chunk_keep_count(count, p_keep_ratio);
+    uint32_t keep = compute_chunk_keep_count(count, p_keep_ratio);
+    keep = MIN(keep, r_remaining_budget); // hard global cap
     if (keep >= count) {
+        r_remaining_budget -= count;
         return count;
+    }
+    if (keep == 0) {
+        r_gaussians.clear();
+        r_sh_high_order.clear();
+        return 0;
     }
 
     LocalVector<float> importance;
@@ -196,6 +213,7 @@ inline uint32_t compact_chunk_by_importance(LocalVector<Gaussian> &r_gaussians,
         }
         r_sh_high_order.resize(keep * p_sh_stride);
     }
+    r_remaining_budget -= keep;
     return keep;
 }
 

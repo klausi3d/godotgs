@@ -137,8 +137,10 @@ TEST_CASE("[GaussianSplatting][ResidentAtlasBudget] Chunk compaction keeps top i
     }
 
     // keep_ratio 0.4 over count 5 -> round(2.0) == 2 kept (the two highest: idx1, idx4).
-    const uint32_t kept = compact_chunk_by_importance(gaussians, sh, stride, 0.4);
+    uint32_t budget = 100;
+    const uint32_t kept = compact_chunk_by_importance(gaussians, sh, stride, 0.4, budget);
     REQUIRE(kept == 2);
+    CHECK(budget == 98); // budget decremented by the kept count
     REQUIRE(gaussians.size() == 2);
     REQUIRE(sh.size() == 2u * stride);
 
@@ -162,11 +164,52 @@ TEST_CASE("[GaussianSplatting][ResidentAtlasBudget] Compaction is a no-op when t
         gaussians.push_back(make_g(0.5f, 1.0f, float(i)));
     }
     LocalVector<Vector3> sh; // no high-order SH (stride 0) is a valid path
-    const uint32_t kept = compact_chunk_by_importance(gaussians, sh, 0, 1.0);
+    uint32_t budget = 100;
+    const uint32_t kept = compact_chunk_by_importance(gaussians, sh, 0, 1.0, budget);
     CHECK(kept == 4);
+    CHECK(budget == 96); // 4 kept
     REQUIRE(gaussians.size() == 4);
     CHECK(gaussians[0].position.x == doctest::Approx(0.0f));
     CHECK(gaussians[3].position.x == doctest::Approx(3.0f));
+}
+
+TEST_CASE("[GaussianSplatting][ResidentAtlasBudget] Global budget caps cumulative kept across many tiny chunks") {
+    using namespace ResidentAtlasBudget;
+    using namespace ResidentAtlasBudgetTests;
+    // Codex #420: many one-splat chunks each floor to 1 splat; without the global budget the
+    // total would be the full count and defeat the VRAM cap. With a budget of 3, only 3 survive.
+    uint32_t budget = 3;
+    uint32_t total_kept = 0;
+    const double tiny_ratio = 0.09; // round(1 * 0.09) == 0 -> floored to 1 per chunk
+    for (uint32_t c = 0; c < 10; c++) {
+        LocalVector<Gaussian> g;
+        g.push_back(make_g(0.5f, 1.0f, float(c)));
+        LocalVector<Vector3> sh;
+        total_kept += compact_chunk_by_importance(g, sh, 0, tiny_ratio, budget);
+    }
+    CHECK(total_kept == 3); // never exceeds the budget
+    CHECK(budget == 0);     // fully consumed, remaining chunks dropped to 0
+}
+
+TEST_CASE("[GaussianSplatting][ResidentAtlasBudget] Importance uses scale magnitude (negative scales survive)") {
+    using namespace ResidentAtlasBudget;
+    using namespace ResidentAtlasBudgetTests;
+    // A large negative-scale splat must out-rank a tiny positive-scale one (magnitude, not sign).
+    Gaussian big_neg = make_g(1.0f, 0.0f, 0.0f);
+    big_neg.scale = Vector3(-5.0f, -4.0f, -3.0f);
+    Gaussian small_pos = make_g(1.0f, 0.1f, 1.0f); // max |scale| == 0.1
+    CHECK(gaussian_importance(big_neg) > gaussian_importance(small_pos));
+
+    // Under a keep-1-of-2 budget the big negative-scale splat is the survivor.
+    LocalVector<Gaussian> g;
+    g.push_back(small_pos); // index 0, marker 1.0
+    g.push_back(big_neg);   // index 1, marker 0.0
+    LocalVector<Vector3> sh;
+    uint32_t budget = 1;
+    const uint32_t kept = compact_chunk_by_importance(g, sh, 0, 0.5, budget);
+    REQUIRE(kept == 1);
+    CHECK(g[0].position.x == doctest::Approx(0.0f)); // big_neg's marker
+    CHECK(budget == 0);
 }
 
 TEST_CASE("[GaussianSplatting][ResidentAtlasBudget] Single global ratio thins multiple chunks proportionally within cap") {
