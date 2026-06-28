@@ -33,6 +33,7 @@
 #include "test_output_compositor_composite_hazard.h"
 #include "test_logger_rate_limit.h"
 #include "test_vram_budget_regulator.h"
+#include "test_resident_atlas_budget.h"
 #include "test_renderer_pipeline.h"
 #include "test_tile_lighting_abi.h"
 #include "test_tile_buffer_resize.h"
