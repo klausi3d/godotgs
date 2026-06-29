@@ -773,6 +773,78 @@ TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld rejects metadata range overf
     _remove_world_io_fixture(path);
 }
 
+TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld rejects bad magic") {
+    // A plausible-but-wrong first uint32 must be rejected as an unrecognized
+    // format (magic != kWorldMagic -> ERR_FILE_UNRECOGNIZED) without crashing.
+    // The rest of the header is a valid, fully-written 104-byte layout so the
+    // only defect under test is the magic.
+    const String path = _make_world_io_fixture_path("malformed_bad_magic");
+
+    MalformedWorldHeader hdr;
+    hdr.magic = 0xDEADBEEFu; // wrong magic; correct is 0x57505347 ('GSPW')
+    hdr.splat_count = 0u;
+    hdr.gaussian_offset = 104u;
+    REQUIRE(_write_malformed_world(path, hdr));
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error err = OK;
+    Ref<Resource> result = loader.load(path, "", &err);
+    CHECK_EQ(err, ERR_FILE_UNRECOGNIZED);
+    CHECK_FALSE(result.is_valid());
+
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld rejects wrong version") {
+    // Correct GSPW magic but a version != kWorldVersion must be rejected as
+    // corrupt (ERR_FILE_CORRUPT) without crashing.
+    const String path = _make_world_io_fixture_path("malformed_wrong_version");
+
+    MalformedWorldHeader hdr;
+    hdr.magic = 0x57505347u; // correct magic
+    hdr.version = 1u + 1000u; // kWorldVersion is 1; anything else is rejected
+    hdr.splat_count = 0u;
+    hdr.gaussian_offset = 104u;
+    REQUIRE(_write_malformed_world(path, hdr));
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error err = OK;
+    Ref<Resource> result = loader.load(path, "", &err);
+    CHECK_EQ(err, ERR_FILE_CORRUPT);
+    CHECK_FALSE(result.is_valid());
+
+    _remove_world_io_fixture(path);
+}
+
+TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld rejects truncated file") {
+    // Valid magic + version but the file ends mid-header (far shorter than the
+    // 104-byte header the loader requires). The loader's file-length guard
+    // (file_len < kHeaderSizeBytes) must reject this as corrupt with no OOB read
+    // and no crash. We write only 16 bytes: magic, version, flags, splat_count.
+    const String path = _make_world_io_fixture_path("malformed_truncated");
+
+    {
+        Ref<FileAccess> f = FileAccess::open(path, FileAccess::WRITE);
+        REQUIRE(f.is_valid());
+        f->store_32(0x57505347u); // valid magic
+        f->store_32(1u); // valid version (kWorldVersion)
+        f->store_32(0u); // flags
+        f->store_32(0u); // splat_count -- file ends here at 16 bytes, well under 104
+        f.unref();
+    }
+
+    REQUIRE(FileAccess::exists(path));
+    REQUIRE(FileAccess::get_size(path) < 104u);
+
+    ResourceFormatLoaderGaussianSplatWorld loader;
+    Error err = OK;
+    Ref<Resource> result = loader.load(path, "", &err);
+    CHECK_EQ(err, ERR_FILE_CORRUPT);
+    CHECK_FALSE(result.is_valid());
+
+    _remove_world_io_fixture(path);
+}
+
 TEST_CASE("[GaussianSplatting][WorldIO] gsplatworld rejects high SH count without high SH flag") {
     const String path = _make_world_io_fixture_path("malformed_sh_flag_mismatch");
 
