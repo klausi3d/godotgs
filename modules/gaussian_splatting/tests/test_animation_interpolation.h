@@ -233,4 +233,29 @@ TEST_CASE("[GaussianSplatting][Animation] cubic-bezier easing uses key-relative 
         CHECK(cur >= prev - 1e-4f);
         prev = cur;
     }
+
+    // 5) NON-UNIT VALUE RANGE, handle.y = 0: the symmetric S-curve must still
+    //    land its midpoint at the linear midpoint, now 5.0 on a 0 -> 10 segment
+    //    (value delta 10). This guards that scaling handle.y by the value delta
+    //    leaves the handle.y == 0 case untouched.
+    CHECK(Math::abs(eval_bezier(sym_out, sym_in, 0.0f, 10.0f, 0.5f) - 5.0f) < 0.2f);
+
+    // 6) DISCRIMINATOR for VALUE-DELTA normalization of handle.y on a NON-UNIT
+    //    range. out_handle=(0.0, 2.5), in_handle=(0,0) on a 0 -> 10 segment
+    //    (value delta 10). Godot treats handle.y as a VALUE offset, so the
+    //    normalized control point is P1.y = 2.5 / 10 = 0.25, giving
+    //    P1=(0,0.25), P2=(1,1) -- an X(s)=smoothstep curve whose Y at the t=0.5
+    //    midpoint is 0.59375, i.e. an eased value of 5.9375 (a mild, in-range
+    //    overshoot above the linear 5.0).
+    //
+    //    If handle.y were left UN-normalized (the bug under review), P1.y would be
+    //    the raw 2.5, the curve would balloon, and the eased value at t=0.5 jumps
+    //    to ~14.375 -- a gross overshoot well past the segment's own 10.0 ceiling.
+    //    The tight band below therefore FAILS unless handle.y is divided by the
+    //    value delta.
+    const Vector2 lift_out(0.0f, 2.5f);
+    const float lifted_mid = eval_bezier(lift_out, in_zero, 0.0f, 10.0f, 0.5f);
+    CHECK(lifted_mid < 10.0f);                       // no out-of-range overshoot
+    CHECK(lifted_mid > 5.0f);                         // lifted above the linear midpoint
+    CHECK(Math::abs(lifted_mid - 5.9375f) < 0.1f);    // value-normalized expectation
 }

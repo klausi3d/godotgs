@@ -93,7 +93,11 @@ Vector3 KeyframeInterpolator::_interpolate_vector3(const Vector3& a, const Vecto
                 return a.lerp(b, t);
             }
             Vector2 p1, p2;
-            _handles_to_control_points(handle_a, handle_b, time_diff, p1, p2);
+            // VECTOR3 track: one scalar easing curve drives all three axes, so
+            // handle.y cannot be per-axis value units -- it stays a normalized-
+            // PROGRESS offset (normalize_y == false, value_delta unused). See the
+            // comment on _cubic_bezier_vector3 and _handles_to_control_points.
+            _handles_to_control_points(handle_a, handle_b, time_diff, /*value_delta=*/0.0f, /*normalize_y=*/false, p1, p2);
             return _cubic_bezier_vector3(t, a, b, p1, p2);
         }
         case InterpolationType::SMOOTH_STEP:
@@ -147,7 +151,9 @@ float KeyframeInterpolator::_interpolate_float(float a, float b, float t, Interp
                 return Math::lerp(a, b, t);
             }
             Vector2 p1, p2;
-            _handles_to_control_points(handle_a, handle_b, time_diff, p1, p2);
+            // SCALAR track: handle.y is value-relative, so normalize it by the
+            // segment value range (b - a). See _handles_to_control_points.
+            _handles_to_control_points(handle_a, handle_b, time_diff, /*value_delta=*/b - a, /*normalize_y=*/true, p1, p2);
             return a + (b - a) * _cubic_bezier(t, p1, p2);
         }
         case InterpolationType::SMOOTH_STEP:
@@ -235,9 +241,14 @@ float KeyframeInterpolator::_cubic_bezier(float t, const Vector2& p1, const Vect
 }
 
 Vector3 KeyframeInterpolator::_cubic_bezier_vector3(float t, const Vector3& start, const Vector3& end, const Vector2& p1, const Vector2& p2) {
-    // One scalar easing curve drives all three axes (handle.y therefore cannot be
-    // per-axis value units; it is a normalized-progress offset -- see
-    // _handles_to_control_points). Evaluate the curve once and lerp each axis.
+    // One scalar easing curve drives all three axes, so handle.y CANNOT be
+    // per-axis value units (a single Vector2 handle cannot encode three value
+    // ranges). It is therefore interpreted in NORMALIZED-PROGRESS space here --
+    // P1.y = out_handle.y, P2.y = 1 + in_handle.y, with 0 meaning "on the linear-
+    // progress line". This deliberately DIFFERS from the scalar float path
+    // (_interpolate_float), where handle.y is VALUE-relative and divided by the
+    // segment value range (b - a); see _handles_to_control_points for both.
+    // Evaluate the curve once and lerp each axis by the same eased progress.
     const float eased = _cubic_bezier(t, p1, p2);
     Vector3 result;
     result.x = start.x + (end.x - start.x) * eased;
@@ -246,23 +257,46 @@ Vector3 KeyframeInterpolator::_cubic_bezier_vector3(float t, const Vector3& star
     return result;
 }
 
-void KeyframeInterpolator::_handles_to_control_points(const Vector2& out_handle, const Vector2& in_handle, float time_diff, Vector2& p1, Vector2& p2) {
+void KeyframeInterpolator::_handles_to_control_points(const Vector2& out_handle, const Vector2& in_handle, float time_diff, float value_delta, bool normalize_y, Vector2& p1, Vector2& p2) {
     // The handles are Godot-style KEY-RELATIVE tangent offsets, NOT absolute
     // control points (see docs/features/animation.md):
     //   - `out_handle` is keyframe-A's out tangent, offset from A's (time, value).
     //   - `in_handle`  is keyframe-B's in  tangent, offset from B's (time, value).
     // handle.x is in SECONDS, so it must be normalized by the segment duration
-    // `time_diff` to land in the [0,1] curve-X space. handle.y is treated as a
-    // NORMALIZED-PROGRESS offset (0 = on the linear-progress line), NOT value
-    // units -- the only interpretation coherent across both the scalar and the
-    // Vector3 (single shared easing) paths, and it matches every documented
-    // example (all use handle.y = 0.0). With fixed endpoints P0=(0,0), P3=(1,1):
-    //   P1 = ( out_handle.x / time_diff ,     out_handle.y )
-    //   P2 = ( 1 + in_handle.x / time_diff , 1 + in_handle.y )
+    // `time_diff` to land in the [0,1] curve-X space.
+    //
+    // handle.y, however, is interpreted differently per track type:
+    //   - SCALAR float (normalize_y == true): handle.y is in VALUE units, exactly
+    //     like Godot's own bezier_track_interpolate (scene/resources/animation.cpp),
+    //     which builds the control points from absolute (time, value) coordinates.
+    //     It must therefore be normalized by the segment VALUE range
+    //     `value_delta` (= b - a) to land in the curve's [0,1] Y space. A
+    //     degenerate `value_delta == 0` (b == a, a constant segment) makes that
+    //     scaling undefined, so fall back to the linear endpoints (0 / 1); this is
+    //     harmless because _interpolate_float returns a + (b - a) * curve == a
+    //     regardless of the curve when b == a.
+    //   - VECTOR3 (normalize_y == false): a single scalar easing curve drives all
+    //     three axes, so per-axis value normalization is impossible with one
+    //     Vector2 handle. handle.y is instead a NORMALIZED-PROGRESS offset
+    //     (0 = on the linear-progress line); `value_delta` is ignored.
+    //
+    // With fixed endpoints P0=(0,0), P3=(1,1):
+    //   P1 = ( out_handle.x / time_diff ,     out_y )
+    //   P2 = ( 1 + in_handle.x / time_diff , 1 + in_y )
     // Caller guarantees time_diff > 0 and finite, so the divide is safe.
     const float inv_time_diff = 1.0f / time_diff;
-    p1 = Vector2(out_handle.x * inv_time_diff, out_handle.y);
-    p2 = Vector2(1.0f + in_handle.x * inv_time_diff, 1.0f + in_handle.y);
+    float out_y;
+    float in_y;
+    if (normalize_y) {
+        const float inv_value_delta = (value_delta != 0.0f) ? (1.0f / value_delta) : 0.0f;
+        out_y = out_handle.y * inv_value_delta;
+        in_y = in_handle.y * inv_value_delta;
+    } else {
+        out_y = out_handle.y;
+        in_y = in_handle.y;
+    }
+    p1 = Vector2(out_handle.x * inv_time_diff, out_y);
+    p2 = Vector2(1.0f + in_handle.x * inv_time_diff, 1.0f + in_y);
 }
 
 void KeyframeInterpolator::_find_keyframe_indices(const LocalVector<Keyframe>& keyframes, float time, int& index_a, int& index_b) {

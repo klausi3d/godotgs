@@ -54,7 +54,15 @@ private:
     // Convert Godot-style key-relative tangent handles into absolute normalized
     // cubic-bezier control points (P0=(0,0), P3=(1,1)). See implementation for the
     // exact contract; `time_diff` (segment seconds) must be > 0 and finite.
-    static void _handles_to_control_points(const Vector2& out_handle, const Vector2& in_handle, float time_diff, Vector2& p1, Vector2& p2);
+    // handle.y semantics depend on the track type:
+    //   - SCALAR float (normalize_y == true): handle.y is VALUE-relative and is
+    //     normalized by `value_delta` (b - a), matching Godot's own bezier track
+    //     (scene/resources/animation.cpp), which builds control points from
+    //     absolute (time, value) coordinates.
+    //   - VECTOR3 (normalize_y == false): handle.y is a normalized-PROGRESS offset
+    //     (`value_delta` is ignored), because one scalar easing curve drives all
+    //     three axes and per-axis value normalization is impossible.
+    static void _handles_to_control_points(const Vector2& out_handle, const Vector2& in_handle, float time_diff, float value_delta, bool normalize_y, Vector2& p1, Vector2& p2);
 
     // Find keyframe indices for interpolation
     static void _find_keyframe_indices(const LocalVector<Keyframe>& keyframes, float time, int& index_a, int& index_b);
