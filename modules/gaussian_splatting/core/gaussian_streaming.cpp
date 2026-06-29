@@ -1276,6 +1276,13 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
             : (last_upload_device ? last_upload_device
                     : (manager ? manager->get_primary_rendering_device() : nullptr));
     last_upload_device = rd;
+    // Drain already-submitted GPU uploads before freeing the persistent buffer
+    // (and the registry meta buffers). Stopping the pack threads + clearing the
+    // queued uploads above prevents NEW work, but uploads already submitted to
+    // the device with a frame-delayed retirement still reference persistent_buffer;
+    // sync so they complete before the RID is freed. Mirrors the grow path
+    // (_grow_persistent_buffer), which also safe_submit_and_sync's before release.
+    gs_device_utils::safe_submit_and_sync(rd);
     global_atlas_registry.cleanup(rd);
     _release_persistent_buffer(rd, "initialize");
 
@@ -1477,6 +1484,8 @@ void GaussianStreamingSystem::initialize_empty(RenderingDevice *p_device) {
             : (last_upload_device ? last_upload_device
                     : (manager ? manager->get_primary_rendering_device() : nullptr));
     last_upload_device = rd;
+    // See initialize(): drain submitted GPU uploads before freeing the buffer.
+    gs_device_utils::safe_submit_and_sync(rd);
     global_atlas_registry.cleanup(rd);
     _release_persistent_buffer(rd, "initialize_empty");
 
