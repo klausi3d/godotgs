@@ -171,54 +171,65 @@ TEST_CASE("[GaussianSplatting][Animation] state machine transitions") {
     CHECK_EQ(state_machine.get_state(), ANIMATION_STATE_SEEKING);
 }
 
-TEST_CASE("[GaussianSplatting][Animation] cubic-bezier easing solves X-for-parameter (regression)") {
+TEST_CASE("[GaussianSplatting][Animation] cubic-bezier easing uses key-relative handles (regression)") {
     using namespace GaussianSplatting;
 
-    // Drive the private _cubic_bezier through the PUBLIC sampling path: an
-    // OPACITY track with two CUBIC_BEZIER keyframes at t=0 (value a) and
-    // t=1 (value b). For the segment between them the curve's control points
-    // are keyframe-A's out_handle (p1) and keyframe-B's in_handle (p2), so
-    // sample_opacity(0, t) == a + (b - a) * Y(s) where X(s) == t. With a=0,
-    // b=1 the sampled value is exactly the easing curve's Y output.
-    auto eval_bezier = [](const Vector2& p1, const Vector2& p2, float a, float b, float t) -> float {
+    // Drive the private easing through the PUBLIC sampling path, feeding handles
+    // in the DOCUMENTED Godot key-relative convention (see docs/features/
+    // animation.md): handle.x is an offset in SECONDS from the owning key's time,
+    // handle.y an offset on the normalized-progress line (every documented
+    // example uses handle.y = 0.0). With keyframes at t=0 and t=1 the segment
+    // duration is 1.0s, so handle.x is already in normalized units.
+    //
+    // add_keyframe_bezier(clip, prop, time, value, in_handle, out_handle):
+    //   keyframe-A's out_handle and keyframe-B's in_handle bound the segment, and
+    //   interpolate() converts them to absolute control points P1/P2:
+    //     P1 = (out_handle.x / time_diff,     out_handle.y)
+    //     P2 = (1 + in_handle.x / time_diff, 1 + in_handle.y)
+    //   With a=0, b=1 the sampled value is exactly the easing curve's Y output.
+    auto eval_bezier = [](const Vector2& out_handle_a, const Vector2& in_handle_b, float a, float b, float t) -> float {
         GaussianAnimationStateMachine sm;
         int clip = sm.add_clip("bezier", 1.0f);
         sm.set_splat_count(1);
-        // add_keyframe_bezier(clip, prop, time, value, in_handle, out_handle):
-        //   A.out_handle (6th arg) -> p1,  B.in_handle (5th arg) -> p2.
-        sm.add_keyframe_bezier(clip, ANIMATION_PROPERTY_OPACITY, 0.0f, a, Vector2(0, 0), p1);
-        sm.add_keyframe_bezier(clip, ANIMATION_PROPERTY_OPACITY, 1.0f, b, p2, Vector2(1, 1));
+        // A (t=0): its out_handle bounds the segment; A.in_handle is unused here.
+        sm.add_keyframe_bezier(clip, ANIMATION_PROPERTY_OPACITY, 0.0f, a, Vector2(0, 0), out_handle_a);
+        // B (t=1): its in_handle bounds the segment; B.out_handle is unused here.
+        sm.add_keyframe_bezier(clip, ANIMATION_PROPERTY_OPACITY, 1.0f, b, in_handle_b, Vector2(0, 0));
         sm.play(clip);
         return sm.sample_opacity(0, t);
     };
 
-    // 1) IDENTITY/LINEAR: the diagonal handles produce a plain lerp.
-    const Vector2 lin_p1(1.0f / 3.0f, 1.0f / 3.0f);
-    const Vector2 lin_p2(2.0f / 3.0f, 2.0f / 3.0f);
-    CHECK(Math::abs(eval_bezier(lin_p1, lin_p2, 0.0f, 1.0f, 0.25f) - 0.25f) < 1e-3f);
-    CHECK(Math::abs(eval_bezier(lin_p1, lin_p2, 0.0f, 1.0f, 0.5f) - 0.5f) < 1e-3f);
-    CHECK(Math::abs(eval_bezier(lin_p1, lin_p2, 0.0f, 1.0f, 0.75f) - 0.75f) < 1e-3f);
+    // 1) SYMMETRIC ease-in-out: out_handle=(0.3,0), in_handle=(-0.3,0)
+    //    -> P1=(0.3,0), P2=(0.7,1). NOTE the NEGATIVE in_handle.x, impossible for
+    //    an absolute control point -- this is what proves the relative convention.
+    const Vector2 sym_out(0.3f, 0.0f);
+    const Vector2 sym_in(-0.3f, 0.0f);
+    // By symmetry the eased midpoint is exactly the linear midpoint.
+    CHECK(Math::abs(eval_bezier(sym_out, sym_in, 0.0f, 1.0f, 0.5f) - 0.5f) < 0.02f);
+    // Proper S-curve: slow at the start (below the diagonal), slow at the end
+    // (above the diagonal).
+    CHECK(eval_bezier(sym_out, sym_in, 0.0f, 1.0f, 0.25f) < 0.25f);
+    CHECK(eval_bezier(sym_out, sym_in, 0.0f, 1.0f, 0.75f) > 0.75f);
 
     // 2) ENDPOINTS map exactly to the keyframe values.
-    CHECK(Math::is_equal_approx(eval_bezier(lin_p1, lin_p2, 2.0f, 8.0f, 0.0f), 2.0f));
-    CHECK(Math::is_equal_approx(eval_bezier(lin_p1, lin_p2, 2.0f, 8.0f, 1.0f), 8.0f));
+    CHECK(Math::is_equal_approx(eval_bezier(sym_out, sym_in, 2.0f, 8.0f, 0.0f), 2.0f));
+    CHECK(Math::is_equal_approx(eval_bezier(sym_out, sym_in, 2.0f, 8.0f, 1.0f), 8.0f));
 
-    // 3) EASE-IN (slow start): CSS cubic-bezier(0.42, 0, 1, 1). Because X must
-    //    be solved for the curve parameter, y(0.5) ~= 0.315, well below the
-    //    linear midpoint 0.5. The OLD buggy code evaluated Y(t) directly and,
-    //    with p1.y=0 and p2.y=1, returned EXACTLY 0.5 at t=0.5 -- so the strict
-    //    "< 0.45" check is the discriminating assertion that fails the old code.
-    const Vector2 ease_p1(0.42f, 0.0f);
-    const Vector2 ease_p2(1.0f, 1.0f);
-    const float eased_mid = eval_bezier(ease_p1, ease_p2, 0.0f, 1.0f, 0.5f);
-    CHECK(eased_mid < 0.45f);                     // discriminator: old code gives 0.5
-    CHECK(Math::abs(eased_mid - 0.315f) < 0.03f); // matches the solved Y value
+    // 3) DISCRIMINATOR -- asymmetric ease-in: out_handle=(0.3,0), in_handle=(0,0)
+    //    -> P1=(0.3,0), P2=(1,1) (CSS-style cubic-bezier(0.3,0,1,1)), a slow start
+    //    whose midpoint (~0.38) sits BELOW the linear midpoint 0.5. Removing the
+    //    relative->absolute conversion feeds the raw handles as control points
+    //    (P2=(0,0)) and the solved Y jumps to ~0.87, so the strict "< 0.45" check
+    //    pins the conversion.
+    const Vector2 in_zero(0.0f, 0.0f);
+    const float eased_mid = eval_bezier(sym_out, in_zero, 0.0f, 1.0f, 0.5f);
+    CHECK(eased_mid < 0.45f);
 
     // 4) MONOTONIC: an ease curve never decreases across the timeline.
-    float prev = eval_bezier(ease_p1, ease_p2, 0.0f, 1.0f, 0.0f);
+    float prev = eval_bezier(sym_out, in_zero, 0.0f, 1.0f, 0.0f);
     for (int i = 1; i <= 10; i++) {
         const float t = static_cast<float>(i) / 10.0f;
-        const float cur = eval_bezier(ease_p1, ease_p2, 0.0f, 1.0f, t);
+        const float cur = eval_bezier(sym_out, in_zero, 0.0f, 1.0f, t);
         CHECK(cur >= prev - 1e-4f);
         prev = cur;
     }

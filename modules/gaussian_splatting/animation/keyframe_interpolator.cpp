@@ -46,24 +46,24 @@ Variant KeyframeInterpolator::interpolate(const LocalVector<Keyframe>& keyframes
     if (numeric_pair) {
         float a = kf_a.value.operator float();
         float b = kf_b.value.operator float();
-        return _interpolate_float(a, b, t, interp_type, kf_a.out_handle, kf_b.in_handle);
+        return _interpolate_float(a, b, t, interp_type, kf_a.out_handle, kf_b.in_handle, time_diff);
     }
 
     switch (type) {
         case Variant::FLOAT: {
             float a = kf_a.value.operator float();
             float b = kf_b.value.operator float();
-            return _interpolate_float(a, b, t, interp_type, kf_a.out_handle, kf_b.in_handle);
+            return _interpolate_float(a, b, t, interp_type, kf_a.out_handle, kf_b.in_handle, time_diff);
         }
         case Variant::INT: {
             float a = kf_a.value.operator float();
             float b = kf_b.value.operator float();
-            return _interpolate_float(a, b, t, interp_type, kf_a.out_handle, kf_b.in_handle);
+            return _interpolate_float(a, b, t, interp_type, kf_a.out_handle, kf_b.in_handle, time_diff);
         }
         case Variant::VECTOR3: {
             Vector3 a = kf_a.value.operator Vector3();
             Vector3 b = kf_b.value.operator Vector3();
-            return _interpolate_vector3(a, b, t, interp_type, kf_a.out_handle, kf_b.in_handle);
+            return _interpolate_vector3(a, b, t, interp_type, kf_a.out_handle, kf_b.in_handle, time_diff);
         }
         case Variant::COLOR: {
             Color a = kf_a.value.operator Color();
@@ -81,14 +81,21 @@ Variant KeyframeInterpolator::interpolate(const LocalVector<Keyframe>& keyframes
     }
 }
 
-Vector3 KeyframeInterpolator::_interpolate_vector3(const Vector3& a, const Vector3& b, float t, InterpolationType type, const Vector2& handle_a, const Vector2& handle_b) {
+Vector3 KeyframeInterpolator::_interpolate_vector3(const Vector3& a, const Vector3& b, float t, InterpolationType type, const Vector2& handle_a, const Vector2& handle_b, float time_diff) {
     switch (type) {
         case InterpolationType::CONSTANT:
             return a;
         case InterpolationType::LINEAR:
             return a.lerp(b, t);
-        case InterpolationType::CUBIC_BEZIER:
-            return _cubic_bezier_vector3(t, a, b, handle_a, handle_b);
+        case InterpolationType::CUBIC_BEZIER: {
+            // Degenerate / invalid segment duration: fall back to linear (identity easing).
+            if (!Math::is_finite(time_diff) || time_diff <= 0.0f) {
+                return a.lerp(b, t);
+            }
+            Vector2 p1, p2;
+            _handles_to_control_points(handle_a, handle_b, time_diff, p1, p2);
+            return _cubic_bezier_vector3(t, a, b, p1, p2);
+        }
         case InterpolationType::SMOOTH_STEP:
             return a.lerp(b, smooth_step(t));
         case InterpolationType::SMOOTHER_STEP:
@@ -128,14 +135,21 @@ Quaternion KeyframeInterpolator::_interpolate_quaternion(const Quaternion& a, co
     }
 }
 
-float KeyframeInterpolator::_interpolate_float(float a, float b, float t, InterpolationType type, const Vector2& handle_a, const Vector2& handle_b) {
+float KeyframeInterpolator::_interpolate_float(float a, float b, float t, InterpolationType type, const Vector2& handle_a, const Vector2& handle_b, float time_diff) {
     switch (type) {
         case InterpolationType::CONSTANT:
             return a;
         case InterpolationType::LINEAR:
             return Math::lerp(a, b, t);
-        case InterpolationType::CUBIC_BEZIER:
-            return a + (b - a) * _cubic_bezier(t, handle_a, handle_b);
+        case InterpolationType::CUBIC_BEZIER: {
+            // Degenerate / invalid segment duration: fall back to linear (identity easing).
+            if (!Math::is_finite(time_diff) || time_diff <= 0.0f) {
+                return Math::lerp(a, b, t);
+            }
+            Vector2 p1, p2;
+            _handles_to_control_points(handle_a, handle_b, time_diff, p1, p2);
+            return a + (b - a) * _cubic_bezier(t, p1, p2);
+        }
         case InterpolationType::SMOOTH_STEP:
             return Math::lerp(a, b, smooth_step(t));
         case InterpolationType::SMOOTHER_STEP:
@@ -220,12 +234,35 @@ float KeyframeInterpolator::_cubic_bezier(float t, const Vector2& p1, const Vect
     return sample_y(s);
 }
 
-Vector3 KeyframeInterpolator::_cubic_bezier_vector3(float t, const Vector3& start, const Vector3& end, const Vector2& handle_a, const Vector2& handle_b) {
+Vector3 KeyframeInterpolator::_cubic_bezier_vector3(float t, const Vector3& start, const Vector3& end, const Vector2& p1, const Vector2& p2) {
+    // One scalar easing curve drives all three axes (handle.y therefore cannot be
+    // per-axis value units; it is a normalized-progress offset -- see
+    // _handles_to_control_points). Evaluate the curve once and lerp each axis.
+    const float eased = _cubic_bezier(t, p1, p2);
     Vector3 result;
-    result.x = start.x + (end.x - start.x) * _cubic_bezier(t, handle_a, handle_b);
-    result.y = start.y + (end.y - start.y) * _cubic_bezier(t, handle_a, handle_b);
-    result.z = start.z + (end.z - start.z) * _cubic_bezier(t, handle_a, handle_b);
+    result.x = start.x + (end.x - start.x) * eased;
+    result.y = start.y + (end.y - start.y) * eased;
+    result.z = start.z + (end.z - start.z) * eased;
     return result;
+}
+
+void KeyframeInterpolator::_handles_to_control_points(const Vector2& out_handle, const Vector2& in_handle, float time_diff, Vector2& p1, Vector2& p2) {
+    // The handles are Godot-style KEY-RELATIVE tangent offsets, NOT absolute
+    // control points (see docs/features/animation.md):
+    //   - `out_handle` is keyframe-A's out tangent, offset from A's (time, value).
+    //   - `in_handle`  is keyframe-B's in  tangent, offset from B's (time, value).
+    // handle.x is in SECONDS, so it must be normalized by the segment duration
+    // `time_diff` to land in the [0,1] curve-X space. handle.y is treated as a
+    // NORMALIZED-PROGRESS offset (0 = on the linear-progress line), NOT value
+    // units -- the only interpretation coherent across both the scalar and the
+    // Vector3 (single shared easing) paths, and it matches every documented
+    // example (all use handle.y = 0.0). With fixed endpoints P0=(0,0), P3=(1,1):
+    //   P1 = ( out_handle.x / time_diff ,     out_handle.y )
+    //   P2 = ( 1 + in_handle.x / time_diff , 1 + in_handle.y )
+    // Caller guarantees time_diff > 0 and finite, so the divide is safe.
+    const float inv_time_diff = 1.0f / time_diff;
+    p1 = Vector2(out_handle.x * inv_time_diff, out_handle.y);
+    p2 = Vector2(1.0f + in_handle.x * inv_time_diff, 1.0f + in_handle.y);
 }
 
 void KeyframeInterpolator::_find_keyframe_indices(const LocalVector<Keyframe>& keyframes, float time, int& index_a, int& index_b) {
