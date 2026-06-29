@@ -153,7 +153,11 @@ Vector<Gaussian> build_staged_payload_gaussians(uint32_t p_count) {
     Vector<Gaussian> gaussians;
     gaussians.resize(p_count);
     for (uint32_t i = 0; i < p_count; i++) {
-        gaussians.write[i] = make_gaussian(Vector3(float(i), float(i % 7), float(i % 3)), Color(1.0f, 1.0f, 1.0f, 1.0f));
+        // Distinct, asymmetric per-splat sh_dc so the round-trip asserts catch a
+        // DC channel swap/zero (an all-white fixture would pass a swap, since
+        // white is channel-symmetric).
+        const Color dc(float(i % 5) * 0.2f, float(i % 3) * 0.33f, float(i % 7) * 0.14f, 1.0f);
+        gaussians.write[i] = make_gaussian(Vector3(float(i), float(i % 7), float(i % 3)), dc);
     }
     return gaussians;
 }
