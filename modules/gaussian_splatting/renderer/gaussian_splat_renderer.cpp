@@ -1450,6 +1450,9 @@ void GaussianSplatRenderer::_release_resident_contract_buffers() {
     resource_state.resident_atlas_gaussian_count = 0;
     resource_state.resident_dispatch_chunk_count = 0;
     resource_state.resident_max_chunk_splats = 0;
+    resource_state.resident_atlas_reduced = false;
+    resource_state.resident_atlas_source_count = 0;
+    resource_state.resident_atlas_keep_ratio = 1.0f;
 }
 
 void GaussianSplatRenderer::_release_shared_dynamic_asset() {

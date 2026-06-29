@@ -1481,6 +1481,13 @@ Dictionary RenderDiagnosticsOrchestrator::build_render_stats() const {
 	stats["payload_source_active"] = payload_source_active;
 	stats["resident_payload_active"] = resident_payload_active;
 	stats["payload_resident_only_reason"] = payload_resident_only_reason;
+	// Resident atlas VRAM-budget LOD clamp telemetry (#321 follow-up). `reduced` is true when
+	// the atlas was thinned by importance to fit the device VRAM budget; surfaced so the
+	// degradation is observable in the residency HUD / debug stats rather than silent.
+	stats["resident_atlas_reduced"] = resource_state.resident_atlas_reduced;
+	stats["resident_atlas_source_count"] = static_cast<int64_t>(resource_state.resident_atlas_source_count);
+	stats["resident_atlas_packed_count"] = static_cast<int64_t>(resource_state.resident_atlas_gaussian_count);
+	stats["resident_atlas_keep_ratio"] = resource_state.resident_atlas_keep_ratio;
 	stats["instance_backend_policy"] = debug_state.instance_backend_policy;
 	stats["backend_selection_reason"] = debug_state.backend_selection_reason;
 	stats["backend_selection_reason_label"] =

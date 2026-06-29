@@ -1178,6 +1178,16 @@ void GaussianSplatManager::initialize_module() {
 	// Step size for budget adjustments (1% as recommended by Virtual Memory 3DGS paper)
 	GLOBAL_DEF("rendering/gaussian_splatting/streaming/regulation_step_percent", 1.0f);
 
+	// Resident-path (GaussianSplatNode3D) atlas VRAM budget override, in MB.
+	//   0 (default) = off: the resident atlas is clamped to the queried device VRAM budget
+	//     (#321) and only thinned (importance-ordered LOD) when it would not otherwise fit,
+	//     so capable GPUs are unaffected.
+	//   >0 = pin an explicit atlas byte budget; forces the importance-LOD clamp even on a
+	//     capable GPU. Useful to cap resident VRAM on a known target and to validate the
+	//     clamp on real-scan content. See renderer/resident_atlas_budget.h.
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/gaussian_splatting/resident/atlas_vram_budget_override_mb",
+			PROPERTY_HINT_RANGE, "0,8192,1"), 0);
+
 	// Sorting configuration settings from master
 	GLOBAL_DEF("rendering/gaussian_splatting/sorting/bitonic_max_elements", (int)sorting_bitonic_max);
 	GLOBAL_DEF("rendering/gaussian_splatting/sorting/radix_max_elements", (int)sorting_radix_max);

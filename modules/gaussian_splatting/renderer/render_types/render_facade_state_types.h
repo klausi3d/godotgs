@@ -109,6 +109,15 @@ struct ResourceState {
 	// pack loop. Lets regression tests assert that per-instance state changes (visibility,
 	// transform, opacity, etc) do NOT trigger an atlas repack.
 	uint64_t resident_atlas_pack_count = 0;
+	// Resident atlas VRAM-budget LOD clamp telemetry (#321 follow-up). Cached on the slow
+	// path so the fast (instance-only) path re-surfaces the same values. `source_count` is
+	// the full atlas splat count; the packed count is resident_atlas_gaussian_count above
+	// (== source_count when not reduced); `keep_ratio` is the global importance-thinning
+	// fraction applied per chunk. `reduced` is true whenever the atlas was clamped to fit
+	// the device VRAM budget (observable, never a silent drop).
+	bool resident_atlas_reduced = false;
+	uint32_t resident_atlas_source_count = 0;
+	float resident_atlas_keep_ratio = 1.0f;
 };
 
 struct TestDataState {

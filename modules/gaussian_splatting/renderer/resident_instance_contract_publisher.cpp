@@ -8,6 +8,9 @@
 #include "../core/gaussian_splat_scene_director.h"
 #include "../interfaces/gpu_sorting_pipeline.h"
 #include "../resources/color_grading_resource.h"
+#include "resident_atlas_budget.h"
+#include "../core/gs_project_settings.h"
+#include "core/config/project_settings.h"
 #include "servers/rendering/rendering_device.h"
 
 #include <algorithm>
@@ -192,6 +195,18 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 		return false;
 	}
 
+	// Resident atlas VRAM budget (#321 follow-up). A default GaussianSplatNode3D is
+	// resident-only by contract, so an over-large atlas cannot fall back to streaming and
+	// would OOM / device-lost on a low-end GPU. Clamp the packed atlas to the device VRAM
+	// budget (or an explicit project override) and pack an importance-ordered subset below
+	// instead. Unknown/UMA budgets and capable GPUs resolve to the 2 GB staging ceiling, so
+	// the effective cap == the staging ceiling and nothing below changes.
+	const uint64_t device_budget_bytes = rd->get_device_memory_budget();
+	const uint32_t resident_atlas_override_mb = gs::settings::get_uint(ProjectSettings::get_singleton(),
+			"rendering/gaussian_splatting/resident/atlas_vram_budget_override_mb", 0u);
+	const uint64_t effective_atlas_cap_bytes =
+			ResidentAtlasBudget::compute_effective_atlas_cap_bytes(device_budget_bytes, resident_atlas_override_mb);
+
 	const Ref<GaussianData> primary_data = p_renderer->get_scene_state().gaussian_data;
 	const bool has_primary_data = primary_data.is_valid() && primary_data->get_count() > 0;
 
@@ -252,6 +267,14 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 		atlas_generation = _mix_generation(atlas_generation, asset.submission_asset_id);
 		atlas_generation = _mix_generation(atlas_generation, asset.data.is_valid() ? uint64_t(asset.data->get_instance_id()) : 0ULL);
 		atlas_generation = _mix_generation(atlas_generation, asset.data.is_valid() ? asset.data->get_content_revision() : 0ULL);
+	}
+	// Only perturb the atlas hash when the VRAM cap actually differs from the staging
+	// ceiling (low-end device budget or an explicit override). On capable GPUs the cap
+	// equals the ceiling, so the hash stays byte-identical to pre-#321 builds and there is
+	// no one-time repack on deploy. The cap is a stable per-device fixpoint, so once mixed
+	// it does not cause per-frame repacks.
+	if (effective_atlas_cap_bytes != ResidentAtlasBudget::kResidentStagingCeilingBytes) {
+		atlas_generation = _mix_generation(atlas_generation, effective_atlas_cap_bytes);
 	}
 
 	uint64_t instance_generation = 0xbb67ae8584caa73bULL;
@@ -400,20 +423,28 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 					resource_state.resident_asset_chunk_index_buffer_size);
 		}
 
-		// Early-out: estimate total packed size across all assets.  If it would
-		// exceed the staging limit, skip the expensive per-chunk packing loop
-		// entirely.  The streaming path should handle datasets this large.
+		// Estimate the total source size, then decide the clamp plan. A default resident
+		// GaussianSplatNode3D has no streaming fallback (resident-only by contract), so an
+		// over-budget atlas is THINNED to fit rather than rejected -- rejecting would black-frame
+		// the node under the #351 single-route invariant. The thinned atlas is hard-capped at
+		// target_keep (<= effective cap <= the 2 GB per-buffer staging limit) by the global budget
+		// below, so it always fits the upload regardless of source size. We only reject a source
+		// beyond a generous COST ceiling: the slow-path pack loop still scans the whole source
+		// once (generation-gated), so an absurdly large single resident asset (use streaming for
+		// that) is bounded here.
+		ResidentAtlasBudget::SubsetPlan subset_plan;
 		{
-			static constexpr uint64_t kMaxResidentUploadBytes = uint64_t(2) * 1024 * 1024 * 1024;
+			static constexpr uint64_t kResidentStagingUploadBytes = uint64_t(2) * 1024 * 1024 * 1024;
+			static constexpr uint64_t kMaxResidentClampSourceBytes = uint64_t(4) * kResidentStagingUploadBytes;
 			uint64_t total_gaussians = 0;
 			for (const ResidentAssetDescriptor &asset : assets) {
 				if (asset.data.is_valid()) {
 					total_gaussians += uint64_t(asset.data->get_count());
 				}
 			}
-			if (total_gaussians * sizeof(PackedGaussian) > kMaxResidentUploadBytes) {
+			if (total_gaussians * sizeof(PackedGaussian) > kMaxResidentClampSourceBytes) {
 				if (r_reason) {
-					*r_reason = "resident_dataset_exceeds_staging_limit";
+					*r_reason = "resident_dataset_exceeds_clamp_source_limit";
 				}
 				// Do NOT clear instance pipeline buffers here — the streaming
 				// orchestrator may have already published its own atlas/cull
@@ -422,6 +453,12 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 				// ever becoming valid.
 				return false;
 			}
+			// Decide whether the atlas fits the device VRAM budget, and if not, the global keep
+			// ratio + target for the importance-ordered subset packed per chunk below. A source
+			// above the staging limit clamps down to target_keep <= staging limit and renders
+			// reduced instead of black-framing.
+			subset_plan = ResidentAtlasBudget::compute_subset_plan(total_gaussians,
+					effective_atlas_cap_bytes, sizeof(PackedGaussian));
 		}
 
 		Vector<AssetMetaGPU> asset_meta_cpu;
@@ -432,6 +469,14 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 
 		uint32_t max_chunk_count_per_asset = 0;
 		uint32_t max_chunk_splats = 0;
+		// Hard global budget for the importance-LOD clamp. The per-chunk thinning below keeps
+		// at least one splat from each non-empty chunk for coverage, which can overshoot the
+		// device VRAM target on datasets with many tiny chunks; capping the cumulative kept
+		// count here guarantees the resident atlas never exceeds the budget (Codex #420).
+		// UINT32_MAX == unbounded when the atlas is not being thinned.
+		uint32_t resident_remaining_budget = subset_plan.reduced
+				? uint32_t(MIN<uint64_t>(subset_plan.target_keep, uint64_t(UINT32_MAX)))
+				: UINT32_MAX;
 
 		for (uint32_t asset_index = 0; asset_index < assets.size(); asset_index++) {
 			const ResidentAssetDescriptor &asset = assets[asset_index];
@@ -459,11 +504,21 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 			asset_meta.bounds_center_local[2] = asset_center.z;
 			asset_meta.bounds_radius_local = asset_half.length();
 			asset_meta.chunk_index_base = asset_chunk_index_cpu.size();
-			asset_meta.chunk_index_count = chunk_descriptors.size();
-			asset_meta.lod_ranges[0].base = asset_meta.chunk_index_base;
-			asset_meta.lod_ranges[0].count = asset_meta.chunk_index_count;
+			// chunk_index_count / lod_ranges AND max_chunk_count_per_asset are finalized AFTER
+			// the chunk loop: importance thinning under the global budget may drop whole chunks
+			// (0 kept), so both the asset's chunk count and the dispatch / auxiliary-buffer sizing
+			// must reflect the chunks actually emitted, not chunk_descriptors.size().
 
-			max_chunk_count_per_asset = MAX<uint32_t>(max_chunk_count_per_asset, chunk_descriptors.size());
+			// Give this asset a share of the keep budget proportional to its splat count so a
+			// later (e.g. currently visible/casting) asset cannot be starved to zero chunks by
+			// an earlier large asset in the stable superset. Visibility-independent, so the atlas
+			// stays stable across visibility flips (Codex #420).
+			uint32_t asset_remaining_budget = resident_remaining_budget;
+			if (subset_plan.reduced) {
+				asset_remaining_budget = ResidentAtlasBudget::resident_asset_budget(subset_plan.target_keep,
+						uint64_t(asset.data->get_count()), subset_plan.source_count, resident_remaining_budget);
+			}
+			const uint32_t asset_budget_start = asset_remaining_budget;
 
 			for (uint32_t chunk_index = 0; chunk_index < chunk_descriptors.size(); chunk_index++) {
 				const ResidentChunkDescriptor &descriptor = chunk_descriptors[chunk_index];
@@ -487,10 +542,28 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 					return false;
 				}
 
+				// Importance-ordered LOD: when the atlas is over the VRAM budget, keep the top
+				// splats of THIS chunk (by the culler's opacity*scale importance) so every
+				// spatial region keeps its most important splats -- preserves coverage on
+				// real-scan content while the global budget below bounds the total. Compacts the
+				// gaussian payload and its parallel high-order SH block in place, so sh_coeffs is
+				// taken AFTER compaction.
+				uint32_t chunk_pack_count = descriptor.count;
+				if (subset_plan.reduced) {
+					chunk_pack_count = ResidentAtlasBudget::compact_chunk_by_importance(
+							gaussian_snapshot, sh_high_order_snapshot, sh_high_order,
+							subset_plan.keep_ratio, asset_remaining_budget);
+					if (chunk_pack_count == 0) {
+						// Global VRAM budget exhausted (or this chunk's quota rounded to 0):
+						// drop the chunk rather than emit a zero-splat ChunkMeta.
+						continue;
+					}
+				}
+
 				SHCompressionMetrics sh_metrics;
 				Vector<PackedGaussian> packed_chunk;
 				const Vector3 *sh_coeffs = sh_high_order_snapshot.is_empty() ? nullptr : sh_high_order_snapshot.ptr();
-				pack_gaussians_range(gaussian_snapshot, 0, descriptor.count, packed_chunk, sh_metrics, sh_coeffs,
+				pack_gaussians_range(gaussian_snapshot, 0, chunk_pack_count, packed_chunk, sh_metrics, sh_coeffs,
 						sh_first_order, sh_high_order);
 
 				const uint32_t atlas_base = atlas_gaussian_cpu.size();
@@ -500,7 +573,7 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 
 				ChunkMetaGPU chunk_meta = {};
 				chunk_meta.atlas_base = atlas_base;
-				chunk_meta.splat_count = descriptor.count;
+				chunk_meta.splat_count = chunk_pack_count;
 				const Vector3 chunk_center = descriptor.bounds.get_center();
 				const Vector3 chunk_half = descriptor.bounds.size * 0.5f;
 				chunk_meta.bounds_center_local[0] = chunk_center.x;
@@ -516,9 +589,22 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 				AssetChunkIndexGPU chunk_index_gpu = {};
 				chunk_index_gpu.chunk_id = chunk_meta_cpu.size() - 1;
 				asset_chunk_index_cpu.push_back(chunk_index_gpu);
-				max_chunk_splats = MAX(max_chunk_splats, descriptor.count);
+				max_chunk_splats = MAX(max_chunk_splats, chunk_pack_count);
 			}
 
+			// Return this asset's unspent budget to the global pool so later assets can use it.
+			if (subset_plan.reduced) {
+				resident_remaining_budget -= (asset_budget_start - asset_remaining_budget);
+			}
+
+			// Finalize the asset's chunk-index range from the chunks actually emitted (some may
+			// have been dropped to 0 splats by the importance-LOD budget above), and size
+			// Stage-A dispatch + the visible-chunk/splat-ref/sort buffers from that emitted count
+			// so the clamp shrinks the auxiliary buffers too, not just the atlas (Codex #420).
+			asset_meta.chunk_index_count = asset_chunk_index_cpu.size() - asset_meta.chunk_index_base;
+			asset_meta.lod_ranges[0].base = asset_meta.chunk_index_base;
+			asset_meta.lod_ranges[0].count = asset_meta.chunk_index_count;
+			max_chunk_count_per_asset = MAX<uint32_t>(max_chunk_count_per_asset, asset_meta.chunk_index_count);
 			asset_meta_cpu.write[asset.dense_asset_id] = asset_meta;
 		}
 
@@ -555,6 +641,19 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 		resource_state.resident_dispatch_chunk_count = atlas_max_chunk_count_per_asset;
 		resource_state.resident_max_chunk_splats = atlas_max_chunk_splats;
 		resource_state.resident_atlas_pack_count++;
+		// VRAM-budget LOD clamp telemetry (observable; never a silent drop). Cached so the
+		// fast instance-only path re-surfaces the same values; the packed count is
+		// resident_atlas_gaussian_count above.
+		resource_state.resident_atlas_reduced = subset_plan.reduced;
+		resource_state.resident_atlas_source_count = uint32_t(subset_plan.source_count);
+		resource_state.resident_atlas_keep_ratio = subset_plan.reduced ? float(subset_plan.keep_ratio) : 1.0f;
+		if (subset_plan.reduced) {
+			WARN_PRINT_ONCE(vformat("[ResidentContract] Atlas exceeds the resident VRAM budget; thinned by "
+					"importance to fit: %d -> %d splats (keep_ratio=%.3f, cap=%d MB). Reduce the asset's splat "
+					"count or render it via GaussianSplatWorld3D streaming for full density.",
+					int(subset_plan.source_count), int(atlas_gaussian_count), subset_plan.keep_ratio,
+					int(subset_plan.cap_bytes >> 20)));
+		}
 	} else {
 		// Atlas unchanged. Reuse the cached size metrics from the last slow-path publish.
 		// Atlas storage buffers (resident_atlas_gaussian_buffer etc.) keep their current
