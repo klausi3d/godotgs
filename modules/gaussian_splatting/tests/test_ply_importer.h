@@ -5,10 +5,14 @@
 #include "../io/resource_importer_ply.h"
 #include "../io/gaussian_splat_world_io.h"
 #include "../core/gaussian_splat_world.h"
+#include "../core/gaussian_splat_asset.h"
 #include "synthetic_ply_writer.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
+#include "core/io/resource_loader.h"
+#include "core/io/resource_uid.h"
 #include "core/os/os.h"
+#include "core/templates/hash_map.h"
 #include "core/templates/local_vector.h"
 
 namespace {
@@ -518,4 +522,102 @@ TEST_CASE("[GaussianSplatting][PLY] opacity survives import - logit round-trip (
 
     _remove_ply_fixture(path);
     DirAccess::remove_absolute(path.get_basename() + ".gsplatcache");
+}
+
+TEST_CASE("[GaussianSplatting][PLY] opacity survives ResourceImporterPLY -> asset get_opacities (regression: zero-filled logits)") {
+    // Companion to the PLYLoader round-trip test above. The PLYLoader-only test
+    // exercises parse_binary_data() -> GaussianData::opacity, which already
+    // populates opacity from the PLY logit, so it does NOT cover the shipped-once
+    // bug: ResourceImporterPLY built a GaussianSplatAsset and (before the fix at
+    // resource_importer_ply.cpp:383-388) left opacity_logits at their zero-filled
+    // resize() defaults. GaussianSplatAsset::get_opacities() prefers logits over
+    // color.a, so zero logits sigmoid to 0.5 for EVERY splat regardless of the
+    // real stored opacity. This test drives the real importer -> save -> load ->
+    // get_opacities() path so it FAILS if that population is removed.
+#ifndef TOOLS_ENABLED
+    MESSAGE("Skipping - ResourceImporterPLY (and thus the import->asset path) requires TOOLS_ENABLED");
+    return;
+#else
+    // Same distinct, known activated opacities as the loader test so the two
+    // assertions share one mental model. Endpoints avoid 0/1 where logit diverges.
+    const float expected_opacities[4] = { 0.1f, 0.35f, 0.65f, 0.9f };
+
+    LocalVector<Gaussian> splats;
+    splats.resize(4);
+    for (int i = 0; i < 4; i++) {
+        Gaussian g;
+        g.position = Vector3((float)i, 0.0f, 0.0f);
+        g.scale = Vector3(1.0f, 1.0f, 1.0f);
+        g.rotation = Quaternion(); // identity (w,x,y,z) = (1,0,0,0)
+        g.sh_dc = Color(0.5f, 0.5f, 0.5f, 1.0f);
+        g.normal = Vector3(0.0f, 0.0f, 1.0f);
+        g.area = 1.0f;
+        g.opacity = expected_opacities[i]; // ACTIVATED [0,1] opacity
+        splats[i] = g;
+    }
+
+    // The importer reads via ResourceFormat/ResourceSaver, so anchor the source
+    // and the imported .res under user:// (the proven path for headless importer
+    // tests) rather than the OS temp dir used for the loader-only fixtures.
+    const uint64_t ticks = OS::get_singleton() ? OS::get_singleton()->get_ticks_usec() : 0;
+    const String source_path = "user://godotgs_opacity_importer_" + itos(ticks) + ".ply";
+    const String save_base_path = "user://godotgs_opacity_importer_" + itos(ticks) + "_asset";
+
+    REQUIRE_MESSAGE(TestGaussianSplatting::write_gaussian_ply(source_path, splats, false, false),
+            "Should write synthetic opacity PLY fixture for the importer");
+
+    Ref<ResourceImporterPLY> importer;
+    importer.instantiate();
+
+    // Keep all four splats, in order, with no thumbnail: ultra preset +
+    // max_splats=0 + density=1.0 means final_count == original_count and no
+    // density merge or opacity sort, so get_opacities()[i] lines up with
+    // expected_opacities[i]. normalize_opacity is the importer default (true).
+    HashMap<StringName, Variant> options;
+    options.insert(StringName("quality/preset"), String("ultra"));
+    options.insert(StringName("quality/max_splats"), 0);
+    options.insert(StringName("quality/density_multiplier"), 1.0);
+    options.insert(StringName("processing/sort_by_opacity"), false);
+    options.insert(StringName("preview/generate_thumbnail"), false);
+
+    Variant metadata_variant;
+    Error import_err = importer->import(ResourceUID::INVALID_ID, source_path, save_base_path, options,
+            nullptr, nullptr, &metadata_variant);
+    CHECK_MESSAGE(import_err == OK, "ResourceImporterPLY::import should succeed for the synthetic opacity PLY");
+
+    if (import_err == OK) {
+        Ref<GaussianSplatAsset> asset = ResourceLoader::load(save_base_path + String(".res"));
+        REQUIRE_MESSAGE(asset.is_valid(), "Imported GaussianSplatAsset should load from disk");
+        REQUIRE(int(asset->get_splat_count()) == 4);
+
+        // This is the regression-critical call: it sigmoids opacity_logits and
+        // only falls back to color.a when logits are absent. The importer always
+        // sizes opacity_logits to splat_count, so all-zero logits (the bug) would
+        // yield sigmoid(0)=0.5 for every splat here and shadow color.a entirely.
+        PackedFloat32Array opacities = asset->get_opacities();
+        REQUIRE(opacities.size() == 4);
+
+        const float epsilon = 0.02f;
+        float min_opacity = 1.0f;
+        float max_opacity = 0.0f;
+        for (int i = 0; i < 4; i++) {
+            const float recovered = opacities[i];
+            CHECK_MESSAGE(Math::abs(recovered - expected_opacities[i]) <= epsilon,
+                    vformat("Splat %d opacity should survive import->asset: expected %f, got %f",
+                            i, expected_opacities[i], recovered));
+            min_opacity = MIN(min_opacity, recovered);
+            max_opacity = MAX(max_opacity, recovered);
+        }
+
+        // The all-0.5 bug collapses the spread to ~0; the true inputs span
+        // 0.1..0.9. This is the assertion that fails if opacity_logits are left
+        // at their zero-filled defaults (resource_importer_ply.cpp:383-388 removed).
+        CHECK_MESSAGE(max_opacity - min_opacity > 0.3f,
+                "Imported opacities must not collapse to a single value (zero-filled logit regression)");
+    }
+
+    DirAccess::remove_absolute(source_path);
+    DirAccess::remove_absolute(source_path.get_basename() + ".gsplatcache");
+    DirAccess::remove_absolute(save_base_path + ".res");
+#endif // TOOLS_ENABLED
 }
