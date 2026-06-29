@@ -496,11 +496,10 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 			asset_meta.bounds_center_local[2] = asset_center.z;
 			asset_meta.bounds_radius_local = asset_half.length();
 			asset_meta.chunk_index_base = asset_chunk_index_cpu.size();
-			// chunk_index_count / lod_ranges are finalized AFTER the chunk loop: importance
-			// thinning under the global budget may drop whole chunks (0 kept), so the count
+			// chunk_index_count / lod_ranges AND max_chunk_count_per_asset are finalized AFTER
+			// the chunk loop: importance thinning under the global budget may drop whole chunks
+			// (0 kept), so both the asset's chunk count and the dispatch / auxiliary-buffer sizing
 			// must reflect the chunks actually emitted, not chunk_descriptors.size().
-
-			max_chunk_count_per_asset = MAX<uint32_t>(max_chunk_count_per_asset, chunk_descriptors.size());
 
 			for (uint32_t chunk_index = 0; chunk_index < chunk_descriptors.size(); chunk_index++) {
 				const ResidentChunkDescriptor &descriptor = chunk_descriptors[chunk_index];
@@ -574,11 +573,14 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 				max_chunk_splats = MAX(max_chunk_splats, chunk_pack_count);
 			}
 
-			// Finalize the asset's chunk-index range from the chunks actually emitted (some
-			// may have been dropped to 0 splats by the importance-LOD budget above).
+			// Finalize the asset's chunk-index range from the chunks actually emitted (some may
+			// have been dropped to 0 splats by the importance-LOD budget above), and size
+			// Stage-A dispatch + the visible-chunk/splat-ref/sort buffers from that emitted count
+			// so the clamp shrinks the auxiliary buffers too, not just the atlas (Codex #420).
 			asset_meta.chunk_index_count = asset_chunk_index_cpu.size() - asset_meta.chunk_index_base;
 			asset_meta.lod_ranges[0].base = asset_meta.chunk_index_base;
 			asset_meta.lod_ranges[0].count = asset_meta.chunk_index_count;
+			max_chunk_count_per_asset = MAX<uint32_t>(max_chunk_count_per_asset, asset_meta.chunk_index_count);
 			asset_meta_cpu.write[asset.dense_asset_id] = asset_meta;
 		}
 
