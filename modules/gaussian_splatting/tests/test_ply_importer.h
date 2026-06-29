@@ -5,9 +5,11 @@
 #include "../io/resource_importer_ply.h"
 #include "../io/gaussian_splat_world_io.h"
 #include "../core/gaussian_splat_world.h"
+#include "synthetic_ply_writer.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/os/os.h"
+#include "core/templates/local_vector.h"
 
 namespace {
 
@@ -445,6 +447,74 @@ end_header
     REQUIRE(data->get_count() == 1);
     const Gaussian g = data->get_gaussian(0);
     CHECK(g.position.is_equal_approx(Vector3(2.5f, -3.25f, 7.75f)));
+
+    _remove_ply_fixture(path);
+    DirAccess::remove_absolute(path.get_basename() + ".gsplatcache");
+}
+
+TEST_CASE("[GaussianSplatting][PLY] opacity survives import - logit round-trip (regression: all-0.5 bug)") {
+    // Regression guard for the pre-2026-05-03 importer bug where PLY imports
+    // never wrote opacity_logits, so every splat read back as sigmoid(0)=0.5.
+    // The synthetic writer logit-encodes Gaussian::opacity (an ACTIVATED [0,1]
+    // value) exactly like a real 3DGS PLY, and PLYLoader re-applies sigmoid on
+    // load. A correct round-trip must recover the distinct input opacities;
+    // the bug would collapse them all to ~0.5.
+    const String path = _make_ply_fixture_path("opacity_roundtrip");
+
+    // Four splats with distinct, known activated opacities spanning the range.
+    // Avoid 0 and 1 because logit() diverges there (the writer clamps to
+    // [1e-6, 1-1e-6], which would otherwise inflate round-trip error).
+    const float expected_opacities[4] = { 0.1f, 0.35f, 0.65f, 0.9f };
+
+    LocalVector<Gaussian> splats;
+    splats.resize(4);
+    for (int i = 0; i < 4; i++) {
+        Gaussian g;
+        g.position = Vector3((float)i, 0.0f, 0.0f);
+        g.scale = Vector3(1.0f, 1.0f, 1.0f);       // unit scale -> log(1) = 0
+        g.rotation = Quaternion();                  // identity (w,x,y,z) = (1,0,0,0)
+        g.sh_dc = Color(0.5f, 0.5f, 0.5f, 1.0f);    // some valid DC color
+        g.normal = Vector3(0.0f, 0.0f, 1.0f);
+        g.area = 1.0f;
+        g.opacity = expected_opacities[i];          // ACTIVATED [0,1] opacity
+        splats[i] = g;
+    }
+
+    // Write the synthetic PLY (logit-encodes opacity internally). No SH band-1,
+    // no normals are needed for this opacity-focused round-trip.
+    REQUIRE_MESSAGE(TestGaussianSplatting::write_gaussian_ply(path, splats, false, false),
+            "Should write synthetic opacity PLY fixture");
+
+    // Load it back through the real importer path.
+    PLYLoader loader;
+    Error err = loader.load_file(path);
+    CHECK_MESSAGE(err == OK, "PLY load should succeed");
+
+    Ref<GaussianData> data = loader.get_gaussian_data();
+    REQUIRE_MESSAGE(data.is_valid(), "Loaded GaussianData should be valid");
+    REQUIRE(data->get_count() == 4);
+
+    // Opacity flows: input activated -> writer logit -> loader sigmoid -> here.
+    // It is stored as a float32 through this path (no 8-bit quantization), so a
+    // tight tolerance would pass; we use a generous epsilon of 0.02 to absorb
+    // the writer's [1e-6, 1-1e-6] logit clamp and float round-trip error.
+    const float epsilon = 0.02f;
+    float min_opacity = 1.0f;
+    float max_opacity = 0.0f;
+    for (int i = 0; i < 4; i++) {
+        const float recovered = data->get_gaussian(i).opacity;
+        CHECK_MESSAGE(Math::abs(recovered - expected_opacities[i]) <= epsilon,
+                vformat("Splat %d opacity should round-trip: expected %f, got %f",
+                        i, expected_opacities[i], recovered));
+        min_opacity = MIN(min_opacity, recovered);
+        max_opacity = MAX(max_opacity, recovered);
+    }
+
+    // Explicit regression assertion: the recovered opacities must NOT all be
+    // approximately equal. The all-0.5 bug would produce a spread near zero;
+    // the true inputs span 0.1..0.9 (spread 0.8).
+    CHECK_MESSAGE(max_opacity - min_opacity > 0.3f,
+            "Recovered opacities must not collapse to a single value (all-0.5 regression)");
 
     _remove_ply_fixture(path);
     DirAccess::remove_absolute(path.get_basename() + ".gsplatcache");
