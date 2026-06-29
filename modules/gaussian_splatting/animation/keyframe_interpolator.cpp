@@ -146,16 +146,78 @@ float KeyframeInterpolator::_interpolate_float(float a, float b, float t, Interp
 }
 
 float KeyframeInterpolator::_cubic_bezier(float t, const Vector2& p1, const Vector2& p2) {
-    // Cubic Bezier with control points p1 and p2
-    // Assume start point (0,0) and end point (1,1)
-    float u = 1.0f - t;
-    float tt = t * t;
-    float uu = u * u;
-    float uuu = uu * u;
-    float ttt = tt * t;
+    // CSS-style cubic-bezier easing with FIXED endpoints P0=(0,0) and P3=(1,1)
+    // and user control points P1=p1, P2=p2. The input `t` is the desired X
+    // (normalized time), NOT the curve parameter. Contract: first SOLVE for the
+    // curve parameter `s` such that X(s) == t, THEN return Y(s). Evaluating
+    // Y(t) directly (the previous implementation) ignores p1.x/p2.x and yields
+    // wrong easing for any non-default-X handle. Standard browser UnitBezier
+    // approach: Newton-Raphson with a bisection fallback.
+    if (t <= 0.0f) {
+        return 0.0f;
+    }
+    if (t >= 1.0f) {
+        return 1.0f;
+    }
 
-    // Bezier formula: B(t) = (1-t)³P₀ + 3(1-t)²tP₁ + 3(1-t)t²P₂ + t³P₃
-    return 3 * uu * t * p1.y + 3 * u * tt * p2.y + ttt;
+    // Polynomial-coefficient (Horner) form of the cubic with P0=(0,0), P3=(1,1):
+    //   X(s) = ((ax*s + bx)*s + cx)*s,   dX/ds = (3*ax*s + 2*bx)*s + cx
+    //   Y(s) = ((ay*s + by)*s + cy)*s
+    const float cx = 3.0f * p1.x;
+    const float bx = 3.0f * (p2.x - p1.x) - cx;
+    const float ax = 1.0f - cx - bx;
+
+    const float cy = 3.0f * p1.y;
+    const float by = 3.0f * (p2.y - p1.y) - cy;
+    const float ay = 1.0f - cy - by;
+
+    auto sample_x = [ax, bx, cx](float s) -> float {
+        return ((ax * s + bx) * s + cx) * s;
+    };
+    auto sample_y = [ay, by, cy](float s) -> float {
+        return ((ay * s + by) * s + cy) * s;
+    };
+    auto dx_ds = [ax, bx, cx](float s) -> float {
+        return (3.0f * ax * s + 2.0f * bx) * s + cx;
+    };
+
+    // Solve X(s) == t for s. Newton-Raphson from initial guess s = t.
+    float s = t;
+    bool converged = false;
+    for (int i = 0; i < 8; i++) {
+        const float x_err = sample_x(s) - t;
+        if (Math::abs(x_err) < 1e-6f) {
+            converged = true;
+            break;
+        }
+        const float d = dx_ds(s);
+        if (Math::abs(d) < 1e-6f) {
+            break; // Derivative too small (divide-by-zero guard); use bisection.
+        }
+        s -= x_err / d;
+    }
+
+    // Bisection fallback if Newton failed to converge or wandered out of [0, 1].
+    // X(s) is monotonic on [0, 1] for a valid easing curve, so this is safe.
+    if (!converged || s < 0.0f || s > 1.0f) {
+        float lo = 0.0f;
+        float hi = 1.0f;
+        s = t;
+        for (int i = 0; i < 20; i++) {
+            const float x = sample_x(s);
+            if (Math::abs(x - t) < 1e-6f) {
+                break;
+            }
+            if (x < t) {
+                lo = s;
+            } else {
+                hi = s;
+            }
+            s = 0.5f * (lo + hi);
+        }
+    }
+
+    return sample_y(s);
 }
 
 Vector3 KeyframeInterpolator::_cubic_bezier_vector3(float t, const Vector3& start, const Vector3& end, const Vector2& handle_a, const Vector2& handle_b) {
