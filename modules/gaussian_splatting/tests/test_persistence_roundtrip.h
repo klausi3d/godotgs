@@ -159,8 +159,25 @@ TEST_CASE("[GaussianSplatting][Persistence] GSF round-trip serialization") {
         return;
     }
 
-    Ref<GaussianSplatWorld> original = create_test_world();
-    Ref<GaussianData> original_data = original->get_gaussian_data();
+    // Dedicated LOCAL fixture (NOT the shared create_test_world() helper, which
+    // other test cases depend on): give every splat DISTINCT, non-default values
+    // for each persisted attribute so a saver that drops/zeroes/defaults any of
+    // scale, rotation, opacity, or sh_dc would fail this round-trip rather than
+    // silently pass on constant defaults.
+    Ref<GaussianData> original_data;
+    original_data.instantiate();
+
+    Vector<Gaussian> gaussians;
+    gaussians.resize(3);
+    for (int i = 0; i < 3; i++) {
+        Gaussian &g = gaussians.write[i];
+        g.position = Vector3(i, 0, 0);
+        g.scale = Vector3(1.0f + i, 2.0f + i, 3.0f + i);
+        g.rotation = Quaternion(Vector3(0, 1, 0), 0.3f * (i + 1)).normalized();
+        g.opacity = 0.2f + 0.2f * i;
+        g.sh_dc = Color(0.1f * i, 0.2f * i, 0.3f * i);
+    }
+    original_data->set_gaussians(gaussians);
     CHECK_MESSAGE(original_data.is_valid(), "Original data should be valid");
     CHECK_MESSAGE(original_data->get_count() == 3, "Original should have 3 splats");
 
@@ -183,7 +200,29 @@ TEST_CASE("[GaussianSplatting][Persistence] GSF round-trip serialization") {
 
     for (int i = 0; i < 3; i++) {
         Gaussian g = loaded_data->get_gaussian(i);
+
+        // Position (existing assertion, kept).
         CHECK(g.position.is_equal_approx(Vector3(i, 0, 0)));
+
+        // Scale / rotation: exact Vector3/Quaternion comparison via is_equal_approx.
+        CHECK(g.scale.is_equal_approx(Vector3(1.0f + i, 2.0f + i, 3.0f + i)));
+        const Quaternion expected_rot = Quaternion(Vector3(0, 1, 0), 0.3f * (i + 1)).normalized();
+        // Quaternion sign ambiguity (q and -q encode the same rotation): accept
+        // either by checking |dot| ~ 1, with is_equal_approx as the fast path.
+        CHECK((g.rotation.is_equal_approx(expected_rot) ||
+                Math::abs(g.rotation.dot(expected_rot)) > 0.999f));
+
+        // Opacity travels as a float; small abs-diff tolerance.
+        CHECK(Math::abs(g.opacity - (0.2f + 0.2f * i)) < 0.02f);
+
+        // DC color (sh_dc) is the only SH term carried by the per-Gaussian struct
+        // that this test asserts; high-order SH is intentionally NOT checked here
+        // (the serializer documents it as not persisted; the sibling SH test cases
+        // cover first-order SH and high-order loss).
+        const Color expected_dc = Color(0.1f * i, 0.2f * i, 0.3f * i);
+        CHECK(Math::abs(g.sh_dc.r - expected_dc.r) < 0.02f);
+        CHECK(Math::abs(g.sh_dc.g - expected_dc.g) < 0.02f);
+        CHECK(Math::abs(g.sh_dc.b - expected_dc.b) < 0.02f);
     }
 
     _remove_persistence_fixture(path);
