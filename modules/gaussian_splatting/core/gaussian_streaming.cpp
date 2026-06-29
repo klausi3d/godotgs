@@ -1162,6 +1162,16 @@ void GaussianStreamingSystem::_bind_methods() {
 void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
     _connect_project_settings();
     _layout_hint_reset_state(this);
+    // Re-init must quiesce the async upload path BEFORE touching any state. A
+    // prior initialize() may have left pack/upload worker threads running and
+    // uploads pending; tearing down chunks/atlas and freeing persistent_buffer
+    // below while a worker is mid-flight is a use-after-free. Mirror the
+    // destructor ordering (_stop_pack_threads -> _clear_pending_uploads). Both
+    // are idempotent and device-independent, so this is a no-op on first init.
+    // _clear_pending_uploads() rolls back against the still-valid prior
+    // chunk/atlas state, so it must run before the chunks/pending resets below.
+    _stop_pack_threads();
+    _clear_pending_uploads();
     streaming_initialized = false;
     last_streaming_update_usec = 0;
     last_streaming_frame_delta_seconds = ESTIMATED_FRAME_DELTA_60FPS;
@@ -1381,6 +1391,14 @@ void GaussianStreamingSystem::initialize_with_device(Ref<::GaussianData> p_data,
 void GaussianStreamingSystem::initialize_empty(RenderingDevice *p_device) {
     _connect_project_settings();
     _layout_hint_reset_state(this);
+    // Re-init must quiesce the async upload path BEFORE touching any state.
+    // See initialize() for the full rationale: a mid-flight pack/upload worker
+    // racing the chunks/atlas/persistent_buffer teardown below is a
+    // use-after-free. Mirror the destructor ordering; both calls are idempotent
+    // and device-independent (no-op on first init), and _clear_pending_uploads()
+    // must run before the chunks/pending resets so its rollback sees valid state.
+    _stop_pack_threads();
+    _clear_pending_uploads();
     streaming_initialized = false;
     last_streaming_update_usec = 0;
     last_streaming_frame_delta_seconds = ESTIMATED_FRAME_DELTA_60FPS;
