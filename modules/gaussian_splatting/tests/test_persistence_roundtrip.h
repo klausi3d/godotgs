@@ -161,9 +161,14 @@ TEST_CASE("[GaussianSplatting][Persistence] GSF round-trip serialization") {
 
     // Dedicated LOCAL fixture (NOT the shared create_test_world() helper, which
     // other test cases depend on): give every splat DISTINCT, non-default values
-    // for each persisted attribute so a saver that drops/zeroes/defaults any of
-    // scale, rotation, opacity, or sh_dc would fail this round-trip rather than
-    // silently pass on constant defaults.
+    // for EVERY field the raw-record GAUSSIAN_DATA chunk persists. That chunk is a
+    // whole-struct memcpy of each `Gaussian` (see _write_gaussian_data_chunk), so
+    // position, opacity, scale, area, rotation, sh_dc (incl. alpha), normal,
+    // stroke_age, brush_axes, painterly_meta and render_meta all round-trip. A
+    // serializer/format migration that drops, zeroes, or defaults any of them
+    // would fail this round-trip rather than silently pass on constant defaults.
+    // (sh_1[] first-order SH is owned by the sibling SH case below; the _padding /
+    // _padding2 lanes carry no semantics and are not asserted.)
     Ref<GaussianData> original_data;
     original_data.instantiate();
 
@@ -171,11 +176,24 @@ TEST_CASE("[GaussianSplatting][Persistence] GSF round-trip serialization") {
     gaussians.resize(3);
     for (int i = 0; i < 3; i++) {
         Gaussian &g = gaussians.write[i];
+        // Fields already covered by the original strengthened assertions.
         g.position = Vector3(i, 0, 0);
         g.scale = Vector3(1.0f + i, 2.0f + i, 3.0f + i);
         g.rotation = Quaternion(Vector3(0, 1, 0), 0.3f * (i + 1)).normalized();
         g.opacity = 0.2f + 0.2f * i;
-        g.sh_dc = Color(0.1f * i, 0.2f * i, 0.3f * i);
+        // sh_dc: seed a DISTINCT alpha lane too. rgb was already covered; the DC
+        // alpha is a real persisted float the original assertions skipped.
+        g.sh_dc = Color(0.1f * i, 0.2f * i, 0.3f * i, 0.3f + 0.2f * i);
+
+        // Remaining raw-record fields persisted by the whole-struct memcpy but
+        // previously unguarded. sh_1[] is intentionally left at default here so
+        // this case does not duplicate the sibling first-order SH test.
+        g.area = 4.0f + 1.5f * i;
+        g.normal = Vector3(0.2f + 0.1f * i, -0.5f - 0.1f * i, 0.8f + 0.1f * i);
+        g.stroke_age = 9.0f + 3.0f * i;
+        g.brush_axes = Vector2(0.5f + i, 1.25f + i);
+        g.painterly_meta = gaussian_pack_painterly_meta(uint16_t(11 + i), uint16_t(101 + i));
+        g.render_meta = uint32_t(0x00C0FFEEu + uint32_t(i));
     }
     original_data->set_gaussians(gaussians);
     CHECK_MESSAGE(original_data.is_valid(), "Original data should be valid");
@@ -215,14 +233,25 @@ TEST_CASE("[GaussianSplatting][Persistence] GSF round-trip serialization") {
         // Opacity travels as a float; small abs-diff tolerance.
         CHECK(Math::abs(g.opacity - (0.2f + 0.2f * i)) < 0.02f);
 
-        // DC color (sh_dc) is the only SH term carried by the per-Gaussian struct
-        // that this test asserts; high-order SH is intentionally NOT checked here
-        // (the serializer documents it as not persisted; the sibling SH test cases
-        // cover first-order SH and high-order loss).
-        const Color expected_dc = Color(0.1f * i, 0.2f * i, 0.3f * i);
+        // DC color (sh_dc): all four lanes are persisted raw — rgb plus the alpha
+        // lane seeded above. First-order/high-order SH stay out of scope here
+        // (the sibling SH test cases own first-order SH and high-order loss).
+        const Color expected_dc = Color(0.1f * i, 0.2f * i, 0.3f * i, 0.3f + 0.2f * i);
         CHECK(Math::abs(g.sh_dc.r - expected_dc.r) < 0.02f);
         CHECK(Math::abs(g.sh_dc.g - expected_dc.g) < 0.02f);
         CHECK(Math::abs(g.sh_dc.b - expected_dc.b) < 0.02f);
+        CHECK(Math::abs(g.sh_dc.a - expected_dc.a) < 0.02f);
+
+        // Remaining raw-record fields. The whole-struct memcpy (plus lossless
+        // chunk compression) is bit-exact, so these round-trip exactly; the
+        // is_equal_approx / exact-int guards catch a format migration that would
+        // drop or default any of them.
+        CHECK(Math::is_equal_approx(g.area, 4.0f + 1.5f * i));
+        CHECK(g.normal.is_equal_approx(Vector3(0.2f + 0.1f * i, -0.5f - 0.1f * i, 0.8f + 0.1f * i)));
+        CHECK(Math::is_equal_approx(g.stroke_age, 9.0f + 3.0f * i));
+        CHECK(g.brush_axes.is_equal_approx(Vector2(0.5f + i, 1.25f + i)));
+        CHECK_EQ(g.painterly_meta, gaussian_pack_painterly_meta(uint16_t(11 + i), uint16_t(101 + i)));
+        CHECK_EQ(g.render_meta, uint32_t(0x00C0FFEEu + uint32_t(i)));
     }
 
     _remove_persistence_fixture(path);
