@@ -21,8 +21,17 @@ RenderConfigOrchestrator::RenderConfigOrchestrator(const Dependencies &p_depende
 		apply_interactive_state(p_dependencies.apply_interactive_state) {
 	ERR_FAIL_NULL(interactive_state_manager);
 	ERR_FAIL_NULL(painterly_renderer);
+	// Validate every injected port up front, restoring the fail-fast contract the
+	// old `ERR_FAIL_NULL(renderer)` provided. A miswired (empty) port would
+	// otherwise invoke an empty std::function / Callable and crash at use time.
 	ERR_FAIL_COND_MSG(!invalidate_cached_render,
 			"RenderConfigOrchestrator requires invalidate_cached_render runtime port.");
+	ERR_FAIL_COND_MSG(!default_grading_changed_callable.is_valid(),
+			"RenderConfigOrchestrator requires a valid default_grading_changed_callable.");
+	ERR_FAIL_COND_MSG(!invalidate_grading_via_director,
+			"RenderConfigOrchestrator requires invalidate_grading_via_director runtime port.");
+	ERR_FAIL_COND_MSG(!apply_interactive_state,
+			"RenderConfigOrchestrator requires apply_interactive_state runtime port.");
 }
 
 void RenderConfigOrchestrator::set_render_mode(GaussianSplatRenderer::RenderMode p_mode) {
