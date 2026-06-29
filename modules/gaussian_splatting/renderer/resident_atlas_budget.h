@@ -133,7 +133,16 @@ inline uint32_t compute_chunk_keep_count(uint32_t count, double keep_ratio) {
 inline float gaussian_importance(const Gaussian &p_g) {
     const float opacity = CLAMP(p_g.opacity, 0.0f, 1.0f);
     const float size_factor = MAX(MAX(Math::abs(p_g.scale.x), Math::abs(p_g.scale.y)), Math::abs(p_g.scale.z));
-    return MAX(0.0001f, opacity * (size_factor + 0.0001f));
+    const float importance = opacity * (size_factor + 0.0001f);
+    // Scan/training PLY data can carry NaN/Inf scale or opacity. A non-finite importance would
+    // make the strict-weak-ordering comparator in select_top_k_indices non-transitive, which is
+    // undefined behavior for std::nth_element / std::sort in this DESTRUCTIVE selection. Floor
+    // any non-finite value so the metric is always finite and orderable (deterministic), and
+    // such degenerate splats sort to the bottom rather than corrupting the kept set.
+    if (!Math::is_finite(importance)) {
+        return 0.0001f;
+    }
+    return MAX(0.0001f, importance);
 }
 
 // Select the `keep` highest-importance indices in [0, count), ties broken by

@@ -4,6 +4,8 @@
 
 #include "../renderer/resident_atlas_budget.h"
 
+#include <limits>
+
 namespace ResidentAtlasBudgetTests {
 
 static constexpr uint64_t k2GB = uint64_t(2) * 1024 * 1024 * 1024;
@@ -253,4 +255,45 @@ TEST_CASE("[GaussianSplatting][ResidentAtlasBudget] Per-asset budget is proporti
     // Degenerate inputs are budget 0, never a divide-by-zero.
     CHECK(resident_asset_budget(100, 0, 400, 100) == 0u);
     CHECK(resident_asset_budget(100, 300, 0, 100) == 0u);
+}
+
+TEST_CASE("[GaussianSplatting][ResidentAtlasBudget] Importance is always finite (no selection UB on NaN/Inf data)") {
+    using namespace ResidentAtlasBudget;
+    using namespace ResidentAtlasBudgetTests;
+    const float qnan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+
+    Gaussian partial_nan = make_g(1.0f, 1.0f, 0.0f);
+    partial_nan.scale = Vector3(qnan, 1.0f, 1.0f); // one axis NaN: MAX may mask it -> finite
+    Gaussian all_nan = make_g(1.0f, 1.0f, 1.0f);
+    all_nan.scale = Vector3(qnan, qnan, qnan); // size_factor NaN -> importance non-finite -> floored
+    Gaussian inf_scale = make_g(1.0f, 1.0f, 2.0f);
+    inf_scale.scale = Vector3(inf, 1.0f, 1.0f); // Inf -> non-finite -> floored
+    Gaussian nan_opacity = make_g(qnan, 1.0f, 3.0f); // NaN opacity -> non-finite -> floored
+    Gaussian normal = make_g(0.5f, 0.5f, 4.0f);
+
+    // The core guarantee: importance is ALWAYS finite, so the strict-weak-ordering comparator
+    // in select_top_k_indices never sees a non-finite value (which would be UB).
+    CHECK(Math::is_finite(gaussian_importance(partial_nan)));
+    CHECK(Math::is_finite(gaussian_importance(all_nan)));
+    CHECK(Math::is_finite(gaussian_importance(inf_scale)));
+    CHECK(Math::is_finite(gaussian_importance(nan_opacity)));
+    // Inputs that actually compute a non-finite importance are floored to the minimum.
+    CHECK(gaussian_importance(all_nan) == doctest::Approx(0.0001f));
+    CHECK(gaussian_importance(inf_scale) == doctest::Approx(0.0001f));
+    CHECK(gaussian_importance(nan_opacity) == doctest::Approx(0.0001f));
+    CHECK(gaussian_importance(normal) > 0.0001f);
+
+    // Selection over a mix of floored-degenerate + finite splats is deterministic and keeps
+    // the finite one.
+    LocalVector<Gaussian> g;
+    g.push_back(all_nan);     // index 0, marker 1.0 -> floored
+    g.push_back(normal);      // index 1, marker 4.0 -> highest finite importance
+    g.push_back(nan_opacity); // index 2, marker 3.0 -> floored
+    LocalVector<Vector3> sh;
+    uint32_t budget = 1;
+    const uint32_t kept = compact_chunk_by_importance(g, sh, 0, 1.0 / 3.0, budget); // keep 1 of 3
+    REQUIRE(kept == 1);
+    CHECK(g[0].position.x == doctest::Approx(4.0f)); // the finite splat survives
+    CHECK(budget == 0);
 }
