@@ -86,6 +86,23 @@ inline SubsetPlan compute_subset_plan(uint64_t total_gaussians, uint64_t effecti
     return plan;
 }
 
+// Per-asset slice of the global keep budget when the resident atlas spans multiple assets.
+// Each asset gets a share proportional to its splat count (ceil, so a non-empty asset keeps
+// >=1), capped by the budget still globally available. This keeps any one asset -- including
+// the currently visible/casting ones -- from being starved to zero by an earlier large
+// (possibly hidden) asset processed first in the stable superset. The split is a pure function
+// of per-device counts, NOT visibility, so the atlas stays stable across visibility flips
+// (Codex #420 round 3).
+inline uint32_t resident_asset_budget(uint64_t p_target_keep, uint64_t p_asset_count,
+        uint64_t p_total_gaussians, uint32_t p_global_remaining) {
+    if (p_asset_count == 0u || p_total_gaussians == 0u) {
+        return 0u;
+    }
+    const uint64_t proportional = (p_target_keep * p_asset_count + p_total_gaussians - 1u) / p_total_gaussians;
+    const uint64_t share = MAX<uint64_t>(uint64_t(1), proportional);
+    return uint32_t(MIN<uint64_t>(uint64_t(p_global_remaining), share));
+}
+
 // Per-chunk keep count under a global keep_ratio. Floors at 1 for any non-empty
 // chunk so thinning never deletes a whole spatial region (preserves coverage on
 // real-scan content); the per-chunk floor remainder is the documented soft

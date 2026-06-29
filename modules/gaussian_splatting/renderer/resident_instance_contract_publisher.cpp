@@ -501,6 +501,17 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 			// (0 kept), so both the asset's chunk count and the dispatch / auxiliary-buffer sizing
 			// must reflect the chunks actually emitted, not chunk_descriptors.size().
 
+			// Give this asset a share of the keep budget proportional to its splat count so a
+			// later (e.g. currently visible/casting) asset cannot be starved to zero chunks by
+			// an earlier large asset in the stable superset. Visibility-independent, so the atlas
+			// stays stable across visibility flips (Codex #420).
+			uint32_t asset_remaining_budget = resident_remaining_budget;
+			if (subset_plan.reduced) {
+				asset_remaining_budget = ResidentAtlasBudget::resident_asset_budget(subset_plan.target_keep,
+						uint64_t(asset.data->get_count()), subset_plan.source_count, resident_remaining_budget);
+			}
+			const uint32_t asset_budget_start = asset_remaining_budget;
+
 			for (uint32_t chunk_index = 0; chunk_index < chunk_descriptors.size(); chunk_index++) {
 				const ResidentChunkDescriptor &descriptor = chunk_descriptors[chunk_index];
 				LocalVector<Gaussian> gaussian_snapshot;
@@ -533,7 +544,7 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 				if (subset_plan.reduced) {
 					chunk_pack_count = ResidentAtlasBudget::compact_chunk_by_importance(
 							gaussian_snapshot, sh_high_order_snapshot, sh_high_order,
-							subset_plan.keep_ratio, resident_remaining_budget);
+							subset_plan.keep_ratio, asset_remaining_budget);
 					if (chunk_pack_count == 0) {
 						// Global VRAM budget exhausted (or this chunk's quota rounded to 0):
 						// drop the chunk rather than emit a zero-splat ChunkMeta.
@@ -571,6 +582,11 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 				chunk_index_gpu.chunk_id = chunk_meta_cpu.size() - 1;
 				asset_chunk_index_cpu.push_back(chunk_index_gpu);
 				max_chunk_splats = MAX(max_chunk_splats, chunk_pack_count);
+			}
+
+			// Return this asset's unspent budget to the global pool so later assets can use it.
+			if (subset_plan.reduced) {
+				resident_remaining_budget -= (asset_budget_start - asset_remaining_budget);
 			}
 
 			// Finalize the asset's chunk-index range from the chunks actually emitted (some may

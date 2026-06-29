@@ -230,3 +230,27 @@ TEST_CASE("[GaussianSplatting][ResidentAtlasBudget] Single global ratio thins mu
     CHECK(keep_b < chunk_b);
     CHECK(double(keep_a) / double(chunk_a) == doctest::Approx(double(keep_b) / double(chunk_b)).epsilon(0.05));
 }
+
+TEST_CASE("[GaussianSplatting][ResidentAtlasBudget] Per-asset budget is proportional, floors at 1, and stays under the global cap") {
+    using namespace ResidentAtlasBudget;
+    // target_keep 100 split across two assets (300 + 100 = 400 total) -> 75 / 25.
+    uint32_t global_remaining = 100;
+    const uint32_t a = resident_asset_budget(100, 300, 400, global_remaining);
+    global_remaining -= a;
+    const uint32_t b = resident_asset_budget(100, 100, 400, global_remaining);
+    CHECK(a == 75);
+    CHECK(b == 25);
+    CHECK(a + b <= 100); // the sum never exceeds the global budget
+
+    // A later (e.g. visible) asset still gets its proportional share -- it is NOT starved to 0
+    // by the earlier larger asset, which is the Codex #420 round-3 concern.
+    CHECK(b >= 1u);
+
+    // A tiny asset against a huge total still keeps at least one splat of budget.
+    CHECK(resident_asset_budget(100, 1, 1000000, 100) == 1u);
+    // The proportional share is capped by whatever budget is globally left.
+    CHECK(resident_asset_budget(100, 300, 400, 10) == 10u);
+    // Degenerate inputs are budget 0, never a divide-by-zero.
+    CHECK(resident_asset_budget(100, 0, 400, 100) == 0u);
+    CHECK(resident_asset_budget(100, 300, 0, 100) == 0u);
+}
