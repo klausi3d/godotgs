@@ -75,6 +75,21 @@ TEST_CASE("[GaussianSplatting][ResidentAtlasBudget] Subset plan: over budget -> 
     CHECK(plan.target_keep * uint64_t(144) <= cap);
 }
 
+TEST_CASE("[GaussianSplatting][ResidentAtlasBudget] A source above the staging limit thins to fit, not reject") {
+    using namespace ResidentAtlasBudget;
+    // Unknown/UMA device budget => cap stays at the 2 GB staging ceiling.
+    const uint64_t cap = compute_effective_atlas_cap_bytes(0, 0);
+    CHECK(cap == ResidentAtlasBudgetTests::k2GB);
+    // A source ~3x the staging capacity (well over 2 GB) must still produce a thinned plan whose
+    // target fits the per-buffer staging upload -- so a direct resident node degrades instead of
+    // black-framing.
+    const uint64_t over_staging_splats = (cap / 144u) * 3u;
+    const SubsetPlan plan = compute_subset_plan(over_staging_splats, cap, 144);
+    CHECK(plan.reduced);
+    CHECK(plan.target_keep < plan.source_count);
+    CHECK(plan.target_keep * uint64_t(144) <= cap); // thinned atlas fits the 2 GB upload
+}
+
 TEST_CASE("[GaussianSplatting][ResidentAtlasBudget] Per-chunk keep count floors at 1 and respects the ratio") {
     using namespace ResidentAtlasBudget;
     CHECK(compute_chunk_keep_count(0, 0.5) == 0);          // empty stays empty

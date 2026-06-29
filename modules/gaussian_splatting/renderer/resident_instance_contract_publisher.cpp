@@ -423,21 +423,28 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 					resource_state.resident_asset_chunk_index_buffer_size);
 		}
 
-		// Early-out: estimate total packed size across all assets.  If it would
-		// exceed the staging limit, skip the expensive per-chunk packing loop
-		// entirely.  The streaming path should handle datasets this large.
+		// Estimate the total source size, then decide the clamp plan. A default resident
+		// GaussianSplatNode3D has no streaming fallback (resident-only by contract), so an
+		// over-budget atlas is THINNED to fit rather than rejected -- rejecting would black-frame
+		// the node under the #351 single-route invariant. The thinned atlas is hard-capped at
+		// target_keep (<= effective cap <= the 2 GB per-buffer staging limit) by the global budget
+		// below, so it always fits the upload regardless of source size. We only reject a source
+		// beyond a generous COST ceiling: the slow-path pack loop still scans the whole source
+		// once (generation-gated), so an absurdly large single resident asset (use streaming for
+		// that) is bounded here.
 		ResidentAtlasBudget::SubsetPlan subset_plan;
 		{
-			static constexpr uint64_t kMaxResidentUploadBytes = uint64_t(2) * 1024 * 1024 * 1024;
+			static constexpr uint64_t kResidentStagingUploadBytes = uint64_t(2) * 1024 * 1024 * 1024;
+			static constexpr uint64_t kMaxResidentClampSourceBytes = uint64_t(4) * kResidentStagingUploadBytes;
 			uint64_t total_gaussians = 0;
 			for (const ResidentAssetDescriptor &asset : assets) {
 				if (asset.data.is_valid()) {
 					total_gaussians += uint64_t(asset.data->get_count());
 				}
 			}
-			if (total_gaussians * sizeof(PackedGaussian) > kMaxResidentUploadBytes) {
+			if (total_gaussians * sizeof(PackedGaussian) > kMaxResidentClampSourceBytes) {
 				if (r_reason) {
-					*r_reason = "resident_dataset_exceeds_staging_limit";
+					*r_reason = "resident_dataset_exceeds_clamp_source_limit";
 				}
 				// Do NOT clear instance pipeline buffers here — the streaming
 				// orchestrator may have already published its own atlas/cull
@@ -446,9 +453,10 @@ bool publish_resident_direct_data_contract(GaussianSplatRenderer *p_renderer, St
 				// ever becoming valid.
 				return false;
 			}
-			// Within the hard staging ceiling: decide whether the atlas still fits the
-			// (possibly tighter) device VRAM budget, and if not, the global keep ratio for
-			// the importance-ordered subset packed per chunk below.
+			// Decide whether the atlas fits the device VRAM budget, and if not, the global keep
+			// ratio + target for the importance-ordered subset packed per chunk below. A source
+			// above the staging limit clamps down to target_keep <= staging limit and renders
+			// reduced instead of black-framing.
 			subset_plan = ResidentAtlasBudget::compute_subset_plan(total_gaussians,
 					effective_atlas_cap_bytes, sizeof(PackedGaussian));
 		}
