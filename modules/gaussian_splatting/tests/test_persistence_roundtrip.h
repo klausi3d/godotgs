@@ -226,12 +226,13 @@ TEST_CASE("[GaussianSplatting][Persistence] GSF round-trip serialization") {
         CHECK(g.scale.is_equal_approx(Vector3(1.0f + i, 2.0f + i, 3.0f + i)));
         const Quaternion expected_rot = Quaternion(Vector3(0, 1, 0), 0.3f * (i + 1)).normalized();
         // Quaternion sign ambiguity (q and -q encode the same rotation): accept
-        // either, with is_equal_approx as the fast path. Require |dot| ~ 1
-        // TWO-SIDED (not just dot > 0.999): a non-unit/scaled quaternion can give
-        // dot > 1, which a lower-bound-only check would pass — masking a
-        // corrupted rotation in this round-trip guard.
+        // either by comparing COMPONENT-WISE against expected_rot or -expected_rot.
+        // A dot-product guard is blind to corruption in components where
+        // expected_rot is zero (these Y-axis rotations have x=z=0, so a corrupted
+        // loaded x/z still yields dot==1) and to non-unit scaling; component-wise
+        // is_equal_approx against both signs catches all of it.
         CHECK((g.rotation.is_equal_approx(expected_rot) ||
-                Math::abs(Math::abs(g.rotation.dot(expected_rot)) - 1.0f) < 0.001f));
+                g.rotation.is_equal_approx(-expected_rot)));
 
         // Opacity travels as a float; small abs-diff tolerance.
         CHECK(Math::abs(g.opacity - (0.2f + 0.2f * i)) < 0.02f);
