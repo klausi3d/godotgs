@@ -176,14 +176,16 @@ TEST_CASE("[GaussianSplatting][Persistence] GSF round-trip serialization") {
     gaussians.resize(3);
     for (int i = 0; i < 3; i++) {
         Gaussian &g = gaussians.write[i];
-        // Fields already covered by the original strengthened assertions.
-        g.position = Vector3(i, 0, 0);
+        // Every component of every persisted field is seeded NON-ZERO and
+        // distinct, so a regression that drops/zero-fills any single lane is
+        // caught (a zero lane would match a zero expectation and hide the bug):
+        // non-axis position, a non-axis-aligned rotation (all of x/y/z/w
+        // non-zero), and an offset sh_dc so even splat 0 has non-zero rgb.
+        g.position = Vector3(1.0f + i, 2.0f + 0.5f * i, 3.0f - 0.25f * i);
         g.scale = Vector3(1.0f + i, 2.0f + i, 3.0f + i);
-        g.rotation = Quaternion(Vector3(0, 1, 0), 0.3f * (i + 1)).normalized();
+        g.rotation = Quaternion(Vector3(1, 2, 3).normalized(), 0.3f * (i + 1)).normalized();
         g.opacity = 0.2f + 0.2f * i;
-        // sh_dc: seed a DISTINCT alpha lane too. rgb was already covered; the DC
-        // alpha is a real persisted float the original assertions skipped.
-        g.sh_dc = Color(0.1f * i, 0.2f * i, 0.3f * i, 0.3f + 0.2f * i);
+        g.sh_dc = Color(0.1f + 0.1f * i, 0.2f + 0.1f * i, 0.3f + 0.1f * i, 0.3f + 0.2f * i);
 
         // Remaining raw-record fields persisted by the whole-struct memcpy but
         // previously unguarded. sh_1[] is intentionally left at default here so
@@ -219,18 +221,17 @@ TEST_CASE("[GaussianSplatting][Persistence] GSF round-trip serialization") {
     for (int i = 0; i < 3; i++) {
         Gaussian g = loaded_data->get_gaussian(i);
 
-        // Position (existing assertion, kept).
-        CHECK(g.position.is_equal_approx(Vector3(i, 0, 0)));
+        // Position — all three lanes non-zero (matches the seed).
+        CHECK(g.position.is_equal_approx(Vector3(1.0f + i, 2.0f + 0.5f * i, 3.0f - 0.25f * i)));
 
         // Scale / rotation: exact Vector3/Quaternion comparison via is_equal_approx.
         CHECK(g.scale.is_equal_approx(Vector3(1.0f + i, 2.0f + i, 3.0f + i)));
-        const Quaternion expected_rot = Quaternion(Vector3(0, 1, 0), 0.3f * (i + 1)).normalized();
-        // Quaternion sign ambiguity (q and -q encode the same rotation): accept
-        // either by comparing COMPONENT-WISE against expected_rot or -expected_rot.
-        // A dot-product guard is blind to corruption in components where
-        // expected_rot is zero (these Y-axis rotations have x=z=0, so a corrupted
-        // loaded x/z still yields dot==1) and to non-unit scaling; component-wise
-        // is_equal_approx against both signs catches all of it.
+        const Quaternion expected_rot = Quaternion(Vector3(1, 2, 3).normalized(), 0.3f * (i + 1)).normalized();
+        // Quaternion sign ambiguity (q and -q encode the same rotation): compare
+        // COMPONENT-WISE against expected_rot or -expected_rot. The rotation is
+        // about a non-axis vector, so x/y/z/w are all non-zero — no lane is hidden
+        // by a zero expectation, and a dot-product's zero-component blind spot is
+        // avoided entirely.
         CHECK((g.rotation.is_equal_approx(expected_rot) ||
                 g.rotation.is_equal_approx(-expected_rot)));
 
@@ -240,7 +241,7 @@ TEST_CASE("[GaussianSplatting][Persistence] GSF round-trip serialization") {
         // DC color (sh_dc): all four lanes are persisted raw — rgb plus the alpha
         // lane seeded above. First-order/high-order SH stay out of scope here
         // (the sibling SH test cases own first-order SH and high-order loss).
-        const Color expected_dc = Color(0.1f * i, 0.2f * i, 0.3f * i, 0.3f + 0.2f * i);
+        const Color expected_dc = Color(0.1f + 0.1f * i, 0.2f + 0.1f * i, 0.3f + 0.1f * i, 0.3f + 0.2f * i);
         CHECK(Math::abs(g.sh_dc.r - expected_dc.r) < 0.02f);
         CHECK(Math::abs(g.sh_dc.g - expected_dc.g) < 0.02f);
         CHECK(Math::abs(g.sh_dc.b - expected_dc.b) < 0.02f);
