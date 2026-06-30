@@ -24,7 +24,9 @@ Gaussian make_gaussian(const Vector3 &p_position, const Color &p_dc) {
     // The signature is unchanged and position + byte-size assertions are unaffected.
     const float k = p_position.x;
     g.scale = Vector3(1.0f + k, 2.0f + 0.5f * k, 3.0f);
-    g.rotation = Quaternion(Vector3(0.0f, 1.0f, 0.0f), 0.1f * (k + 1.0f)).normalized();
+    // Non-axis-aligned rotation so x/y/z/w are all non-zero — a zero lane would
+    // be hidden by a zero expectation in the component-wise round-trip check.
+    g.rotation = Quaternion(Vector3(1.0f, 2.0f, 3.0f).normalized(), 0.1f * (k + 1.0f)).normalized();
     g.opacity = CLAMP(0.05f + 0.03f * k, 0.0f, 1.0f);
     g.sh_dc = p_dc;
     g.sh_1[0] = Vector3(0.1f + 0.05f * k, 0.1f, 0.1f);
@@ -154,11 +156,13 @@ Vector<Gaussian> build_staged_payload_gaussians(uint32_t p_count) {
     Vector<Gaussian> gaussians;
     gaussians.resize(p_count);
     for (uint32_t i = 0; i < p_count; i++) {
-        // Distinct, asymmetric per-splat sh_dc so the round-trip asserts catch a
-        // DC channel swap/zero (an all-white fixture would pass a swap, since
-        // white is channel-symmetric).
-        const Color dc(float(i % 5) * 0.2f, float(i % 3) * 0.33f, float(i % 7) * 0.14f, 1.0f);
-        gaussians.write[i] = make_gaussian(Vector3(float(i), float(i % 7), float(i % 3)), dc);
+        // Distinct, asymmetric, all-NON-ZERO per-splat sh_dc and position so the
+        // round-trip asserts catch a DC channel swap/zero AND a dropped position
+        // lane (an all-white or zero-lane fixture would hide those, since a zero
+        // expectation matches a zeroed result).
+        const Color dc(0.1f + float(i % 5) * 0.15f, 0.2f + float(i % 3) * 0.2f,
+                0.3f + float(i % 7) * 0.1f, 0.4f + float(i % 2) * 0.25f);
+        gaussians.write[i] = make_gaussian(Vector3(float(i) + 1.0f, float(i % 7) + 2.0f, float(i % 3) + 3.0f), dc);
     }
     return gaussians;
 }
