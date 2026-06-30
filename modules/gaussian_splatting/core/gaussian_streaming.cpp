@@ -1242,6 +1242,9 @@ void GaussianStreamingSystem::initialize(Ref<::GaussianData> p_data) {
         RenderingDevice *rd = primary_device_override ? primary_device_override
                 : (last_upload_device ? last_upload_device
                         : (manager ? manager->get_primary_rendering_device() : nullptr));
+        // Clear-to-empty re-init path: drain submitted GPU uploads before
+        // freeing the registry meta buffers, same as the main path below.
+        gs_device_utils::safe_submit_and_sync(rd);
         global_atlas_registry.cleanup(rd);
         atlas_allocator.clear();
         chunks.clear();
