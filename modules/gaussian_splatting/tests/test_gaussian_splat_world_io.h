@@ -46,11 +46,13 @@ Gaussian make_gaussian(const Vector3 &p_position, const Color &p_dc) {
 void _check_attributes_round_trip(const Gaussian &p_got, const Gaussian &p_expected) {
     CHECK(p_got.scale.is_equal_approx(p_expected.scale));
     // Quaternion equality is sign-insensitive (q and -q encode the same
-    // rotation): accept exact-approx OR a |dot| ~ 1 alignment.
-    const Quaternion got_rot = p_got.rotation.normalized();
-    const Quaternion exp_rot = p_expected.rotation.normalized();
-    const float quat_dot = got_rot.dot(exp_rot);
-    CHECK((got_rot.is_equal_approx(exp_rot) || Math::abs(quat_dot) > 0.999f));
+    // rotation). Compare the RAW stored quaternions (no pre-normalize, which
+    // would hide a scale corruption) and require |dot| ~ 1 TWO-SIDED so a
+    // non-unit/corrupted rotation is rejected (a lower-bound dot > 0.999 would
+    // pass a scaled quaternion).
+    const float quat_dot = p_got.rotation.dot(p_expected.rotation);
+    CHECK((p_got.rotation.is_equal_approx(p_expected.rotation) ||
+            Math::abs(Math::abs(quat_dot) - 1.0f) < 0.001f));
     CHECK(Math::abs(p_got.opacity - p_expected.opacity) < 0.02f);
     CHECK(Math::abs(p_got.sh_dc.r - p_expected.sh_dc.r) < 0.02f);
     CHECK(Math::abs(p_got.sh_dc.g - p_expected.sh_dc.g) < 0.02f);
